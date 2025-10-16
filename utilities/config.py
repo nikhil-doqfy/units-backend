@@ -1,0 +1,2 @@
+HOST="http://localhost:8000"
+PASSWORD_EXPIRY_TIME = 180 

@@ -1,0 +1,8 @@
+migrations
+db.sqlite3
+*.pyc
+environment_settings.py
+requirements.txt
+.vscode/
+media
+static
