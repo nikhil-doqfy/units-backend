@@ -1,28 +1,67 @@
+# import jwt
+# from utilities.config import JWT_SECRET_KEY,JWT_ALGORITHM
+# from django.utils import timezone
+# from datetime import timedelta
+# from utilities import constants
+
+# def create_jwt_token(user_profile):
+#     token = jwt.encode({'user_id':user_profile.id},JWT_SECRET_KEY,algorithm=JWT_ALGORITHM)
+#     if user_profile.token_expiry:
+#         token = jwt.encode({'user_id':user_profile.id, 'exp': timezone.now() + timedelta(minutes=user_profile.token_expiry)},JWT_SECRET_KEY,algorithm=JWT_ALGORITHM)
+#     user_profile.token = token
+#     user_profile.save()
+#     return token      
+
+# def get_jwt_token(token):
+#     token = token.split(' ')  
+#     if len(token) != 2 and token[0] != 'Bearer':
+#         return { 'message': constants.INVALID_TOKEN }
+#     return token[1]
+
+# def decode_jwt_token(token):
+#     try:
+#         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
+#         return payload
+#     except jwt.ExpiredSignatureError:
+#         return {'error': constants.TOKEN_EXPIRED }
+#     except jwt.DecodeError:
+#         return {'error': constants.INVALID_TOKEN}
+
+
 import jwt
-from utilities.config import JWT_SECRET_KEY,JWT_ALGORITHM
-from django.utils import timezone
-from datetime import timedelta
+from utilities.config import JWT_SECRET_KEY, JWT_ALGORITHM
+from datetime import datetime, timedelta
 from utilities import constants
 
+# 🔹 Default expiry time (in minutes)
+DEFAULT_EXPIRY_MINUTES = 60
+
 def create_jwt_token(user_profile):
-    token = jwt.encode({'user_id':user_profile.id},JWT_SECRET_KEY,algorithm=JWT_ALGORITHM)
-    if user_profile.token_expiry:
-        token = jwt.encode({'user_id':user_profile.id, 'exp': timezone.now() + timedelta(minutes=user_profile.token_expiry)},JWT_SECRET_KEY,algorithm=JWT_ALGORITHM)
+    expiry_time = datetime.utcnow() + timedelta(minutes=DEFAULT_EXPIRY_MINUTES)
+
+    payload = {
+        'user_id': user_profile.id,
+        'email': user_profile.email,
+        'exp': expiry_time
+    }
+
+    token = jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
     user_profile.token = token
-    user_profile.save()
-    return token      
+    user_profile.save(update_fields=['token'])
 
-def get_jwt_token(token):
-    token = token.split(' ')  
-    if len(token) != 2 and token[0] != 'Bearer':
-        return { 'message': constants.INVALID_TOKEN }
-    return token[1]
+    return token
 
-def decode_jwt_token(token):
+def get_jwt_token(auth_header: str):
+    parts = auth_header.split(' ')
+    if len(parts) != 2 or parts[0] != 'Bearer':
+        return {'message': constants.INVALID_TOKEN}
+    return parts[1]
+
+def decode_jwt_token(token: str):
     try:
         payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
         return payload
     except jwt.ExpiredSignatureError:
-        return {'error': constants.TOKEN_EXPIRED }
+        return {'error': constants.TOKEN_EXPIRED}
     except jwt.DecodeError:
         return {'error': constants.INVALID_TOKEN}

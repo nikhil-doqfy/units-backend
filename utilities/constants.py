@@ -33,6 +33,16 @@ STAFF_ROLE_NOT_FOUND = "Staff role not found for the current user's staff detail
 STAFF_USER_NOT_PROPERTY_MANAGER = "Staff user is not associated with any property manager"
 PROPERTY_MANAGER_DETAILS_NOT_FOUND = "Property Manager details not found for the authenticated user."
 STAFF_USER_CREATED_SUCCESS = "Staff user created successfully."
+INVALID_CREDENTIALS = "Invalid credentials"
+
+FIELD_REQUIRED = "Required fields are missing"
+
+LOGIN_NOT_ALLOWED = "Login not allowed"
+LOGIN_SUCCESSFUL = "Login successful"
+
+MOBILE_VERIFICATION = "MOBILE_VERIFICATION"
+EMAIL_VERIFICATION = "EMAIL_VERIFICATION"
+
 
 
 
