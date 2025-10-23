@@ -22,8 +22,11 @@ from utilities.config import DEFAULT_HOST
 import boto3
 from botocore.exceptions import ClientError
 from utilities.config import AWS_ACCESS_KEY, AWS_SECRET_KEY, AWS_REGION, S3_BUCKET_NAME
+from utilities import config
 
 import logging
+
+
 def prepare_response(content={}, message='', status=status.HTTP_200_OK, paginator=None, total_records=0):
     resp = {
         "content": content,
@@ -214,7 +217,7 @@ def send_ses_email(to_email, subject, body_text, body_html):
 
 
 
-# from rest_framework import status
+
 
 
 # 🔹 Setup logger
@@ -280,5 +283,34 @@ def upload_file_to_s3_base64(base64_data, object_name, bucket=None):
 
 
 
-# --------------------------------------------------------------------------------------------------------------
+# ---------------------fetch__documents_-----------------------------------------------------------------------------------------
 
+
+
+logger = logging.getLogger(__name__)
+
+def fetch_s3_file_as_base64(file_url):
+    """
+    Given a full S3 file URL, download it and return its Base64 string.
+    """
+    try:
+        bucket_name = config.S3_BUCKET_NAME
+        key = file_url.split(".amazonaws.com/")[1]
+
+        s3_client = boto3.client(
+            "s3",
+            aws_access_key_id=config.AWS_ACCESS_KEY,
+            aws_secret_access_key=config.AWS_SECRET_KEY,
+            region_name=config.AWS_REGION,
+        )
+
+        response = s3_client.get_object(Bucket=bucket_name, Key=key)
+        file_bytes = response["Body"].read()
+        return base64.b64encode(file_bytes).decode("utf-8")
+
+    except ClientError as e:
+        logger.error(f"❌ ClientError fetching from S3: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"❌ Unexpected error fetching from S3: {str(e)}")
+        return None

@@ -1,4 +1,4 @@
-from django.shortcuts import render
+
 import json
 import uuid
 from django.contrib.auth.hashers import make_password
@@ -106,7 +106,7 @@ def user_login(request):
 
 def google_login(request):
     if request.method != "POST":
-        return prepare_response(message="Only POST method allowed", status=status.HTTP_405_METHOD_NOT_ALLOWED)
+        return prepare_response(message=constants.ONLY_POST_METHOD_ALLOWED, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     try:
         data = json.loads(request.body)
@@ -114,14 +114,14 @@ def google_login(request):
         print("🔹 Received token from request:", oauth_token)
 
     except json.JSONDecodeError:
-        return prepare_response(message="Invalid JSON", status=status.HTTP_400_BAD_REQUEST)
+        return prepare_response(message=constants.INVALID_JSON_BODY, status=status.HTTP_400_BAD_REQUEST)
 
     if not oauth_token:
-        return prepare_response(message="OAuth token is required", status=status.HTTP_400_BAD_REQUEST)
+        return prepare_response(message=constants.OAUTH_TOKEN_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
 
     user = login_with_google(oauth_token)
     if not user:
-        return prepare_response(message="Invalid credentials", status=status.HTTP_401_UNAUTHORIZED)
+        return prepare_response(message=constants.INVALID_CREDENTIALS, status=status.HTTP_401_UNAUTHORIZED)
 
     token = create_jwt_token(user)
 
@@ -136,7 +136,7 @@ def google_login(request):
             "access_token": token,
             "token_type": "Bearer"
         },
-        message="Login successful",
+        message=constants.LOGIN_SUCCESSFUL,
         status=status.HTTP_200_OK
     )
 
@@ -151,7 +151,7 @@ def outlook_login(request):
     # ---------- Only POST allowed ----------
     if request.method != "POST":
         return prepare_response(
-            message="Only POST method allowed",
+            message=constants.ONLY_POST_METHOD_ALLOWED,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
 
@@ -161,13 +161,13 @@ def outlook_login(request):
         oauth_token = data.get("token")
     except json.JSONDecodeError:
         return prepare_response(
-            message="Invalid JSON",
+            message=constants.INVALID_JSON_BODY,
             status=status.HTTP_400_BAD_REQUEST
         )
 
     if not oauth_token:
         return prepare_response(
-            message="OAuth token is required",
+            message=constants.OAUTH_TOKEN_REQUIRED,
             status=status.HTTP_400_BAD_REQUEST
         )
 
@@ -194,7 +194,7 @@ def outlook_login(request):
             "access_token": token,
             "token_type": "Bearer"
         },
-        message="Login successful",
+        message=constants.LOGIN_SUCCESSFUL,
         status=status.HTTP_200_OK
     )
 
@@ -222,7 +222,7 @@ def logout(request):
     user.save(update_fields=['token'])
 
     return prepare_response(
-        message="Logout successful",
+        message=constants.LOGOUT_SUCCESSFULL,
         status=status.HTTP_200_OK
     )
 
@@ -231,7 +231,7 @@ def verify_password_otp(request):
     # Allow only POST method
     if request.method != "POST":
         return prepare_response(
-            message="Only POST method allowed",
+            message=constants.ONLY_POST_METHOD_ALLOWED,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
 
@@ -242,7 +242,7 @@ def verify_password_otp(request):
 
         if not email or not otp:
             return prepare_response(
-                message="Email and OTP required",
+                message=constants.EMAIL_AND_OTP_REQUIRED,
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -252,7 +252,7 @@ def verify_password_otp(request):
 
         if not record:
             return prepare_response(
-                message="Invalid OTP",
+                message=constants.INCORRECT_OTP,
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -260,7 +260,7 @@ def verify_password_otp(request):
         expiry_time = record.created_at + timezone.timedelta(minutes=10)
         if timezone.now() > expiry_time:
             return prepare_response(
-                message="OTP expired",
+                message=constants.OTP_EXPIRED,
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -270,7 +270,7 @@ def verify_password_otp(request):
         record.save()
 
         return prepare_response(
-            message="OTP verified successfully.",
+            message=constants.OTP_VERIFIED_SUCCESS,
             content={"email": email},
             status=status.HTTP_200_OK
         )
@@ -278,7 +278,7 @@ def verify_password_otp(request):
     except Exception as e:
         print("Error:", e)
         return prepare_response(
-            message="Internal Server Error",
+            message=constants.INTERNAL_SERVER_ERROR,
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
@@ -290,7 +290,7 @@ def verify_password_otp(request):
 # reset password via SMTP
 def reset_password(request):
     if request.method != "POST":
-        return prepare_response(message="Only POST method allowed", status=405)
+        return prepare_response(message=constants.ONLY_POST_METHOD_ALLOWED, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     try:
         data = json.loads(request.body)
@@ -302,22 +302,22 @@ def reset_password(request):
         # Check required fields
         if not all([email, otp, password, confirm_password]):
             return prepare_response(
-                message="Email, otp, password, and confirm_password are required",
-                status=400
+                message=constants.EMAIL_OTP_PASSWORD_REQUIRED,
+                status=status.HTTP_400_BAD_REQUEST
             )
 
         # Password match check
         if password != confirm_password:
             return prepare_response(
-                message="Password and confirm password do not match",
-                status=400
+                message=constants.PASSWORDS_DO_NOT_MATCH,
+                status=status.HTTP_400_BAD_REQUEST
             )
 
         # Optional: Validate password strength
         if not validate_password(password):
             return prepare_response(
-                message="Weak password. Must contain upper, lower, number, and special char.",
-                status=400
+                message=constants.WEAK_PASSWORD ,
+                status=status.HTTP_400_BAD_REQUEST
             )
 
         # Check OTP record
@@ -326,26 +326,26 @@ def reset_password(request):
         ).order_by('-verified_time').first()
 
         if not verified_record:
-            return prepare_response(message="Invalid OTP", status=400)
+            return prepare_response(message=constants.INCORRECT_OTP, status=status.HTTP_400_BAD_REQUEST)
 
         # Check OTP expiry (10 min)
         expiry_time = verified_record.verified_time + timezone.timedelta(minutes=10)
         if timezone.now() > expiry_time:
-            return prepare_response(message="OTP expired", status=400)
+            return prepare_response(message=constants.OTP_EXPIRED, status=status.HTTP_400_BAD_REQUEST)
 
         # Update password
         user = UserProfile.objects.filter(email=email).first()
         if not user:
-            return prepare_response(message="User not found", status=404)
+            return prepare_response(message=constants.USER_NOT_FOUND, status=status.HTTP_400_BAD_REQUEST)
 
         user.hashed_password = make_password(password)
         user.save(update_fields=['hashed_password'])
 
-        return prepare_response(message="Password reset successfully", status=201)
+        return prepare_response(message=constants.PASSWORD_RESET_SUCCESS, status=status.HTTP_400_BAD_REQUEST)
 
     except Exception as e:
         print("Error:", e)
-        return prepare_response(message="Internal Server Error", status=500)
+        return prepare_response(message=constants.INTERNAL_SERVER_ERROR, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 
@@ -358,63 +358,76 @@ def reset_password(request):
 
 OTP_EXPIRY_MINUTES = 5  # OTP valid for 5 minutes
 
-@require_POST
 def send_password_otp(request):
     """
     Send OTP email for password reset via SES.
     """
-    try:
-        # Parse request body
-        data = json.loads(request.body)
-        email = data.get("email")
-        if not email:
-            return prepare_response(
-                message="Email is required",
-                status=400
-            )
-        # Check if user exists
+    if request.method == "POST":
         try:
-            user = UserProfile.objects.get(email=email)
-        except UserProfile.DoesNotExist:
-            return prepare_response(
-                message="User with this email does not exist",
-                status=404
+            # Parse request body
+            data = json.loads(request.body)
+            email = data.get("email")
+            if not email:
+                return prepare_response(
+                    message=constants.ONLY_POST_METHOD_ALLOWED,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Check if user exists
+            try:
+                user = UserProfile.objects.get(email=email)
+            except UserProfile.DoesNotExist:
+                return prepare_response(
+                    message=constants.USER_NOT_FOUND,
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            # Generate OTP
+            otp = request_otp_sent()
+
+            # Store OTP record
+            UserVerification.objects.create(
+                user=user,
+                email=email,
+                otp=otp,
+                verification_type="PASSWORD_RESET",
+                is_verified=False
             )
-        # Generate OTP
-        otp = request_otp_sent()
-        # Store OTP record
-        UserVerification.objects.create(
-            user=user,
-            email=email,
-            otp=otp,
-            verification_type="PASSWORD_RESET",  # Changed verification type
-            is_verified=False
-        )
-        # Prepare email content
-        subject = "Password Reset OTP - DOQFY"
-        body_text = f"Your OTP for password reset is: {otp}. It will expire in {OTP_EXPIRY_MINUTES} minutes."
-        body_html = f"""
-        <html>
-            <body>
-                <p>Your OTP for password reset is: <b>{otp}</b>.</p>
-                <p>It will expire in {OTP_EXPIRY_MINUTES} minutes.</p>
-            </body>
-        </html>
-        """
-        # Send email
-        success = send_ses_email(email, subject, body_text, body_html)
-        if success:
+
+            # Prepare email content
+            subject = "Password Reset OTP - DOQFY"
+            body_text = f"Your OTP for password reset is: {otp}. It will expire in {OTP_EXPIRY_MINUTES} minutes."
+            body_html = f"""
+            <html>
+                <body>
+                    <p>Your OTP for password reset is: <b>{otp}</b>.</p>
+                    <p>It will expire in {OTP_EXPIRY_MINUTES} minutes.</p>
+                </body>
+            </html>
+            """
+
+            # Send email
+            success = send_ses_email(email, subject, body_text, body_html)
+            if success:
+                return prepare_response(
+                    message=constants.OTP_SEND_SUCCESS
+                )
+            else:
+                return prepare_response(
+                    message=constants.OTP_SEND_FAILED,
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
+        except Exception as e:
+            print(f"Error sending OTP via SES: {e}")
             return prepare_response(
-                message="✅ OTP sent successfully"
+                message=f"Unexpected error: {str(e)}",
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-        else:
-            return prepare_response(
-                message="Failed to send OTP email",
-                status=500
-            )
-    except Exception as e:
-        print(f"Error sending OTP via SES: {e}")
+
+    # If request is not POST
+    else:
         return prepare_response(
-            message=f"Unexpected error: {str(e)}",
-            status=500
+            message=constants.METHOD_NOT_ALLOWED,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
         )

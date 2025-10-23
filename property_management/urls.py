@@ -36,6 +36,8 @@ urlpatterns = [
 
     # Upload owner documents to S3
     path('upload/owner/documents/', views.upload_owner_documents, name='upload_owner_documents'),
+    path("get/owner/documents/", views.get_owner_documents, name="get_owner_documents"),
+   
 
 ]
 

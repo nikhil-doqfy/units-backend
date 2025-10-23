@@ -6,31 +6,7 @@ from utilities.helper_functions import prepare_response
 from user_service.models import UserProfile ,StaffDetails , PropertyManagerCompanyDetails , StaffRole
 from user_service.utils import request_otp_sent
 from django.db import transaction
-from django.http import JsonResponse
 from utilities.decorator import is_request_authenticated
-# from django.contrib.auth.hashers import check_password
-# from utilities.jwt_token import create_jwt_token  # JWT helper
-# from django.views.decorators.http import require_POST
-# from utilities.oauth_utils import login_with_google
-# from utilities.oauth_utils import login_with_outlook
-# from django.views.decorators.csrf import csrf_exempt
-# from django.utils import timezone
-# from utilities.helper_functions import send_ses_email
-# from datetime import datetime, timedelta
-
-# from utilities.helper_functions import send_password_reset_email, generate_password_reset_link
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 # ---------- Create your views here ---------- user_sign_up
@@ -124,14 +100,14 @@ def staff_signup(request):
     
     if request.method != 'POST':
         print("Invalid method:", request.method)
-        return JsonResponse({"error": "Only POST method allowed"}, status=405)
+        return prepare_response(message=constants.ONLY_POST_METHOD_ALLOWED,  status=status.HTTP_405_METHOD_NOT_ALLOWED)
     
     try:
         data = json.loads(request.body)
         print("Request data:", data)
     except json.JSONDecodeError:
         print("JSON decode error")
-        return JsonResponse({"error": "Invalid JSON"}, status=400)
+        return prepare_response(message=constants.INVALID_JSON_BODY, status=status.HTTP_400_BAD_REQUEST)
 
     user_profile = request.user  # Already UserProfile object
     print("Request User:", user_profile.email, "-", user_profile.user_type)
@@ -233,7 +209,7 @@ def staff_signup(request):
     except Exception as e:
         print("Failed to create staff details:", e)
         return prepare_response(
-            message="Failed to create staff details",
+            message=constants.STAFF_CREATION_FAILED,
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 

@@ -1,27 +1,24 @@
 # views.py
-from django.shortcuts import get_object_or_404, redirect
-from django.http import JsonResponse, HttpResponseBadRequest
+from django.shortcuts import get_object_or_404
 from django.db import IntegrityError, transaction
-from user_service.models import UserProfile
 from property_management.models import OwnerDetails ,PropertyDocuments
 from utilities.decorator import is_request_authenticated
 import json
-import os
-from django.http import HttpResponseBadRequest
-from django.conf import settings
 from utilities.helper_functions import  prepare_response, logger
 from utilities import config as aws_constants
- 
 from utilities.decorator import is_request_authenticated
-import base64
 from utilities.helper_functions import upload_file_to_s3_base64, prepare_response, logger
-from utilities import status
+from utilities import status ,  constants
 from django.utils import timezone
+from utilities import config
+from utilities.helper_functions import fetch_s3_file_as_base64
+
+
 
 @is_request_authenticated
 def submit_owner_details(request):
     if request.method != "POST":
-        return prepare_response(message="Only POST requests are allowed", status=status.HTTP_405_METHOD_NOT_ALLOWED)
+        return prepare_response(message=constants.ONLY_POST_METHOD_ALLOWED, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     try:
         current_user = request.user  # Assuming user is authenticated via request.user
@@ -29,7 +26,7 @@ def submit_owner_details(request):
 
         # Check if owner details already exist
         if OwnerDetails.objects.filter(user=current_user).exists():
-            return prepare_response( message="Owner details already exist for this user.",status=status.HTTP_400_BAD_REQUEST)
+            return prepare_response( message=constants.OWNER_DETAILS_ALREADY_EXISTS,status=status.HTTP_400_BAD_REQUEST)
 
         with transaction.atomic():
             owner_details = OwnerDetails.objects.create(
@@ -52,12 +49,12 @@ def submit_owner_details(request):
             current_user.is_detail_updated = True
             current_user.save()
 
-        return prepare_response( content={"owner_details_id": owner_details.id, "is_detail_updated": current_user.is_detail_updated},message="Owner details saved successfully.",status=status.HTTP_201_CREATED)
+        return prepare_response( content={"owner_details_id": owner_details.id, "is_detail_updated": current_user.is_detail_updated},message=constants.OWNER_DETAILS_SAVED_SUCCESS,status=status.HTTP_201_CREATED)
  
 
     except IntegrityError:
         return prepare_response(
-            message="Documents are already uploaded for this user.",
+            message=constants.DOCUMENTS_ALREADY_UPLOADED,
             status=status.HTTP_400_BAD_REQUEST
         )
     except Exception as e:
@@ -81,7 +78,7 @@ def choose_manage_option(request):
     """
     if request.method != "POST":
         return prepare_response(
-            message="Only POST requests are allowed.",
+            message=constants.ONLY_POST_METHOD_ALLOWED,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
 
@@ -89,7 +86,7 @@ def choose_manage_option(request):
 
     if current_user.user_type != "OWNER":
         return prepare_response(
-            message="Access denied. Only owners can access this resource.",
+            message=constants.ACCESS_DENIED_OWNER_ONLY,
             status=status.HTTP_403_FORBIDDEN
         )
 
@@ -114,7 +111,7 @@ def choose_manage_option(request):
             owner_details.manage_through_pmc = True
         else:
             return prepare_response(
-                message="Invalid option. Choose either 'manual' or 'pmc'.",
+                message=constants.INVALID_OPTION,
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -122,7 +119,7 @@ def choose_manage_option(request):
 
         return prepare_response(
             content={"chosen_option": option},
-            message="Management option updated successfully.",
+            message=constants.MANAGEMENT_OPTION_UPDATED_SUCCESS,
             status=status.HTTP_200_OK
         )
 
@@ -145,7 +142,7 @@ def choose_manage_option(request):
 def upload_owner_documents(request):
     if request.method != "POST":
         return prepare_response(
-            message="Only POST requests are allowed.",
+            message=constants.ONLY_POST_METHOD_ALLOWED,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
 
@@ -153,7 +150,7 @@ def upload_owner_documents(request):
         data = json.loads(request.body)
     except Exception:
         return prepare_response(
-            message="Invalid JSON body.",
+            message=constants.INVALID_JSON_BODY,
             status=status.HTTP_400_BAD_REQUEST
         )
 
@@ -161,7 +158,7 @@ def upload_owner_documents(request):
 
     if len(documents) != 4:
         return prepare_response(
-            message="All 4 documents are required.",
+            message=constants.ALL_DOCUMENTS_REQUIRED,
             status=status.HTTP_400_BAD_REQUEST
         )
 
@@ -170,7 +167,7 @@ def upload_owner_documents(request):
         owner_details = OwnerDetails.objects.get(user=current_user)
     except OwnerDetails.DoesNotExist:
         return prepare_response(
-            message="Owner details not found for this user.",
+            message=constants.OWNER_DETAILS_NOT_FOUND,
             status=status.HTTP_404_NOT_FOUND
         )
     
@@ -218,9 +215,17 @@ def upload_owner_documents(request):
         prop_doc_instance.save()
 
     return prepare_response(
-        message="Documents uploaded successfully.",
+        message=constants.DOCUMENTS_UPLOAD_SUCCESS,
         status=status.HTTP_200_OK
     )
+
+
+# ----------------------------------------------------------get_documents-----------------------------------
+
+
+
+
+
 
 
 
@@ -232,5 +237,57 @@ def upload_owner_documents(request):
 #   {"type": "dld_certificate", "file_name": "dld_certificate.pdf", "document": "..."},
 #   {"type": "dewa_registration", "file_name": "dewa_registration.pdf", "document": "..."}
 # ]
+
+
+
+
+@is_request_authenticated
+def get_owner_documents(request):
+    """
+    Fetch all uploaded owner documents from S3 and return as Base64 strings.
+    """
+    if request.method != "GET":
+        return prepare_response(
+            message=constants.ONLY_GET_REQUEST_ALLOWED,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+    current_user = request.user
+
+    try:
+        owner_details = OwnerDetails.objects.filter(user=current_user).first()
+        if not owner_details:
+            return prepare_response(
+                message=constants.OWNER_DETAILS_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        documents = {
+            "emirates_id_file": owner_details.emirates_id_file,
+            "residence_visa_file": owner_details.residence_visa_file,
+            "dld_certificate_file": owner_details.dld_certificate_file,
+            "dewa_registration_file": owner_details.dewa_registration_file,
+        }
+
+        base64_docs = {}
+
+        for doc_type, file_url in documents.items():
+            base64_docs[doc_type] = fetch_s3_file_as_base64(file_url) if file_url else None
+
+        return prepare_response(
+            content={"documents": base64_docs},
+            message=constants.DOCUMENTS_FETCH_SUCCESS,
+            status=status.HTTP_200_OK
+        )
+
+    except Exception as e:
+        logger.error(f"❌ Failed to fetch documents: {str(e)}")
+        return prepare_response(
+            message=f"Failed to fetch documents: {str(e)}",
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+
 
 
