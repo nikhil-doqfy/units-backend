@@ -76,12 +76,7 @@ def validate_mobile(value):
     else:
         return False
     
-# def validate_mobile(value):
-#     matched_object=re.fullmatch('(0|91)?[7-9]\d{9}')
-#     if matched_object:
-#         return True
-#     else:
-#         return False
+
 
 def validate_phone_number(value):
     regions = ['IN', 'US'] 
@@ -125,17 +120,19 @@ def send_email(subject, recipient_list, message="", template=None, file_path=Non
         print("Email sent successfully")
     except Exception as e:
         print("Email sending failed:", e)
-        # Optional: still return True or raise e
+        
         raise e
-# //////////////////////////////////////////////////////    
+
+
+
 def send_sms(contact_number, otp):
- # Define your SMSGatewayHub API credentials and URL
+
     api_key = "YOUR_API_KEY"
     sender_id = "YOUR_SENDER_ID"
-    route = "YOUR_ROUTE"  # Typically '1' for promotional, '4' for transactional, etc.
+    route = "YOUR_ROUTE"  
     base_url = "https://www.smsgatewayhub.com/api/mt/SendSMS"
 
-    # Prepare the parameters for the API request
+
     params = {
         'APIKey': api_key,
         'senderid': sender_id,
@@ -186,12 +183,6 @@ def resize_image(photo_base64, target_size_kb):
     return resized_photo
 
 
-# -------------------------------------------------------------------------rest_Password
-
-
-
-# -----------------------------------------------------------SES_reset_password------------------------------------------
-# utilities/helper_functions.py
 
 from utilities.ses_utils import send
 
@@ -207,10 +198,6 @@ def send_ses_email(to_email, subject, body_text, body_html):
     except Exception as e:
         print("❌ SES Email send failed:", e)
         return False
-# -------------------------------------------------------------------SES_Reset_password_end------------------------------
-
-
-# -----------------------------------------------------------S3 AWS Congigure---------------------------------------------
 
 
 
@@ -220,7 +207,7 @@ def send_ses_email(to_email, subject, body_text, body_html):
 
 
 
-# 🔹 Setup logger
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 console_handler = logging.StreamHandler()
@@ -231,7 +218,6 @@ if not logger.handlers:
     logger.addHandler(console_handler)
 
 
-# 🔹 Upload Base64 File (decode before upload)
 def upload_file_to_s3_base64(base64_data, object_name, bucket=None):
     """
     Uploads a Base64 encoded file to S3 (decodes before upload) and returns its public URL.
@@ -253,24 +239,21 @@ def upload_file_to_s3_base64(base64_data, object_name, bucket=None):
             region_name=AWS_REGION,
         )
 
-        # Remove any Base64 header if present
         if "," in base64_data:
             base64_data = base64_data.split(",")[1]
 
-        # Decode Base64 to bytes
         file_bytes = base64.b64decode(base64_data)
 
-        # Upload to S3
+        
         s3_client.put_object(
             Bucket=bucket,
             Key=object_name,
-            Body=file_bytes,  # decoded bytes
-            # ACL="public-read" # to avoid AccessControlListNotSupported error
+            Body=file_bytes,  
         )
 
         logger.info(f"✅ File '{object_name}' uploaded successfully to '{bucket}'")
 
-        # Return public URL
+       
         return f"https://{bucket}.s3.{AWS_REGION}.amazonaws.com/{object_name}"
 
     except ClientError as e:
@@ -283,7 +266,7 @@ def upload_file_to_s3_base64(base64_data, object_name, bucket=None):
 
 
 
-# ---------------------fetch__documents_-----------------------------------------------------------------------------------------
+
 
 
 

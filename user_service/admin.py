@@ -8,7 +8,7 @@ from user_service.models import (
 )
 
 from property_management.models import OwnerDetails, PropertyDocuments
-# ---------- Register your models here ----------
+
 
 class UserProfileAdmin(admin.ModelAdmin):
     list_display = ["id", "email", "user_type"]
@@ -40,23 +40,22 @@ admin.site.register(UserVerification, UserVerificationAdmin)
 
  
 
-# ----------------------------------- property_management.models ----------------------------------------
 
-# ---------- OwnerDetails Admin ----------
 class OwnerDetailsAdmin(admin.ModelAdmin):
     list_display = [
         "id", "full_name", "emirate_id", "uae_residence_visa", "trade_license_number",
-        "owner_number", "mobile_number", "manage_manually", "manage_through_pmc","emirates_id_file","residence_visa_file","dld_certificate_file","dewa_registration_file"
+        "owner_number", "mobile_number", "manage_manually", "manage_through_pmc",
+        "emirates_id_file","residence_visa_file","dld_certificate_file","dewa_registration_file"
     ]
     search_fields = ["full_name", "emirate_id", "uae_residence_visa", "owner_number", "mobile_number"]
     list_filter = ["manage_manually", "manage_through_pmc"]
 
-# ---------- PropertyDocuments Admin ----------
-class PropertyDocumentsAdmin(admin.ModelAdmin):
-    list_display = ["document_id", "document_title", "created_at", "updated_at","property_documents"]
-    search_fields = ["document_title"]
-    list_filter = ["created_at", "updated_at"]
 
-# ---------- Register ----------
+class PropertyDocumentsAdmin(admin.ModelAdmin):
+    list_display = ["document_id", "document_title", "created", "modified", "property_documents"]
+    search_fields = ["document_title"]
+    list_filter = ["created", "modified"]
+
+
 admin.site.register(OwnerDetails, OwnerDetailsAdmin)  
 admin.site.register(PropertyDocuments, PropertyDocumentsAdmin)

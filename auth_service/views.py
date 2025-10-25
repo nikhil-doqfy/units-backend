@@ -8,7 +8,11 @@ from user_service.models import UserProfile  ,UserVerification
 from user_service.utils import request_otp_sent
 from utilities.decorator import is_request_authenticated
 from django.contrib.auth.hashers import check_password
-from utilities.jwt_token import create_jwt_token  # JWT helper
+from utilities.jwt_token import create_jwt_token , get_jwt_token, decode_jwt_token
+
+
+
+
 from django.views.decorators.http import require_POST
 from utilities.oauth_utils import login_with_google
 from utilities.oauth_utils import login_with_outlook
@@ -16,17 +20,7 @@ from django.utils import timezone
 from utilities.helper_functions import send_ses_email
 from datetime import datetime, timedelta
 
-# Create your views here.
 
-
-# POST /login – User login with email/password.
-# POST /login/google – Login using Google OAuth.
-# POST /login/outlook – Login using Outlook OAuth.
-# POST /auth/logout – Logout the authenticated user.
-# POST /password/reset – Reset user password.
-
-
-# ------------------------------/user/login/ ------------------------------------------------------------------------------------
 def user_login(request):
     if request.method != "POST":
         return prepare_response(
@@ -44,14 +38,14 @@ def user_login(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # ---------- Validate Required Fields ----------
+    
     if not all([email, password]):
         return prepare_response(
             message=constants.FIELD_REQUIRED,
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # ---------- Check if user exists ----------
+   
     user = UserProfile.objects.filter(email=email).first()
     if not user:
         return prepare_response(
@@ -59,7 +53,7 @@ def user_login(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # ---------- Check Password ----------
+    
     if not check_password(password, user.hashed_password):
         print("DB hashed password:", user.hashed_password)
         return prepare_response(
@@ -68,17 +62,17 @@ def user_login(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # ---------- Check if login allowed ----------
+    
     if not user.is_login_allowed:
         return prepare_response(
             message=constants.LOGIN_NOT_ALLOWED,
             status=status.HTTP_403_FORBIDDEN
         )
 
-    # ---------- Create JWT Token ----------
+    
     token = create_jwt_token(user)
 
-    # ---------- Return JWT Token in response ----------
+   
     return prepare_response(
         content={
             "id": user.id,
@@ -87,15 +81,15 @@ def user_login(request):
             "is_verified": user.is_verified,
             "is_detail_updated": user.is_detail_updated,
             "is_document_uploaded": user.is_document_uploaded,
-            "access_token": token,      # <-- JWT token here
-            "token_type": "Bearer"      # <-- for frontend usage
+            "access_token": token,      
+            "token_type": "Bearer"      
         },
         message=constants.LOGIN_SUCCESSFUL,
         status=status.HTTP_200_OK
     )
 
 
-#------------------------------/user/google_login/ ------------------------------------------------------------------------------------
+
 
 
 
@@ -106,7 +100,7 @@ def user_login(request):
 
 def google_login(request):
     if request.method != "POST":
-        return prepare_response(message=constants.ONLY_POST_METHOD_ALLOWED, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     try:
         data = json.loads(request.body)
@@ -142,20 +136,20 @@ def google_login(request):
 
 
 
-#------------------------------/user/outlook_login/ -----------------------------------------------------------------------------------
+
 
 def outlook_login(request):
     """
     Outlook OAuth login view.
     """
-    # ---------- Only POST allowed ----------
+    
     if request.method != "POST":
         return prepare_response(
-            message=constants.ONLY_POST_METHOD_ALLOWED,
+            message=constants.INVALID_REQUEST,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
 
-    # ---------- Parse JSON body ----------
+    
     try:
         data = json.loads(request.body)
         oauth_token = data.get("token")
@@ -171,7 +165,7 @@ def outlook_login(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # ---------- Authenticate user ----------
+    
     user = login_with_outlook(oauth_token)
     if not user:
         return prepare_response(
@@ -179,10 +173,10 @@ def outlook_login(request):
             status=status.HTTP_401_UNAUTHORIZED
         )
 
-    # ---------- Create JWT token ----------
+    
     token = create_jwt_token(user)
 
-    # ---------- Return response ----------
+    
     return prepare_response(
         content={
             "id": user.id,
@@ -198,40 +192,40 @@ def outlook_login(request):
         status=status.HTTP_200_OK
     )
 
-#------------------------------/auth/logout -----------------------------------------------------------------------------------
-from utilities.decorator import is_request_authenticated
-from utilities import status
-from utilities.helper_functions import prepare_response
+
+
 
 @is_request_authenticated
 def logout(request):
-    """
-    Logout the currently authenticated user.
-    This only logs out the person whose JWT token was sent in the Authorization header.
-    """
     user = getattr(request, 'user', None)
-
     if not user:
-        return prepare_response(
-            message="User not authenticated",
-            status=status.HTTP_401_UNAUTHORIZED
-        )
+        return prepare_response(message=constants.AUTHENTICATION_FAILED, status=401)
 
-    # Invalidate only this user's token
+    
+    auth_header = request.headers.get("Authorization")
+    if not auth_header:
+        return prepare_response(message=constants.AUTH_HEADER_MISSING, status=401)
+    
+    token = get_jwt_token(auth_header)
+    
+    
+    if user.token != token:
+        return prepare_response(message=constants.INVALID_TOKEN, status=401)
+
+    
     user.token = None
     user.save(update_fields=['token'])
 
-    return prepare_response(
-        message=constants.LOGOUT_SUCCESSFULL,
-        status=status.HTTP_200_OK
-    )
+    return prepare_response(message=constants.LOGOUT_SUCCESSFULL, status=200)
+
+
 
 
 def verify_password_otp(request):
-    # Allow only POST method
+   
     if request.method != "POST":
         return prepare_response(
-            message=constants.ONLY_POST_METHOD_ALLOWED,
+            message=constants.INVALID_REQUEST,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
 
@@ -256,7 +250,7 @@ def verify_password_otp(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # --- Check OTP expiry (10 minutes validity) ---
+       
         expiry_time = record.created_at + timezone.timedelta(minutes=10)
         if timezone.now() > expiry_time:
             return prepare_response(
@@ -264,7 +258,7 @@ def verify_password_otp(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # --- Mark verified ---
+         
         record.is_verified = True
         record.verified_time = timezone.now()
         record.save()
@@ -287,40 +281,40 @@ def verify_password_otp(request):
 
 
 
-# reset password via SMTP
+
 def reset_password(request):
     if request.method != "POST":
-        return prepare_response(message=constants.ONLY_POST_METHOD_ALLOWED, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     try:
         data = json.loads(request.body)
         email = data.get("email")
-        otp = data.get("otp")  # use 'otp'
-        password = data.get("password")  # use 'password'
+        otp = data.get("otp")  
+        password = data.get("password")  
         confirm_password = data.get("confirm_password")
 
-        # Check required fields
+       
         if not all([email, otp, password, confirm_password]):
             return prepare_response(
                 message=constants.EMAIL_OTP_PASSWORD_REQUIRED,
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Password match check
+        
         if password != confirm_password:
             return prepare_response(
                 message=constants.PASSWORDS_DO_NOT_MATCH,
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Optional: Validate password strength
+        
         if not validate_password(password):
             return prepare_response(
                 message=constants.WEAK_PASSWORD ,
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Check OTP record
+        
         verified_record = UserVerification.objects.filter(
             email=email, otp=otp, is_verified=True
         ).order_by('-verified_time').first()
@@ -328,12 +322,12 @@ def reset_password(request):
         if not verified_record:
             return prepare_response(message=constants.INCORRECT_OTP, status=status.HTTP_400_BAD_REQUEST)
 
-        # Check OTP expiry (10 min)
+        
         expiry_time = verified_record.verified_time + timezone.timedelta(minutes=10)
         if timezone.now() > expiry_time:
             return prepare_response(message=constants.OTP_EXPIRED, status=status.HTTP_400_BAD_REQUEST)
 
-        # Update password
+        
         user = UserProfile.objects.filter(email=email).first()
         if not user:
             return prepare_response(message=constants.USER_NOT_FOUND, status=status.HTTP_400_BAD_REQUEST)
@@ -349,14 +343,8 @@ def reset_password(request):
 
 
 
-# ---------------------------------------------reset_password END VIA SMTP--------------------------
 
-
-# -----------------------------------------------view SES----------------------------------------
-# user_service/views.py
-# sending otp via SES
-
-OTP_EXPIRY_MINUTES = 5  # OTP valid for 5 minutes
+OTP_EXPIRY_MINUTES = 5  
 
 def send_password_otp(request):
     """
@@ -364,16 +352,16 @@ def send_password_otp(request):
     """
     if request.method == "POST":
         try:
-            # Parse request body
+           
             data = json.loads(request.body)
             email = data.get("email")
             if not email:
                 return prepare_response(
-                    message=constants.ONLY_POST_METHOD_ALLOWED,
+                    message=constants.INVALID_REQUEST_METHOD,
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            # Check if user exists
+            
             try:
                 user = UserProfile.objects.get(email=email)
             except UserProfile.DoesNotExist:
@@ -382,10 +370,10 @@ def send_password_otp(request):
                     status=status.HTTP_404_NOT_FOUND
                 )
 
-            # Generate OTP
+            
             otp = request_otp_sent()
 
-            # Store OTP record
+            
             UserVerification.objects.create(
                 user=user,
                 email=email,
@@ -394,7 +382,7 @@ def send_password_otp(request):
                 is_verified=False
             )
 
-            # Prepare email content
+            
             subject = "Password Reset OTP - DOQFY"
             body_text = f"Your OTP for password reset is: {otp}. It will expire in {OTP_EXPIRY_MINUTES} minutes."
             body_html = f"""
@@ -406,7 +394,7 @@ def send_password_otp(request):
             </html>
             """
 
-            # Send email
+           
             success = send_ses_email(email, subject, body_text, body_html)
             if success:
                 return prepare_response(
@@ -425,7 +413,7 @@ def send_password_otp(request):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    # If request is not POST
+    
     else:
         return prepare_response(
             message=constants.METHOD_NOT_ALLOWED,

@@ -5,7 +5,7 @@ from django.utils import timezone
 from django.conf import settings 
 
 
-# ---------- Create your models here ----------
+
 class UserProfile(Base):
     USER_TYPE_CHOICES = (
        (constants.OWNER, "Owner"),
@@ -24,14 +24,13 @@ class UserProfile(Base):
     is_login_allowed = models.BooleanField(default=False)
     profile_image = models.CharField(max_length=255, null=True, blank=True, default=None)
     token = models.TextField(null=True, blank=True)
-        
-    # token_expiry = models.IntegerField(null=True, blank=True, default=60)  # expiry in minutes
+ 
 
     def __str__(self):
         return '{}-{}-{}'.format(self.id, self.email, self.user_type)
     
 
-# ---------- Property Manager Company Details ----------
+
 class PropertyManagerCompanyDetails(models.Model):
     user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name="property_manager_details")
     company_code = models.CharField(max_length=255)
@@ -55,10 +54,14 @@ class PropertyManagerCompanyDetails(models.Model):
         return "{}".format(self.company_name)
 
 
-# ---------- Store staff details ----------
+
+def get_default_permissions():
+    return constants.DEFAULT_PERMISSIONS
+
+
 class StaffRole(models.Model):
     name = models.CharField(max_length=255)
-    permissions = models.JSONField(default=lambda: constants.DEFAULT_PERMISSIONS)
+    permissions = models.JSONField(default=get_default_permissions)
 
     property_manager = models.ForeignKey(PropertyManagerCompanyDetails, on_delete=models.CASCADE, related_name="staff_roles")
 
@@ -66,15 +69,13 @@ class StaffRole(models.Model):
         return "{}".format(self.name)
 
 
-# -------------------------------
-# Staff Details
-# -------------------------------
+
 class StaffDetails(models.Model):
     staff_name = models.CharField(max_length=255, null=False, blank=False)
     phone_number = models.CharField(max_length=20, null=False, blank=False)
     staff_id = models.CharField(max_length=100, unique=True, null=False, blank=False)
     assign_property = models.IntegerField(null=True, blank=True)
-    user = models.ForeignKey(UserProfile, null=True, blank=True, related_name="staff_details",on_delete=models.SET_NULL) #changes By Me ->  on_delete=models.SET_NULL
+    user = models.ForeignKey(UserProfile, null=True, blank=True, related_name="staff_details",on_delete=models.SET_NULL) #changes 
     staff_role = models.ForeignKey(StaffRole, on_delete=models.CASCADE, related_name="staff_details")
     property_manager = models.ForeignKey(PropertyManagerCompanyDetails, on_delete=models.CASCADE, null=True, blank=True)
     assigned_properties = models.ManyToManyField('PropertyDetails',blank=True,related_name='staff')
@@ -84,10 +85,7 @@ class StaffDetails(models.Model):
 
 
 
-# -------------------------------
-# Property Details
-# -------------------------------
-class PropertyDetails(models.Model):
+class PropertyDetails(Base):
     property_name = models.CharField(max_length=255)
     land_dm_no = models.CharField(max_length=255, blank=True, null=True)
     address = models.TextField(blank=True, null=True)
@@ -96,7 +94,7 @@ class PropertyDetails(models.Model):
     makani_no = models.CharField(max_length=255, blank=True, null=True)
     dewa_no = models.CharField(max_length=255, blank=True, null=True)
 
-    # Dropdown fields with default values
+
     property_type = models.CharField(max_length=50, default="Apartment")
     land_area = models.CharField(max_length=50, default="1048")
     apartment_no = models.CharField(max_length=50, default="48")
@@ -107,7 +105,7 @@ class PropertyDetails(models.Model):
     area_unit = models.CharField(max_length=20, default="Sq-ft")
     land_area_unit = models.CharField(max_length=20, default="Sq-ft", blank=True, null=True)
 
-    # Foreign keys
+
     owner = models.ForeignKey(
         UserProfile,
         on_delete=models.SET_NULL,
@@ -130,25 +128,24 @@ class PropertyDetails(models.Model):
     #     null=True
     # )
 
-    # Tenancy and vacancy management
+
     is_occupied = models.BooleanField(default=False)
     tenancy_start_date = models.DateField(blank=True, null=True)
     tenancy_end_date = models.DateField(blank=True, null=True)
     rental_status = models.CharField(max_length=50, default="Available")
 
-    # Record tracking
+
     property_code = models.CharField(max_length=255, unique=True, blank=True, null=True)
-    created_at = models.DateTimeField(default=timezone.now)
-    updated_at = models.DateTimeField(auto_now=True)
+
 
     invited_email_id = models.EmailField(blank=True, null=True)
 
     def __str__(self):
         return "{}".format(self.property_name)    
-# -----------------------------------------------------------------------------------------------------Sarthak 
 
 
-# Reset password---------------------------------------------------------------------
+
+
 class UserVerification(Base):
     VERIFICATION_TYPE_CHOICES = (
         (constants.MOBILE_VERIFICATION, "Mobile Verification"),
@@ -165,4 +162,4 @@ class UserVerification(Base):
     otp = models.IntegerField(null=True, blank=True)
     verified_time = models.DateTimeField(null=True, blank=True)
     is_verified = models.BooleanField(default=False)
-    created_at = models.DateTimeField(default=timezone.now)
+    

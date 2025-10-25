@@ -8,9 +8,6 @@ from user_service.utils import request_otp_sent
 from django.db import transaction
 from utilities.decorator import is_request_authenticated
 
-
-# ---------- Create your views here ---------- user_sign_up
-
 def user_sign_up(request):
     if request.method == "POST":
         data = json.loads(request.body)
@@ -19,28 +16,28 @@ def user_sign_up(request):
         confirm_password = data.get("confirm_password")
         user_type = data.get("user_type")
 
-        # ---------- Validate required fields ----------
+        
         if not all([email, password, confirm_password, user_type]):
             return prepare_response(
                 message=constants.FIELD_REQUIRED,
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # ---------- Password Match ----------
+       
         if password != confirm_password:
             return prepare_response(
                 message=constants.PASSWORD_MISMATCH,
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # ---------- Check existing email ----------
+      
         if UserProfile.objects.filter(email=email).exists():
             return prepare_response(
                 message=constants.EMAIL_ALREADY_REGISTERED,
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # ---------- Create User ----------
+        
         user = UserProfile.objects.create(
             email=email,
             hashed_password=make_password(password),
@@ -91,9 +88,7 @@ def send_otp(request):
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
 
-# -----------------------------
-# New staff sign up
-# -----------------------------
+
 @is_request_authenticated
 def staff_signup(request):
     print("---- staff_signup called ----")
@@ -109,7 +104,7 @@ def staff_signup(request):
         print("JSON decode error")
         return prepare_response(message=constants.INVALID_JSON_BODY, status=status.HTTP_400_BAD_REQUEST)
 
-    user_profile = request.user  # Already UserProfile object
+    user_profile = request.user  
     print("Request User:", user_profile.email, "-", user_profile.user_type)
 
     if user_profile.user_type not in [constants.PROPERTY_MANAGER, constants.STAFF]:
@@ -121,7 +116,7 @@ def staff_signup(request):
     
     property_manager_details = None
     if user_profile.user_type == constants.STAFF:
-        staff_details = StaffDetails.objects.filter(user=user_profile).first() # changes
+        staff_details = StaffDetails.objects.filter(user=user_profile).first() 
 
         print("StaffDetails fetched:", staff_details)
         if not staff_details:
@@ -181,9 +176,7 @@ def staff_signup(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-    # -----------------------------
-    # Create User + StaffDetails
-    # -----------------------------
+
     try:
         with transaction.atomic():
             user = UserProfile.objects.update_or_create(
@@ -202,7 +195,7 @@ def staff_signup(request):
                 assign_property=data.get("assign_property"),
                 staff_role=staff_role,
                 property_manager=property_manager_details,
-                user=user,  # direct UserProfile object
+                user=user,  
             )
             print("StaffDetails created:", staff_details)
 

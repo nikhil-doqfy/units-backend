@@ -18,13 +18,13 @@ from utilities.helper_functions import fetch_s3_file_as_base64
 @is_request_authenticated
 def submit_owner_details(request):
     if request.method != "POST":
-        return prepare_response(message=constants.ONLY_POST_METHOD_ALLOWED, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     try:
-        current_user = request.user  # Assuming user is authenticated via request.user
-        data = request.POST  # or request.body for JSON
+        current_user = request.user  
+        data = request.POST  
 
-        # Check if owner details already exist
+       
         if OwnerDetails.objects.filter(user=current_user).exists():
             return prepare_response( message=constants.OWNER_DETAILS_ALREADY_EXISTS,status=status.HTTP_400_BAD_REQUEST)
 
@@ -45,7 +45,7 @@ def submit_owner_details(request):
                 dewa_registration_file=data.get("dewa_registration_file"),
             )
 
-            # Update user's detail updated status
+            
             current_user.is_detail_updated = True
             current_user.save()
 
@@ -78,11 +78,11 @@ def choose_manage_option(request):
     """
     if request.method != "POST":
         return prepare_response(
-            message=constants.ONLY_POST_METHOD_ALLOWED,
+            message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
 
-    current_user = request.user  # Set by your decorator
+    current_user = request.user 
 
     if current_user.user_type != "OWNER":
         return prepare_response(
@@ -90,7 +90,7 @@ def choose_manage_option(request):
             status=status.HTTP_403_FORBIDDEN
         )
 
-    # Parse JSON or form data
+    
     import json
     try:
         data = json.loads(request.body)
@@ -99,10 +99,10 @@ def choose_manage_option(request):
         option = request.POST.get("option", "").lower()
 
     try:
-        # Fetch owner details
+       
         owner_details = get_object_or_404(OwnerDetails, user=current_user)
 
-        # Validate and update management option
+      
         if option == "manual":
             owner_details.manage_manually = True
             owner_details.manage_through_pmc = False
@@ -130,7 +130,7 @@ def choose_manage_option(request):
         )
 
 
-# ----------------@router.post("/owner/upload-documents")--------------------------------------------------------------------------------------------------
+
 
 
 
@@ -142,7 +142,7 @@ def choose_manage_option(request):
 def upload_owner_documents(request):
     if request.method != "POST":
         return prepare_response(
-            message=constants.ONLY_POST_METHOD_ALLOWED,
+            message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
 
@@ -171,13 +171,13 @@ def upload_owner_documents(request):
             status=status.HTTP_404_NOT_FOUND
         )
     
-        # Prepare dict to save in PropertyDocuments
+        
     prop_docs_dict = {}
 
     for doc in documents:
         base64_data = doc.get("document")
         file_name = doc.get("file_name")
-        doc_type = doc.get("type")  # e.g., 'emirates_id', 'residence_visa'
+        doc_type = doc.get("type") 
 
         if not base64_data or not file_name or not doc_type:
             return prepare_response(
@@ -186,12 +186,12 @@ def upload_owner_documents(request):
             )
 
         try:
-            # Upload to S3
+          
             s3_url = upload_file_to_s3_base64(
                 base64_data, 
                 f"owner_documents/{current_user.id}/{file_name}"
             )
-            # Update DB fields dynamically
+            
             setattr(owner_details, f"{doc_type}_file", s3_url)
         except Exception as e:
             return prepare_response(
@@ -199,12 +199,12 @@ def upload_owner_documents(request):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    # Save owner details and update user's document upload status
+
     owner_details.save()
     current_user.is_document_uploaded = True
     current_user.save()
 
-     # ✅ Save or update PropertyDocuments
+ 
     prop_doc_instance, created = PropertyDocuments.objects.get_or_create(
         document_title=f"Owner {current_user.id} Documents",
         defaults={"property_documents": prop_docs_dict}
@@ -220,23 +220,6 @@ def upload_owner_documents(request):
     )
 
 
-# ----------------------------------------------------------get_documents-----------------------------------
-
-
-
-
-
-
-
-
-
-
-# [
-#   {"type": "emirates_id", "file_name": "emirates_id.pdf", "document": "..."},
-#   {"type": "residence_visa", "file_name": "residence_visa.pdf", "document": "..."},
-#   {"type": "dld_certificate", "file_name": "dld_certificate.pdf", "document": "..."},
-#   {"type": "dewa_registration", "file_name": "dewa_registration.pdf", "document": "..."}
-# ]
 
 
 
@@ -248,7 +231,7 @@ def get_owner_documents(request):
     """
     if request.method != "GET":
         return prepare_response(
-            message=constants.ONLY_GET_REQUEST_ALLOWED,
+            message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
 
@@ -281,7 +264,7 @@ def get_owner_documents(request):
         )
 
     except Exception as e:
-        logger.error(f"❌ Failed to fetch documents: {str(e)}")
+        logger.error(f" Failed to fetch documents: {str(e)}")
         return prepare_response(
             message=f"Failed to fetch documents: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR

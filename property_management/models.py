@@ -1,9 +1,5 @@
 from django.db import models
-# from user_service.models import UserProfile
 
-
-# from property_management.models import PropertyDetails  
-# ---------- Base Class ----------
 class Base(models.Model):
     created = models.DateTimeField(auto_now_add=True)
     modified = models.DateTimeField(auto_now=True)
@@ -12,12 +8,12 @@ class Base(models.Model):
     class Meta:
         abstract = True
 
-# ---------- OwnerDetails ----------
-class OwnerDetails(Base):  # inherit from Base
+
+class OwnerDetails(Base): 
     user = models.ForeignKey(
-        "user_service.UserProfile",  # <-- use string reference
-        on_delete=models.CASCADE,  # Delete owner details if user is deleted
-        related_name="owner_details"  # Access all owner details of a user via user.owner_details.all()
+        "user_service.UserProfile",  
+        on_delete=models.CASCADE,  
+        related_name="owner_details"  
     )
 
     full_name = models.CharField(max_length=255)
@@ -26,12 +22,8 @@ class OwnerDetails(Base):  # inherit from Base
     trade_license_number = models.CharField(max_length=100)
     owner_number = models.CharField(max_length=50)
     mobile_number = models.CharField(max_length=20)
-
-    # Property Management Options
     manage_manually = models.BooleanField(default=False)
     manage_through_pmc = models.BooleanField(default=False)
-
-    # Document Upload Fields (S3 URLs)
     emirates_id_file = models.CharField(max_length=255, null=True, blank=True)
     residence_visa_file = models.CharField(max_length=255, null=True, blank=True)
     dld_certificate_file = models.CharField(max_length=255, null=True, blank=True)
@@ -48,19 +40,12 @@ class OwnerDetails(Base):  # inherit from Base
 
 
 
-class PropertyDocuments(models.Model):
-    # Auto-increment primary key
+class PropertyDocuments(Base):
+    
     document_id = models.AutoField(primary_key=True)
-
-    # JSON field to store multiple documents
-    property_documents = models.JSONField(default=dict)  #  JSONField
-
-    # Title of the document
+    property_documents = models.JSONField(default=dict) 
     document_title = models.CharField(max_length=255, null=True, blank=True, default=None)
 
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
 
     # ------------------PropertyDetails not create it yet ---------------------------------------
 

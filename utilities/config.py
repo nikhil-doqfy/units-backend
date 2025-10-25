@@ -6,28 +6,27 @@ from django.conf import settings
 # Load .env file
 load_dotenv()
 
-# ------------------- General -------------------
+
 HOST = os.getenv("HOST", "http://localhost:8000")
 DEFAULT_HOST = os.getenv("DEFAULT_HOST", "http://localhost:8000")
 PASSWORD_EXPIRY_TIME = 180
 
-# ------------------- JWT -------------------
 JWT_SECRET_KEY = settings.SECRET_KEY
 JWT_ALGORITHM = "HS256"
 
-# ------------------- Google OAuth -------------------
+
 GOOGLE_OAUTH_TOKENINFO_URL = os.getenv(
     "GOOGLE_OAUTH_TOKENINFO_URL",
     "https://www.googleapis.com/oauth2/v3/tokeninfo?id_token={token}"
 )
 
-# ------------------- Microsoft OAuth -------------------
+
 OUTLOOK_GRAPH_ME_URL = os.getenv(
     "OUTLOOK_GRAPH_ME_URL",
     "https://graph.microsoft.com/v1.0/me"
 )
 
-# ------------------- AWS / SES -------------------
+
 EMAIL_CHANNEL_SES = "SES"
 EMAIL_CHANNEL_SMTP = "SMTP"
 EMAIL_CHANNEL_PREFERENCE = EMAIL_CHANNEL_SES

@@ -6,13 +6,12 @@ from google.auth.transport import requests as google_requests
 
 
 
-# ---------- Google ----------
+
 def verify_google_token(token: str) -> dict:
-    print("🔹 Verifying token:", token)
+    
     url = GOOGLE_OAUTH_TOKENINFO_URL.format(token=token)
     response = requests.get(url)
-    print("🔹 Google response status:", response.status_code)
-    print("🔹 Google response text:", response.text)
+
     
     if response.status_code == 200:
         return response.json()
@@ -25,21 +24,19 @@ def login_with_google(oauth_token: str):
     if not payload:
         return None
     email = payload.get("email")
-    print("✅ Email from token:", email)
+    
     if not email:
         return None
-    # Fetch existing user by email
+    
     user = UserProfile.objects.filter(email=email).first()
-    print("👤 User found:", user)
+    
     return user
 
 
 
-# ---------- Outlook ----------
+
 def verify_outlook_token(token: str) -> dict: 
-    """
-    Verify Outlook (Microsoft) OAuth token using Microsoft Graph API.
-    """
+
     headers = {"Authorization": f"Bearer {token}"}
     response = requests.get(OUTLOOK_GRAPH_ME_URL, headers=headers)
     if response.status_code == 200:
