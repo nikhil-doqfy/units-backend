@@ -5,14 +5,11 @@ from property_management.models import OwnerDetails ,PropertyDocuments,TenantDet
 from user_service.models import PropertyManagerCompanyDetails
 from utilities.decorator import is_request_authenticated
 import json
-from utilities.helper_functions import  prepare_response, logger
-from utilities import config as aws_constants
-from utilities.decorator import is_request_authenticated
-from utilities.helper_functions import upload_file_to_s3_base64, prepare_response, logger
+from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger
 from utilities import status ,  constants
 from django.utils import timezone
 from utilities import config
-from utilities.helper_functions import fetch_s3_file_as_base64
+
 
 
 
@@ -54,6 +51,7 @@ def submit_owner_details(request):
             message=f"Failed to save owner details: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
 
 @is_request_authenticated
 def choose_manage_option(request):
@@ -100,6 +98,7 @@ def choose_manage_option(request):
             message=f"An error occurred: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
 
 @is_request_authenticated
 def upload_owner_documents(request):
@@ -204,6 +203,7 @@ def get_owner_documents(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
     
+
 @is_request_authenticated
 def submit_tenant_details(request):
     if request.method != 'POST':
@@ -393,6 +393,7 @@ def upload_tenant_documents(request):
             message=f"Failed to upload tenant documents: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+    
 
 @is_request_authenticated
 def update_tenant_documents(request):
@@ -461,6 +462,7 @@ def update_tenant_documents(request):
         status=status.HTTP_200_OK
     )
 
+
 @is_request_authenticated
 def get_tenant_details(request):
     if request.method != "GET":
@@ -525,6 +527,7 @@ def get_tenant_details(request):
         )
     
     
+
 @is_request_authenticated
 def submit_property_manager_details(request):
     if request.method != 'POST':
@@ -573,7 +576,7 @@ def submit_property_manager_details(request):
                 email_address=data.get("email_address"),
                 pmc_documents={}  # will be filled when document upload API runs
             )
-            # Update user detail update flag
+            
             current_user.is_detail_updated = True
             current_user.save()
         return prepare_response(
@@ -619,7 +622,7 @@ def upload_pmc_documents(request):
             status=status.HTTP_400_BAD_REQUEST
         )
     current_user = request.user
-    if current_user.user_type != "PROPERTY_MANAGER":
+    if current_user.user_type != constants.PROPERTY_MANAGER:
         return prepare_response(
             message=constants.ACCESS_DENIED_PROPERTY_MANAGER,
             status=status.HTTP_403_FORBIDDEN
@@ -661,6 +664,7 @@ def upload_pmc_documents(request):
         content={"documents": pmc_docs_dict},
         status=status.HTTP_200_OK
     )
+
 
 @is_request_authenticated
 def edit_property_manager_details(request):
@@ -756,13 +760,13 @@ def get_property_manager_details(request):
         ]))
         # Prepare PMC documents (if any)
         pmc_documents = []
-        documents_data = manager.pmc_documents.get('documents', []) if manager.pmc_documents else []
-        for index, doc_id in enumerate(documents_data, start=1):
-            pmc_documents.append({
-                "id": index,
-                "doc_name": "PMC Document",
-                "doc_number": f"PMC Doc.{doc_id}"
-            })
+        if isinstance(manager.pmc_documents, dict) and manager.pmc_documents:
+            for index, (doc_type, doc_url) in enumerate(manager.pmc_documents.items(), start=1):
+                pmc_documents.append({
+                    "id": index,
+                    "doc_name": doc_type.replace("_", " ").title(),
+                    "doc_number": doc_url })
+
         # Properties assigned — optional (if you have related model)
         properties_assigned = []
         if hasattr(manager, 'properties_managed'):

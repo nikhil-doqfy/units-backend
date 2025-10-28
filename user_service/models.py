@@ -23,6 +23,7 @@ class UserProfile(Base):
     is_login_allowed = models.BooleanField(default=False)
     profile_image = models.CharField(max_length=255, null=True, blank=True, default=None)
     token = models.TextField(null=True, blank=True)
+
     def __str__(self):
         return '{}-{}-{}'.format(self.id, self.email, self.user_type)
     
@@ -45,19 +46,22 @@ class PropertyManagerCompanyDetails(models.Model):
     phone_number = models.CharField(max_length=20)
     email_address = models.EmailField(null=True, blank=True)
     pmc_documents = models.JSONField(default=dict)
+
     def __str__(self):
         return "{}".format(self.company_name)
     
 
+
 def get_default_permissions():
     return constants.DEFAULT_PERMISSIONS
+
 class StaffRole(models.Model):
     name = models.CharField(max_length=255)
     permissions = models.JSONField(default=get_default_permissions)
     property_manager = models.ForeignKey(PropertyManagerCompanyDetails, on_delete=models.CASCADE, related_name="staff_roles")
+
     def __str__(self):
         return "{}".format(self.name)
-
 
 
 class StaffDetails(models.Model):
@@ -69,6 +73,7 @@ class StaffDetails(models.Model):
     staff_role = models.ForeignKey(StaffRole, on_delete=models.CASCADE, related_name="staff_details")
     property_manager = models.ForeignKey(PropertyManagerCompanyDetails, on_delete=models.CASCADE, null=True, blank=True)
     assigned_properties = models.ManyToManyField('PropertyDetails',blank=True)
+
     def __str__(self):
         return "{}".format(self.staff_name)
     
@@ -117,8 +122,10 @@ class PropertyDetails(Base):
     rental_status = models.CharField(max_length=50, default="Available")
     property_code = models.CharField(max_length=255, unique=True, blank=True, null=True)
     invited_email_id = models.EmailField(blank=True, null=True)
+
     def __str__(self):
         return "{}".format(self.property_name)    
+
 
 
 class UserVerification(Base):

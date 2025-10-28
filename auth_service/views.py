@@ -1,19 +1,15 @@
 
 import json
 import uuid
-from django.contrib.auth.hashers import make_password
+from django.contrib.auth.hashers import make_password ,check_password
 from utilities import status, constants
-from utilities.helper_functions import prepare_response , validate_email, send_email, validate_password
+from utilities.helper_functions import prepare_response , validate_email, send_email, validate_password,send_ses_email
 from user_service.models import UserProfile  ,UserVerification
 from user_service.utils import request_otp_sent
 from utilities.decorator import is_request_authenticated
-from django.contrib.auth.hashers import check_password
 from utilities.jwt_token import create_jwt_token , get_jwt_token, decode_jwt_token
-from django.views.decorators.http import require_POST
-from utilities.oauth_utils import login_with_google
-from utilities.oauth_utils import login_with_outlook
+from utilities.oauth_utils import login_with_outlook ,login_with_google
 from django.utils import timezone
-from utilities.helper_functions import send_ses_email
 from datetime import datetime, timedelta
 
 def user_login(request):
@@ -70,6 +66,7 @@ def user_login(request):
         status=status.HTTP_200_OK
     )
 
+
 def google_login(request):
     if request.method != "POST":
         return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
@@ -105,6 +102,7 @@ def google_login(request):
         message=constants.LOGIN_SUCCESSFUL,
         status=status.HTTP_200_OK
     )
+
 
 def outlook_login(request):
     if request.method != "POST":
@@ -146,6 +144,8 @@ def outlook_login(request):
         message=constants.LOGIN_SUCCESSFUL,
         status=status.HTTP_200_OK
     )
+
+
 
 @is_request_authenticated
 def logout(request):
@@ -252,8 +252,9 @@ def reset_password(request):
     except Exception as e:
         print("Error:", e)
         return prepare_response(message=constants.INTERNAL_SERVER_ERROR, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
 
-OTP_EXPIRY_MINUTES = 5  
+
 def send_password_otp(request):
     if request.method == "POST":
         try:
@@ -280,12 +281,12 @@ def send_password_otp(request):
                 is_verified=False
             )
             subject = "Password Reset OTP - DOQFY"
-            body_text = f"Your OTP for password reset is: {otp}. It will expire in {OTP_EXPIRY_MINUTES} minutes."
+            body_text = f"Your OTP for password reset is: {otp}. It will expire in {constants.OTP_EXPIRY_MINUTES} minutes."
             body_html = f"""
             <html>
                 <body>
                     <p>Your OTP for password reset is: <b>{otp}</b>.</p>
-                    <p>It will expire in {OTP_EXPIRY_MINUTES} minutes.</p>
+                    <p>It will expire in {constants.OTP_EXPIRY_MINUTES} minutes.</p>
                 </body>
             </html>
             """

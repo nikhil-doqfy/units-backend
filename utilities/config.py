@@ -1,7 +1,9 @@
 import os
 from dotenv import load_dotenv
 from django.conf import settings
+
 load_dotenv()
+
 HOST = os.getenv("HOST", "http://localhost:8000")
 DEFAULT_HOST = os.getenv("DEFAULT_HOST", "http://localhost:8000")
 PASSWORD_EXPIRY_TIME = 180

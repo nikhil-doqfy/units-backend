@@ -6,5 +6,4 @@ urlpatterns = [
     path("signup/", user_serviceviews.user_sign_up),
     path("otp/send/", user_serviceviews.send_otp),
     path('staff/signup/', views.staff_signup, name='staff_signup'),
-
 ]

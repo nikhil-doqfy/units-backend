@@ -129,3 +129,6 @@ DEFAULT_PERMISSIONS = {
         "Edit Role": False,
     },
 }
+
+JWT_TOKEN_EXPIRY_MINUTES = 60
+OTP_EXPIRY_MINUTES = 5 

@@ -1,8 +1,7 @@
 import phonenumbers
-from utilities import status
+from utilities import status,constants,config
 from django.http import JsonResponse
-from datetime import timedelta
-from utilities.config import PASSWORD_EXPIRY_TIME
+from datetime import timedelta ,datetime
 from django.utils import timezone
 import re
 from django.core.mail import EmailMultiAlternatives
@@ -10,19 +9,14 @@ from django.conf import settings
 from django.template.loader import render_to_string
 from phonenumber_field.modelfields import PhoneNumber
 from phonenumbers.phonenumberutil import region_code_for_country_code
-from phonenumber_field.modelfields import PhoneNumber
-from utilities import constants
 import requests
 import base64
 from PIL import Image
 from io import BytesIO
-from datetime import datetime
 from utilities.jwt_token import create_jwt_token
-from utilities.config import DEFAULT_HOST
 import boto3
 from botocore.exceptions import ClientError
-from utilities.config import AWS_ACCESS_KEY, AWS_SECRET_KEY, AWS_REGION, S3_BUCKET_NAME
-from utilities import config
+from utilities.config import AWS_ACCESS_KEY, AWS_SECRET_KEY, AWS_REGION, S3_BUCKET_NAME ,DEFAULT_HOST,PASSWORD_EXPIRY_TIME
 from utilities.ses_utils import send
 import logging
 

@@ -4,6 +4,7 @@ class Base(models.Model):
     created = models.DateTimeField(auto_now_add=True)
     modified = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)
+
     class Meta:
         abstract = True
 
@@ -26,8 +27,10 @@ class OwnerDetails(Base):
     residence_visa_file = models.CharField(max_length=255, null=True, blank=True)
     dld_certificate_file = models.CharField(max_length=255, null=True, blank=True)
     dewa_registration_file = models.CharField(max_length=255, null=True, blank=True)
+
     def __str__(self):
         return self.full_name
+    
 
 class PropertyDocuments(Base):
     document_id = models.AutoField(primary_key=True)
@@ -38,8 +41,10 @@ class PropertyDocuments(Base):
         on_delete=models.CASCADE,
         related_name="documents"
     )
+
     def __str__(self):
         return self.document_title or f"Document {self.document_id}"
+    
     
     
 class TenantDetails(Base):
@@ -95,31 +100,3 @@ class TenantDetails(Base):
 
 
 
-    # class LeasePropertyDetails(models.Model):
-    #         lease_tenant = models.ForeignKey(
-    #        "property_management.TenantDetails",
-    #        on_delete=models.CASCADE,
-    #       related_name="tenant_leases"
-    #      )
-    # Foreign Keys
-    # lease_property = models.ForeignKey(
-    #     "property_management.PropertyDetails",
-    #     on_delete=models.CASCADE,
-    #     related_name="lease_properties"
-    # )
-
-
-
-    # Lease Dates
-    # lease_start_date = models.DateTimeField()
-    # lease_end_date = models.DateTimeField()
-
-    # Optional Grace Period
-    # lease_grace_start_date = models.DateTimeField(null=True, blank=True)
-    # lease_grace_end_date = models.DateTimeField(null=True, blank=True)
-
-    # Remarks
-    # lease_remarks = models.TextField(null=True, blank=True)
-
-    # def __str__(self):
-    #     return f"Lease #{self.id} | Tenant: {self.lease_tenant.full_name}"
