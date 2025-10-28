@@ -21,7 +21,12 @@ urlpatterns = [
     path('submit/pmc/details', views.submit_property_manager_details, name='submit_property_manager_details'), 
     path('upload/pmc/documents', views.upload_pmc_documents, name='upload_pmc_documents'),
     path('edit/pmc/details', views.edit_property_manager_details, name='edit_property_manager_details'),
-    path('get/pmc/details', views.get_property_manager_details, name='get_property_manager_details'),
+    path('get/pmc/details', views.get_property_manager_details, name='get_property_manager_details'), 
+    path('create/property/details', views.create_property_details, name='create_property_details'), 
+    path("property/list/", views.get_property_list, name="property-list"),
+    path('property/delete/<int:id>/',views.delete_property, name='delete_property'),
+    path('property/<int:id>/edit/', views.edit_property, name='edit_property'),
+
 ]
 urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

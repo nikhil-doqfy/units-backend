@@ -100,6 +100,14 @@ ACCESS_DENIED_PROPERTY_MANAGER_UPLOAD = "Access denied. Only property managers c
 PROPERTY_MANAGER_DETAILS_UPDATED = "Property Manager details updated successfully."
 PROPERTY_MANAGER_DETAILS_FETCHED = "Property Manager details fetched successfully."
 
+PROPERTY_LIST_FETCHED = "Property details list fetched successfully."
+PROPERTY_NOT_FOUND = "Property details not found."
+PROPERTY_DELETED = "Property detail deleted successfully."
+PROPERTY_UPDATE_SUCCESS = "Property details updated successfully."
+PROPERTY_ADDED = "Property added successfully."
+
+
+
 OWNER = "OWNER"
 PROPERTY_MANAGER = "PROPERTY_MANAGER"
 TENANT = "TENANT"

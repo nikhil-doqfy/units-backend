@@ -2,14 +2,14 @@
 from django.shortcuts import get_object_or_404
 from django.db import IntegrityError, transaction
 from property_management.models import OwnerDetails ,PropertyDocuments,TenantDetails
-from user_service.models import PropertyManagerCompanyDetails
+from user_service.models import PropertyManagerCompanyDetails ,PropertyDetails
 from utilities.decorator import is_request_authenticated
 import json
 from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger
 from utilities import status ,  constants
 from django.utils import timezone
 from utilities import config
-
+from django.core.paginator import Paginator
 
 
 
@@ -751,14 +751,14 @@ def get_property_manager_details(request):
                 message=constants.PROPERTY_MANAGER_DETAILS_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
             )
-        # Prepare company address string
+
         company_address = ", ".join(filter(None, [
             manager.address_line_1,
             manager.address_line_2,
             manager.city,
             manager.postal_code
         ]))
-        # Prepare PMC documents (if any)
+
         pmc_documents = []
         if isinstance(manager.pmc_documents, dict) and manager.pmc_documents:
             for index, (doc_type, doc_url) in enumerate(manager.pmc_documents.items(), start=1):
@@ -766,8 +766,6 @@ def get_property_manager_details(request):
                     "id": index,
                     "doc_name": doc_type.replace("_", " ").title(),
                     "doc_number": doc_url })
-
-        # Properties assigned — optional (if you have related model)
         properties_assigned = []
         if hasattr(manager, 'properties_managed'):
             for property_rec in manager.properties_managed.all():
@@ -802,5 +800,233 @@ def get_property_manager_details(request):
     except Exception as e:
         return prepare_response(
             message=f"An error occurred while fetching Property Manager details: {str(e)}",
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@is_request_authenticated
+def create_property_details(request):
+    if request.method != "POST":
+        return prepare_response(
+            message=constants.INVALID_REQUEST_METHOD,
+            status=405
+        )
+
+    try:
+        data = json.loads(request.body)
+    except Exception:
+        return prepare_response(
+            message=constants.INVALID_JSON_BODY,
+            status=400
+        )
+
+    current_user = request.user
+
+    if current_user.user_type != constants.PROPERTY_MANAGER:
+        return prepare_response(
+            message=constants.ACCESS_DENIED_PROPERTY_MANAGER,
+            status=403
+        )
+
+
+    required_fields = ["property_name", "property_code"]
+    for field in required_fields:
+        if not data.get(field):
+            return prepare_response(
+                message=f"Missing required field: {field}",
+                status=400
+            )
+
+    try:
+
+        manager_details = PropertyManagerCompanyDetails.objects.filter(user=current_user).first()
+        if not manager_details:
+            return prepare_response(
+                message=constants.PROPERTY_MANAGER_Details_NOT_FOUND,
+                status=404
+            )
+
+        with transaction.atomic():
+            property_obj = PropertyDetails.objects.create(
+                property_name=data.get("property_name"),
+                land_dm_no=data.get("land_dm_no"),
+                address=data.get("address"),
+                area_of_property=data.get("area_of_property"),
+                no_of_parking=data.get("no_of_parking"),
+                makani_no=data.get("makani_no"),
+                dewa_no=data.get("dewa_no"),
+                property_type=data.get("property_type", "Apartment"),
+                land_area=data.get("land_area", "1048"),
+                apartment_no=data.get("apartment_no", "48"),
+                bedrooms=data.get("bedrooms", "Select bedroom"),
+                apartment_floor_no=data.get("apartment_floor_no", "3"),
+                balcony=data.get("balcony", "1"),
+                plot_no=data.get("plot_no", "128"),
+                area_unit=data.get("area_unit", "Sq-ft"),
+                land_area_unit=data.get("land_area_unit", "Sq-ft"),
+                property_code=data.get("property_code"),
+                invited_email_id=data.get("invited_email_id"),
+                property_manager=manager_details,
+                is_occupied=data.get("is_occupied", False),
+                rental_status=data.get("rental_status", "Available"),
+                tenancy_start_date=data.get("tenancy_start_date"),
+                tenancy_end_date=data.get("tenancy_end_date"),
+            )
+
+        return prepare_response(
+            message=constants.PROPERTY_ADDED,
+            content={
+                "id": property_obj.id,
+                "property_name": property_obj.property_name,
+                "property_code": property_obj.property_code,
+                "property_type": property_obj.property_type,
+                "city": manager_details.city if manager_details else None,
+            },
+            status=200
+        )
+
+    except Exception as e:
+        return prepare_response(
+            message=f"Failed to create property: {str(e)}",
+            status=500
+        )
+    
+
+
+def get_property_list(request):
+    try:
+        if request.method != "GET":
+            return prepare_response(
+                message=constants.INVALID_REQUEST_METHOD,
+                status=status.HTTP_405_METHOD_NOT_ALLOWED
+            )
+        page = int(request.GET.get("page", 1))
+        limit = int(request.GET.get("limit", 10))
+        search = request.GET.get("search", "")
+
+        properties = PropertyDetails.objects.all()
+        if search:
+            properties = properties.filter(property_name__icontains=search)
+
+        paginator = Paginator(properties, limit)
+        page_obj = paginator.get_page(page)
+
+        data = []
+        for prop in page_obj:
+            data.append({
+                "id": prop.id,
+                "property_name": prop.property_name,
+                "address": prop.address,
+                "area_of_property": prop.area_of_property,
+                "no_of_parking": prop.no_of_parking,
+                "property_type": prop.property_type,
+                "rental_status": prop.rental_status,
+            })
+
+        response_data = {
+            "page": page,
+            "total_pages": paginator.num_pages,
+            "total_properties": paginator.count,
+            "data": data
+        }
+
+        return prepare_response(
+            message=constants.PROPERTY_LIST_FETCHED,
+            content=response_data,
+            status=status.HTTP_200_OK
+        )
+
+    except Exception as e:
+        return prepare_response(
+            message=f"Error fetching property list: {str(e)}",
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+
+def delete_property(request, id):
+    try:
+        if request.method != "DELETE":
+            return prepare_response(
+                message=constants.INVALID_REQUEST_METHOD,
+                status=status.HTTP_405_METHOD_NOT_ALLOWED
+            )
+
+        property_instance = PropertyDetails.objects.filter(id=id).first()
+        if not property_instance:
+            return prepare_response(
+                message=constants.PROPERTY_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        property_instance.delete()
+        return prepare_response(
+            message=constants.PROPERTY_DELETED,
+            status=status.HTTP_200_OK
+        )
+
+    except Exception as e:
+        return prepare_response(
+            message=f"Error deleting property: {str(e)}",
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+
+def edit_property(request, id):
+    try:
+        if request.method != "PUT":
+            return prepare_response(
+                message=constants.INVALID_REQUEST_METHOD,
+                status=status.HTTP_405_METHOD_NOT_ALLOWED
+            )
+        property_instance = PropertyDetails.objects.filter(id=id).first()
+        if not property_instance:
+            return prepare_response(
+                message=constants.PROPERTY_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        try:
+            data = json.loads(request.body)
+        except json.JSONDecodeError:
+            return prepare_response(
+                message=constants.INVALID_JSON_BODY,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        allowed_fields = [
+            "property_name",
+            "address",
+            "area_of_property",
+            "no_of_parking",
+            "property_type",
+            "rental_status",
+        ]
+
+        for field, value in data.items():
+            if field in allowed_fields:
+                setattr(property_instance, field, value)
+
+        property_instance.save()
+
+        updated_data = {
+            "id": property_instance.id,
+            "property_name": property_instance.property_name,
+            "address": property_instance.address,
+            "area_of_property": property_instance.area_of_property,
+            "no_of_parking": property_instance.no_of_parking,
+            "property_type": property_instance.property_type,
+            "rental_status": property_instance.rental_status,
+        }
+
+        return prepare_response(
+            message=constants.PROPERTY_UPDATE_SUCCESS,
+            content=updated_data,
+            status=status.HTTP_200_OK
+        )
+
+    except Exception as e:
+        return prepare_response(
+            message=f"Error updating property: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
