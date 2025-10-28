@@ -1,8 +1,7 @@
 import phonenumbers
-from utilities import status
+from utilities import status,constants,config
 from django.http import JsonResponse
-from datetime import timedelta
-from utilities.config import PASSWORD_EXPIRY_TIME
+from datetime import timedelta ,datetime
 from django.utils import timezone
 import re
 from django.core.mail import EmailMultiAlternatives
@@ -10,13 +9,16 @@ from django.conf import settings
 from django.template.loader import render_to_string
 from phonenumber_field.modelfields import PhoneNumber
 from phonenumbers.phonenumberutil import region_code_for_country_code
-from phonenumber_field.modelfields import PhoneNumber
-from utilities import constants
 import requests
 import base64
 from PIL import Image
 from io import BytesIO
-from datetime import datetime
+from utilities.jwt_token import create_jwt_token
+import boto3
+from botocore.exceptions import ClientError
+from utilities.config import AWS_ACCESS_KEY, AWS_SECRET_KEY, AWS_REGION, S3_BUCKET_NAME ,DEFAULT_HOST,PASSWORD_EXPIRY_TIME
+from utilities.ses_utils import send
+import logging
 
 def prepare_response(content={}, message='', status=status.HTTP_200_OK, paginator=None, total_records=0):
     resp = {
@@ -67,12 +69,7 @@ def validate_mobile(value):
     else:
         return False
     
-# def validate_mobile(value):
-#     matched_object=re.fullmatch('(0|91)?[7-9]\d{9}')
-#     if matched_object:
-#         return True
-#     else:
-#         return False
+
 
 def validate_phone_number(value):
     regions = ['IN', 'US'] 
@@ -93,7 +90,7 @@ def datetime_to_epoch(dt):
 
 def epoch_to_datetime(epoach):
     return datetime.fromtimestamp(epoach)
-
+   
 def send_email(subject, recipient_list, message="", template=None, file_path=None, bcc_emails=None, cc_emails=None):
     msg = EmailMultiAlternatives(
         subject=subject,
@@ -105,20 +102,21 @@ def send_email(subject, recipient_list, message="", template=None, file_path=Non
     )
     if file_path:
         msg.attach_file(file_path)
-          
     if template:
         message = render_to_string(template.get('path'), template.get('context'))
         msg.attach_alternative(message, "text/html")   
-    msg.send()
-    
+    try:
+        msg.send()
+    except Exception as e:
+        raise e
+
 def send_sms(contact_number, otp):
- # Define your SMSGatewayHub API credentials and URL
     api_key = "YOUR_API_KEY"
     sender_id = "YOUR_SENDER_ID"
-    route = "YOUR_ROUTE"  # Typically '1' for promotional, '4' for transactional, etc.
+    route = "YOUR_ROUTE"  
     base_url = "https://www.smsgatewayhub.com/api/mt/SendSMS"
 
-    # Prepare the parameters for the API request
+
     params = {
         'APIKey': api_key,
         'senderid': sender_id,
@@ -137,13 +135,10 @@ def send_sms(contact_number, otp):
             if response_data['ErrorMessage'] == "Success":
                 return True
             else:
-                print(f"Failed to send SMS: {response_data['ErrorMessage']}")
                 return False
         else:
-            print(f"Failed to send SMS: HTTP {response.status_code}")
             return False
     except requests.RequestException as e:
-        print(f"Failed to send SMS: {e}")
         return False
 
 
@@ -167,3 +162,75 @@ def resize_image(photo_base64, target_size_kb):
         img.save(buffer, format='JPEG', quality=quality)
     resized_photo = base64.b64encode(buffer.getvalue()).decode('utf-8')
     return resized_photo
+
+
+def send_ses_email(to_email, subject, body_text, body_html):
+    try:
+        send(
+            recipient=to_email,
+            subject=subject,
+            body_html=body_html,
+            body_text=body_text
+        )
+        return True
+    except Exception as e:
+        return False
+    
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+console_handler.setFormatter(formatter)
+if not logger.handlers:
+    logger.addHandler(console_handler)
+
+def upload_file_to_s3_base64(base64_data, object_name, bucket=None):
+    if not bucket:
+        bucket = S3_BUCKET_NAME
+    try:
+        s3_client = boto3.client(
+            "s3",
+            aws_access_key_id=AWS_ACCESS_KEY,
+            aws_secret_access_key=AWS_SECRET_KEY,
+            region_name=AWS_REGION,
+        )
+        if "," in base64_data:
+            base64_data = base64_data.split(",")[1]
+        file_bytes = base64.b64decode(base64_data)
+        s3_client.put_object(
+            Bucket=bucket,
+            Key=object_name,
+            Body=file_bytes,  
+        )
+        logger.info(f" File '{object_name}' uploaded successfully to '{bucket}'")
+        return f"https://{bucket}.s3.{AWS_REGION}.amazonaws.com/{object_name}"
+    except ClientError as e:
+        logger.error(f" Failed to upload Base64 file '{object_name}': {str(e)}")
+        raise e
+    except Exception as e:
+        logger.error(f" Unexpected error uploading file '{object_name}': {str(e)}")
+        raise e
+
+
+logger = logging.getLogger(__name__)
+def fetch_s3_file_as_base64(file_url):
+    try:
+        bucket_name = config.S3_BUCKET_NAME
+        key = file_url.split(".amazonaws.com/")[1]
+        s3_client = boto3.client(
+            "s3",
+            aws_access_key_id=config.AWS_ACCESS_KEY,
+            aws_secret_access_key=config.AWS_SECRET_KEY,
+            region_name=config.AWS_REGION,
+        )
+        response = s3_client.get_object(Bucket=bucket_name, Key=key)
+        file_bytes = response["Body"].read()
+        return base64.b64encode(file_bytes).decode("utf-8")
+    except ClientError as e:
+        logger.error(f" ClientError fetching from S3: {e}")
+        return None
+    except Exception as e:
+        logger.error(f" Unexpected error fetching from S3: {str(e)}")
+        return None

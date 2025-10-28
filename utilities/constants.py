@@ -33,25 +33,77 @@ STAFF_ROLE_NOT_FOUND = "Staff role not found for the current user's staff detail
 STAFF_USER_NOT_PROPERTY_MANAGER = "Staff user is not associated with any property manager"
 PROPERTY_MANAGER_DETAILS_NOT_FOUND = "Property Manager details not found for the authenticated user."
 STAFF_USER_CREATED_SUCCESS = "Staff user created successfully."
+INVALID_CREDENTIALS = "Invalid credentials"
+FIELD_REQUIRED = "Required fields are missing"
+LOGIN_NOT_ALLOWED = "Login not allowed"
+LOGIN_SUCCESSFUL = "Login successful"
+MOBILE_VERIFICATION = "MOBILE_VERIFICATION"
+EMAIL_VERIFICATION = "EMAIL_VERIFICATION"
+ONLY_POST_METHOD_ALLOWED = "Only POST method allowed."
+INVALID_JSON_BODY = "Invalid JSON body."
+MISSING_FIELDS = "Missing fields in document."
+AN_ERROR_OCCURRED = "An error occurred."
+ONLY_POST_REQUEST_ALLOWED = "Only POST requests are allowed."
+ACCESS_DENIED_OWNER_ONLY = "Access denied. Only owners can access this resource."
+INVALID_OPTION = "Invalid option. Choose either 'manual' or 'pmc'."
+STAFF_CREATION_FAILED = "Failed to create staff details."
+STAFF_CREATION_SUCCESS = "Staff user created successfully."
+OWNER_DETAILS_NOT_FOUND = "Owner details not found for this user."
+OWNER_DETAILS_ALREADY_EXISTS = "Owner details already exist for this user."
+OWNER_DETAILS_SAVE_FAILED = "Failed to save owner details."
+OWNER_DETAILS_SAVE_SUCCESS = "Owner details saved successfully."
+DOCUMENTS_FETCH_SUCCESS = "Documents fetched successfully."
+DOCUMENTS_FETCH_FAILED = "Failed to fetch documents."
+DOCUMENTS_UPLOAD_SUCCESS = "Documents uploaded successfully."
+ALL_DOCUMENTS_REQUIRED = "All 4 documents are required."
+MANAGEMENT_OPTION_UPDATED_SUCCESS = "Management option updated successfully."
+INTERNAL_SERVER_ERROR = "Internal Server Error."
+UNEXPECTED_ERROR = "Unexpected error."
+METHOD_NOT_ALLOWED = "Method not allowed."
+OAUTH_TOKEN_REQUIRED = "OAuth token is required."
+OWNER_DETAILS_SAVED_SUCCESS = "Owner details saved successfully."
+OWNER_DETAILS_SAVE_FAILED = "Failed to save owner details."
+DOCUMENTS_ALREADY_UPLOADED = "Documents are already uploaded for this user."
+EMAIL_AND_OTP_REQUIRED = "Email and OTP required."
+INVALID_OTP = "Invalid OTP."
+OTP_EXPIRED = "OTP expired."
+OTP_VERIFIED_SUCCESS = "OTP verified successfully."
+OTP_SEND_SUCCESS = "OTP sent successfully."
+OTP_SEND_FAILED = "Failed to send OTP email."
+USER_NOT_FOUND = "User with this email does not exist."
+EMAIL_OTP_PASSWORD_REQUIRED = "Email, otp, password, and confirm_password are required."
+PASSWORD_MISMATCH = "Password and confirm password do not match."
+WEAK_PASSWORD = "Weak password. Must contain upper, lower, number, and special char."
+PASSWORD_RESET_SUCCESS = "Password reset successfully."
+LOGOUT_SUCCESS = "Logout successful."
+OWNER_DETAILS_SAVE_FAILED = "Failed to save owner details: {error}"
+ONLY_GET_REQUEST_ALLOWED = "Only GET requests are allowed."
+AUTH_HEADER_MISSING = "Authorization header missing."
+INVALID_TOKEN_PAYLOAD = "Invalid token payload."
+USER_NOT_FOUND = "User not found."
+AUTHENTICATION_FAILED = "Authentication failed."
+ACCESS_DENIED_TENANTS_ONLY="Access denied. Only tenants can submit or edit details."
+TENANT_DETAILS_ALREADY_EXISTS="Tenant details already exist for this user."
+TENANT_DETAILS_SAVED_SUCCESS="Tenant details saved successfully."
+TENANT_DETAILS_NOT_FOUND="Tenant details not found for the authenticated user."
+TENANT_DETAILS_UPDATED_SUCCESSFULLY="Tenant details updated successfully."
+ACCESS_DENIED_TENANTS_ONLY_UPLOAD_DOC="Access denied. Only tenants can upload documents."
+DOCUMENTS_UPLOAD_SUCCESS="Documents uploaded successfully."
+NO_NEW_DOC_PROVIDED="No new documents provided for update."
+TENANT_DETAILS_FETCHED_SUCCESS="Tenant details fetched successfully."
+PROPERTY_MANAGER_Details_NOT_FOUND="Property Manager details not found."
+ACCESS_DENIED_PROPERTY_MANAGER = "Access denied. Only property managers can submit details."
+PROPERTY_MANAGER_DETAILS_EXISTS = "Property Manager details already exist."
+PROPERTY_MANAGER_DETAILS_SAVED = "Property Manager details saved successfully."
+ALL_THREE_DOCUMENTS_REQUIRED = "All three documents (Emirates ID, Trade License, RERA License) are required."
+ACCESS_DENIED_PROPERTY_MANAGER_UPLOAD = "Access denied. Only property managers can upload documents."
+PROPERTY_MANAGER_DETAILS_UPDATED = "Property Manager details updated successfully."
+PROPERTY_MANAGER_DETAILS_FETCHED = "Property Manager details fetched successfully."
 
-
-
-
-
-
-
-
-
-
-
-# ---------- User type choices ----------
 OWNER = "OWNER"
 PROPERTY_MANAGER = "PROPERTY_MANAGER"
 TENANT = "TENANT"
 STAFF = "STAFF"
-
-
-# ---------- Default Permissions ----------
 DEFAULT_PERMISSIONS = {
     "Property Management": {
         "View Property": False,
@@ -77,3 +129,6 @@ DEFAULT_PERMISSIONS = {
         "Edit Role": False,
     },
 }
+
+JWT_TOKEN_EXPIRY_MINUTES = 60
+OTP_EXPIRY_MINUTES = 5 
