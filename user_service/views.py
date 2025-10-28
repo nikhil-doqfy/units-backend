@@ -16,35 +16,27 @@ def user_sign_up(request):
         confirm_password = data.get("confirm_password")
         user_type = data.get("user_type")
 
-        
         if not all([email, password, confirm_password, user_type]):
             return prepare_response(
                 message=constants.FIELD_REQUIRED,
                 status=status.HTTP_400_BAD_REQUEST
             )
-
-       
         if password != confirm_password:
             return prepare_response(
                 message=constants.PASSWORD_MISMATCH,
                 status=status.HTTP_400_BAD_REQUEST
             )
-
-      
         if UserProfile.objects.filter(email=email).exists():
             return prepare_response(
                 message=constants.EMAIL_ALREADY_REGISTERED,
                 status=status.HTTP_400_BAD_REQUEST
             )
-
-        
         user = UserProfile.objects.create(
             email=email,
             hashed_password=make_password(password),
             user_type=user_type,
             is_login_allowed=True
         )
-
         return prepare_response(
             content={
                 "id": user.id,
@@ -54,19 +46,17 @@ def user_sign_up(request):
             message=constants.USER_REGISTERED_SUCCESSFULLY,
             status=status.HTTP_201_CREATED
         )
-
     else:
         return prepare_response(
             message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
-    
+
 
 def send_otp(request):
     if request.method == "POST":
         data = json.loads(request.body)
         email = data.get("email")
-
         user_profile = UserProfile.objects.filter(email=email).first()
         if not user_profile:
             return prepare_response(
@@ -88,95 +78,63 @@ def send_otp(request):
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
 
-
 @is_request_authenticated
 def staff_signup(request):
-    print("---- staff_signup called ----")
-    
     if request.method != 'POST':
-        print("Invalid method:", request.method)
         return prepare_response(message=constants.ONLY_POST_METHOD_ALLOWED,  status=status.HTTP_405_METHOD_NOT_ALLOWED)
-    
     try:
         data = json.loads(request.body)
-        print("Request data:", data)
     except json.JSONDecodeError:
-        print("JSON decode error")
         return prepare_response(message=constants.INVALID_JSON_BODY, status=status.HTTP_400_BAD_REQUEST)
-
     user_profile = request.user  
-    print("Request User:", user_profile.email, "-", user_profile.user_type)
-
     if user_profile.user_type not in [constants.PROPERTY_MANAGER, constants.STAFF]:
-        print("Access denied for user_type:", user_profile.user_type)
         return prepare_response(
             message=constants.ACCESS_DENIED_FOR_STAFF,
             status=status.HTTP_400_BAD_REQUEST
         )
-    
     property_manager_details = None
     if user_profile.user_type == constants.STAFF:
         staff_details = StaffDetails.objects.filter(user=user_profile).first() 
-
-        print("StaffDetails fetched:", staff_details)
         if not staff_details:
-            print("Staff details not found")
             return prepare_response(
                 message=constants.STAFF_DETAILS_NOT_FOUND,
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
         staff_role = staff_details.staff_role
-        print(staff_role)
-        print("StaffRole fetched:", staff_role)
         if not staff_role:
-            print("Staff role not found")
             return prepare_response(
                 message=constants.STAFF_ROLE_NOT_FOUND,
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
         if not staff_role.permissions.get("Staff Management", {}).get("Add Staff", False):
-            print("Permission denied for adding staff")
             return prepare_response(
                 message=constants.ACCESS_DENIED_FOR_STAFF,
                 status=status.HTTP_400_BAD_REQUEST
             )
-    
         property_manager_details = staff_details.property_manager
-        print("PropertyManagerDetails for staff:", property_manager_details)
         if not property_manager_details:
-            print("Staff user is not linked to property manager")
             return prepare_response(
                 message=constants.STAFF_USER_NOT_PROPERTY_MANAGER,
                 status=status.HTTP_400_BAD_REQUEST
             )
-
     elif user_profile.user_type == constants.PROPERTY_MANAGER:
         property_manager_details = PropertyManagerCompanyDetails.objects.filter(
             user=user_profile
         ).first()
-        print("PropertyManagerCompanyDetails fetched:", property_manager_details)
         if not property_manager_details:
-            print("Property manager details not found")
             return prepare_response(
                 message=constants.PROPERTY_MANAGER_DETAILS_NOT_FOUND,
                 status=status.HTTP_400_BAD_REQUEST
             )
-
         staff_role = StaffRole.objects.filter(
             id=data.get("staff_role_id"),
             property_manager=property_manager_details
         ).first()
-        print("StaffRole fetched:", staff_role)
         if not staff_role:
-            print("Staff role not found or does not belong to property manager")
             return prepare_response(
                 message=constants.STAFF_ROLE_NOT_FOUND,
                 status=status.HTTP_400_BAD_REQUEST
             )
-
-
     try:
         with transaction.atomic():
             user = UserProfile.objects.update_or_create(
@@ -185,8 +143,6 @@ def staff_signup(request):
                 user_type=data.get("user_type"),
                 is_login_allowed=True
             )
-            print("User created:", user)
-
             staff_id = data.get("staff_id") or str(uuid.uuid4())
             staff_details = StaffDetails.objects.create(
                 staff_name=data.get("staff_name"),
@@ -197,16 +153,11 @@ def staff_signup(request):
                 property_manager=property_manager_details,
                 user=user,  
             )
-            print("StaffDetails created:", staff_details)
-
     except Exception as e:
-        print("Failed to create staff details:", e)
         return prepare_response(
             message=constants.STAFF_CREATION_FAILED,
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
-    print("Staff user creation successful")
     return prepare_response(
         content={
             "user_id": user.id,

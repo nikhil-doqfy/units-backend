@@ -7,7 +7,7 @@ from user_service.models import (
     PropertyDetails,UserVerification,
 )
 
-from property_management.models import OwnerDetails, PropertyDocuments
+from property_management.models import OwnerDetails, PropertyDocuments ,TenantDetails
 
 
 class UserProfileAdmin(admin.ModelAdmin):
@@ -57,5 +57,14 @@ class PropertyDocumentsAdmin(admin.ModelAdmin):
     list_filter = ["created", "modified"]
 
 
+class TenantDetailsAdmin(admin.ModelAdmin):
+    list_display = (
+        'id', 'full_name', 'mobile_number'
+    )
+
+
+
+
 admin.site.register(OwnerDetails, OwnerDetailsAdmin)  
 admin.site.register(PropertyDocuments, PropertyDocumentsAdmin)
+admin.site.register(TenantDetails, TenantDetailsAdmin)  

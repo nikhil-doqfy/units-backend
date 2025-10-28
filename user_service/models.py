@@ -13,7 +13,6 @@ class UserProfile(Base):
        (constants.TENANT, "Tenant"),
        (constants.STAFF, "Staff"),
     )
-
     email = models.EmailField(unique=True, db_index=True)
     hashed_password = models.CharField(max_length=255)
     user_type = models.CharField(max_length=50, choices=USER_TYPE_CHOICES)
@@ -24,12 +23,9 @@ class UserProfile(Base):
     is_login_allowed = models.BooleanField(default=False)
     profile_image = models.CharField(max_length=255, null=True, blank=True, default=None)
     token = models.TextField(null=True, blank=True)
- 
-
     def __str__(self):
         return '{}-{}-{}'.format(self.id, self.email, self.user_type)
     
-
 
 class PropertyManagerCompanyDetails(models.Model):
     user = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name="property_manager_details")
@@ -49,22 +45,16 @@ class PropertyManagerCompanyDetails(models.Model):
     phone_number = models.CharField(max_length=20)
     email_address = models.EmailField(null=True, blank=True)
     pmc_documents = models.JSONField(default=dict)
-
     def __str__(self):
         return "{}".format(self.company_name)
-
-
+    
 
 def get_default_permissions():
     return constants.DEFAULT_PERMISSIONS
-
-
 class StaffRole(models.Model):
     name = models.CharField(max_length=255)
     permissions = models.JSONField(default=get_default_permissions)
-
     property_manager = models.ForeignKey(PropertyManagerCompanyDetails, on_delete=models.CASCADE, related_name="staff_roles")
-
     def __str__(self):
         return "{}".format(self.name)
 
@@ -78,12 +68,10 @@ class StaffDetails(models.Model):
     user = models.ForeignKey(UserProfile, null=True, blank=True, related_name="staff_details",on_delete=models.SET_NULL) #changes 
     staff_role = models.ForeignKey(StaffRole, on_delete=models.CASCADE, related_name="staff_details")
     property_manager = models.ForeignKey(PropertyManagerCompanyDetails, on_delete=models.CASCADE, null=True, blank=True)
-    assigned_properties = models.ManyToManyField('PropertyDetails',blank=True,related_name='staff')
-    
+    assigned_properties = models.ManyToManyField('PropertyDetails',blank=True)
     def __str__(self):
         return "{}".format(self.staff_name)
-
-
+    
 
 class PropertyDetails(Base):
     property_name = models.CharField(max_length=255)
@@ -93,8 +81,6 @@ class PropertyDetails(Base):
     no_of_parking = models.IntegerField(blank=True, null=True)
     makani_no = models.CharField(max_length=255, blank=True, null=True)
     dewa_no = models.CharField(max_length=255, blank=True, null=True)
-
-
     property_type = models.CharField(max_length=50, default="Apartment")
     land_area = models.CharField(max_length=50, default="1048")
     apartment_no = models.CharField(max_length=50, default="48")
@@ -104,8 +90,6 @@ class PropertyDetails(Base):
     plot_no = models.CharField(max_length=50, default="128")
     area_unit = models.CharField(max_length=20, default="Sq-ft")
     land_area_unit = models.CharField(max_length=20, default="Sq-ft", blank=True, null=True)
-
-
     owner = models.ForeignKey(
         UserProfile,
         on_delete=models.SET_NULL,
@@ -120,30 +104,21 @@ class PropertyDetails(Base):
         blank=True,
         null=True
     )
-    # staff = models.ForeignKey(
-    #     StaffDetails,
-    #     on_delete=models.SET_NULL,
-    #     related_name="assigned_properties",
-    #     blank=True,
-    #     null=True
-    # )
-
-
+    staff = models.ForeignKey(
+        StaffDetails,
+        on_delete=models.SET_NULL,
+        related_name="staff_properties",
+        blank=True,
+        null=True
+    )
     is_occupied = models.BooleanField(default=False)
     tenancy_start_date = models.DateField(blank=True, null=True)
     tenancy_end_date = models.DateField(blank=True, null=True)
     rental_status = models.CharField(max_length=50, default="Available")
-
-
     property_code = models.CharField(max_length=255, unique=True, blank=True, null=True)
-
-
     invited_email_id = models.EmailField(blank=True, null=True)
-
     def __str__(self):
         return "{}".format(self.property_name)    
-
-
 
 
 class UserVerification(Base):
@@ -151,7 +126,6 @@ class UserVerification(Base):
         (constants.MOBILE_VERIFICATION, "Mobile Verification"),
         (constants.EMAIL_VERIFICATION, "Email Verification"),
     )
-
     user = models.ForeignKey(
         "UserProfile", on_delete=models.CASCADE, null=True, blank=True
     )

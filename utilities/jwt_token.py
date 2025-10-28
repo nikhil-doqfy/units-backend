@@ -1,26 +1,19 @@
-
-
 import jwt
 from utilities.config import JWT_SECRET_KEY, JWT_ALGORITHM
 from datetime import datetime, timedelta
 from utilities import constants
 
-
 DEFAULT_EXPIRY_MINUTES = 60
-
 def create_jwt_token(user_profile):
     expiry_time = datetime.utcnow() + timedelta(minutes=DEFAULT_EXPIRY_MINUTES)
-
     payload = {
         'user_id': user_profile.id,
         'email': user_profile.email,
         'exp': expiry_time
     }
-
     token = jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
     user_profile.token = token
     user_profile.save(update_fields=['token'])
-
     return token
 
 def get_jwt_token(auth_header: str):

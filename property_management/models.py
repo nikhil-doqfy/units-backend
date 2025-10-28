@@ -4,7 +4,6 @@ class Base(models.Model):
     created = models.DateTimeField(auto_now_add=True)
     modified = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)
-
     class Meta:
         abstract = True
 
@@ -15,7 +14,6 @@ class OwnerDetails(Base):
         on_delete=models.CASCADE,  
         related_name="owner_details"  
     )
-
     full_name = models.CharField(max_length=255)
     emirate_id = models.CharField(max_length=100)
     uae_residence_visa = models.CharField(max_length=100)
@@ -28,33 +26,100 @@ class OwnerDetails(Base):
     residence_visa_file = models.CharField(max_length=255, null=True, blank=True)
     dld_certificate_file = models.CharField(max_length=255, null=True, blank=True)
     dewa_registration_file = models.CharField(max_length=255, null=True, blank=True)
-
-
     def __str__(self):
         return self.full_name
 
-
-
-
-
-
-
-
 class PropertyDocuments(Base):
-    
     document_id = models.AutoField(primary_key=True)
     property_documents = models.JSONField(default=dict) 
     document_title = models.CharField(max_length=255, null=True, blank=True, default=None)
-
-
-    # ------------------PropertyDetails not create it yet ---------------------------------------
-
-    # Foreign key linking to PropertyDetails
-    # property = models.ForeignKey(
-    #     PropertyDetails,
-    #     on_delete=models.CASCADE,
-    #     related_name="documents"
-    # )
-
+    property = models.ForeignKey(
+        "user_service.PropertyDetails",
+        on_delete=models.CASCADE,
+        related_name="documents"
+    )
     def __str__(self):
         return self.document_title or f"Document {self.document_id}"
+    
+    
+class TenantDetails(Base):
+    user = models.ForeignKey(
+        "user_service.UserProfile",
+        on_delete=models.CASCADE,
+        related_name="tenant_details",
+    )
+    property = models.ForeignKey(
+        "user_service.PropertyDetails",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tenant_details",
+    )
+# ------------------------------Not craeted yet ----------------------------
+
+    # Link to LeasePropertyDetails (string ref for safety)
+    # lease_property_details = models.ForeignKey(
+    #     "property_management.LeasePropertyDetails",
+    #     on_delete=models.SET_NULL,
+    #     null=True,
+    #     blank=True,
+    #     related_name="tenant_lease_details",
+    # )
+
+    # Tenant Basic Information
+    full_name = models.CharField(max_length=255)
+    emirate_id = models.CharField(max_length=255)
+    mobile_number = models.CharField(max_length=20)
+    tenant_number = models.CharField(max_length=100)
+    nationality = models.CharField(max_length=100)
+    passport_self = models.CharField(max_length=255)
+    passport_family_member = models.CharField(max_length=255, null=True, blank=True)
+    passport_expiry = models.CharField(max_length=50)
+    visa_self = models.CharField(max_length=255)
+    visa_family_member = models.CharField(max_length=255, null=True, blank=True)
+    visa_expiry = models.CharField(max_length=50)
+    employment_proof = models.CharField(max_length=255)
+    emirates_id_file = models.CharField(max_length=255, null=True, blank=True)
+    passport_self_file = models.CharField(max_length=255, null=True, blank=True)
+    passport_family_file = models.CharField(max_length=255, null=True, blank=True)
+    visa_self_file = models.CharField(max_length=255, null=True, blank=True)
+    visa_family_file = models.CharField(max_length=255, null=True, blank=True)
+    employment_proof_file = models.CharField(max_length=255, null=True, blank=True)
+    bank_statement_file = models.CharField(max_length=255, null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.full_name}"
+    
+
+
+
+
+
+    # class LeasePropertyDetails(models.Model):
+    #         lease_tenant = models.ForeignKey(
+    #        "property_management.TenantDetails",
+    #        on_delete=models.CASCADE,
+    #       related_name="tenant_leases"
+    #      )
+    # Foreign Keys
+    # lease_property = models.ForeignKey(
+    #     "property_management.PropertyDetails",
+    #     on_delete=models.CASCADE,
+    #     related_name="lease_properties"
+    # )
+
+
+
+    # Lease Dates
+    # lease_start_date = models.DateTimeField()
+    # lease_end_date = models.DateTimeField()
+
+    # Optional Grace Period
+    # lease_grace_start_date = models.DateTimeField(null=True, blank=True)
+    # lease_grace_end_date = models.DateTimeField(null=True, blank=True)
+
+    # Remarks
+    # lease_remarks = models.TextField(null=True, blank=True)
+
+    # def __str__(self):
+    #     return f"Lease #{self.id} | Tenant: {self.lease_tenant.full_name}"

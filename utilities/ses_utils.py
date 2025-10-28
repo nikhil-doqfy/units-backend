@@ -6,7 +6,6 @@ from logging import getLogger
 from utilities import config
 
 logger = getLogger(__name__)
-
 client = boto3.client(
     'sesv2',
     region_name=config.AWS_REGION,
@@ -14,11 +13,7 @@ client = boto3.client(
     aws_secret_access_key=config.AWS_SECRET_KEY
 )
 
-
 def send(recipient, subject, body_text, body_html):
-    """
-    Send a simple email using AWS SES (v2).
-    """
     try:
         response = client.send_email(
             FromEmailAddress=config.EMAIL_SENDER,
@@ -35,8 +30,8 @@ def send(recipient, subject, body_text, body_html):
                 }
             }
         )
-        logger.info(f"✅ Email sent to {recipient}, MessageId: {response['MessageId']}")
+        logger.info(f" Email sent to {recipient}, MessageId: {response['MessageId']}")
         return response
     except ClientError as e:
-        logger.error(f"❌ SES Send Error: {e.response['Error']['Message']}")
+        logger.error(f" SES Send Error: {e.response['Error']['Message']}")
         raise e

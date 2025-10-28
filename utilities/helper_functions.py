@@ -23,9 +23,8 @@ import boto3
 from botocore.exceptions import ClientError
 from utilities.config import AWS_ACCESS_KEY, AWS_SECRET_KEY, AWS_REGION, S3_BUCKET_NAME
 from utilities import config
-
+from utilities.ses_utils import send
 import logging
-
 
 def prepare_response(content={}, message='', status=status.HTTP_200_OK, paginator=None, total_records=0):
     resp = {
@@ -97,10 +96,7 @@ def datetime_to_epoch(dt):
 
 def epoch_to_datetime(epoach):
     return datetime.fromtimestamp(epoach)
-
-
-
-    
+   
 def send_email(subject, recipient_list, message="", template=None, file_path=None, bcc_emails=None, cc_emails=None):
     msg = EmailMultiAlternatives(
         subject=subject,
@@ -117,16 +113,10 @@ def send_email(subject, recipient_list, message="", template=None, file_path=Non
         msg.attach_alternative(message, "text/html")   
     try:
         msg.send()
-        print("Email sent successfully")
     except Exception as e:
-        print("Email sending failed:", e)
-        
         raise e
 
-
-
 def send_sms(contact_number, otp):
-
     api_key = "YOUR_API_KEY"
     sender_id = "YOUR_SENDER_ID"
     route = "YOUR_ROUTE"  
@@ -151,13 +141,10 @@ def send_sms(contact_number, otp):
             if response_data['ErrorMessage'] == "Success":
                 return True
             else:
-                print(f"Failed to send SMS: {response_data['ErrorMessage']}")
                 return False
         else:
-            print(f"Failed to send SMS: HTTP {response.status_code}")
             return False
     except requests.RequestException as e:
-        print(f"Failed to send SMS: {e}")
         return False
 
 
@@ -183,9 +170,6 @@ def resize_image(photo_base64, target_size_kb):
     return resized_photo
 
 
-
-from utilities.ses_utils import send
-
 def send_ses_email(to_email, subject, body_text, body_html):
     try:
         send(
@@ -196,17 +180,8 @@ def send_ses_email(to_email, subject, body_text, body_html):
         )
         return True
     except Exception as e:
-        print("❌ SES Email send failed:", e)
         return False
-
-
-
-
-
-
-
-
-
+    
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -217,83 +192,51 @@ console_handler.setFormatter(formatter)
 if not logger.handlers:
     logger.addHandler(console_handler)
 
-
 def upload_file_to_s3_base64(base64_data, object_name, bucket=None):
-    """
-    Uploads a Base64 encoded file to S3 (decodes before upload) and returns its public URL.
-
-    :param base64_data: Base64 string of file (with or without data: prefix)
-    :param object_name: Path in S3 including filename (e.g. owner_documents/1/file.pdf)
-    :param bucket: Optional - S3 bucket name (default from config)
-    :return: Public file URL
-    """
     if not bucket:
         bucket = S3_BUCKET_NAME
-
     try:
-        # Initialize S3 client
         s3_client = boto3.client(
             "s3",
             aws_access_key_id=AWS_ACCESS_KEY,
             aws_secret_access_key=AWS_SECRET_KEY,
             region_name=AWS_REGION,
         )
-
         if "," in base64_data:
             base64_data = base64_data.split(",")[1]
-
         file_bytes = base64.b64decode(base64_data)
-
-        
         s3_client.put_object(
             Bucket=bucket,
             Key=object_name,
             Body=file_bytes,  
         )
-
-        logger.info(f"✅ File '{object_name}' uploaded successfully to '{bucket}'")
-
-       
+        logger.info(f" File '{object_name}' uploaded successfully to '{bucket}'")
         return f"https://{bucket}.s3.{AWS_REGION}.amazonaws.com/{object_name}"
-
     except ClientError as e:
-        logger.error(f"❌ Failed to upload Base64 file '{object_name}': {str(e)}")
+        logger.error(f" Failed to upload Base64 file '{object_name}': {str(e)}")
         raise e
     except Exception as e:
-        logger.error(f"❌ Unexpected error uploading file '{object_name}': {str(e)}")
+        logger.error(f" Unexpected error uploading file '{object_name}': {str(e)}")
         raise e
-
-
-
-
-
-
 
 
 logger = logging.getLogger(__name__)
-
 def fetch_s3_file_as_base64(file_url):
-    """
-    Given a full S3 file URL, download it and return its Base64 string.
-    """
     try:
         bucket_name = config.S3_BUCKET_NAME
         key = file_url.split(".amazonaws.com/")[1]
-
         s3_client = boto3.client(
             "s3",
             aws_access_key_id=config.AWS_ACCESS_KEY,
             aws_secret_access_key=config.AWS_SECRET_KEY,
             region_name=config.AWS_REGION,
         )
-
         response = s3_client.get_object(Bucket=bucket_name, Key=key)
         file_bytes = response["Body"].read()
         return base64.b64encode(file_bytes).decode("utf-8")
-
     except ClientError as e:
-        logger.error(f"❌ ClientError fetching from S3: {e}")
+        logger.error(f" ClientError fetching from S3: {e}")
         return None
     except Exception as e:
-        logger.error(f"❌ Unexpected error fetching from S3: {str(e)}")
+        logger.error(f" Unexpected error fetching from S3: {str(e)}")
         return None
