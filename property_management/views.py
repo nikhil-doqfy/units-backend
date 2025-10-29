@@ -809,7 +809,7 @@ def create_property_details(request):
     if request.method != "POST":
         return prepare_response(
             message=constants.INVALID_REQUEST_METHOD,
-            status=405
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
 
     try:
@@ -817,7 +817,7 @@ def create_property_details(request):
     except Exception:
         return prepare_response(
             message=constants.INVALID_JSON_BODY,
-            status=400
+            status=status.HTTP_400_BAD_REQUEST
         )
 
     current_user = request.user
@@ -825,7 +825,7 @@ def create_property_details(request):
     if current_user.user_type != constants.PROPERTY_MANAGER:
         return prepare_response(
             message=constants.ACCESS_DENIED_PROPERTY_MANAGER,
-            status=403
+            status=status.HTTP_403_FORBIDDEN
         )
 
 
@@ -834,7 +834,7 @@ def create_property_details(request):
         if not data.get(field):
             return prepare_response(
                 message=f"Missing required field: {field}",
-                status=400
+                status=status.HTTP_400_BAD_REQUEST
             )
 
     try:
@@ -843,7 +843,7 @@ def create_property_details(request):
         if not manager_details:
             return prepare_response(
                 message=constants.PROPERTY_MANAGER_Details_NOT_FOUND,
-                status=404
+                status=status.HTTP_404_NOT_FOUND
             )
 
         with transaction.atomic():
@@ -875,20 +875,13 @@ def create_property_details(request):
 
         return prepare_response(
             message=constants.PROPERTY_ADDED,
-            content={
-                "id": property_obj.id,
-                "property_name": property_obj.property_name,
-                "property_code": property_obj.property_code,
-                "property_type": property_obj.property_type,
-                "city": manager_details.city if manager_details else None,
-            },
-            status=200
+            status=status.HTTP_200_OK
         )
 
     except Exception as e:
         return prepare_response(
             message=f"Failed to create property: {str(e)}",
-            status=500
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
     
 
