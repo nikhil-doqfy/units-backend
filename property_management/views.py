@@ -10,7 +10,7 @@ from utilities import status ,  constants
 from django.utils import timezone
 from utilities import config
 from django.core.paginator import Paginator
-
+from django.db.models import Q
 
 
 @is_request_authenticated
@@ -900,28 +900,50 @@ def get_property_list(request):
                 message=constants.INVALID_REQUEST_METHOD,
                 status=status.HTTP_405_METHOD_NOT_ALLOWED
             )
+
         page = int(request.GET.get("page", 1))
         limit = int(request.GET.get("limit", 10))
-        search = request.GET.get("search", "")
+        search = request.GET.get("search", "").strip()
+        property_id = request.GET.get("id", "").strip()
 
         properties = PropertyDetails.objects.all()
-        if search:
-            properties = properties.filter(property_name__icontains=search)
+        if property_id:
+            properties = properties.filter(id=property_id)
+        elif search:
+            filters = (
+                Q(property_name__icontains=search)
+                | Q(property_code__icontains=search)
+                | Q(address__icontains=search)
+            )
+            if search.isdigit():
+                filters |= Q(id__iexact=search)
+
+            properties = properties.filter(filters)
+        if not properties.exists():
+            return prepare_response(
+                message="Data not found",
+                content={
+                    "page": page,
+                    "total_pages": 0,
+                    "total_properties": 0,
+                    "data": []
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
 
         paginator = Paginator(properties, limit)
         page_obj = paginator.get_page(page)
 
-        data = []
-        for prop in page_obj:
-            data.append({
-                "id": prop.id,
-                "property_name": prop.property_name,
-                "address": prop.address,
-                "area_of_property": prop.area_of_property,
-                "no_of_parking": prop.no_of_parking,
-                "property_type": prop.property_type,
-                "rental_status": prop.rental_status,
-            })
+        data = [{
+            "id": prop.id,
+            "property_code": prop.property_code,
+            "property_name": prop.property_name,
+            "address": prop.address,
+            "area_of_property": prop.area_of_property,
+            "no_of_parking": prop.no_of_parking,
+            "property_type": prop.property_type,
+            "rental_status": prop.rental_status,
+        } for prop in page_obj]
 
         response_data = {
             "page": page,
@@ -944,15 +966,20 @@ def get_property_list(request):
 
 
 
-def delete_property(request, id):
+def delete_property(request):
     try:
         if request.method != "DELETE":
             return prepare_response(
                 message=constants.INVALID_REQUEST_METHOD,
                 status=status.HTTP_405_METHOD_NOT_ALLOWED
             )
-
-        property_instance = PropertyDetails.objects.filter(id=id).first()
+        property_id = request.GET.get("id")
+        if not property_id:
+            return prepare_response(
+                message="Property ID is required in query params (e.g. ?id=5)",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        property_instance = PropertyDetails.objects.filter(id=property_id).first()
         if not property_instance:
             return prepare_response(
                 message=constants.PROPERTY_NOT_FOUND,
@@ -973,20 +1000,27 @@ def delete_property(request, id):
 
 
 
-def edit_property(request, id):
+
+def edit_property(request):
     try:
         if request.method != "PUT":
             return prepare_response(
                 message=constants.INVALID_REQUEST_METHOD,
                 status=status.HTTP_405_METHOD_NOT_ALLOWED
             )
-        property_instance = PropertyDetails.objects.filter(id=id).first()
+        property_id = request.GET.get("id")
+        if not property_id:
+            return prepare_response(
+                message="Property ID is required in query params (?id=123)",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        property_instance = PropertyDetails.objects.filter(id=property_id).first()
         if not property_instance:
             return prepare_response(
                 message=constants.PROPERTY_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
             )
-
         try:
             data = json.loads(request.body)
         except json.JSONDecodeError:
@@ -994,6 +1028,7 @@ def edit_property(request, id):
                 message=constants.INVALID_JSON_BODY,
                 status=status.HTTP_400_BAD_REQUEST
             )
+
         allowed_fields = [
             "property_name",
             "address",

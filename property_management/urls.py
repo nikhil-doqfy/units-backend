@@ -24,8 +24,8 @@ urlpatterns = [
     path('get/pmc/details', views.get_property_manager_details, name='get_property_manager_details'), 
     path('create/property/details', views.create_property_details, name='create_property_details'), 
     path("property/list/", views.get_property_list, name="property-list"),
-    path('property/delete/<int:id>/',views.delete_property, name='delete_property'),
-    path('property/<int:id>/edit/', views.edit_property, name='edit_property'),
+    path('property/delete/', views.delete_property, name='delete_property'),
+    path('property/edit/', views.edit_property, name='edit_property'),
 
 ]
 urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
