@@ -9,7 +9,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('user/', include(user_service_urls)),
     path('auth/', include(auth_service_urls)), 
-    path('owner/details/', views.submit_owner_details, name='submit_owner_details'),
+    path('owner/details/', views.owner_details, name='owner_details_view'),
     path('choose/manage/option/', views.choose_manage_option, name='choose_manage_option'),
     path('upload/owner/documents/', views.upload_owner_documents, name='upload_owner_documents'),
     path("get/owner/documents/", views.get_owner_documents, name="get_owner_documents"),

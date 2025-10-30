@@ -14,7 +14,7 @@ from django.db.models import Q
 
 
 @is_request_authenticated
-def submit_owner_details(request):
+def owner_details(request):
     try:
         current_user = request.user
         if request.method == "GET":
