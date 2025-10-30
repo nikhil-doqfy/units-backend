@@ -204,125 +204,7 @@ def get_owner_documents(request):
         )
     
 
-@is_request_authenticated
-def submit_tenant_details(request):
-    if request.method != 'POST':
-        return prepare_response(
-            message=constants.INVALID_REQUEST_METHOD,
-            status=status.HTTP_405_METHOD_NOT_ALLOWED
-        )
-    user = request.user  
-    if user.user_type != constants.TENANT:
-        return prepare_response(
-            message=constants.ACCESS_DENIED_TENANTS_ONLY,
-            status=status.HTTP_403_FORBIDDEN
-        )
-    try:
-        try:
-            data = json.loads(request.body.decode('utf-8'))
-        except Exception:
-            return prepare_response(
-                message=constants.INVALID_JSON_BODY,
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        if TenantDetails.objects.filter(user=user).exists():
-            return prepare_response(
-                message=constants.TENANT_DETAILS_ALREADY_EXISTS,
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        tenant_details = TenantDetails.objects.create(
-            user=user,
-            full_name=data.get("full_name"),
-            emirate_id=data.get("emirate_id"),
-            mobile_number=data.get("mobile_number"),
-            tenant_number=data.get("tenant_number"),
-            nationality=data.get("nationality"),
-            passport_self=data.get("passport_self"),
-            passport_family_member=data.get("passport_family_member"),
-            passport_expiry=data.get("passport_expiry"),
-            visa_self=data.get("visa_self"),
-            visa_family_member=data.get("visa_family_member"),
-            visa_expiry=data.get("visa_expiry"),
-            employment_proof=data.get("employment_proof"),
-        )
-        user.is_detail_updated = True
-        user.save()
-        return prepare_response(
-            content={
-                "tenant_details": {
-                    "id": tenant_details.id,
-                    "full_name": tenant_details.full_name,
-                    "mobile_number": tenant_details.mobile_number,
-                    "nationality": tenant_details.nationality,
-                },
-                "is_detail_updated": user.is_detail_updated,
-            },
-            message=constants.TENANT_DETAILS_SAVED_SUCCESS,
-            status=status.HTTP_201_CREATED
-        )
-    except Exception as e:
-        return prepare_response(
-            message=f"Failed to save tenant details: {str(e)}",
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-    
 
-@is_request_authenticated
-def edit_tenant_details(request):
-    if request.method != "PUT":
-        return prepare_response(
-            message=constants.INVALID_REQUEST_METHOD,
-            status=status.HTTP_405_METHOD_NOT_ALLOWED
-        )
-    user = request.user  
-    if user.user_type != constants.TENANT:
-        return prepare_response(
-            message=constants.ACCESS_DENIED_TENANTS_ONLY,
-            status=status.HTTP_403_FORBIDDEN
-        )
-    try:
-        try:
-            data = json.loads(request.body.decode("utf-8"))
-        except Exception:
-            return prepare_response(
-                message=constants.INVALID_JSON_BODY,
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        tenant_details = TenantDetails.objects.filter(user=user).first()
-        if not tenant_details:
-            return prepare_response(
-                message=constants.TENANT_DETAILS_NOT_FOUND,
-                status=404
-            )
-        for key, value in data.items():
-            if hasattr(tenant_details, key):
-                setattr(tenant_details, key, value)
-        with transaction.atomic():
-            tenant_details.save()
-        return prepare_response(
-            content={
-                "tenant_details": {
-                    "id": tenant_details.id,
-                    "full_name": tenant_details.full_name,
-                    "mobile_number": tenant_details.mobile_number,
-                    "nationality": tenant_details.nationality,
-                },
-                "is_detail_updated": getattr(user, "is_detail_updated", None),
-            },
-            message=constants.TENANT_DETAILS_UPDATED_SUCCESSFULLY,
-            status=status.HTTP_200_OK
-        )
-    except IntegrityError as ie:
-        return prepare_response(
-            message=f"Database error: {str(ie)}",
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-    except Exception as e:
-        print("Error updating tenant details:", e)
-        return prepare_response(
-            message=f"Failed to update tenant details: {str(e)}",
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
     
 
 @is_request_authenticated
@@ -463,70 +345,209 @@ def update_tenant_documents(request):
     )
 
 
+  
 @is_request_authenticated
-def get_tenant_details(request):
-    if request.method != "GET":
-        return prepare_response(
-            message=constants.INVALID_REQUEST_METHOD,
-            status=status.HTTP_405_METHOD_NOT_ALLOWED
-        )
+def tenant_details_view(request):
     user = request.user  
+
+
     if user.user_type != constants.TENANT:
         return prepare_response(
             message=constants.ACCESS_DENIED_TENANTS_ONLY,
             status=status.HTTP_403_FORBIDDEN
         )
-    try:
+    if request.method == "GET":
         try:
             tenant = TenantDetails.objects.select_related("property").get(user=user)
+            property_details = tenant.property.property_name if tenant.property else None
+
+            documents = [
+                {"file_url": tenant.emirates_id_file, "document_name": "Emirates ID"},
+                {"file_url": tenant.passport_self_file, "document_name": "Passport Self"},
+                {"file_url": tenant.passport_family_file, "document_name": "Passport Family Member"},
+                {"file_url": tenant.visa_self_file, "document_name": "Visa Self"},
+                {"file_url": tenant.visa_family_file, "document_name": "Visa Family Member"},
+                {"file_url": tenant.employment_proof_file, "document_name": "Employment Proof"},
+                {"file_url": tenant.bank_statement_file, "document_name": "Bank Statement"},
+            ]
+
+            filtered_documents = [doc for doc in documents if doc["file_url"]]
+
+            tenant_data = {
+                "tenant_id": tenant.id,
+                "full_name": tenant.full_name,
+                "type": user.user_type,
+                "email": user.email,
+                "phone": tenant.mobile_number,
+                "tenant_number": tenant.tenant_number,
+                "emirate_id": tenant.emirate_id,
+                "nationality": tenant.nationality,
+                "passport_self": tenant.passport_self,
+                "passport_family_member": tenant.passport_family_member,
+                "passport_expiry": tenant.passport_expiry,
+                "visa_self": tenant.visa_self,
+                "visa_family_member": tenant.visa_family_member,
+                "visa_expiry": tenant.visa_expiry,
+                "employment_proof": tenant.employment_proof,
+                "linked_property": property_details,
+                "profile_picture": user.profile_image,
+                "documents": filtered_documents,
+            }
+
+            return prepare_response(
+                content={"tenant_details": tenant_data},
+                message=constants.TENANT_DETAILS_FETCHED_SUCCESS,
+                status=status.HTTP_200_OK
+            )
+
         except TenantDetails.DoesNotExist:
             return prepare_response(
                 message=constants.TENANT_DETAILS_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
             )
-        property_details = tenant.property.property_name if tenant.property else None
-        documents = [
-            {"file_url": tenant.emirates_id_file, "document_name": "Emirates ID"},
-            {"file_url": tenant.passport_self_file, "document_name": "Passport Self"},
-            {"file_url": tenant.passport_family_file, "document_name": "Passport Family Member"},
-            {"file_url": tenant.visa_self_file, "document_name": "Visa Self"},
-            {"file_url": tenant.visa_family_file, "document_name": "Visa Family Member"},
-            {"file_url": tenant.employment_proof_file, "document_name": "Employment Proof"},
-            {"file_url": tenant.bank_statement_file, "document_name": "Bank Statement"},
-        ]
-        filtered_documents = [doc for doc in documents if doc["file_url"]]
-        tenant_data = {
-            "tenant_id": tenant.id,
-            "full_name": tenant.full_name,
-            "type": user.user_type,
-            "email": user.email,
-            "phone": tenant.mobile_number,
-            "tenant_number": tenant.tenant_number,
-            "emirate_id": tenant.emirate_id,
-            "nationality": tenant.nationality,
-            "passport_self": tenant.passport_self,
-            "passport_family_member": tenant.passport_family_member,
-            "passport_expiry": tenant.passport_expiry,
-            "visa_self": tenant.visa_self,
-            "visa_family_member": tenant.visa_family_member,
-            "visa_expiry": tenant.visa_expiry,
-            "employment_proof": tenant.employment_proof,
-            "linked_property": property_details,
-            "profile_picture": user.profile_image,
-            "documents": filtered_documents,
-        }
+        except Exception as e:
+            return prepare_response(
+                message=f"An unexpected error occurred: {str(e)}",
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    elif request.method == "POST":
+        try:
+            data = json.loads(request.body.decode('utf-8'))
+        except Exception:
+            return prepare_response(
+                message=constants.INVALID_JSON_BODY,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if TenantDetails.objects.filter(user=user).exists():
+            return prepare_response(
+                message=constants.TENANT_DETAILS_ALREADY_EXISTS,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            tenant_details = TenantDetails.objects.create(
+                user=user,
+                full_name=data.get("full_name"),
+                emirate_id=data.get("emirate_id"),
+                mobile_number=data.get("mobile_number"),
+                tenant_number=data.get("tenant_number"),
+                nationality=data.get("nationality"),
+                passport_self=data.get("passport_self"),
+                passport_family_member=data.get("passport_family_member"),
+                passport_expiry=data.get("passport_expiry"),
+                visa_self=data.get("visa_self"),
+                visa_family_member=data.get("visa_family_member"),
+                visa_expiry=data.get("visa_expiry"),
+                employment_proof=data.get("employment_proof"),
+            )
+            user.is_detail_updated = True
+            user.save()
+
+            return prepare_response(
+                content={
+                    "tenant_details": {
+                        "id": tenant_details.id,
+                        "full_name": tenant_details.full_name,
+                        "mobile_number": tenant_details.mobile_number,
+                        "nationality": tenant_details.nationality,
+                    },
+                    "is_detail_updated": user.is_detail_updated,
+                },
+                message=constants.TENANT_DETAILS_SAVED_SUCCESS,
+                status=status.HTTP_201_CREATED
+            )
+        except Exception as e:
+            return prepare_response(
+                message=f"Failed to save tenant details: {str(e)}",
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    elif request.method == "PUT":
+        try:
+            data = json.loads(request.body.decode("utf-8"))
+        except Exception:
+            return prepare_response(
+                message=constants.INVALID_JSON_BODY,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        tenant_details = TenantDetails.objects.filter(user=user).first()
+        if not tenant_details:
+            return prepare_response(
+                message=constants.TENANT_DETAILS_NOT_FOUND,
+                status=404
+            )
+
+        try:
+            for key, value in data.items():
+                if hasattr(tenant_details, key):
+                    setattr(tenant_details, key, value)
+
+            with transaction.atomic():
+                tenant_details.save()
+
+            return prepare_response(
+                content={
+                    "tenant_details": {
+                        "id": tenant_details.id,
+                        "full_name": tenant_details.full_name,
+                        "mobile_number": tenant_details.mobile_number,
+                        "nationality": tenant_details.nationality,
+                    },
+                    "is_detail_updated": getattr(user, "is_detail_updated", None),
+                },
+                message=constants.TENANT_DETAILS_UPDATED_SUCCESSFULLY,
+                status=status.HTTP_200_OK
+            )
+
+        except IntegrityError as ie:
+            return prepare_response(
+                message=f"Database error: {str(ie)}",
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        except Exception as e:
+            print("Error updating tenant details:", e)
+            return prepare_response(
+                message=f"Failed to update tenant details: {str(e)}",
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+    elif request.method == "DELETE":
+        tenant_id = request.GET.get("id")
+        if not tenant_id:
+            return prepare_response(
+                message="Tenant ID is required in query parameters.",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        try:
+            tenant = TenantDetails.objects.filter(id=tenant_id, user=user).first()
+            if not tenant:
+                return prepare_response(
+                     message=constants.TENANT_DETAILS_NOT_FOUND,
+                     status=status.HTTP_404_NOT_FOUND
+                )
+            with transaction.atomic():
+                tenant.delete()
+            return prepare_response(
+                message=constants.TENANT_DETAILS_DELETED_SUCCESS,
+                status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return prepare_response(
+                message=f"Failed to delete tenant details: {str(e)}",
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+    else:
         return prepare_response(
-            content={"tenant_details": tenant_data},
-            message=constants.TENANT_DETAILS_FETCHED_SUCCESS,
-            status=status.HTTP_200_OK
+            message=constants.INVALID_REQUEST_METHOD,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
-    except Exception as e:
-        return prepare_response(
-            message=f"An unexpected error occurred: {str(e)}",
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-    
-    
+
+
+
+
+# ---------------------------------------------------------------------------------------------------------------------------------
 
 @is_request_authenticated
 def submit_property_manager_details(request):
@@ -804,257 +825,322 @@ def get_property_manager_details(request):
         )
 
 
+
+
+
 @is_request_authenticated
-def create_property_details(request):
-    if request.method != "POST":
+def property_details_view(request):
+    if request.method == "GET":
+        try:
+            page = int(request.GET.get("page", 1))
+            limit = int(request.GET.get("limit", 10))
+            search = request.GET.get("search", "").strip()
+            property_id = request.GET.get("property_id", "").strip() 
+
+            properties = PropertyDetails.objects.all()
+
+            if property_id:
+                properties = properties.filter(id=property_id)
+            elif search:
+                filters = (
+                    Q(property_name__icontains=search)
+                    | Q(property_code__icontains=search)
+                    | Q(address__icontains=search)
+                )
+                if search.isdigit():
+                    filters |= Q(id__iexact=search)
+                properties = properties.filter(filters)
+
+            if not properties.exists():
+                return prepare_response(
+                    message=constants.DATA_NOT_FOUND,
+                    content={
+                        "page": page,
+                        "total_pages": 0,
+                        "total_properties": 0,
+                        "data": []
+                    },
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            paginator = Paginator(properties, limit)
+            page_obj = paginator.get_page(page)
+
+            data = [{
+                "id": prop.id,
+                "property_code": prop.property_code,
+                "property_name": prop.property_name,
+                "address": prop.address,
+                "area_of_property": prop.area_of_property,
+                "no_of_parking": prop.no_of_parking,
+                "property_type": prop.property_type,
+                "rental_status": prop.rental_status,
+            } for prop in page_obj]
+
+            response_data = {
+                "page": page,
+                "total_pages": paginator.num_pages,
+                "total_properties": paginator.count,
+                "data": data
+            }
+
+            return prepare_response(
+                message=constants.PROPERTY_LIST_FETCHED,
+                content=response_data,
+                status=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            return prepare_response(
+                message=f"Error fetching property list: {str(e)}",
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    elif request.method == "POST":
+        try:
+            data = json.loads(request.body)
+        except Exception:
+            return prepare_response(
+                message=constants.INVALID_JSON_BODY,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        current_user = request.user
+
+        if current_user.user_type != constants.PROPERTY_MANAGER:
+            return prepare_response(
+                message=constants.ACCESS_DENIED_PROPERTY_MANAGER,
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        required_fields = ["property_name", "property_code"]
+        for field in required_fields:
+            if not data.get(field):
+                return prepare_response(
+                    message=f"Missing required field: {field}",
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+        try:
+            manager_details = PropertyManagerCompanyDetails.objects.filter(user=current_user).first()
+            if not manager_details:
+                return prepare_response(
+                    message=constants.PROPERTY_MANAGER_Details_NOT_FOUND,
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            with transaction.atomic():
+                PropertyDetails.objects.create(
+                    property_name=data.get("property_name"),
+                    land_dm_no=data.get("land_dm_no"),
+                    address=data.get("address"),
+                    area_of_property=data.get("area_of_property"),
+                    no_of_parking=data.get("no_of_parking"),
+                    makani_no=data.get("makani_no"),
+                    dewa_no=data.get("dewa_no"),
+                    property_type=data.get("property_type", "Apartment"),
+                    land_area=data.get("land_area", "1048"),
+                    apartment_no=data.get("apartment_no", "48"),
+                    bedrooms=data.get("bedrooms", "Select bedroom"),
+                    apartment_floor_no=data.get("apartment_floor_no", "3"),
+                    balcony=data.get("balcony", "1"),
+                    plot_no=data.get("plot_no", "128"),
+                    area_unit=data.get("area_unit", "Sq-ft"),
+                    land_area_unit=data.get("land_area_unit", "Sq-ft"),
+                    property_code=data.get("property_code"),
+                    invited_email_id=data.get("invited_email_id"),
+                    property_manager=manager_details,
+                    is_occupied=data.get("is_occupied", False),
+                    rental_status=data.get("rental_status", "Available"),
+                    tenancy_start_date=data.get("tenancy_start_date"),
+                    tenancy_end_date=data.get("tenancy_end_date"),
+                )
+
+            return prepare_response(
+                message=constants.PROPERTY_ADDED,
+                status=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            return prepare_response(
+                message=f"Failed to create property: {str(e)}",
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    elif request.method == "PUT":
+        try:
+            property_id = request.GET.get("id")
+            if not property_id:
+                return prepare_response(
+                    message=constants.PROPERTY_ID_REQUIRED,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            property_instance = PropertyDetails.objects.filter(id=property_id).first()
+            if not property_instance:
+                return prepare_response(
+                    message=constants.PROPERTY_NOT_FOUND,
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            try:
+                data = json.loads(request.body)
+            except json.JSONDecodeError:
+                return prepare_response(
+                    message=constants.INVALID_JSON_BODY,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            allowed_fields = [
+                "property_name",
+                "address",
+                "area_of_property",
+                "no_of_parking",
+                "property_type",
+                "rental_status",
+            ]
+
+            for field, value in data.items():
+                if field in allowed_fields:
+                    setattr(property_instance, field, value)
+
+            property_instance.save()
+
+            updated_data = {
+                "id": property_instance.id,
+                "property_name": property_instance.property_name,
+                "address": property_instance.address,
+                "area_of_property": property_instance.area_of_property,
+                "no_of_parking": property_instance.no_of_parking,
+                "property_type": property_instance.property_type,
+                "rental_status": property_instance.rental_status,
+            }
+
+            return prepare_response(
+                message=constants.PROPERTY_UPDATE_SUCCESS,
+                content=updated_data,
+                status=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            return prepare_response(
+                message=f"Error updating property: {str(e)}",
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    elif request.method == "DELETE":
+        try:
+            property_id = request.GET.get("id")
+            if not property_id:
+                return prepare_response(
+                    message=constants.PROPERTY_ID_REQUIRED,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            property_instance = PropertyDetails.objects.filter(id=property_id).first()
+            if not property_instance:
+                return prepare_response(
+                    message=constants.PROPERTY_NOT_FOUND,
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            property_instance.delete()
+            return prepare_response(
+                message=constants.PROPERTY_DELETED,
+                status=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            return prepare_response(
+                message=f"Error deleting property: {str(e)}",
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    else:
         return prepare_response(
             message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
 
-    try:
-        data = json.loads(request.body)
-    except Exception:
+
+
+
+
+
+
+@is_request_authenticated
+def owner_tenants_list(request):
+    if request.method != "GET":
         return prepare_response(
-            message=constants.INVALID_JSON_BODY,
-            status=status.HTTP_400_BAD_REQUEST
+            message=constants.INVALID_REQUEST_METHOD,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
 
-    current_user = request.user
-
-    if current_user.user_type != constants.PROPERTY_MANAGER:
+    user = request.user
+    if user.user_type != constants.OWNER:
         return prepare_response(
-            message=constants.ACCESS_DENIED_PROPERTY_MANAGER,
+            message=constants.ACCESS_DENIED_OWNER_ONLY, 
             status=status.HTTP_403_FORBIDDEN
         )
 
-
-    required_fields = ["property_name", "property_code"]
-    for field in required_fields:
-        if not data.get(field):
-            return prepare_response(
-                message=f"Missing required field: {field}",
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
     try:
-
-        manager_details = PropertyManagerCompanyDetails.objects.filter(user=current_user).first()
-        if not manager_details:
-            return prepare_response(
-                message=constants.PROPERTY_MANAGER_Details_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        with transaction.atomic():
-            property_obj = PropertyDetails.objects.create(
-                property_name=data.get("property_name"),
-                land_dm_no=data.get("land_dm_no"),
-                address=data.get("address"),
-                area_of_property=data.get("area_of_property"),
-                no_of_parking=data.get("no_of_parking"),
-                makani_no=data.get("makani_no"),
-                dewa_no=data.get("dewa_no"),
-                property_type=data.get("property_type", "Apartment"),
-                land_area=data.get("land_area", "1048"),
-                apartment_no=data.get("apartment_no", "48"),
-                bedrooms=data.get("bedrooms", "Select bedroom"),
-                apartment_floor_no=data.get("apartment_floor_no", "3"),
-                balcony=data.get("balcony", "1"),
-                plot_no=data.get("plot_no", "128"),
-                area_unit=data.get("area_unit", "Sq-ft"),
-                land_area_unit=data.get("land_area_unit", "Sq-ft"),
-                property_code=data.get("property_code"),
-                invited_email_id=data.get("invited_email_id"),
-                property_manager=manager_details,
-                is_occupied=data.get("is_occupied", False),
-                rental_status=data.get("rental_status", "Available"),
-                tenancy_start_date=data.get("tenancy_start_date"),
-                tenancy_end_date=data.get("tenancy_end_date"),
-            )
-
-        return prepare_response(
-            message=constants.PROPERTY_ADDED,
-            status=status.HTTP_200_OK
-        )
-
-    except Exception as e:
-        return prepare_response(
-            message=f"Failed to create property: {str(e)}",
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-    
-
-
-def get_property_list(request):
-    try:
-        if request.method != "GET":
-            return prepare_response(
-                message=constants.INVALID_REQUEST_METHOD,
-                status=status.HTTP_405_METHOD_NOT_ALLOWED
-            )
-
+      
         page = int(request.GET.get("page", 1))
         limit = int(request.GET.get("limit", 10))
         search = request.GET.get("search", "").strip()
-        property_id = request.GET.get("id", "").strip()
-
-        properties = PropertyDetails.objects.all()
-        if property_id:
-            properties = properties.filter(id=property_id)
-        elif search:
-            filters = (
-                Q(property_name__icontains=search)
-                | Q(property_code__icontains=search)
-                | Q(address__icontains=search)
+        tenants_qs = TenantDetails.objects.select_related("property", "user").filter(
+            property__owner=user
+        )
+        if search:
+            tenants_qs = tenants_qs.filter(
+                Q(full_name__icontains=search) |
+                Q(mobile_number__icontains=search) |
+                Q(emirate_id__icontains=search)|Q(property__property_name__icontains=search)|Q(property__id__icontains=search)
             )
-            if search.isdigit():
-                filters |= Q(id__iexact=search)
 
-            properties = properties.filter(filters)
-        if not properties.exists():
+        if not tenants_qs.exists():
             return prepare_response(
                 message="Data not found",
                 content={
                     "page": page,
                     "total_pages": 0,
-                    "total_properties": 0,
+                    "total_tenants": 0,
                     "data": []
                 },
                 status=status.HTTP_404_NOT_FOUND
             )
-
-        paginator = Paginator(properties, limit)
+        paginator = Paginator(tenants_qs, limit)
         page_obj = paginator.get_page(page)
 
-        data = [{
-            "id": prop.id,
-            "property_code": prop.property_code,
-            "property_name": prop.property_name,
-            "address": prop.address,
-            "area_of_property": prop.area_of_property,
-            "no_of_parking": prop.no_of_parking,
-            "property_type": prop.property_type,
-            "rental_status": prop.rental_status,
-        } for prop in page_obj]
+        data = []
+        for t in page_obj:
+            data.append({
+                "tenant_id": t.id,
+                "full_name": t.full_name,
+                "mobile_number": t.mobile_number,
+                "emirate_id": t.emirate_id,
+                "nationality": t.nationality,
+                "linked_property_id": t.property.id if t.property else None,
+                "linked_property_name": t.property.property_name if t.property else None,
+            })
 
         response_data = {
             "page": page,
             "total_pages": paginator.num_pages,
-            "total_properties": paginator.count,
+            "total_tenants": paginator.count,
             "data": data
         }
 
         return prepare_response(
-            message=constants.PROPERTY_LIST_FETCHED,
+            message=constants.TENANT_LIST_FETCHED_SUCCES,
             content=response_data,
             status=status.HTTP_200_OK
         )
 
     except Exception as e:
         return prepare_response(
-            message=f"Error fetching property list: {str(e)}",
+            message=f"Error fetching tenant list: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+    
 
-
-
-def delete_property(request):
-    try:
-        if request.method != "DELETE":
-            return prepare_response(
-                message=constants.INVALID_REQUEST_METHOD,
-                status=status.HTTP_405_METHOD_NOT_ALLOWED
-            )
-        property_id = request.GET.get("id")
-        if not property_id:
-            return prepare_response(
-                message="Property ID is required in query params (e.g. ?id=5)",
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        property_instance = PropertyDetails.objects.filter(id=property_id).first()
-        if not property_instance:
-            return prepare_response(
-                message=constants.PROPERTY_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        property_instance.delete()
-        return prepare_response(
-            message=constants.PROPERTY_DELETED,
-            status=status.HTTP_200_OK
-        )
-
-    except Exception as e:
-        return prepare_response(
-            message=f"Error deleting property: {str(e)}",
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-
-
-
-def edit_property(request):
-    try:
-        if request.method != "PUT":
-            return prepare_response(
-                message=constants.INVALID_REQUEST_METHOD,
-                status=status.HTTP_405_METHOD_NOT_ALLOWED
-            )
-        property_id = request.GET.get("id")
-        if not property_id:
-            return prepare_response(
-                message="Property ID is required in query params (?id=123)",
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        property_instance = PropertyDetails.objects.filter(id=property_id).first()
-        if not property_instance:
-            return prepare_response(
-                message=constants.PROPERTY_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
-        try:
-            data = json.loads(request.body)
-        except json.JSONDecodeError:
-            return prepare_response(
-                message=constants.INVALID_JSON_BODY,
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        allowed_fields = [
-            "property_name",
-            "address",
-            "area_of_property",
-            "no_of_parking",
-            "property_type",
-            "rental_status",
-        ]
-
-        for field, value in data.items():
-            if field in allowed_fields:
-                setattr(property_instance, field, value)
-
-        property_instance.save()
-
-        updated_data = {
-            "id": property_instance.id,
-            "property_name": property_instance.property_name,
-            "address": property_instance.address,
-            "area_of_property": property_instance.area_of_property,
-            "no_of_parking": property_instance.no_of_parking,
-            "property_type": property_instance.property_type,
-            "rental_status": property_instance.rental_status,
-        }
-
-        return prepare_response(
-            message=constants.PROPERTY_UPDATE_SUCCESS,
-            content=updated_data,
-            status=status.HTTP_200_OK
-        )
-
-    except Exception as e:
-        return prepare_response(
-            message=f"Error updating property: {str(e)}",
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )

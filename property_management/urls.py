@@ -13,19 +13,20 @@ urlpatterns = [
     path('choose/manage/option/', views.choose_manage_option, name='choose_manage_option'),
     path('upload/owner/documents/', views.upload_owner_documents, name='upload_owner_documents'),
     path("get/owner/documents/", views.get_owner_documents, name="get_owner_documents"),
-    path("tenant/details/", views.submit_tenant_details,name="sumbit_tenant_details"),
-    path("edit/tenant/details", views.edit_tenant_details,name="edit_tenant_details"),
+    # path("tenant/details/", views.submit_tenant_details,name="sumbit_tenant_details"),
+    # path("edit/tenant/details", views.edit_tenant_details,name="edit_tenant_details"),  
+    # path('get/tenant/details/', views.get_tenant_details, name='get_tenant_details'), 
     path("upload/tenant/documents", views.upload_tenant_documents,name="upload_tenant_documents"), 
-    path("update/tenant/documents", views.update_tenant_documents,name="update_tenant_documents"),  
-    path('get/tenant/details/', views.get_tenant_details, name='get_tenant_details'), 
+    path("update/tenant/documents", views.update_tenant_documents,name="update_tenant_documents"),
     path('submit/pmc/details', views.submit_property_manager_details, name='submit_property_manager_details'), 
     path('upload/pmc/documents', views.upload_pmc_documents, name='upload_pmc_documents'),
     path('edit/pmc/details', views.edit_property_manager_details, name='edit_property_manager_details'),
     path('get/pmc/details', views.get_property_manager_details, name='get_property_manager_details'), 
-    path('create/property/details', views.create_property_details, name='create_property_details'), 
-    path("property/list/", views.get_property_list, name="property-list"),
-    path('property/delete/', views.delete_property, name='delete_property'),
-    path('property/edit/', views.edit_property, name='edit_property'),
+    path('property/details/', views.property_details_view, name='property_details_view'), 
+    path('tenant/details/', views.tenant_details_view, name='tenant_details_view'),
+    path('/owner/tenants/', views.owner_tenants_list, name='owner_tenants_list'),
+
+
 
 ]
 urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
