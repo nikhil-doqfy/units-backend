@@ -109,6 +109,7 @@ TENANT_LIST_FETCHED_SUCCES="Tenant list fetched successfully"
 PROPERTY_ID_REQUIRED="Property ID is required in query params (e.g. ?id=5)"
 DATA_NOT_FOUND='data not found'
 PROPERTY_MANAGER_LIST_FETCHED="property manager list fetch successfully"
+OWNER_LIST_FETCHED_SUCCESS="owner list fetch successfully"
 
 OWNER = "OWNER"
 PROPERTY_MANAGER = "PROPERTY_MANAGER"

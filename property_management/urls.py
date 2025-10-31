@@ -9,7 +9,8 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('user/', include(user_service_urls)),
     path('auth/', include(auth_service_urls)), 
-    path('owner/details/', views.owner_details, name='owner_details_view'),
+    path('owner/details/', views.owner_details_view, name='owner_details_view'),
+    path('owners/list', views.list_all_owners, name='list_all_owners'),
     path('choose/manage/option/', views.choose_manage_option, name='choose_manage_option'),
     path('upload/owner/documents/', views.upload_owner_documents, name='upload_owner_documents'),
     path("get/owner/documents/", views.get_owner_documents, name="get_owner_documents"),     
@@ -21,7 +22,13 @@ urlpatterns = [
     path('owner/tenants/', views.owner_tenants_list, name='owner_tenants_list'),
     path('property/manager/details/', views.property_manager_details_view, name='property_manager_details_view'),
     path('property/manager/list/', views.property_manager_list, name='property_manager_list'),
-    
 ]
 urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+
+
+
+
+ 
+ 

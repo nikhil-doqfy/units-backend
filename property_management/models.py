@@ -10,6 +10,7 @@ class Base(models.Model):
         abstract = True
 
 
+
 class OwnerDetails(Base): 
     user = models.ForeignKey(
         "user_service.UserProfile",  
@@ -61,18 +62,13 @@ class TenantDetails(Base):
         blank=True,
         related_name="tenant_details",
     )
-# ------------------------------Not craeted yet ----------------------------
-
-    # Link to LeasePropertyDetails (string ref for safety)
-    # lease_property_details = models.ForeignKey(
-    #     "property_management.LeasePropertyDetails",
-    #     on_delete=models.SET_NULL,
-    #     null=True,
-    #     blank=True,
-    #     related_name="tenant_lease_details",
-    # )
-
-    # Tenant Basic Information
+    lease_property_details = models.ForeignKey(
+        "LeasePropertyDetails",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tenant_lease_details",
+    )
     full_name = models.CharField(max_length=255)
     emirate_id = models.CharField(max_length=255)
     mobile_number = models.CharField(max_length=20)
@@ -154,35 +150,26 @@ class LeaseCommercials(models.Model):
 
 
 class LeaseDocumentLayout(models.Model):
-    lease = models.OneToOneField(
+    lease = models.ForeignKey(
         "LeasePropertyDetails",
         on_delete=models.CASCADE,
         related_name="document_layout"
     )
-
-
     LAYOUT_CHOICES = [
         ("AI_GENERATED", "Create Layout by AI"),
         ("TEMPLATE_SELECTED", "Select Template"),
         ("TEMPLATE_UPLOADED", "Upload Template"),
     ]
     layout_type = models.CharField(max_length=50, choices=LAYOUT_CHOICES)
-
-
     uploaded_template = models.FileField(
         upload_to="lease_documents/templates/",
         null=True, blank=True
     )
-
-
     selected_template_name = models.CharField(max_length=200, null=True, blank=True)
-
-
     ai_generated_doc = models.FileField(
         upload_to="lease_documents/generated/",
         null=True, blank=True
     )
-
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -227,40 +214,3 @@ class LeaseEjariUpload(models.Model):
 
 
 
-# class LeaseEjariUpload(models.Model):
-#     lease = models.ForeignKey(
-#         "LeasePropertyDetails",
-#         on_delete=models.CASCADE,
-#         related_name="ejari_uploads"
-#     )
-
-#     # JSON field to hold all Base64 strings
-#     documents = models.JSONField(
-#         default=dict,
-#         blank=True,
-#         help_text="Stores all document Base64 strings like {'property_floor_plan': '...', 'tenant_doc': '...'}"
-#     )
-
-#     uploaded_by = models.ForeignKey(
-#         "user_service.UserProfile",
-#         on_delete=models.SET_NULL,
-#         null=True,
-#         blank=True
-#     )
-#     uploaded_at = models.DateTimeField(default=timezone.now)
-#     is_finalized = models.BooleanField(default=False)
-#     finalized_at = models.DateTimeField(null=True, blank=True)
-
-#     def __str__(self):
-#         return f"Ejari Upload for Lease ID {self.lease.id}"        
-    
-# post method
-#     {
-#   "documents": {
-#     "property_floor_plan": "base64string1...",
-#     "tenant_doc": "base64string2...",
-#     "cheque": "base64string3..."
-#   }
-# }
-
-# -----------------------------------------------------------------------------------------------------------------------------------

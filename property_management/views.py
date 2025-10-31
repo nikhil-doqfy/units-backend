@@ -1,8 +1,8 @@
 
 from django.shortcuts import get_object_or_404
 from django.db import IntegrityError, transaction
-from property_management.models import OwnerDetails ,PropertyDocuments,TenantDetails
-from user_service.models import PropertyManagerCompanyDetails ,PropertyDetails
+from property_management.models import OwnerDetails ,PropertyDocuments,TenantDetails , LeasePropertyDetails ,LeaseCommercials,LeaseEjariUpload,LeaseDocumentLayout
+from user_service.models import PropertyManagerCompanyDetails ,PropertyDetails 
 from utilities.decorator import is_request_authenticated
 import json
 from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger
@@ -14,18 +14,168 @@ from django.db.models import Q
 
 
 @is_request_authenticated
-def owner_details(request):
+def owner_details_view(request):
+    """
+    CRUD API for OwnerDetails
+    """
+
     try:
         current_user = request.user
+
+        if current_user.user_type != constants.OWNER:
+            return prepare_response(
+                message="Access denied. Only owners can manage owner details.",
+                status=status.HTTP_403_FORBIDDEN
+            )
         if request.method == "GET":
             owner = OwnerDetails.objects.filter(user=current_user).first()
             if not owner:
                 return prepare_response(
-                    message=constants.OWNER_DETAILS_NOT_FOUND,
+                    message="Owner details not found.",
                     status=status.HTTP_404_NOT_FOUND
                 )
+
             owner_data = {
+                "full_name":owner.full_name,
                 "id": owner.id,
+                "user_email": owner.user.email,
+                "emirate_id": owner.emirate_id,
+                "uae_residence_visa": owner.uae_residence_visa,
+                "trade_license_number": owner.trade_license_number,
+                "owner_number": owner.owner_number,
+                "mobile_number": owner.mobile_number,
+                "manage_manually": owner.manage_manually,
+                "manage_through_pmc": owner.manage_through_pmc,
+                "emirates_id_file": owner.emirates_id_file,
+                "residence_visa_file": owner.residence_visa_file,
+                "dld_certificate_file": owner.dld_certificate_file,
+                "dewa_registration_file": owner.dewa_registration_file,
+            }
+
+            return prepare_response(
+                message="Owner details fetched successfully.",
+                content=owner_data,
+                status=status.HTTP_200_OK
+            )
+
+        elif request.method == "POST":
+            data = json.loads(request.body)
+
+            if OwnerDetails.objects.filter(user=current_user).exists():
+                return prepare_response(
+                    message="Owner details already exist.",
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            emirates_id_file = upload_file_to_s3_base64(data["emirates_id_file"], f"owner/{current_user.id}/emirates_id.png") if data.get("emirates_id_file") else None
+            residence_visa_file = upload_file_to_s3_base64(data["residence_visa_file"], f"owner/{current_user.id}/residence_visa.png") if data.get("residence_visa_file") else None
+            dld_certificate_file = upload_file_to_s3_base64(data["dld_certificate_file"], f"owner/{current_user.id}/dld_certificate.png") if data.get("dld_certificate_file") else None
+            dewa_registration_file = upload_file_to_s3_base64(data["dewa_registration_file"], f"owner/{current_user.id}/dewa_registration.png") if data.get("dewa_registration_file") else None
+
+            owner = OwnerDetails.objects.create(
+                user=current_user,
+                full_name=data.get("full_name", ""),
+                emirate_id=data.get("emirate_id", ""),
+                uae_residence_visa=data.get("uae_residence_visa", ""),
+                trade_license_number=data.get("trade_license_number", ""),
+                owner_number=data.get("owner_number", ""),
+                mobile_number=data.get("mobile_number", ""),
+                manage_manually=data.get("manage_manually", False),
+                manage_through_pmc=data.get("manage_through_pmc", False),
+                emirates_id_file=emirates_id_file,
+                residence_visa_file=residence_visa_file,
+                dld_certificate_file=dld_certificate_file,
+                dewa_registration_file=dewa_registration_file,
+            )
+
+            return prepare_response(
+                message="Owner details created successfully.",
+                content={"id": owner.id},
+                status=status.HTTP_201_CREATED
+            )
+        elif request.method == "PUT":
+            data = json.loads(request.body)
+            owner = OwnerDetails.objects.filter(user=current_user).first()
+
+            if not owner:
+                return prepare_response(
+                    message="Owner details not found.",
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            owner.emirate_id = data.get("emirate_id", owner.emirate_id)
+            owner.uae_residence_visa = data.get("uae_residence_visa", owner.uae_residence_visa)
+            owner.trade_license_number = data.get("trade_license_number", owner.trade_license_number)
+            owner.owner_number = data.get("owner_number", owner.owner_number)
+            owner.mobile_number = data.get("mobile_number", owner.mobile_number)
+            owner.manage_manually = data.get("manage_manually", owner.manage_manually)
+            owner.manage_through_pmc = data.get("manage_through_pmc", owner.manage_through_pmc)
+
+           
+            if data.get("emirates_id_file"):
+                owner.emirates_id_file = upload_file_to_s3_base64(data["emirates_id_file"], f"owner/{current_user.id}/emirates_id.png")
+
+            if data.get("residence_visa_file"):
+                owner.residence_visa_file = upload_file_to_s3_base64(data["residence_visa_file"], f"owner/{current_user.id}/residence_visa.png")
+
+            if data.get("dld_certificate_file"):
+                owner.dld_certificate_file = upload_file_to_s3_base64(data["dld_certificate_file"], f"owner/{current_user.id}/dld_certificate.png")
+
+            if data.get("dewa_registration_file"):
+                owner.dewa_registration_file = upload_file_to_s3_base64(data["dewa_registration_file"], f"owner/{current_user.id}/dewa_registration.png")
+
+            owner.save()
+
+            return prepare_response(
+                message="Owner details updated successfully.",
+                status=status.HTTP_200_OK
+            )
+        elif request.method == "DELETE":
+            owner = OwnerDetails.objects.filter(user=current_user).first()
+            if not owner:
+                return prepare_response(
+                    message="Owner details not found.",
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            owner.delete()
+            return prepare_response(
+                message="Owner details deleted successfully.",
+                status=status.HTTP_200_OK
+            )
+        else:
+            return prepare_response(
+                message="Invalid request method.",
+                status=status.HTTP_405_METHOD_NOT_ALLOWED
+            )
+
+    except Exception as e:
+        logger.error(f"Error in owner_details_view: {str(e)}")
+        return prepare_response(
+            message=f"Something went wrong: {str(e)}",
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+@is_request_authenticated
+def list_all_owners(request):
+    try:
+        if request.method != "GET":
+            return prepare_response(
+                message=constants.INVALID_REQUEST_METHOD,
+                status=status.HTTP_405_METHOD_NOT_ALLOWED
+            )
+        search = request.GET.get("search")  
+        owners_qs = OwnerDetails.objects.all().select_related("user")
+        if search:
+            owners_qs = owners_qs.filter(
+                Q(full_name__icontains=search)
+                | Q(mobile_number__icontains=search)
+                | Q(owner_number__icontains=search)
+            )
+        owners_data = []
+        for owner in owners_qs:
+            owners_data.append({
+                "id": owner.id,
+                "user_id": owner.user.id if owner.user else None,
                 "full_name": owner.full_name,
                 "emirate_id": owner.emirate_id,
                 "uae_residence_visa": owner.uae_residence_visa,
@@ -34,109 +184,18 @@ def owner_details(request):
                 "mobile_number": owner.mobile_number,
                 "manage_manually": owner.manage_manually,
                 "manage_through_pmc": owner.manage_through_pmc,
-            }
-            return prepare_response(
-                content=owner_data,
-                message=constants.OWNER_DETAILS_FETCHED_SUCCESS,
-                status=status.HTTP_200_OK
-            )
+                "created_at": owner.created_at.strftime("%Y-%m-%d %H:%M:%S") if hasattr(owner, "created_at") else None,
+            })
 
-
-        elif request.method == "POST":
-            data = request.POST
-            if OwnerDetails.objects.filter(user=current_user).exists():
-                return prepare_response(
-                    message=constants.OWNER_DETAILS_ALREADY_EXISTS,
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            with transaction.atomic():
-                owner_details = OwnerDetails.objects.create(
-                    user=current_user,
-                    full_name=data.get("full_name"),
-                    emirate_id=data.get("emirate_id"),
-                    uae_residence_visa=data.get("uae_residence_visa"),
-                    trade_license_number=data.get("trade_license_number"),
-                    owner_number=data.get("owner_number"),
-                    mobile_number=data.get("mobile_number"),
-                    manage_manually=data.get("manage_manually", False),
-                    manage_through_pmc=data.get("manage_through_pmc", False),
-                    emirates_id_file=data.get("emirates_id_file"),
-                    residence_visa_file=data.get("residence_visa_file"),
-                    dld_certificate_file=data.get("dld_certificate_file"),
-                    dewa_registration_file=data.get("dewa_registration_file"),
-                )
-                current_user.is_detail_updated = True
-                current_user.save()
-
-            return prepare_response(
-                content={
-                    "owner_details_id": owner_details.id,
-                    "is_detail_updated": current_user.is_detail_updated,
-                },
-                message=constants.OWNER_DETAILS_SAVED_SUCCESS,
-                status=status.HTTP_201_CREATED
-            )
-
-   
-        elif request.method == "PUT":
-            data = request.POST
-            owner = OwnerDetails.objects.filter(user=current_user).first()
-            if not owner:
-                return prepare_response(
-                    message=constants.OWNER_DETAILS_NOT_FOUND,
-                    status=status.HTTP_404_NOT_FOUND
-                )
-
-            for field in [
-                "full_name", "emirate_id", "uae_residence_visa",
-                "trade_license_number", "owner_number", "mobile_number",
-                "manage_manually", "manage_through_pmc"
-            ]:
-                if data.get(field) is not None:
-                    setattr(owner, field, data.get(field))
-
-            owner.save()
-
-            return prepare_response(
-                message=constants.OWNER_DETAILS_UPDATED_SUCCESS,
-                status=status.HTTP_200_OK
-            )
-
-     
-        elif request.method == "DELETE":
-            owner = OwnerDetails.objects.filter(user=current_user).first()
-            if not owner:
-                return prepare_response(
-                    message=constants.OWNER_DETAILS_NOT_FOUND,
-                    status=status.HTTP_404_NOT_FOUND
-                )
-
-            owner.delete()
-            current_user.is_detail_updated = False
-            current_user.save()
-
-            return prepare_response(
-                message=constants.OWNER_DETAILS_DELETED_SUCCESS,
-                status=status.HTTP_200_OK
-            )
-
-  
-        else:
-            return prepare_response(
-                message=constants.INVALID_REQUEST_METHOD,
-                status=status.HTTP_405_METHOD_NOT_ALLOWED
-            )
-
-    except IntegrityError:
         return prepare_response(
-            message=constants.DOCUMENTS_ALREADY_UPLOADED,
-            status=status.HTTP_400_BAD_REQUEST
+            content={"total": len(owners_data), "owners": owners_data},
+            message=constants.OWNER_LIST_FETCHED_SUCCESS,
+            status=status.HTTP_200_OK
         )
 
     except Exception as e:
         return prepare_response(
-            message=f"Failed to process request: {str(e)}",
+            message=f"Failed to fetch owner list: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
@@ -187,6 +246,7 @@ def choose_manage_option(request):
             message=f"An error occurred: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
 
 
 @is_request_authenticated
@@ -1306,3 +1366,15 @@ def property_manager_list(request):
             message=f"Error fetching property manager list: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+
+
+
+
+
+
+
+
+
+
