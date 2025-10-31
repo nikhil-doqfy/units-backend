@@ -123,7 +123,6 @@ class PropertyDetails(Base):
     is_occupied = models.BooleanField(default=False)
     tenancy_start_date = models.DateField(blank=True, null=True)
     tenancy_end_date = models.DateField(blank=True, null=True)
-    # rental_status = models.CharField(max_length=50, default="Available")
     rental_status = models.CharField(
         max_length=20,
         choices=RENTAL_STATUS_CHOICES,
@@ -131,9 +130,11 @@ class PropertyDetails(Base):
     )
     property_code = models.CharField(max_length=255, unique=True, blank=True, null=True)
     invited_email_id = models.EmailField(blank=True, null=True)
+    images = models.JSONField(default=list, blank=True, null=True)
 
     def __str__(self):
         return "{}".format(self.property_name)    
+
 
 
 

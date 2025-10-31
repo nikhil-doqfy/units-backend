@@ -1,4 +1,4 @@
-# views.py
+
 from django.shortcuts import get_object_or_404
 from django.db import IntegrityError, transaction
 from property_management.models import OwnerDetails ,PropertyDocuments,TenantDetails
@@ -291,9 +291,6 @@ def get_owner_documents(request):
             message=f"Failed to fetch documents: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-    
-
-
     
 
 @is_request_authenticated
@@ -636,80 +633,6 @@ def tenant_details_view(request):
 
 
 
-# ---------------------------------------------------------------------------------------------------------------------------------
-
-@is_request_authenticated
-def submit_property_manager_details(request):
-    if request.method != 'POST':
-        return prepare_response(
-            message=constants.INVALID_REQUEST_METHOD,
-            status=status.HTTP_405_METHOD_NOT_ALLOWED
-        )
-    try:
-        data = json.loads(request.body)
-    except Exception:
-        return prepare_response(
-            message=constants.INVALID_JSON_BODY,
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    current_user = request.user
-    # Ensure the user is a property manager
-    if current_user.user_type != constants.PROPERTY_MANAGER:
-        return prepare_response(
-            message=constants.ACCESS_DENIED_PROPERTY_MANAGER,
-            status=status.HTTP_403_FORBIDDEN
-        )
-    # Check if details already exist for this property manager
-    if PropertyManagerCompanyDetails.objects.filter(user=current_user).exists():
-        return prepare_response(
-            message=constants.PROPERTY_MANAGER_DETAILS_EXISTS,
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    try:
-        with transaction.atomic():
-            property_manager_details = PropertyManagerCompanyDetails.objects.create(
-                user=current_user,
-                company_code=data.get("company_code"),
-                company_name=data.get("company_name"),
-                company_id=data.get("company_id"),
-                company_address=data.get("company_address"),
-                city=data.get("city"),
-                locality=data.get("locality"),
-                postal_code=data.get("postal_code"),
-                address_line_1=data.get("address_line_1"),
-                address_line_2=data.get("address_line_2"),
-                company_emirate_id=data.get("company_emirate_id"),
-                trade_license_number=data.get("trade_license_number"),
-                license_issuer=data.get("license_issuer"),
-                rera_license=data.get("rera_license"),
-                phone_number=data.get("phone_number"),
-                email_address=data.get("email_address"),
-                pmc_documents={}  # will be filled when document upload API runs
-            )
-            
-            current_user.is_detail_updated = True
-            current_user.save()
-        return prepare_response(
-            message=constants.PROPERTY_MANAGER_DETAILS_SAVED,
-            content={
-                "property_manager_details": {
-                    "id": property_manager_details.id,
-                    "company_name": property_manager_details.company_name,
-                    "company_code": property_manager_details.company_code,
-                    "company_id": property_manager_details.company_id,
-                    "email_address": property_manager_details.email_address,
-                },
-                "is_detail_updated": current_user.is_detail_updated
-            },
-            status=status.HTTP_200_OK
-        )
-    except Exception as e:
-        return prepare_response(
-            message=f"Failed to save property manager details: {str(e)}",
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-
 
 @is_request_authenticated
 def upload_pmc_documents(request):
@@ -774,144 +697,6 @@ def upload_pmc_documents(request):
         content={"documents": pmc_docs_dict},
         status=status.HTTP_200_OK
     )
-
-
-@is_request_authenticated
-def edit_property_manager_details(request):
-    if request.method != "PUT":
-        return prepare_response(
-            message=constants.INVALID_REQUEST_METHOD,
-            status=status.HTTP_405_METHOD_NOT_ALLOWED
-        )
-    try:
-        data = json.loads(request.body)
-    except Exception:
-        return prepare_response(
-            message=constants.INVALID_JSON_BODY,
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    current_user = request.user
-    if current_user.user_type != constants.PROPERTY_MANAGER:
-        return prepare_response(
-            message=constants.ACCESS_DENIED_PROPERTY_MANAGER,
-            status=status.HTTP_403_FORBIDDEN
-        )
-    try:
-        pm_details = PropertyManagerCompanyDetails.objects.filter(user=current_user).first()
-        if not pm_details:
-            return prepare_response(
-                message=constants.PROPERTY_MANAGER_DETAILS_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
-        updatable_fields = [
-            "company_code", "company_name", "company_id", "company_address",
-            "city", "locality", "postal_code", "address_line_1", "address_line_2",
-            "company_emirate_id", "trade_license_number", "license_issuer",
-            "rera_license", "phone_number", "email_address"
-        ]
-        for field in updatable_fields:
-            if field in data:
-                setattr(pm_details, field, data.get(field))
-
-        with transaction.atomic():
-            pm_details.save()
-            current_user.is_detail_updated = True
-            current_user.save()
-
-        return prepare_response(
-            message=constants.PROPERTY_MANAGER_DETAILS_UPDATED,
-            content={
-                "property_manager_details": {
-                    "id": pm_details.id,
-                    "company_name": pm_details.company_name,
-                    "company_code": pm_details.company_code,
-                    "company_id": pm_details.company_id,
-                    "email_address": pm_details.email_address,
-                },
-                "is_detail_updated": current_user.is_detail_updated
-            },
-            status=status.HTTP_200_OK
-        )
-    except Exception as e:
-        return prepare_response(
-            message=f"Failed to update property manager details: {str(e)}",
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-
-
-@is_request_authenticated
-def get_property_manager_details(request):
-    if request.method != 'GET':
-        return prepare_response(
-            message=constants.INVALID_REQUEST_METHOD,
-            status=status.HTTP_405_METHOD_NOT_ALLOWED
-        )
-    current_user = request.user
-    if current_user.user_type != constants.PROPERTY_MANAGER:
-        return prepare_response(
-            message=constants.ACCESS_DENIED_PROPERTY_MANAGER,
-            status=status.HTTP_403_FORBIDDEN
-        )
-    try:
-        try:
-            manager = PropertyManagerCompanyDetails.objects.get(user=current_user)
-        except PropertyManagerCompanyDetails.DoesNotExist:
-            return prepare_response(
-                message=constants.PROPERTY_MANAGER_DETAILS_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        company_address = ", ".join(filter(None, [
-            manager.address_line_1,
-            manager.address_line_2,
-            manager.city,
-            manager.postal_code
-        ]))
-
-        pmc_documents = []
-        if isinstance(manager.pmc_documents, dict) and manager.pmc_documents:
-            for index, (doc_type, doc_url) in enumerate(manager.pmc_documents.items(), start=1):
-                pmc_documents.append({
-                    "id": index,
-                    "doc_name": doc_type.replace("_", " ").title(),
-                    "doc_number": doc_url })
-        properties_assigned = []
-        if hasattr(manager, 'properties_managed'):
-            for property_rec in manager.properties_managed.all():
-                properties_assigned.append({
-                    "code": property_rec.property_code or "-",
-                    "property_name": property_rec.property_name,
-                    "tenant_name": "Tenant Name" if property_rec.is_occupied else "Not Occupied",
-                    "agreement_status": "Ongoing" if property_rec.is_occupied else "Available",
-                    "dimensions": f"{property_rec.bedrooms} BHK",
-                    "documents": f"File.{property_rec.id}"
-                })
-        content = {
-            "company_code": manager.company_code,
-            "company_name": manager.company_name,
-            "email": manager.email_address,
-            "phone_number": manager.phone_number,
-            "company_id": manager.company_id,
-            "city": manager.city,
-            "locality": manager.locality,
-            "postal_code": manager.postal_code,
-            "address_line_1": manager.address_line_1,
-            "address_line_2": manager.address_line_2,
-            "company_address": company_address,
-            "pmc_documents": pmc_documents,
-            "properties_assigned": properties_assigned
-        }
-        return prepare_response(
-            message=constants.PROPERTY_MANAGER_DETAILS_FETCHED,
-            content=content,
-            status=status.HTTP_200_OK
-        )
-    except Exception as e:
-        return prepare_response(
-            message=f"An error occurred while fetching Property Manager details: {str(e)}",
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
 
 
 
@@ -996,22 +781,22 @@ def property_details_view(request):
 
         current_user = request.user
 
-        if current_user.user_type != constants.PROPERTY_MANAGER:
+        if current_user.user_type != constants.OWNER:
             return prepare_response(
-                message=constants.ACCESS_DENIED_PROPERTY_MANAGER,
+                message=constants.ACCESS_DENIED_OWNER_ONLY,
                 status=status.HTTP_403_FORBIDDEN
             )
-
-        required_fields = ["property_name", "property_code"]
-        for field in required_fields:
-            if not data.get(field):
-                return prepare_response(
-                    message=f"Missing required field: {field}",
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+        manager_id = data.get("property_manager_id")
+        if not manager_id:
+            return prepare_response(
+                message="Property Manager ID is required.",
+                status=status.HTTP_400_BAD_REQUEST
+                  )
+        
+      
 
         try:
-            manager_details = PropertyManagerCompanyDetails.objects.filter(user=current_user).first()
+            manager_details = PropertyManagerCompanyDetails.objects.get(id=manager_id)
             if not manager_details:
                 return prepare_response(
                     message=constants.PROPERTY_MANAGER_Details_NOT_FOUND,
@@ -1043,6 +828,7 @@ def property_details_view(request):
                     rental_status=data.get("rental_status", "Available"),
                     tenancy_start_date=data.get("tenancy_start_date"),
                     tenancy_end_date=data.get("tenancy_end_date"),
+                    owner=current_user
                 )
 
             return prepare_response(
@@ -1152,11 +938,6 @@ def property_details_view(request):
         )
 
 
-
-
-
-
-
 @is_request_authenticated
 def owner_tenants_list(request):
     if request.method != "GET":
@@ -1166,6 +947,7 @@ def owner_tenants_list(request):
         )
 
     user = request.user
+
     if user.user_type != constants.OWNER:
         return prepare_response(
             message=constants.ACCESS_DENIED_OWNER_ONLY, 
@@ -1232,4 +1014,295 @@ def owner_tenants_list(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
     
+   
 
+
+@is_request_authenticated
+def property_manager_details_view(request):
+ 
+    if request.method == "GET":
+        current_user = request.user
+        if current_user.user_type != constants.PROPERTY_MANAGER:
+            return prepare_response(
+                message=constants.ACCESS_DENIED_PROPERTY_MANAGER,
+                status=status.HTTP_403_FORBIDDEN
+            )
+        try:
+            manager = PropertyManagerCompanyDetails.objects.filter(user=current_user).first()
+            if not manager:
+                return prepare_response(
+                    message=constants.PROPERTY_MANAGER_DETAILS_NOT_FOUND,
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            company_address = ", ".join(filter(None, [
+                manager.address_line_1,
+                manager.address_line_2,
+                manager.city,
+                manager.postal_code
+            ]))
+
+            pmc_documents = []
+            if isinstance(manager.pmc_documents, dict) and manager.pmc_documents:
+                for index, (doc_type, doc_url) in enumerate(manager.pmc_documents.items(), start=1):
+                    pmc_documents.append({
+                        "id": index,
+                        "doc_name": doc_type.replace("_", " ").title(),
+                        "doc_number": doc_url
+                    })
+
+            properties_assigned = []
+            if hasattr(manager, 'properties_managed'):
+                for property_rec in manager.properties_managed.all():
+                    properties_assigned.append({
+                        "code": property_rec.property_code or "-",
+                        "property_name": property_rec.property_name,
+                        "tenant_name": "Tenant Name" if property_rec.is_occupied else "Not Occupied",
+                        "agreement_status": "Ongoing" if property_rec.is_occupied else "Available",
+                        "dimensions": f"{property_rec.bedrooms} BHK",
+                        "documents": f"File.{property_rec.id}"
+                    })
+
+            content = {
+                "company_code": manager.company_code,
+                "company_name": manager.company_name,
+                "email": manager.email_address,
+                "phone_number": manager.phone_number,
+                "company_id": manager.company_id,
+                "city": manager.city,
+                "locality": manager.locality,
+                "postal_code": manager.postal_code,
+                "address_line_1": manager.address_line_1,
+                "address_line_2": manager.address_line_2,
+                "company_address": company_address,
+                "pmc_documents": pmc_documents,
+                "properties_assigned": properties_assigned
+            }
+            return prepare_response(
+                message=constants.PROPERTY_MANAGER_DETAILS_FETCHED,
+                content=content,
+                status=status.HTTP_200_OK
+            )
+        except Exception as e:
+            return prepare_response(
+                message=f"An error occurred while fetching Property Manager details: {str(e)}",
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    elif request.method == "POST":
+        try:
+            data = json.loads(request.body)
+        except Exception:
+            return prepare_response(
+                message=constants.INVALID_JSON_BODY,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        current_user = request.user
+        if current_user.user_type != constants.PROPERTY_MANAGER:
+            return prepare_response(
+                message=constants.ACCESS_DENIED_PROPERTY_MANAGER,
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if PropertyManagerCompanyDetails.objects.filter(user=current_user).exists():
+            return prepare_response(
+                message=constants.PROPERTY_MANAGER_DETAILS_EXISTS,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            with transaction.atomic():
+                property_manager_details = PropertyManagerCompanyDetails.objects.create(
+                    user=current_user,
+                    company_code=data.get("company_code"),
+                    company_name=data.get("company_name"),
+                    company_id=data.get("company_id"),
+                    company_address=data.get("company_address"),
+                    city=data.get("city"),
+                    locality=data.get("locality"),
+                    postal_code=data.get("postal_code"),
+                    address_line_1=data.get("address_line_1"),
+                    address_line_2=data.get("address_line_2"),
+                    company_emirate_id=data.get("company_emirate_id"),
+                    trade_license_number=data.get("trade_license_number"),
+                    license_issuer=data.get("license_issuer"),
+                    rera_license=data.get("rera_license"),
+                    phone_number=data.get("phone_number"),
+                    email_address=data.get("email_address"),
+                    pmc_documents={}
+                )
+                current_user.is_detail_updated = True
+                current_user.save()
+
+            return prepare_response(
+                message=constants.PROPERTY_MANAGER_DETAILS_SAVED,
+                content={
+                    "property_manager_details": {
+                        "id": property_manager_details.id,
+                        "company_name": property_manager_details.company_name,
+                        "company_code": property_manager_details.company_code,
+                        "company_id": property_manager_details.company_id,
+                        "email_address": property_manager_details.email_address,
+                    },
+                    "is_detail_updated": current_user.is_detail_updated
+                },
+                status=status.HTTP_200_OK
+            )
+        except Exception as e:
+            return prepare_response(
+                message=f"Failed to save property manager details: {str(e)}",
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    elif request.method == "PUT":
+        try:
+            data = json.loads(request.body)
+        except Exception:
+            return prepare_response(
+                message=constants.INVALID_JSON_BODY,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        current_user = request.user
+        if current_user.user_type != constants.PROPERTY_MANAGER:
+            return prepare_response(
+                message=constants.ACCESS_DENIED_PROPERTY_MANAGER,
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        try:
+            pm_details = PropertyManagerCompanyDetails.objects.filter(user=current_user).first()
+            if not pm_details:
+                return prepare_response(
+                    message=constants.PROPERTY_MANAGER_DETAILS_NOT_FOUND,
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            updatable_fields = [
+                "company_code", "company_name", "company_id", "company_address",
+                "city", "locality", "postal_code", "address_line_1", "address_line_2",
+                "company_emirate_id", "trade_license_number", "license_issuer",
+                "rera_license", "phone_number", "email_address"
+            ]
+            for field in updatable_fields:
+                if field in data:
+                    setattr(pm_details, field, data.get(field))
+
+            with transaction.atomic():
+                pm_details.save()
+                current_user.is_detail_updated = True
+                current_user.save()
+
+            return prepare_response(
+                message=constants.PROPERTY_MANAGER_DETAILS_UPDATED,
+                content={
+                    "property_manager_details": {
+                        "id": pm_details.id,
+                        "company_name": pm_details.company_name,
+                        "company_code": pm_details.company_code,
+                        "company_id": pm_details.company_id,
+                        "email_address": pm_details.email_address,
+                    },
+                    "is_detail_updated": current_user.is_detail_updated
+                },
+                status=status.HTTP_200_OK
+            )
+        except Exception as e:
+            return prepare_response(
+                message=f"Failed to update property manager details: {str(e)}",
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    elif request.method == "DELETE":
+        try:
+            data = json.loads(request.body)
+            id = data.get("id")  #  id = request.GET.get("id")
+
+            if not id:
+                return prepare_response(
+                    message="Property Manager ID is required.",
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            pm_details = PropertyManagerCompanyDetails.objects.filter(id=id).first()
+            if not pm_details:
+                return prepare_response(
+                    message=constants.PROPERTY_MANAGER_DETAILS_NOT_FOUND,
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            pm_details.delete()
+            return prepare_response(
+                message=constants.PROPERTY_MANAGER_DETAILS_DELETED,
+                status=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            return prepare_response(
+                message=f"Error deleting property manager details: {str(e)}",
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+    else:
+        return prepare_response(
+            message=constants.INVALID_REQUEST_METHOD,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+
+
+
+# --------------------------------------Property_MAnager_LISt---------------------------------------------/
+
+@is_request_authenticated
+def property_manager_list(request):
+    try:
+        if request.method != "GET":
+            return prepare_response(
+                message=constants.INVALID_REQUEST_METHOD,
+                status=status.HTTP_405_METHOD_NOT_ALLOWED
+            )
+        page = int(request.GET.get("page", 1))
+        limit = int(request.GET.get("limit", 10))
+        search = request.GET.get("search", "").strip()
+        managers = PropertyManagerCompanyDetails.objects.all().order_by("id")
+        if search:
+            managers = managers.filter(
+                Q(company_code__icontains=search) |
+                Q(company_name__icontains=search) |
+                Q(company_id__icontains=search)
+            )
+        paginator = Paginator(managers, limit)
+        page_obj = paginator.get_page(page)
+        data = []
+        for manager in page_obj:
+            data.append({
+                "id": manager.id,
+                "company_code": manager.company_code,
+                "company_name": manager.company_name,
+                "company_id": manager.company_id,
+                "email": manager.email_address,
+                "phone_number": manager.phone_number,
+                "city": manager.city,
+                "locality": manager.locality,
+                "postal_code": manager.postal_code,
+            })
+
+        response_content = {
+            "page": page,
+            "total_pages": paginator.num_pages,
+            "total_property_managers": paginator.count,
+            "data": data
+        }
+        return prepare_response(
+            message=constants.PROPERTY_MANAGER_LIST_FETCHED,
+            content=response_content,
+            status=status.HTTP_200_OK
+        )
+
+    except Exception as e:
+        return prepare_response(
+            message=f"Error fetching property manager list: {str(e)}",
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
