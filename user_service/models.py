@@ -80,8 +80,8 @@ class StaffDetails(models.Model):
 
 class PropertyDetails(Base):
     RENTAL_STATUS_CHOICES = [
-        ("AVAILABLE", "Available"),
-        ("NOT_AVAILABLE", "Not Available"),
+        (constants.AVAILABLE, "Available"),
+        (constants.NOT_AVAILABLE, "Not Available"),
     ]
     property_name = models.CharField(max_length=255)
     land_dm_no = models.CharField(max_length=255, blank=True, null=True)

@@ -115,6 +115,18 @@ OWNER = "OWNER"
 PROPERTY_MANAGER = "PROPERTY_MANAGER"
 TENANT = "TENANT"
 STAFF = "STAFF"
+AVAILABLE="AVAILABLE"
+NOT_AVAILABLE="NOT_AVAILABLE"
+
+
+LEASE_STATUS_CHOICES = [
+    ("DRAFT", "Draft"),
+    ("ACTIVE", "Active"),
+    ("INACTIVE", "In Active"),
+    ("EXPIRED", "Expired"),
+]
+
+
 DEFAULT_PERMISSIONS = {
     "Property Management": {
         "View Property": False,
@@ -140,6 +152,9 @@ DEFAULT_PERMISSIONS = {
         "Edit Role": False,
     },
 }
+
+
+
 
 JWT_TOKEN_EXPIRY_MINUTES = 60
 OTP_EXPIRY_MINUTES = 5 

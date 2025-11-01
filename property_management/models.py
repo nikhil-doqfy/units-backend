@@ -1,5 +1,6 @@
 from django.db import models
 from django.utils import timezone
+from utilities import constants
 
 class Base(models.Model):
     created = models.DateTimeField(auto_now_add=True)
@@ -95,13 +96,6 @@ class TenantDetails(Base):
     
 
 
-
-LEASE_STATUS_CHOICES = [
-    ("DRAFT", "Draft"),
-    ("ACTIVE", "Active"),
-    ("INACTIVE", "In Active"),
-    ("EXPIRED", "Expired"),
-]
 class LeasePropertyDetails(models.Model):
     lease_property = models.ForeignKey(
         "user_service.PropertyDetails",  
@@ -120,7 +114,7 @@ class LeasePropertyDetails(models.Model):
     lease_remarks = models.TextField(null=True, blank=True)
     lease_status = models.CharField(
         max_length=20,
-        choices=LEASE_STATUS_CHOICES,
+        choices=constants.LEASE_STATUS_CHOICES,
         default="DRAFT"
         )
 
