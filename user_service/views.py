@@ -78,6 +78,7 @@ def send_otp(request):
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
 
+
 @is_request_authenticated
 def staff_signup(request):
     if request.method != 'POST':
@@ -171,3 +172,6 @@ def staff_signup(request):
         message=constants.STAFF_USER_CREATED_SUCCESS,
         status=status.HTTP_201_CREATED
     )
+
+
+

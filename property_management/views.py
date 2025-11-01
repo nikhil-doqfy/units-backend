@@ -2,7 +2,7 @@
 from django.shortcuts import get_object_or_404
 from django.db import IntegrityError, transaction
 from property_management.models import OwnerDetails ,PropertyDocuments,TenantDetails , LeasePropertyDetails ,LeaseCommercials,LeaseEjariUpload,LeaseDocumentLayout
-from user_service.models import PropertyManagerCompanyDetails ,PropertyDetails 
+from user_service.models import PropertyManagerCompanyDetails ,PropertyDetails ,UserProfile
 from utilities.decorator import is_request_authenticated
 import json
 from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger
@@ -15,9 +15,7 @@ from django.db.models import Q
 
 @is_request_authenticated
 def owner_details_view(request):
-    """
-    CRUD API for OwnerDetails
-    """
+
 
     try:
         current_user = request.user
@@ -155,49 +153,197 @@ def owner_details_view(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
+
+
+
+
+
 @is_request_authenticated
-def list_all_owners(request):
+def owner_details_list_view(request):
     try:
-        if request.method != "GET":
+        current_user = request.user
+
+        
+        if current_user.user_type not in [constants.PROPERTY_MANAGER, constants.STAFF]:
             return prepare_response(
-                message=constants.INVALID_REQUEST_METHOD,
+                message="Access denied. Only Property Manager or Staff can manage owners.",
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+ 
+        if request.method == "GET":
+            search = request.GET.get("search")
+            owners_qs = OwnerDetails.objects.all().select_related("user")
+
+            if search:
+                owners_qs = owners_qs.filter(
+                    Q(full_name__icontains=search)
+                    | Q(mobile_number__icontains=search)
+                    | Q(owner_number__icontains=search)
+                )
+
+            owners_data = []
+            for owner in owners_qs:
+                properties = PropertyDetails.objects.filter(owner=owner.user).values(
+                    "id",
+                    "property_name",
+                    "address",
+                    "rental_status",
+                    "property_code"
+                )
+
+                owners_data.append({
+                    "id": owner.id,
+                    "user_id": owner.user.id if owner.user else None,
+                    "full_name": owner.full_name,
+                    "emirate_id": owner.emirate_id,
+                    "uae_residence_visa": owner.uae_residence_visa,
+                    "trade_license_number": owner.trade_license_number,
+                    "owner_number": owner.owner_number,
+                    "mobile_number": owner.mobile_number,
+                    "manage_manually": owner.manage_manually,
+                    "manage_through_pmc": owner.manage_through_pmc,
+                    "created_at": owner.created_at.strftime("%Y-%m-%d %H:%M:%S") if hasattr(owner, "created_at") else None,
+                    "properties": list(properties),
+                })
+
+            return prepare_response(
+                content={"total": len(owners_data), "owners": owners_data},
+                message="Owners fetched successfully",
+                status=status.HTTP_200_OK
+            )
+
+
+        elif request.method == "POST":
+            try:
+                data = json.loads(request.body)
+            except:
+                return prepare_response(
+                    message="Invalid JSON body",
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            user_id = data.get("user_id")
+            full_name = data.get("full_name")
+
+            if not user_id or not full_name:
+                return prepare_response(
+                    message="user_id and full_name are required",
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            user = UserProfile.objects.filter(id=user_id).first()
+            if not user:
+                return prepare_response(
+                    message="User not found",
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            owner = OwnerDetails.objects.create(
+                user=user,
+                full_name=full_name,
+                emirate_id=data.get("emirate_id"),
+                uae_residence_visa=data.get("uae_residence_visa"),
+                trade_license_number=data.get("trade_license_number"),
+                owner_number=data.get("owner_number"),
+                mobile_number=data.get("mobile_number"),
+                manage_manually=data.get("manage_manually", False),
+                manage_through_pmc=data.get("manage_through_pmc", False),
+            )
+
+            return prepare_response(
+                content={"id": owner.id},
+                message="Owner created successfully",
+                status=status.HTTP_201_CREATED
+            )
+
+
+        elif request.method == "PUT":
+            try:
+                data = json.loads(request.body)
+            except:
+                return prepare_response(
+                    message="Invalid JSON body",
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            owner_id = data.get("id")
+            if not owner_id:
+                return prepare_response(
+                    message="Owner ID is required for update",
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            owner = OwnerDetails.objects.filter(id=owner_id).first()
+            if not owner:
+                return prepare_response(
+                    message="Owner not found",
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            owner.full_name = data.get("full_name", owner.full_name)
+            owner.emirate_id = data.get("emirate_id", owner.emirate_id)
+            owner.uae_residence_visa = data.get("uae_residence_visa", owner.uae_residence_visa)
+            owner.trade_license_number = data.get("trade_license_number", owner.trade_license_number)
+            owner.owner_number = data.get("owner_number", owner.owner_number)
+            owner.mobile_number = data.get("mobile_number", owner.mobile_number)
+            owner.manage_manually = data.get("manage_manually", owner.manage_manually)
+            owner.manage_through_pmc = data.get("manage_through_pmc", owner.manage_through_pmc)
+            owner.save()
+
+            return prepare_response(
+                message="Owner updated successfully",
+                status=status.HTTP_200_OK
+            )
+
+
+        elif request.method == "DELETE":
+            try:
+                data = json.loads(request.body)
+            except:
+                return prepare_response(
+                    message="Invalid JSON body",
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            owner_id = data.get("id")
+            if not owner_id:
+                return prepare_response(
+                    message="Owner ID is required for delete",
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            owner = OwnerDetails.objects.filter(id=owner_id).first()
+            if not owner:
+                return prepare_response(
+                    message="Owner not found",
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+      
+            PropertyDetails.objects.filter(owner=owner.user).delete()
+            owner.delete()
+
+            return prepare_response(
+                message="Owner and related properties deleted successfully",
+                status=status.HTTP_200_OK
+            )
+
+
+        else:
+            return prepare_response(
+                message="Invalid request method",
                 status=status.HTTP_405_METHOD_NOT_ALLOWED
             )
-        search = request.GET.get("search")  
-        owners_qs = OwnerDetails.objects.all().select_related("user")
-        if search:
-            owners_qs = owners_qs.filter(
-                Q(full_name__icontains=search)
-                | Q(mobile_number__icontains=search)
-                | Q(owner_number__icontains=search)
-            )
-        owners_data = []
-        for owner in owners_qs:
-            owners_data.append({
-                "id": owner.id,
-                "user_id": owner.user.id if owner.user else None,
-                "full_name": owner.full_name,
-                "emirate_id": owner.emirate_id,
-                "uae_residence_visa": owner.uae_residence_visa,
-                "trade_license_number": owner.trade_license_number,
-                "owner_number": owner.owner_number,
-                "mobile_number": owner.mobile_number,
-                "manage_manually": owner.manage_manually,
-                "manage_through_pmc": owner.manage_through_pmc,
-                "created_at": owner.created_at.strftime("%Y-%m-%d %H:%M:%S") if hasattr(owner, "created_at") else None,
-            })
-
-        return prepare_response(
-            content={"total": len(owners_data), "owners": owners_data},
-            message=constants.OWNER_LIST_FETCHED_SUCCESS,
-            status=status.HTTP_200_OK
-        )
 
     except Exception as e:
         return prepare_response(
-            message=f"Failed to fetch owner list: {str(e)}",
+            message=f"Error: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+
 
 
 
@@ -423,6 +569,7 @@ def upload_tenant_documents(request):
         )
     
 
+
 @is_request_authenticated
 def update_tenant_documents(request):
     if request.method != "PUT":
@@ -497,11 +644,11 @@ def tenant_details_view(request):
     user = request.user  
 
 
-    if user.user_type != constants.TENANT:
-        return prepare_response(
-            message=constants.ACCESS_DENIED_TENANTS_ONLY,
-            status=status.HTTP_403_FORBIDDEN
-        )
+    # if user.user_type != constants.TENANT:
+    #     return prepare_response(
+    #         message=constants.ACCESS_DENIED_TENANTS_ONLY,
+    #         status=status.HTTP_403_FORBIDDEN
+    #     )
     if request.method == "GET":
         try:
             tenant = TenantDetails.objects.select_related("property").get(user=user)
@@ -1074,7 +1221,105 @@ def owner_tenants_list(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
     
-   
+
+
+
+@is_request_authenticated
+def tenant_list_view(request):
+    current_user = request.user
+
+
+    if request.method == "GET":
+        try:
+
+            tenants = TenantDetails.objects.all().select_related("property", "lease_property_details")
+
+            tenant_list = []
+            for tenant in tenants:
+                tenant_list.append({
+                    "id": tenant.id,
+                    "full_name": tenant.full_name,
+                    "tenant_number": tenant.tenant_number,
+                    "mobile_number": tenant.mobile_number,
+                    "property_assigned": tenant.property.property_name if tenant.property else None,
+                    # "rental_agreement": (
+                    #     tenant.lease_property_details.lease_file
+                    #     if tenant.lease_property_details else None
+                    # ),
+                })
+
+            return prepare_response(
+                content=tenant_list,
+                message="All tenants fetched successfully",
+                status=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            print("GET Error:", e)
+            return prepare_response(
+                message="Failed to fetch tenants",
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+
+    elif request.method == "DELETE":
+        try:
+            tenant_id = request.GET.get("tenant_id")
+            if not tenant_id:
+                return prepare_response(
+                    message="tenant_id is required for deletion",
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            tenant = TenantDetails.objects.filter(id=tenant_id).first()
+            if not tenant:
+                return prepare_response(
+                    message="Tenant not found",
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            if current_user.user_type not in ["OWNER", "PROPERTY_MANAGER"]:
+                return prepare_response(
+                    message="Permission denied. You cannot delete this tenant.",
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+            tenant.delete()
+
+            return prepare_response(
+                message="Tenant deleted successfully",
+                status=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            print("DELETE Error:", e)
+            return prepare_response(
+                message="Error deleting tenant",
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+ 
+    else:
+        return prepare_response(
+            message="Invalid request method",
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 @is_request_authenticated

@@ -34,6 +34,7 @@ class OwnerDetails(Base):
         return self.full_name
     
 
+
 class PropertyDocuments(Base):
     document_id = models.AutoField(primary_key=True)
     property_documents = models.JSONField(default=dict) 

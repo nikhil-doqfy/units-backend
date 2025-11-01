@@ -154,3 +154,7 @@ class UserVerification(Base):
     verified_time = models.DateTimeField(null=True, blank=True)
     is_verified = models.BooleanField(default=False)
     
+
+
+
+

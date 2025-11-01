@@ -10,7 +10,7 @@ urlpatterns = [
     path('user/', include(user_service_urls)),
     path('auth/', include(auth_service_urls)), 
     path('owner/details/', views.owner_details_view, name='owner_details_view'),
-    path('owners/list', views.list_all_owners, name='list_all_owners'),
+    # path('owners/list', views.list_all_owners, name='list_all_owners'),
     path('choose/manage/option/', views.choose_manage_option, name='choose_manage_option'),
     path('upload/owner/documents/', views.upload_owner_documents, name='upload_owner_documents'),
     path("get/owner/documents/", views.get_owner_documents, name="get_owner_documents"),     
@@ -21,7 +21,11 @@ urlpatterns = [
     path('tenant/details/', views.tenant_details_view, name='tenant_details_view'),
     path('owner/tenants/', views.owner_tenants_list, name='owner_tenants_list'),
     path('property/manager/details/', views.property_manager_details_view, name='property_manager_details_view'),
-    path('property/manager/list/', views.property_manager_list, name='property_manager_list'),
+    path('property/manager/list/', views.property_manager_list, name='property_manager_list'), 
+    path('owner/details/list/view/', views.owner_details_list_view, name='owner_details_list_view') ,
+    path('tenant/list/view', views.tenant_list_view, name='tenant_list_view')
+    
+
 ]
 urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
