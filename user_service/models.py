@@ -79,6 +79,10 @@ class StaffDetails(models.Model):
     
 
 class PropertyDetails(Base):
+    RENTAL_STATUS_CHOICES = [
+        (constants.AVAILABLE, "Available"),
+        (constants.NOT_AVAILABLE, "Not Available"),
+    ]
     property_name = models.CharField(max_length=255)
     land_dm_no = models.CharField(max_length=255, blank=True, null=True)
     address = models.TextField(blank=True, null=True)
@@ -119,12 +123,18 @@ class PropertyDetails(Base):
     is_occupied = models.BooleanField(default=False)
     tenancy_start_date = models.DateField(blank=True, null=True)
     tenancy_end_date = models.DateField(blank=True, null=True)
-    rental_status = models.CharField(max_length=50, default="Available")
+    rental_status = models.CharField(
+        max_length=20,
+        choices=RENTAL_STATUS_CHOICES,
+        default="AVAILABLE"
+    )
     property_code = models.CharField(max_length=255, unique=True, blank=True, null=True)
     invited_email_id = models.EmailField(blank=True, null=True)
+    images = models.JSONField(default=list, blank=True, null=True)
 
     def __str__(self):
         return "{}".format(self.property_name)    
+
 
 
 
@@ -144,3 +154,7 @@ class UserVerification(Base):
     verified_time = models.DateTimeField(null=True, blank=True)
     is_verified = models.BooleanField(default=False)
     
+
+
+
+

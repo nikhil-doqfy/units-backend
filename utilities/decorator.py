@@ -52,3 +52,6 @@ def is_request_authenticated(view_func):
             )
         return view_func(request, *args, **kwargs)
     return wrapper
+
+
+

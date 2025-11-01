@@ -7,9 +7,8 @@ from user_service.models import (
     PropertyDetails,UserVerification,
 )
 
-from property_management.models import OwnerDetails, PropertyDocuments ,TenantDetails
-
-
+from property_management.models import OwnerDetails, PropertyDocuments ,TenantDetails,LeasePropertyDetails,LeaseCommercials ,LeaseEjariUpload
+ 
 class UserProfileAdmin(admin.ModelAdmin):
     list_display = ["id", "email", "user_type"]
 
@@ -37,10 +36,6 @@ admin.site.register(StaffDetails, StaffDetailsAdmin)
 admin.site.register(PropertyDetails, PropertyDetailsAdmin)
 admin.site.register(UserVerification, UserVerificationAdmin)
 
-
- 
-
-
 class OwnerDetailsAdmin(admin.ModelAdmin):
     list_display = [
         "id", "full_name", "emirate_id", "uae_residence_visa", "trade_license_number",
@@ -63,8 +58,33 @@ class TenantDetailsAdmin(admin.ModelAdmin):
     )
 
 
+class LeasePropertyDetailsAdmin(admin.ModelAdmin):
+    list_display = ["id", "lease_property", "lease_tenant","lease_status","lease_start_date","lease_end_date"]
+
+
+class LeaseCommercialsAdmin(admin.ModelAdmin):
+    list_display = ["id", "lease", "annual_amount","booking_amount"]
+
+class LeaseEjariUploadAdmin(admin.ModelAdmin):
+    list_display = ["id", "lease", "tenant_doc","ejari_certificates","pmc_docs","cheque"]
+
+
+
+
+
+
+
 
 
 admin.site.register(OwnerDetails, OwnerDetailsAdmin)  
 admin.site.register(PropertyDocuments, PropertyDocumentsAdmin)
 admin.site.register(TenantDetails, TenantDetailsAdmin)  
+
+admin.site.register(LeasePropertyDetails, LeasePropertyDetailsAdmin)  
+admin.site.register(LeaseCommercials, LeaseCommercialsAdmin) 
+admin.site.register(LeaseEjariUpload, LeaseEjariUploadAdmin)  
+
+
+
+
+  

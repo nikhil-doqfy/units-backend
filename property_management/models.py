@@ -1,4 +1,6 @@
 from django.db import models
+from django.utils import timezone
+from utilities import constants
 
 class Base(models.Model):
     created = models.DateTimeField(auto_now_add=True)
@@ -7,6 +9,7 @@ class Base(models.Model):
 
     class Meta:
         abstract = True
+
 
 
 class OwnerDetails(Base): 
@@ -31,6 +34,7 @@ class OwnerDetails(Base):
     def __str__(self):
         return self.full_name
     
+
 
 class PropertyDocuments(Base):
     document_id = models.AutoField(primary_key=True)
@@ -60,18 +64,13 @@ class TenantDetails(Base):
         blank=True,
         related_name="tenant_details",
     )
-# ------------------------------Not craeted yet ----------------------------
-
-    # Link to LeasePropertyDetails (string ref for safety)
-    # lease_property_details = models.ForeignKey(
-    #     "property_management.LeasePropertyDetails",
-    #     on_delete=models.SET_NULL,
-    #     null=True,
-    #     blank=True,
-    #     related_name="tenant_lease_details",
-    # )
-
-    # Tenant Basic Information
+    lease_property_details = models.ForeignKey(
+        "LeasePropertyDetails",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="tenant_lease_details",
+    )
     full_name = models.CharField(max_length=255)
     emirate_id = models.CharField(max_length=255)
     mobile_number = models.CharField(max_length=20)
@@ -94,6 +93,112 @@ class TenantDetails(Base):
 
     def __str__(self):
         return f"{self.full_name}"
+    
+
+
+class LeasePropertyDetails(models.Model):
+    lease_property = models.ForeignKey(
+        "user_service.PropertyDetails",  
+        on_delete=models.CASCADE,
+        related_name="lease_properties"
+    )
+    lease_tenant = models.ForeignKey(
+        "TenantDetails",  
+        on_delete=models.CASCADE,
+        related_name="tenant_leases"
+    )
+    lease_start_date = models.DateTimeField()
+    lease_end_date = models.DateTimeField()
+    lease_grace_start_date = models.DateTimeField(null=True, blank=True)
+    lease_grace_end_date = models.DateTimeField(null=True, blank=True)
+    lease_remarks = models.TextField(null=True, blank=True)
+    lease_status = models.CharField(
+        max_length=20,
+        choices=constants.LEASE_STATUS_CHOICES,
+        default="DRAFT"
+        )
+
+    def __str__(self):
+        return f"Lease ID: {self.id} | Property: {self.lease_property_id} | Tenant: {self.lease_tenant_id}"
+    
+
+
+class LeaseCommercials(models.Model):
+    lease = models.ForeignKey(
+        "LeasePropertyDetails",
+        on_delete=models.CASCADE,
+        related_name="lease_commercials"
+    )
+    annual_amount = models.FloatField()
+    actual_annual_amount = models.FloatField(null=True, blank=True)
+    booking_amount = models.FloatField(null=True, blank=True)
+    rent = models.FloatField()
+    security_deposit = models.FloatField(null=True, blank=True)
+    maintenance_charges = models.FloatField(null=True, blank=True)
+    commission_percentage = models.FloatField(null=True, blank=True)
+    notice_period = models.IntegerField(null=True, blank=True)
+    discount = models.FloatField(null=True, blank=True)
+
+    def __str__(self):
+        return f"LeaseCommercials for Lease ID: {self.lease_id}"
+
+
+
+class LeaseDocumentLayout(models.Model):
+    lease = models.ForeignKey(
+        "LeasePropertyDetails",
+        on_delete=models.CASCADE,
+        related_name="document_layout"
+    )
+
+    layout_type = models.CharField(max_length=50, choices=constants.LAYOUT_CHOICES)
+    uploaded_template = models.FileField(
+        upload_to="lease_documents/templates/",
+        null=True, blank=True
+    )
+    selected_template_name = models.CharField(max_length=200, null=True, blank=True)
+    ai_generated_doc = models.FileField(
+        upload_to="lease_documents/generated/",
+        null=True, blank=True
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Document Layout for Lease ID {self.lease_id}"
+
+
+
+
+
+class LeaseEjariUpload(models.Model):
+    lease = models.ForeignKey(
+        "LeasePropertyDetails",
+        on_delete=models.CASCADE,
+        related_name="ejari_uploads"
+    )
+
+  
+    property_floor_plan = models.TextField(null=True, blank=True)   
+    tenant_doc = models.TextField(null=True, blank=True)            
+    ejari_certificates = models.TextField(null=True, blank=True)   
+    pmc_docs = models.TextField(null=True, blank=True)             
+    cheque = models.TextField(null=True, blank=True)                
+
+ 
+    uploaded_by = models.ForeignKey(
+        "user_service.UserProfile",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True
+    )
+    uploaded_at = models.DateTimeField(default=timezone.now)
+
+  
+    is_finalized = models.BooleanField(default=False)
+    finalized_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"Ejari Upload for Lease ID {self.lease.id}"
     
 
 

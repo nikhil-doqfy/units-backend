@@ -100,10 +100,38 @@ ACCESS_DENIED_PROPERTY_MANAGER_UPLOAD = "Access denied. Only property managers c
 PROPERTY_MANAGER_DETAILS_UPDATED = "Property Manager details updated successfully."
 PROPERTY_MANAGER_DETAILS_FETCHED = "Property Manager details fetched successfully."
 
+PROPERTY_LIST_FETCHED = "Property details list fetched successfully."
+PROPERTY_NOT_FOUND = "Property details not found."
+PROPERTY_DELETED = "Property detail deleted successfully."
+PROPERTY_UPDATE_SUCCESS = "Property details updated successfully."
+PROPERTY_ADDED = "Property added successfully."
+TENANT_LIST_FETCHED_SUCCES="Tenant list fetched successfully"
+PROPERTY_ID_REQUIRED="Property ID is required in query params (e.g. ?id=5)"
+DATA_NOT_FOUND='data not found'
+PROPERTY_MANAGER_LIST_FETCHED="property manager list fetch successfully"
+OWNER_LIST_FETCHED_SUCCESS="owner list fetch successfully"
+
 OWNER = "OWNER"
 PROPERTY_MANAGER = "PROPERTY_MANAGER"
 TENANT = "TENANT"
 STAFF = "STAFF"
+AVAILABLE="AVAILABLE"
+NOT_AVAILABLE="NOT_AVAILABLE"
+
+
+LEASE_STATUS_CHOICES = [
+    ("DRAFT", "Draft"),
+    ("ACTIVE", "Active"),
+    ("INACTIVE", "In Active"),
+    ("EXPIRED", "Expired"),
+]
+
+LAYOUT_CHOICES = [
+        ("AI_GENERATED", "Create Layout by AI"),
+        ("TEMPLATE_SELECTED", "Select Template"),
+        ("TEMPLATE_UPLOADED", "Upload Template"),
+    ]
+
 DEFAULT_PERMISSIONS = {
     "Property Management": {
         "View Property": False,
@@ -129,6 +157,9 @@ DEFAULT_PERMISSIONS = {
         "Edit Role": False,
     },
 }
+
+
+
 
 JWT_TOKEN_EXPIRY_MINUTES = 60
 OTP_EXPIRY_MINUTES = 5 
