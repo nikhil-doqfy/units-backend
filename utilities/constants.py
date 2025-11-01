@@ -126,6 +126,11 @@ LEASE_STATUS_CHOICES = [
     ("EXPIRED", "Expired"),
 ]
 
+LAYOUT_CHOICES = [
+        ("AI_GENERATED", "Create Layout by AI"),
+        ("TEMPLATE_SELECTED", "Select Template"),
+        ("TEMPLATE_UPLOADED", "Upload Template"),
+    ]
 
 DEFAULT_PERMISSIONS = {
     "Property Management": {

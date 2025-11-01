@@ -150,12 +150,8 @@ class LeaseDocumentLayout(models.Model):
         on_delete=models.CASCADE,
         related_name="document_layout"
     )
-    LAYOUT_CHOICES = [
-        ("AI_GENERATED", "Create Layout by AI"),
-        ("TEMPLATE_SELECTED", "Select Template"),
-        ("TEMPLATE_UPLOADED", "Upload Template"),
-    ]
-    layout_type = models.CharField(max_length=50, choices=LAYOUT_CHOICES)
+
+    layout_type = models.CharField(max_length=50, choices=constants.LAYOUT_CHOICES)
     uploaded_template = models.FileField(
         upload_to="lease_documents/templates/",
         null=True, blank=True
