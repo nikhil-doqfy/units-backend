@@ -160,6 +160,11 @@ DEFAULT_PERMISSIONS = {
 
 
 
+ACCESS_LEVEL_CHOICES = [
+    ("NO_ACCESS", "No Access"),
+    ("VIEW_ONLY", "View Only"),
+    ("FULL_ACCESS", "Full Access"),
+]
 
 JWT_TOKEN_EXPIRY_MINUTES = 60
 OTP_EXPIRY_MINUTES = 5 
