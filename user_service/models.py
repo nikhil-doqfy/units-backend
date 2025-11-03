@@ -162,38 +162,38 @@ class UserVerification(Base):
 
 # -------------------------------------------------------------------------------------------------------------------------
 
-class StaffRole(models.Model):
-    name = models.CharField(max_length=255)
-    property_manager = models.ForeignKey(
-        "PropertyManagerCompanyDetails",
-        on_delete=models.CASCADE,
-        related_name="staff_roles"
-    )
-    property_management = models.CharField(
-        max_length=20,
-        choices=constants.ACCESS_LEVEL_CHOICES,
-        default="NO_ACCESS"
-    )
-    tenant_management = models.CharField(
-        max_length=20,
-        choices=constants.ACCESS_LEVEL_CHOICES,
-        default="NO_ACCESS"
-    )
-    owner_management = models.CharField(
-        max_length=20,
-        choices=constants.ACCESS_LEVEL_CHOICES,
-        default="NO_ACCESS"
-    )
-    staff_management = models.CharField(
-        max_length=20,
-        choices=constants.ACCESS_LEVEL_CHOICES,
-        default="NO_ACCESS"
-    )
-    role_manager = models.CharField(
-        max_length=20,
-        choices=constants.ACCESS_LEVEL_CHOICES,
-        default="NO_ACCESS"
-    )
+# class StaffRole(models.Model):
+#     name = models.CharField(max_length=255)
+#     property_manager = models.ForeignKey(
+#         "PropertyManagerCompanyDetails",
+#         on_delete=models.CASCADE,
+#         related_name="staff_roles"
+#     )
+#     property_management = models.CharField(
+#         max_length=20,
+#         choices=constants.ACCESS_LEVEL_CHOICES,
+#         default="NO_ACCESS"
+#     )
+#     tenant_management = models.CharField(
+#         max_length=20,
+#         choices=constants.ACCESS_LEVEL_CHOICES,
+#         default="NO_ACCESS"
+#     )
+#     owner_management = models.CharField(
+#         max_length=20,
+#         choices=constants.ACCESS_LEVEL_CHOICES,
+#         default="NO_ACCESS"
+#     )
+#     staff_management = models.CharField(
+#         max_length=20,
+#         choices=constants.ACCESS_LEVEL_CHOICES,
+#         default="NO_ACCESS"
+#     )
+#     role_manager = models.CharField(
+#         max_length=20,
+#         choices=constants.ACCESS_LEVEL_CHOICES,
+#         default="NO_ACCESS"
+#     )
 
-    def __str__(self):
-        return self.name
+#     def __str__(self):
+#         return self.name

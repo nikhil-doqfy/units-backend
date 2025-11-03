@@ -1,6 +1,7 @@
 from django.db import models
 from django.utils import timezone
 from utilities import constants
+from django.core.validators import EmailValidator
 
 class Base(models.Model):
     created = models.DateTimeField(auto_now_add=True)
@@ -201,6 +202,74 @@ class LeaseEjariUpload(models.Model):
         return f"Ejari Upload for Lease ID {self.lease.id}"
     
 
+
+class AgreementFormVariables(Base):
+    reference_no_date = models.CharField(max_length=255, null=True, blank=True)
+
+    
+    asset_management = models.ForeignKey(
+        "user_service.PropertyManagerCompanyDetails", 
+        on_delete=models.SET_NULL, 
+        null=True, blank=True, 
+        related_name="agreements"
+    )
+    lessor = models.ForeignKey(
+        "OwnerDetails", 
+        on_delete=models.SET_NULL, 
+        null=True, blank=True, 
+        related_name="agreements_as_lessor"
+    )
+    lessee = models.ForeignKey(
+        "TenantDetails", 
+        on_delete=models.SET_NULL, 
+        null=True, blank=True, 
+        related_name="agreements_as_lessee"
+    )
+    property = models.ForeignKey(
+        "user_service.PropertyDetails",   
+        on_delete=models.SET_NULL, 
+        null=True, blank=True, 
+        related_name="agreements"
+    )
+
+  
+    owner_address = models.TextField(null=True, blank=True)
+    owner_email = models.EmailField(validators=[EmailValidator()], null=True, blank=True)
+    owner_tel_no = models.CharField(max_length=50, null=True, blank=True)
+
+    main_occupant = models.CharField(max_length=255, null=True, blank=True)
+    main_occupant_email = models.EmailField(validators=[EmailValidator()], null=True, blank=True)
+    main_occupant_mobile = models.CharField(max_length=50, null=True, blank=True)
+    main_occupant_passport_no_expiry = models.CharField(max_length=255, null=True, blank=True)
+    main_occupant_resident_visa_no = models.CharField(max_length=255, null=True, blank=True)
+    main_occupant_emirates_id_no = models.CharField(max_length=255, null=True, blank=True)
+    main_occupant_visa_expiry = models.CharField(max_length=255, null=True, blank=True)
+
+    floor_unit = models.CharField(max_length=255, null=True, blank=True)
+    unit_type = models.CharField(max_length=255, null=True, blank=True)
+    lease_period = models.CharField(max_length=255, null=True, blank=True)
+    commencement_date = models.CharField(max_length=255, null=True, blank=True)
+    expiry_date = models.CharField(max_length=255, null=True, blank=True)
+    rent_lease_period = models.CharField(max_length=255, null=True, blank=True)
+    annualized_rent = models.CharField(max_length=255, null=True, blank=True)
+
+    additional_facilities1 = models.CharField(max_length=255, null=True, blank=True)
+    additional_amount1 = models.CharField(max_length=255, null=True, blank=True)
+    additional_details1 = models.TextField(null=True, blank=True)
+
+    additional_facilities2 = models.CharField(max_length=255, null=True, blank=True)
+    additional_amount2 = models.CharField(max_length=255, null=True, blank=True)
+    additional_details2 = models.TextField(null=True, blank=True)
+
+    security_deposit = models.CharField(max_length=255, null=True, blank=True)
+    pet_deposit = models.CharField(max_length=255, null=True, blank=True)
+    contract_type = models.CharField(max_length=255, null=True, blank=True)
+    remark = models.TextField(null=True, blank=True)
+
+
+
+    def __str__(self):
+        return f"Agreement - {self.reference_no_date or 'N/A'}"
 
 
 
