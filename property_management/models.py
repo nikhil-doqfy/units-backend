@@ -96,7 +96,6 @@ class TenantDetails(Base):
         return f"{self.full_name}"
     
 
-
 class LeasePropertyDetails(models.Model):
     lease_property = models.ForeignKey(
         "user_service.PropertyDetails",  
@@ -177,24 +176,18 @@ class LeaseEjariUpload(models.Model):
         on_delete=models.CASCADE,
         related_name="ejari_uploads"
     )
-
-  
     property_floor_plan = models.TextField(null=True, blank=True)   
     tenant_doc = models.TextField(null=True, blank=True)            
     ejari_certificates = models.TextField(null=True, blank=True)   
     pmc_docs = models.TextField(null=True, blank=True)             
-    cheque = models.TextField(null=True, blank=True)                
-
- 
+    cheque = models.TextField(null=True, blank=True)                 
     uploaded_by = models.ForeignKey(
         "user_service.UserProfile",
         on_delete=models.SET_NULL,
         null=True,
         blank=True
     )
-    uploaded_at = models.DateTimeField(default=timezone.now)
-
-  
+    uploaded_at = models.DateTimeField(default=timezone.now)  
     is_finalized = models.BooleanField(default=False)
     finalized_at = models.DateTimeField(null=True, blank=True)
 
@@ -205,8 +198,6 @@ class LeaseEjariUpload(models.Model):
 
 class AgreementFormVariables(Base):
     reference_no_date = models.CharField(max_length=255, null=True, blank=True)
-
-    
     asset_management = models.ForeignKey(
         "user_service.PropertyManagerCompanyDetails", 
         on_delete=models.SET_NULL, 
@@ -270,6 +261,7 @@ class AgreementFormVariables(Base):
 
     def __str__(self):
         return f"Agreement - {self.reference_no_date or 'N/A'}"
+
 
 
 

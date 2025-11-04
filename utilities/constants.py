@@ -131,7 +131,8 @@ PROPERTY_MANAGER = "PROPERTY_MANAGER"
 TENANT = "TENANT"
 STAFF = "STAFF"
 AVAILABLE="AVAILABLE"
-NOT_AVAILABLE="NOT_AVAILABLE"
+NOT_AVAILABLE="NOT_AVAILABLE" 
+PROPERTY_MANAGER_DETAILS_DELETE_SUCCESS="PMC deleted successfully."
 
 
 LEASE_STATUS_CHOICES = [
@@ -180,6 +181,12 @@ ACCESS_LEVEL_CHOICES = [
     ("VIEW_ONLY", "View Only"),
     ("FULL_ACCESS", "Full Access"),
 ]
+
+INVITATION_STATUS_CHOICES = (
+        ("pending", "Pending"),
+        ("accepted", "Accepted"),
+        ("rejected", "Rejected"),
+    )
 
 JWT_TOKEN_EXPIRY_MINUTES = 60
 OTP_EXPIRY_MINUTES = 5 

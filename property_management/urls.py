@@ -27,7 +27,12 @@ urlpatterns = [
     path('staff/view/', views.staff_view, name='staff_view') ,
     # path('staff/property/assinged/', views.staff_property_assinged, name='staff_property_assinged')  
     path('pmc/dashboard/view', views.pmc_dashboard_view, name='pmc_dashboard_view') ,
-    path('dashboard/statistics/view/pmc/tenant', views.dashboard_statistics_view_pmc_tenant, name=' dashboard_statistics_view_pmc_tenant') ,
+    # path('dashboard/statistics/view/pmc/tenant', views.dashboard_statistics_view_pmc_tenant, name=' dashboard_statistics_view_pmc_tenant') ,
+    path('pmc/owner/view/list/', views.pmc_owner_view_list, name='pmc_owner_view_list') , 
+    # path('all/owner/details/', views.all_owner_details, name='all_owner_details') , 
+    # path('specific/owner/tenant/list/view/', views.specific_owner_tenant_list_view, name='specific_owner_tenant_list_view') ,
+    
+    path('property/details/list/view/', views.property_details_list_view, name='property_details_list_view') ,
 ]
 urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

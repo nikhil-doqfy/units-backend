@@ -12,6 +12,8 @@ from utilities import config
 from django.core.paginator import Paginator
 from django.db.models import Q
 import datetime
+from django.forms.models import model_to_dict 
+from django.db.models import Count
 
 
 
@@ -159,20 +161,11 @@ def owner_details_view(request):
 
 
 
-
+# pmc section mai all_owner -2
 @is_request_authenticated
 def owner_details_list_view(request):
     try:
         current_user = request.user
-
-        
-        if current_user.user_type not in [constants.PROPERTY_MANAGER, constants.STAFF]:
-            return prepare_response(
-                message=constants.ACCESS_DENIED_ONLY_STAFF_PMC,
-                status=status.HTTP_403_FORBIDDEN
-            )
-
- 
         if request.method == "GET":
             search = request.GET.get("search")
             owners_qs = OwnerDetails.objects.all().select_related("user")
@@ -341,6 +334,152 @@ def owner_details_list_view(request):
     except Exception as e:
         return prepare_response(
             message=f"Error: {str(e)}",
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+
+# pmc section mai all_owner -1
+def all_owner_details(request):
+
+    try:
+
+        if request.method == "GET":
+            owner_id = request.GET.get("id", None)
+            search = request.GET.get("search", "").strip()
+
+            owners = OwnerDetails.objects.select_related("user").all()
+
+       
+            if search:
+                owners = owners.filter(
+                    Q(full_name__icontains=search)
+                    | Q(mobile_number__icontains=search)
+                    | Q(user__email__icontains=search)
+                )
+
+      
+            if owner_id:
+                owner = owners.filter(id=owner_id).first()
+                if not owner:
+                    return prepare_response(
+                        message=constants.OWNER_DETAILS_NOT_FOUND,
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+
+                owner_data = model_to_dict(owner)
+                owner_data["email"] = owner.user.email if owner.user else None
+                owner_data["total_properties"] = PropertyDetails.objects.filter(owner=owner.user).count()
+                return prepare_response(
+                    content=owner_data,
+                    message=constants.OWNER_DETAILS_FETCHED_SUCCESS,
+                    status=status.HTTP_200_OK
+                )
+
+
+            data = []
+            for o in owners:
+                total_properties = PropertyDetails.objects.filter(owner=o.user).count()
+                email = o.user.email if o.user else None
+
+                data.append({
+                    "id": o.id,
+                    "owner_name": o.full_name,
+                    "code": f"VC{o.id}21",
+                    "contact_number": o.mobile_number,
+                    "properties": total_properties,
+                    "email": email,
+                })
+
+            return prepare_response(
+                content=data,
+                message=constants.OWNER_DETAILS_FETCHED_SUCCESS,
+                status=status.HTTP_200_OK
+            )
+
+
+        elif request.method == "PUT":
+            try:
+                body = json.loads(request.body.decode("utf-8"))
+            except json.JSONDecodeError:
+                return prepare_response(
+                    message=constants.INVALID_REQUEST_METHOD,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            owner_id = body.get("id")
+            if not owner_id:
+                return prepare_response(
+                    message=constants.OWNER_ID_IS_REQUIRE,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            owner = OwnerDetails.objects.filter(id=owner_id).first()
+            if not owner:
+                return prepare_response(
+                    message=constants.OWNER_DETAILS_NOT_FOUND,
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+    
+            updatable_fields = [
+                "full_name",
+                "mobile_number",
+                "emirate_id",
+                "uae_residence_visa",
+                "trade_license_number",
+                "manage_manually",
+                "manage_through_pmc"
+            ]
+            for field in updatable_fields:
+                if field in body:
+                    setattr(owner, field, body[field])
+
+            owner.save()
+            return prepare_response(
+                message=constants.OWNER_DETAILS_SAVE_SUCCESS,
+                status=status.HTTP_200_OK
+            )
+
+
+        elif request.method == "DELETE":
+            try:
+                body = json.loads(request.body.decode("utf-8"))
+            except json.JSONDecodeError:
+                return prepare_response(
+                    message=constants.INVALID_REQUEST_METHOD,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            owner_id = body.get("id")
+            if not owner_id:
+                return prepare_response(
+                    message=constants.OWNER_ID_IS_REQUIRE,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            owner = OwnerDetails.objects.filter(id=owner_id).first()
+            if not owner:
+                return prepare_response(
+                    message=constants.OWNER_DETAILS_NOT_FOUND,
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            owner.delete()
+            return prepare_response(
+                message=constants.OWNER_DELETE_SUCCESS,
+                status=status.HTTP_200_OK
+            )
+
+        else:
+            return prepare_response(
+                message=constants.INVALID_REQUEST_METHOD,
+                status=status.HTTP_405_METHOD_NOT_ALLOWED
+            )
+
+    except Exception as e:
+        return prepare_response(
+            message=f"Internal Server Error: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
@@ -1013,6 +1152,24 @@ def property_details_view(request):
                 )
 
             with transaction.atomic():
+                uploaded_image_urls = []
+                images = data.get("images", [])
+                for idx, img in enumerate(images):
+                    base64_data = img.get("data")
+                    file_name = img.get("file_name") or f"property_{datetime.now().timestamp()}_{idx}.jpg"
+                    if base64_data:
+                        try:
+                            s3_url = upload_file_to_s3_base64(
+                                base64_data,
+                                f"property_images/{current_user.id}/{file_name}"
+                            )
+                            uploaded_image_urls.append(s3_url)
+                        except Exception as e:
+                            return prepare_response(
+                                        message=f"Failed to upload image '{file_name}': {str(e)}",
+                                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                            )
+                        
                 PropertyDetails.objects.create(
                     property_name=data.get("property_name"),
                     land_dm_no=data.get("land_dm_no"),
@@ -1037,7 +1194,8 @@ def property_details_view(request):
                     rental_status=data.get("rental_status", "Available"),
                     tenancy_start_date=data.get("tenancy_start_date"),
                     tenancy_end_date=data.get("tenancy_end_date"),
-                    owner=current_user
+                    owner=current_user,
+                    images=uploaded_image_urls,
                 )
 
             return prepare_response(
@@ -1149,7 +1307,7 @@ def property_details_view(request):
 
 
 
-
+#all property in owner section
 @is_request_authenticated
 def owner_property_tenants_view(request):
     """
@@ -1273,7 +1431,7 @@ def tenant_list_view(request):
         except Exception as e:
             print("GET Error:", e)
             return prepare_response(
-                message="Failed to fetch tenants",
+                message=constants.TENANT_DETAILS_NOT_FOUND,
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -1760,7 +1918,7 @@ def staff_view(request):
 
 
 
-
+#owner pmc (property Assinged ) section 
 @is_request_authenticated
 def pmc_dashboard_view(request):
     current_user = request.user
@@ -1831,6 +1989,338 @@ def pmc_dashboard_view(request):
             message=f"Error fetching PMC dashboard data: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+
+
+
+
+# Owner view in dashbord/pmc
+
+def pmc_owner_view_list(request):
+ 
+
+    try:
+ 
+        if request.method == "GET":
+            pmc_id = request.GET.get("id", None)
+            search = request.GET.get("search", "").strip()
+
+            pmc_qs = PropertyManagerCompanyDetails.objects.all()
+
+       
+            if search:
+                pmc_qs = pmc_qs.filter(
+                    Q(company_name__icontains=search)
+                    | Q(company_code__icontains=search)
+                    | Q(company_address__icontains=search)
+                )
+
+          
+            if pmc_id:
+                pmc = pmc_qs.filter(id=pmc_id).first()
+                if not pmc:
+                    return prepare_response(
+                        message=constants.PROPERTY_MANAGER_DETAILS_NOT_FOUND,
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+
+                pmc_data = model_to_dict(pmc)
+                pmc_data["property_handling"] = PropertyDetails.objects.filter(property_manager=pmc).count()
+                return prepare_response(
+                    content=pmc_data,
+                    message=constants.PROPERTY_MANAGER_DETAILS_FETCHED,
+                    status=status.HTTP_200_OK
+                )
+
+            
+            data = []
+            for p in pmc_qs:
+                total_properties = PropertyDetails.objects.filter(property_manager=p).count()
+                tenancy_ratio = f"{total_properties}:{total_properties * 2}" 
+
+                data.append({
+                    "id": p.id,
+                    "code": p.company_code,
+                    "pmc_name": p.company_name,
+                    "property_handling": f"{total_properties} Property",
+                    "tenancy_ratio": tenancy_ratio,
+                    "address": p.company_address,
+                })
+
+            return prepare_response(
+                content=data,
+                message=constants.PROPERTY_MANAGER_DETAILS_FETCHED,
+                status=status.HTTP_200_OK
+            )
+
+
+        elif request.method == "PUT":
+            try:
+                body = json.loads(request.body.decode("utf-8"))
+            except json.JSONDecodeError:
+                return prepare_response(
+                    message=constants.INVALID_JSON_BODY,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            pmc_id = body.get("id")
+            if not pmc_id:
+                return prepare_response(
+                    message=constants.PROPERTY_MANAGER_ID_REQUIRE,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            pmc = PropertyManagerCompanyDetails.objects.filter(id=pmc_id).first()
+            if not pmc:
+                return prepare_response(
+                    message=constants.PROPERTY_MANAGER_DETAILS_NOT_FOUND,
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+
+            updatable_fields = [
+                "company_name",
+                "company_address",
+                "phone_number",
+                "email_address",
+                "trade_license_number",
+                "rera_license",
+            ]
+            for field in updatable_fields:
+                if field in body:
+                    setattr(pmc, field, body[field])
+
+            pmc.save()
+            return prepare_response(
+                message=constants.PROPERTY_MANAGER_DETAILS_SAVED,
+                status=status.HTTP_200_OK
+            )
+
+        elif request.method == "DELETE":
+            try:
+                body = json.loads(request.body.decode("utf-8"))
+            except json.JSONDecodeError:
+                return prepare_response(
+                    message=constants.INVALID_REQUEST_METHOD,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            pmc_id = body.get("id")
+            if not pmc_id:
+                return prepare_response(
+                    message=constants.PROPERTY_MANAGER_ID_REQUIRE,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            pmc = PropertyManagerCompanyDetails.objects.filter(id=pmc_id).first()
+            if not pmc:
+                return prepare_response(
+                    message=constants.PROPERTY_MANAGER_DETAILS_NOT_FOUND,
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            pmc.delete()
+            return prepare_response(
+                message=constants.PROPERTY_MANAGER_DETAILS_DELETE_SUCCESS,
+                status=status.HTTP_200_OK
+            )
+
+        else:
+            return prepare_response(
+                message=constants.INVALID_REQUEST_METHOD,
+                status=status.HTTP_405_METHOD_NOT_ALLOWED
+            )
+
+    except Exception as e:
+        return prepare_response(
+            message=f"Internal Server Error: {str(e)}",
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+
+
+
+
+
+# tenant / all properties/ 
+from django.db.models import Prefetch
+def property_details_list_view(request):
+    if request.method == "GET":
+        try:
+            properties = PropertyDetails.objects.select_related(
+                "owner",
+                "property_manager",
+                "staff"
+            ).prefetch_related(
+                Prefetch("tenant_details", queryset=TenantDetails.objects.all())
+            )
+
+            data = []
+
+            for prop in properties:
+              
+                tenants = prop.tenant_details.all()
+                tenant_data = [
+                    {
+                        "tenant_name": tenant.full_name,
+                        "mobile_number": tenant.mobile_number,
+                        "tenant_number": tenant.tenant_number,
+                        "nationality": tenant.nationality,
+                    }
+                    for tenant in tenants
+                ] if tenants.exists() else []
+
+       
+                rental_status = "Not Available" if tenants.exists() else "Available"
+
+                owner_details = OwnerDetails.objects.filter(user=prop.owner).first()
+                owner_info = {
+                    "owner_name": owner_details.full_name if owner_details else "N/A",
+                    "owner_mobile": owner_details.mobile_number if owner_details else "N/A",
+                    "trade_license": owner_details.trade_license_number if owner_details else "N/A",
+                }
+
+      
+                pmc = prop.property_manager
+                pmc_info = {
+                    "company_name": pmc.company_name if pmc else "N/A",
+                    "company_code": pmc.company_code if pmc else "N/A",
+                    "rera_license": pmc.rera_license if pmc else "N/A",
+                    "phone_number": pmc.phone_number if pmc else "N/A",
+                }
+
+            
+                data.append({
+                    "id": prop.id,
+                    "property_name": prop.property_name,
+                    "address": prop.address,
+                    "property_code": prop.property_code,
+                    "property_type": prop.property_type,
+                    "area_of_property": prop.area_of_property,
+                    "no_of_parking": prop.no_of_parking,
+                    "bedrooms": prop.bedrooms,
+                    "balcony": prop.balcony,
+                    "plot_no": prop.plot_no,
+                    "area_unit": prop.area_unit,
+                    "rental_status": rental_status,
+                    "tenants": tenant_data,
+                    "owner_info": owner_info,
+                    "pmc_info": pmc_info,
+                    # "created_at": prop.created_at.strftime("%Y-%m-%d %H:%M:%S") if prop.created_at else None,
+                })
+
+            return prepare_response(
+                content=data,
+                message=constants.PROPERTY_LIST_FETCHED,
+                status=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            return prepare_response(
+                message=f"Error fetching properties: {str(e)}",
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    else:
+        return prepare_response(
+            message=constants.INVALID_REQUEST_METHOD,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# # pmc section mai all_owner mai specific owner mai click 
+# def specific_owner_tenant_list_view(request):
+#     """
+#     ✅ Fetch all owners with their property count, basic info, and contact details.
+#     Supports pagination & search.
+#     """
+#     if request.method == "GET":
+#         try:
+      
+#             page = int(request.GET.get("page", 1))
+#             limit = int(request.GET.get("limit", 10))
+#             search = request.GET.get("search", "").strip()
+
+#             owners = OwnerDetails.objects.select_related("user").annotate(
+#                 total_properties=Count("user__owned_properties")
+#             ).all()
+
+     
+#             if search:
+#                 owners = owners.filter(full_name__icontains=search)
+
+        
+#             paginator = Paginator(owners, limit)
+#             current_page = paginator.page(page)
+
+#             owner_list = []
+#             for owner in current_page:
+#                 properties = PropertyDetails.objects.filter(owner=owner.user)
+
+#                 # Show only 3 images for preview + count of remaining
+#                 property_images = []
+#                 for p in properties[:3]:
+#                     if p.images and isinstance(p.images, list):
+#                         property_images.append(p.images[0])  
+#                 remaining_count = max(len(properties) - 3, 0)
+
+#                 owner_list.append({
+#                     "id": owner.id,
+#                     "owner_name": owner.full_name,
+#                     "code": owner.user.user_code if hasattr(owner.user, "user_code") else "N/A",
+#                     "contact_number": owner.mobile_number,
+#                     "email_address": owner.user.email if hasattr(owner.user, "email") else "",
+#                     "total_properties": len(properties),
+#                     "property_images": property_images,
+#                     "remaining_property_count": remaining_count
+#                 })
+
+#             return prepare_response(
+#                 content=owner_list,
+#                 message="Owner list fetched successfully.",
+#                 status=status.HTTP_200_OK,
+#                 paginator=current_page,
+#                 total_records=paginator.count
+#             )
+
+#         except Exception as e:
+#             print("Error:", e)
+#             return prepare_response(
+#                 message="Something went wrong while fetching owners.",
+#                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
+#             )
+
 
 
 
