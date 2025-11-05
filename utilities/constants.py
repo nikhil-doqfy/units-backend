@@ -133,6 +133,8 @@ STAFF = "STAFF"
 AVAILABLE="AVAILABLE"
 NOT_AVAILABLE="NOT_AVAILABLE" 
 PROPERTY_MANAGER_DETAILS_DELETE_SUCCESS="PMC deleted successfully."
+PROFILE_UPDATED_SUCCESS="Profile updated successfully."
+PROFILE_FETCHED_SUCCESS="Profile fetched successfully."
 
 
 LEASE_STATUS_CHOICES = [
@@ -187,6 +189,8 @@ INVITATION_STATUS_CHOICES = (
         ("accepted", "Accepted"),
         ("rejected", "Rejected"),
     )
+
+PENDING="Pending"
 
 JWT_TOKEN_EXPIRY_MINUTES = 60
 OTP_EXPIRY_MINUTES = 5 

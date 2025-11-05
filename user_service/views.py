@@ -175,147 +175,141 @@ def staff_signup(request):
     )
 
 
-
-
 @is_request_authenticated
 def user_profile_view(request):
     try:
         current_user = request.user  
-        user_type = current_user.user_type  
 
         if request.method == "GET":
             user_data = {
                 "id": current_user.id,
+                "full_name": "",
                 "email": current_user.email,
-                "user_type": current_user.user_type,
-                "is_document_uploaded": current_user.is_document_uploaded,
-                "is_login_allowed": current_user.is_login_allowed,
+                "contact": None,
+                "role": current_user.user_type,
                 "profile_image": current_user.profile_image,
+                "country": getattr(current_user, "country", ""),
+                "time_zone": getattr(current_user, "time_zone", "UTC"),
+                "utc": getattr(current_user, "utc", ""),
+                "address": "",
+                "state": "",
+                "postal_code": ""
             }
 
-
-            if user_type == constants.OWNER:
+   
+            if current_user.user_type == constants.OWNER:
                 owner = OwnerDetails.objects.filter(user=current_user).first()
                 if owner:
-                    user_data["owner_details"] = {
+                    user_data.update({
                         "full_name": owner.full_name,
-                        "emirate_id": owner.emirate_id,
-                        "uae_residence_visa": owner.uae_residence_visa,
-                        "trade_license_number": owner.trade_license_number,
-                        "owner_number": owner.owner_number,
-                        "mobile_number": owner.mobile_number,
-                        "manage_manually": owner.manage_manually,
-                        "manage_through_pmc": owner.manage_through_pmc,
-                        "emirates_id_file": owner.emirates_id_file,
-                        "residence_visa_file": owner.residence_visa_file,
-                        "dld_certificate_file": owner.dld_certificate_file,
-                        "dewa_registration_file": owner.dewa_registration_file,
-                    }
+                        "contact": owner.mobile_number,
+                        "address": getattr(owner, "address", ""),
+                        "state": getattr(owner, "state", ""),
+                        "postal_code": getattr(owner, "postal_code", "")
+                    })
 
-            elif user_type == constants.TENANT:
-                tenant = TenantDetails.objects.filter(user=current_user).select_related("property").first()
-                if tenant:
-                    user_data["tenant_details"] = {
-                        "full_name": tenant.full_name,
-                        "emirate_id": tenant.emirate_id,
-                        "mobile_number": tenant.mobile_number,
-                        "tenant_number": tenant.tenant_number,
-                        "nationality": tenant.nationality,
-                        "passport_expiry": tenant.passport_expiry,
-                        "visa_expiry": tenant.visa_expiry,
-                        "employment_proof": tenant.employment_proof,
-                        "property_id": tenant.property.id if tenant.property else None,
-                    }
 
-            elif user_type == constants.PROPERTY_MANAGER:
+            elif current_user.user_type == constants.PROPERTY_MANAGER:
                 pmc = PropertyManagerCompanyDetails.objects.filter(user=current_user).first()
                 if pmc:
-                    user_data["property_manager_details"] = {
-                        "company_name": pmc.company_name,
-                        "company_code": pmc.company_code,
-                        "company_id": pmc.company_id,
-                        "company_address": pmc.company_address,
-                        "rera_license": pmc.rera_license,
-                        "phone_number": pmc.phone_number,
-                        "email_address": pmc.email_address,
-                    }
+                    user_data.update({
+                        "full_name": pmc.company_name,
+                        "contact": pmc.phone_number,
+                        "address": getattr(pmc, "company_address", ""),
+                        "state": getattr(pmc, "state", ""),
+                        "postal_code": getattr(pmc, "postal_code", "")
+                    })
+
+
+            elif current_user.user_type == constants.TENANT:
+                tenant = TenantDetails.objects.filter(user=current_user).first()
+                if tenant:
+                    user_data.update({
+                        "full_name": tenant.full_name,
+                        "contact": tenant.mobile_number,
+                        "address": getattr(tenant, "address", ""),
+                        "state": getattr(tenant, "state", ""),
+                        "postal_code": getattr(tenant, "postal_code", "")
+                    })
 
             return prepare_response(
                 content=user_data,
-                message="User profile fetched successfully",
+                message=constants.PROFILE_FETCHED_SUCCESS,
                 status=status.HTTP_200_OK
             )
 
-        elif request.method == "PUT":
-            try:
-                data = json.loads(request.body)
-            except:
-                return prepare_response(
-                    message="Invalid JSON body",
-                    status=status.HTTP_400_BAD_REQUEST
-                )
 
-           
-            allowed_fields = ["user_type", "is_document_uploaded", "profile_image"]
-            for field in allowed_fields:
-                if field in data:
-                    setattr(current_user, field, data[field])
+        elif request.method == "PUT":
+            data = json.loads(request.body)
+
+         
+            new_contact = data.get("contact")
+            new_full_name = data.get("full_name")
+            new_profile_image = data.get("profile_image")
+            new_country = data.get("country")
+            new_time_zone = data.get("time_zone")
+            new_utc = data.get("utc")
+            new_address = data.get("address")
+            new_state = data.get("state")
+            new_postal_code = data.get("postal_code")
+            new_role = data.get("role")
+
+       
+            if new_profile_image:
+                current_user.profile_image = new_profile_image
+            if new_country:
+                current_user.country = new_country
+            if new_time_zone:
+                current_user.time_zone = new_time_zone
+            if new_utc:
+                current_user.utc = new_utc
+            if new_role:
+                current_user.user_type = new_role
+
             current_user.save()
 
-            
-            if user_type == constants.OWNER:
-                owner = OwnerDetails.objects.filter(user=current_user).first()
-                if not owner:
-                    return prepare_response(message="Owner details not found", status=status.HTTP_404_NOT_FOUND)
-                owner_fields = [
-                    "full_name", "emirate_id", "uae_residence_visa", "trade_license_number",
-                    "owner_number", "mobile_number", "manage_manually", "manage_through_pmc",
-                    "emirates_id_file", "residence_visa_file", "dld_certificate_file", "dewa_registration_file"
-                ]
-                for field in owner_fields:
-                    if field in data:
-                        setattr(owner, field, data[field])
-                owner.save()
+     
+            if current_user.user_type == constants.OWNER:
+                OwnerDetails.objects.filter(user=current_user).update(
+                    mobile_number=new_contact,
+                    full_name=new_full_name,
+                    address=new_address,
+                    state=new_state,
+                    postal_code=new_postal_code
+                )
 
-            elif user_type == constants.TENANT:
-                tenant = TenantDetails.objects.filter(user=current_user).first()
-                if not tenant:
-                    return prepare_response(message="Tenant details not found", status=status.HTTP_404_NOT_FOUND)
-                tenant_fields = [
-                    "full_name", "emirate_id", "mobile_number", "tenant_number", "nationality",
-                    "passport_expiry", "visa_expiry", "employment_proof"
-                ]
-                for field in tenant_fields:
-                    if field in data:
-                        setattr(tenant, field, data[field])
-                tenant.save()
+            elif current_user.user_type == constants.PROPERTY_MANAGER:
+                PropertyManagerCompanyDetails.objects.filter(user=current_user).update(
+                    phone_number=new_contact,
+                    company_name=new_full_name,
+                    company_address=new_address,
+                    state=new_state,
+                    postal_code=new_postal_code
+                )   
 
-            elif user_type == constants.PROPERTY_MANAGER:
-                pmc = PropertyManagerCompanyDetails.objects.filter(user=current_user).first()
-                if not pmc:
-                    return prepare_response(message="PMC details not found", status=status.HTTP_404_NOT_FOUND)
-                pmc_fields = [
-                    "company_name", "company_code", "company_id", "company_address",
-                    "rera_license", "phone_number", "email_address"
-                ]
-                for field in pmc_fields:
-                    if field in data:
-                        setattr(pmc, field, data[field])
-                pmc.save()
+            elif current_user.user_type == constants.TENANT:
+                TenantDetails.objects.filter(user=current_user).update(
+                    mobile_number=new_contact,
+                    full_name=new_full_name,
+                    address=new_address,
+                    state=new_state,
+                    postal_code=new_postal_code
+                )
 
             return prepare_response(
-                message="User profile updated successfully",
+                message=constants.PROFILE_UPDATED_SUCCESS,
                 status=status.HTTP_200_OK
             )
 
 
         else:
             return prepare_response(
-                message="Invalid request method",
+                message=constants.INVALID_REQUEST_METHOD,
                 status=status.HTTP_405_METHOD_NOT_ALLOWED
             )
 
     except Exception as e:
+        print("Error in user_profile_view:", e)
         return prepare_response(
             message=f"Error: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR

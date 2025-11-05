@@ -46,6 +46,9 @@ class PropertyManagerCompanyDetails(models.Model):
     phone_number = models.CharField(max_length=20)
     email_address = models.EmailField(null=True, blank=True)
     pmc_documents = models.JSONField(default=dict)
+        
+    state = models.CharField(max_length=100, blank=True, null=True)
+   
 
     def __str__(self):
         return "{}".format(self.company_name)
@@ -160,40 +163,3 @@ class UserVerification(Base):
 
 
 
-# -------------------------------------------------------------------------------------------------------------------------
-
-# class StaffRole(models.Model):
-#     name = models.CharField(max_length=255)
-#     property_manager = models.ForeignKey(
-#         "PropertyManagerCompanyDetails",
-#         on_delete=models.CASCADE,
-#         related_name="staff_roles"
-#     )
-#     property_management = models.CharField(
-#         max_length=20,
-#         choices=constants.ACCESS_LEVEL_CHOICES,
-#         default="NO_ACCESS"
-#     )
-#     tenant_management = models.CharField(
-#         max_length=20,
-#         choices=constants.ACCESS_LEVEL_CHOICES,
-#         default="NO_ACCESS"
-#     )
-#     owner_management = models.CharField(
-#         max_length=20,
-#         choices=constants.ACCESS_LEVEL_CHOICES,
-#         default="NO_ACCESS"
-#     )
-#     staff_management = models.CharField(
-#         max_length=20,
-#         choices=constants.ACCESS_LEVEL_CHOICES,
-#         default="NO_ACCESS"
-#     )
-#     role_manager = models.CharField(
-#         max_length=20,
-#         choices=constants.ACCESS_LEVEL_CHOICES,
-#         default="NO_ACCESS"
-#     )
-
-#     def __str__(self):
-#         return self.name

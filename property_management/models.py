@@ -19,6 +19,7 @@ class OwnerDetails(Base):
         on_delete=models.CASCADE,  
         related_name="owner_details"  
     )
+    
     full_name = models.CharField(max_length=255)
     emirate_id = models.CharField(max_length=100)
     uae_residence_visa = models.CharField(max_length=100)
@@ -31,6 +32,9 @@ class OwnerDetails(Base):
     residence_visa_file = models.CharField(max_length=255, null=True, blank=True)
     dld_certificate_file = models.CharField(max_length=255, null=True, blank=True)
     dewa_registration_file = models.CharField(max_length=255, null=True, blank=True)
+    address = models.TextField(blank=True, null=True)
+    state = models.CharField(max_length=100, blank=True, null=True)
+    postal_code = models.CharField(max_length=20, blank=True, null=True)
 
     def __str__(self):
         return self.full_name
@@ -91,6 +95,9 @@ class TenantDetails(Base):
     visa_family_file = models.CharField(max_length=255, null=True, blank=True)
     employment_proof_file = models.CharField(max_length=255, null=True, blank=True)
     bank_statement_file = models.CharField(max_length=255, null=True, blank=True)
+    address = models.TextField(blank=True, null=True)
+    state = models.CharField(max_length=100, blank=True, null=True)
+    postal_code = models.CharField(max_length=20, blank=True, null=True)
 
     def __str__(self):
         return f"{self.full_name}"
@@ -266,4 +273,60 @@ class AgreementFormVariables(Base):
 
 
 
+class OwnerPMCInvitation(models.Model):
+    email = models.EmailField()
+    invited_by = models.ForeignKey(
+        "user_service.UserProfile",
+        on_delete=models.CASCADE,
+        related_name="pmc_invitations"
+    )
+    token = models.CharField(max_length=255, unique=True)
+    status = models.CharField(
+        max_length=20,
+        choices=constants.INVITATION_STATUS_CHOICES,
+        default=constants.PENDING
+    )
+    created_at = models.DateTimeField(default=timezone.now)
 
+
+
+
+class PMCOwnerInvitation(models.Model):
+    email = models.EmailField(unique=True)
+    invited_by = models.ForeignKey(
+        "user_service.UserProfile",  
+        on_delete=models.CASCADE,
+        related_name="property_owner_invitations"
+    )
+    token = models.CharField(max_length=255, unique=True)
+    status = models.CharField(
+        max_length=20,
+        choices=constants.INVITATION_STATUS_CHOICES,
+        default=constants.PENDING
+    )
+    created_at = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return f"{self.email} - {self.status}"
+
+
+
+
+
+class PMCTenantInvitation(models.Model):
+    email = models.EmailField(unique=True)
+    invited_by = models.ForeignKey(
+        "user_service.UserProfile",
+        on_delete=models.CASCADE,
+        related_name="tenant_invitations"
+    )
+    token = models.CharField(max_length=255, unique=True)
+    status = models.CharField(
+        max_length=20,
+        choices=constants.INVITATION_STATUS_CHOICES,
+        default=constants.PENDING
+    )
+    created_at = models.DateTimeField(default=timezone.now)
+
+    def __str__(self):
+        return f"{self.email} - {self.status}"

@@ -1,11 +1,11 @@
 
 from django.shortcuts import get_object_or_404
 from django.db import IntegrityError, transaction
-from property_management.models import OwnerDetails ,PropertyDocuments,TenantDetails , LeasePropertyDetails ,LeaseCommercials,LeaseEjariUpload,LeaseDocumentLayout
-from user_service.models import PropertyManagerCompanyDetails ,PropertyDetails ,UserProfile,StaffDetails
+from property_management.models import OwnerDetails ,PropertyDocuments,TenantDetails , LeasePropertyDetails ,LeaseCommercials,LeaseEjariUpload,LeaseDocumentLayout,OwnerPMCInvitation,PMCOwnerInvitation , PMCTenantInvitation
+from user_service.models import PropertyManagerCompanyDetails ,PropertyDetails ,UserProfile,StaffDetails 
 from utilities.decorator import is_request_authenticated
 import json
-from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger
+from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger,send_ses_email
 from utilities import status ,  constants
 from django.utils import timezone
 from utilities import config
@@ -14,6 +14,8 @@ from django.db.models import Q
 import datetime
 from django.forms.models import model_to_dict 
 from django.db.models import Count
+import uuid
+from django.db.models import Prefetch
 
 
 
@@ -2145,7 +2147,7 @@ def pmc_owner_view_list(request):
 
 
 # tenant / all properties/ 
-from django.db.models import Prefetch
+
 def property_details_list_view(request):
     if request.method == "GET":
         try:
@@ -2208,7 +2210,7 @@ def property_details_list_view(request):
                     "tenants": tenant_data,
                     "owner_info": owner_info,
                     "pmc_info": pmc_info,
-                    # "created_at": prop.created_at.strftime("%Y-%m-%d %H:%M:%S") if prop.created_at else None,
+                   
                 })
 
             return prepare_response(
@@ -2230,297 +2232,288 @@ def property_details_list_view(request):
         )
 
 
+@is_request_authenticated
+def invite_owner_pmc(request):
+    if request.method == "POST":
+        try:
+            current_user = request.user
+            if current_user.user_type != constants.OWNER:
+                return prepare_response(
+                    message="Access denied. Only owners can send invitations.",
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            data = json.loads(request.body)
+            email = data.get("email")
+
+            if not email:
+                return prepare_response(
+                    message="Email field is required.",
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            if OwnerPMCInvitation.objects.filter(email=email, invited_by=current_user).exists():
+                return prepare_response(
+                    message="This PMC has already been invited.",
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            token = str(uuid.uuid4())
+            invitation = OwnerPMCInvitation.objects.create(
+                email=email,
+                invited_by=current_user,
+                token=token,
+                status=constants.PENDING if hasattr(constants, 'PENDING') else "pending",
+                created_at=timezone.now()
+            )
+            invite_link = f"https://yourfrontend.com/pmc/invite/accept?token={token}"
+            subject = "Invitation to Join Property Management Portal"
+            body_text = f"You have been invited to join as a PMC by {current_user.email}. Use this link: {invite_link}"
+            body_html = f"""
+            <html>
+                <body>
+                    <h3>You're Invited!</h3>
+                    <p>Hello,</p>
+                    <p><b>{current_user.email}</b> has invited you to join the Property Management Portal.</p>
+                    <p>Click below to accept the invitation:</p>
+                    <p>
+                        <a href="{invite_link}" 
+                           style="background:#007bff;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;">
+                           Accept Invitation
+                        </a>
+                    </p>
+                    <p>If the button doesn’t work, copy this link: {invite_link}</p>
+                </body>
+            </html>
+            """
+            try:
+                send_ses_email(email, subject, body_text, body_html)
+            except Exception as e:
+                print(f"SES Email Error: {e}")
+                return prepare_response(
+                    message="Invitation created but email sending failed.",
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            return prepare_response(
+                content={
+                    "email": invitation.email,
+                    "token": invitation.token,
+                    "status": invitation.status
+                },
+                message="PMC invitation sent successfully.",
+                status=status.HTTP_201_CREATED
+            )
+        except Exception as e:
+            print(f"Error in invite_pmc_view: {e}")
+            return prepare_response(
+                message=f"Error sending invitation: {str(e)}",
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    else:
+        return prepare_response(
+            message="Invalid request method. Only POST allowed.",
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
 
 
 
 
+@is_request_authenticated
+def invite_pmc_to_owner(request):
+    if request.method == "POST":
+        try:
+            current_user = request.user
+
+         
+            if current_user.user_type != constants.PROPERTY_MANAGER:
+                return prepare_response(
+                    message="Access denied. Only Property Management Companies can send invitations.",
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            data = json.loads(request.body)
+            email = data.get("email")
+
+            if not email:
+                return prepare_response(
+                    message="Email field is required.",
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            if PMCOwnerInvitation.objects.filter(email=email, invited_by=current_user).exists():
+                return prepare_response(
+                    message="This owner has already been invited.",
+                    status=status.HTTP_400_BAD_REQUEST
+                )      
+            token = str(uuid.uuid4())
+            invitation = PMCOwnerInvitation.objects.create(
+                email=email,
+                invited_by=current_user,
+                token=token,
+                status=constants.PENDING,
+                created_at=timezone.now()
+            )
+
+          
+            invite_link = f"https://yourfrontend.com/owner/invite/accept?token={token}"
+            subject = "Invitation to Join Property Management Portal"
+            body_text = f"You have been invited by {current_user.email} to join as an Owner. Use this link: {invite_link}"
+
+            body_html = f"""
+            <html>
+                <body>
+                    <h3>You're Invited!</h3>
+                    <p>Hello,</p>
+                    <p><b>{current_user.email}</b> has invited you to join the Property Management Portal as an <b>Owner</b>.</p>
+                    <p>Click below to accept the invitation:</p>
+                    <p>
+                        <a href="{invite_link}" 
+                           style="background:#28a745;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;">
+                           Accept Invitation
+                        </a>
+                    </p>
+                    <p>If the button doesn’t work, copy this link: {invite_link}</p>
+                </body>
+            </html>
+            """
+
+            try:
+                send_ses_email(email, subject, body_text, body_html)
+            except Exception as e:
+                print(f"SES Email Error: {e}")
+                return prepare_response(
+                    message="Invitation created but email sending failed.",
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            return prepare_response(
+                content={
+                    "email": invitation.email,
+                    "token": invitation.token,
+                    "status": invitation.status
+                },
+                message="Owner invitation sent successfully.",
+                status=status.HTTP_201_CREATED
+            )
+
+        except Exception as e:
+            print(f"Error in invite_pmc_to_owner_view: {e}")
+            return prepare_response(
+                message=f"Error sending invitation: {str(e)}",
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    else:
+        return prepare_response(
+            message="Invalid request method. Only POST allowed.",
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
 
 
 
+@is_request_authenticated
+def invite_tenant_by_pmc(request):
+    if request.method == "POST":
+        try:
+            current_user = request.user
+            if current_user.user_type != constants.PROPERTY_MANAGER:
+                return prepare_response(
+                    message="Access denied. Only PMCs can send invitations.",
+                    status=status.HTTP_403_FORBIDDEN
+                )
 
+            data = json.loads(request.body)
+            email = data.get("email")
 
+            if not email:
+                return prepare_response(
+                    message="Email field is required.",
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
+         
+            if PMCTenantInvitation.objects.filter(email=email, invited_by=current_user).exists():
+                return prepare_response(
+                    message="This Tenant has already been invited.",
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
+           
+            token = str(uuid.uuid4())
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# # pmc section mai all_owner mai specific owner mai click 
-# def specific_owner_tenant_list_view(request):
-#     """
-#     ✅ Fetch all owners with their property count, basic info, and contact details.
-#     Supports pagination & search.
-#     """
-#     if request.method == "GET":
-#         try:
       
-#             page = int(request.GET.get("page", 1))
-#             limit = int(request.GET.get("limit", 10))
-#             search = request.GET.get("search", "").strip()
+            invitation = PMCTenantInvitation.objects.create(
+                email=email,
+                invited_by=current_user,
+                token=token,
+                status=constants.PENDING,
+                created_at=timezone.now()
+            )
 
-#             owners = OwnerDetails.objects.select_related("user").annotate(
-#                 total_properties=Count("user__owned_properties")
-#             ).all()
+           
+            invite_link = f"https://yourfrontend.com/tenant/invite/accept?token={token}"
+            subject = "Invitation to Join Property Management Portal"
+            body_text = f"You have been invited to join as a Tenant by {current_user.email}. Use this link: {invite_link}"
+            body_html = f"""
+            <html>
+                <body>
+                    <h3>You're Invited!</h3>
+                    <p>Hello,</p>
+                    <p><b>{current_user.email}</b> has invited you to join the Property Management Portal as a Tenant.</p>
+                    <p>Click below to accept the invitation:</p>
+                    <p>
+                        <a href="{invite_link}" 
+                           style="background:#007bff;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;">
+                           Accept Invitation
+                        </a>
+                    </p>
+                    <p>If the button doesn’t work, copy this link: {invite_link}</p>
+                </body>
+            </html>
+            """
 
-     
-#             if search:
-#                 owners = owners.filter(full_name__icontains=search)
+            try:
+                send_ses_email(email, subject, body_text, body_html)
+            except Exception as e:
+                print(f"SES Email Error: {e}")
+                return prepare_response(
+                    message="Invitation created but email sending failed.",
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
 
-        
-#             paginator = Paginator(owners, limit)
-#             current_page = paginator.page(page)
+            return prepare_response(
+                content={
+                    "email": invitation.email,
+                    "token": invitation.token,
+                    "status": invitation.status
+                },
+                message="Tenant invitation sent successfully.",
+                status=status.HTTP_201_CREATED
+            )
 
-#             owner_list = []
-#             for owner in current_page:
-#                 properties = PropertyDetails.objects.filter(owner=owner.user)
+        except Exception as e:
+            print(f"Error in invite_tenant_by_pmc: {e}")
+            return prepare_response(
+                message=f"Error sending invitation: {str(e)}",
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
-#                 # Show only 3 images for preview + count of remaining
-#                 property_images = []
-#                 for p in properties[:3]:
-#                     if p.images and isinstance(p.images, list):
-#                         property_images.append(p.images[0])  
-#                 remaining_count = max(len(properties) - 3, 0)
-
-#                 owner_list.append({
-#                     "id": owner.id,
-#                     "owner_name": owner.full_name,
-#                     "code": owner.user.user_code if hasattr(owner.user, "user_code") else "N/A",
-#                     "contact_number": owner.mobile_number,
-#                     "email_address": owner.user.email if hasattr(owner.user, "email") else "",
-#                     "total_properties": len(properties),
-#                     "property_images": property_images,
-#                     "remaining_property_count": remaining_count
-#                 })
-
-#             return prepare_response(
-#                 content=owner_list,
-#                 message="Owner list fetched successfully.",
-#                 status=status.HTTP_200_OK,
-#                 paginator=current_page,
-#                 total_records=paginator.count
-#             )
-
-#         except Exception as e:
-#             print("Error:", e)
-#             return prepare_response(
-#                 message="Something went wrong while fetching owners.",
-#                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
-#             )
-
-
-
-
-
-
-
-
-# @is_request_authenticated
-# def dashboard_statistics_view_pmc_tenant(request):
-#     current_user = request.user
-
-#     try:
-
-#         if current_user.user_type == constants.OWNER:
-#             properties_qs = PropertyDetails.objects.filter(owner=current_user)
-#         elif current_user.user_type == constants.PROPERTY_MANAGER:
-#             properties_qs = PropertyDetails.objects.filter(property_manager__user=current_user)
-#         else:
-#             properties_qs = PropertyDetails.objects.all()
-
-
-#         total_properties = properties_qs.count()
-#         rented_properties = properties_qs.filter(is_occupied=True).count()
-#         vacant_properties = properties_qs.filter(is_occupied=False).count()
-
-#         # ---------------------------------------
-#         # 👨‍💼 Tenant Counts
-#         # ---------------------------------------
-#         tenant_qs = TenantDetails.objects.filter(property__in=properties_qs)
-#         total_tenants = tenant_qs.count()
-
-#         # Example logic for active/renewals/negotiations
-#         active_tenants = tenant_qs.filter(lease_property_details__tenancy_end_date__gte=datetime.date.today()).count()
-#         upcoming_renewals = tenant_qs.filter(
-#             lease_property_details__tenancy_end_date__range=[
-#                 datetime.date.today(),
-#                 datetime.date.today() + datetime.timedelta(days=30)
-#             ]
-#         ).count()
-#         negotiations = tenant_qs.filter(property__isnull=True).count()  # Example: no property = negotiation
-
-#         # ---------------------------------------
-#         # 🧾 Example commission value
-#         # ---------------------------------------
-#         monthly_commission = 120573  # static demo, you can calculate later
-
-#         # ---------------------------------------
-#         # 📊 Prepare Response Data
-#         # ---------------------------------------
-#         dashboard_data = {
-#             "monthly_commission": f"AED {monthly_commission:,}",
-#             "properties": {
-#                 "total": total_properties,
-#                 "rented": rented_properties,
-#                 "vacant": vacant_properties,
-#             },
-#             "tenants": {
-#                 "total": total_tenants,
-#                 "active": active_tenants,
-#                 "upcoming_renewals": upcoming_renewals,
-#                 "negotiations": negotiations,
-#             }
-#         }
-
-#         return prepare_response(content=dashboard_data, status=status.HTTP_200_OK)
-
-#     except Exception as e:
-#         return prepare_response(
-#             message=f"Error fetching dashboard statistics: {str(e)}",
-#             status=status.HTTP_500_INTERNAL_SERVER_ERROR
-#         )
+    else:
+        return prepare_response(
+            message="Invalid request method. Only POST allowed.",
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
 
 
 
-# @is_request_authenticated
-# def staff_property_assinged(request):
-#     user = request.user
-#     staff_id = request.GET.get("staff_id")
 
-#     if request.method == "GET":
-#         try:
-#             pmc = PropertyManagerCompanyDetails.objects.filter(user=user).first()
-#             if not pmc:
-#                 return prepare_response(
-#                     message="Property Manager not found.",
-#                     status=status.HTTP_404_NOT_FOUND
-#                 )
 
-#             # Get all staff under this Property Manager
-#             staff_qs = StaffDetails.objects.filter(property_manager=pmc).select_related(
-#                 "user", "staff_role"
-#             )
 
-#             all_staff_data = []
 
-#             for staff in staff_qs:
-#                 # Count properties assigned to this staff
-#                 assigned_properties = PropertyDetails.objects.filter(staff=staff)
-#                 assigned_property_count = assigned_properties.count()
+ 
 
-#                 property_list = []
-#                 for prop in assigned_properties:
-#                     # Tenant details (if any)
-#                     tenant = TenantDetails.objects.filter(property=prop).first()
-#                     tenant_name = tenant.full_name if tenant else "N/A"
 
-#                     # Owner details
-#                     owner = OwnerDetails.objects.filter(user=prop.owner).first()
-#                     owner_name = owner.full_name if owner else "N/A"
 
-#                     # Property document info
-#                     document = PropertyDocuments.objects.filter(property=prop).first()
-#                     document_title = document.document_title if document else "-"
 
-#                     property_list.append({
-#                         "code": prop.property_code or "-",
-#                         "property_name": prop.property_name,
-#                         "tenant_name": tenant_name,
-#                         "assigned_staff": staff.staff_name,
-#                         "owner_name": owner_name,
-#                         "document": document_title
-#                     })
 
-#                 # Add staff info (top card section)
-#                 staff_info = {
-#                     "staff_id": staff.id,
-#                     "staff_code": staff.staff_id,
-#                     "staff_name": staff.staff_name,
-#                     "email": staff.user.email if staff.user else "N/A",
-#                     "phone_number": staff.phone_number,
-#                     "city": pmc.city or "-",
-#                     "locality": pmc.locality or "-",
-#                     "postal_code": pmc.postal_code or "-",
-#                     "staff_role": staff.staff_role.name if staff.staff_role else "-",
-#                     "assigned_company": pmc.company_name if pmc else "-",
-#                     "assigned_property_count": assigned_property_count,
-#                     "assigned_properties": property_list
-#                 }
 
-#                 all_staff_data.append(staff_info)
 
-#             return prepare_response(all_staff_data, status=status.HTTP_200_OK)
 
-#         except Exception as e:
-#             return prepare_response(
-#                 message=f"Error fetching staff data: {str(e)}",
-#                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
-#             )
 
-#     # =========================================================
-#     # ✅ PUT — Update Staff Details (like edit staff info)
-#     # =========================================================
-#     elif request.method == "PUT":
-#         if not staff_id:
-#             return prepare_response(
-#                 message="staff_id is required for update",
-#                 status=status.HTTP_400_BAD_REQUEST
-#             )
 
-#         try:
-#             staff = get_object_or_404(StaffDetails, id=staff_id)
-#             data = request.data
 
-#             staff.staff_name = data.get("staff_name", staff.staff_name)
-#             staff.phone_number = data.get("phone_number", staff.phone_number)
-#             staff.staff_role_id = data.get("staff_role_id", staff.staff_role_id)
-#             staff.save()
 
-#             return prepare_response(
-#                 message="Staff updated successfully.",
-#                 status=status.HTTP_200_OK
-#             )
-
-#         except Exception as e:
-#             return prepare_response(
-#                 message=f"Error updating staff: {str(e)}",
-#                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
-#             )
-
-#     # =========================================================
-#     # ✅ DELETE — Remove Staff
-#     # =========================================================
-#     elif request.method == "DELETE":
-#         if not staff_id:
-#             return prepare_response(
-#                 message="staff_id is required for deletion",
-#                 status=status.HTTP_400_BAD_REQUEST
-#             )
-
-#         try:
-#             staff = get_object_or_404(StaffDetails, id=staff_id)
-#             staff.delete()
-
-#             return prepare_response(
-#                 message="Staff deleted successfully.",
-#                 status=status.HTTP_200_OK
-#             )
-
-#         except Exception as e:
-#             return prepare_response(
-#                 message=f"Error deleting staff: {str(e)}",
-#                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
-#             )
