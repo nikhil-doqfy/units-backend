@@ -99,7 +99,7 @@ ALL_THREE_DOCUMENTS_REQUIRED = "All three documents (Emirates ID, Trade License,
 ACCESS_DENIED_PROPERTY_MANAGER_UPLOAD = "Access denied. Only property managers can upload documents."
 PROPERTY_MANAGER_DETAILS_UPDATED = "Property Manager details updated successfully."
 PROPERTY_MANAGER_DETAILS_FETCHED = "Property Manager details fetched successfully."
-
+ONLY_PROPERTY_MANAGER_CAN_VIEW="Access denied. Only Property Managers can view this dashboard."
 PROPERTY_LIST_FETCHED = "Property details list fetched successfully."
 PROPERTY_NOT_FOUND = "Property details not found."
 PROPERTY_DELETED = "Property detail deleted successfully."
@@ -110,13 +110,31 @@ PROPERTY_ID_REQUIRED="Property ID is required in query params (e.g. ?id=5)"
 DATA_NOT_FOUND='data not found'
 PROPERTY_MANAGER_LIST_FETCHED="property manager list fetch successfully"
 OWNER_LIST_FETCHED_SUCCESS="owner list fetch successfully"
-
+STAFF_DELETED_SUCCESS="Staff deleted successfully"
+STAFF_DETAILS_UPDATED_SUCCESS="Staff details updated successfully"
+STAFF_LIST_FETCHED_SUCCESS="Staff list fetched successfully"
+PROPERTY_MANAGER_ID_REQUIRE="Property Manager ID is required."
+ERROR_DELETING_SUCCESS="Error deleting tenant"
+TENANT_DELETED_SUCCESS="Tenant deleted successfully"
+OWNER_PROPERTIES_WITH_TENANTS="Owner properties with tenants fetched successfully."
+OWNER_ID_IS_REQUIRE="Owner ID is required for update"
+OWNER_DELETE="Owner and related properties deleted successfully"
+OWNER_DETAILS_FETCHED_SUCCESS="Owner details fetched successfully."
+OWNER_DETAILs_UPDATE_SUCCESS="Owner details updated successfully." 
+OWNER_DELETE_SUCCESS="Owner details deleted successfully."
+ACCESS_DENIED_ONLY_STAFF_PMC="Access denied. Only Property Manager or Staff can manage owners."
+TENANT_ID_REQUIRE="tenant_id is required for deletion"
+PERMISSSION_DENIED="Permission denied. You cannot delete this tenant."
+USER_ID_FULL_NAME_REQUIRED="user_id and full_name are required"
 OWNER = "OWNER"
 PROPERTY_MANAGER = "PROPERTY_MANAGER"
 TENANT = "TENANT"
 STAFF = "STAFF"
 AVAILABLE="AVAILABLE"
-NOT_AVAILABLE="NOT_AVAILABLE"
+NOT_AVAILABLE="NOT_AVAILABLE" 
+PROPERTY_MANAGER_DETAILS_DELETE_SUCCESS="PMC deleted successfully."
+PROFILE_UPDATED_SUCCESS="Profile updated successfully."
+PROFILE_FETCHED_SUCCESS="Profile fetched successfully."
 
 
 LEASE_STATUS_CHOICES = [
@@ -160,6 +178,19 @@ DEFAULT_PERMISSIONS = {
 
 
 
+ACCESS_LEVEL_CHOICES = [
+    ("NO_ACCESS", "No Access"),
+    ("VIEW_ONLY", "View Only"),
+    ("FULL_ACCESS", "Full Access"),
+]
+
+INVITATION_STATUS_CHOICES = (
+        ("pending", "Pending"),
+        ("accepted", "Accepted"),
+        ("rejected", "Rejected"),
+    )
+
+PENDING="Pending"
 
 JWT_TOKEN_EXPIRY_MINUTES = 60
 OTP_EXPIRY_MINUTES = 5 

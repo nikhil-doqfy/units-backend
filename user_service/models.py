@@ -46,6 +46,9 @@ class PropertyManagerCompanyDetails(models.Model):
     phone_number = models.CharField(max_length=20)
     email_address = models.EmailField(null=True, blank=True)
     pmc_documents = models.JSONField(default=dict)
+        
+    state = models.CharField(max_length=100, blank=True, null=True)
+   
 
     def __str__(self):
         return "{}".format(self.company_name)
@@ -154,6 +157,8 @@ class UserVerification(Base):
     verified_time = models.DateTimeField(null=True, blank=True)
     is_verified = models.BooleanField(default=False)
     
+
+
 
 
 
