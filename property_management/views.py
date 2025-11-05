@@ -2261,7 +2261,7 @@ def invite_owner_pmc(request):
                 invited_by=current_user,
                 token=token,
                 status=constants.PENDING if hasattr(constants, 'PENDING') else "pending",
-                created_at=timezone.now()
+               
             )
             invite_link = f"https://yourfrontend.com/pmc/invite/accept?token={token}"
             subject = "Invitation to Join Property Management Portal"
@@ -2346,7 +2346,7 @@ def invite_pmc_to_owner(request):
                 invited_by=current_user,
                 token=token,
                 status=constants.PENDING,
-                created_at=timezone.now()
+                
             )
 
           
@@ -2441,7 +2441,7 @@ def invite_tenant_by_pmc(request):
                 invited_by=current_user,
                 token=token,
                 status=constants.PENDING,
-                created_at=timezone.now()
+               
             )
 
            

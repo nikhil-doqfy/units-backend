@@ -175,6 +175,7 @@ def staff_signup(request):
     )
 
 
+
 @is_request_authenticated
 def user_profile_view(request):
     try:
