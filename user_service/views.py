@@ -318,8 +318,6 @@ def user_profile_view(request):
 
 
 
-
-# pmc section  mai all users 
 def user_management_view(request):
     if request.method == "GET":
         try:
@@ -383,7 +381,7 @@ def user_management_view(request):
                 })
 
             return prepare_response(
-                message="User list fetched successfully",
+                message=constants.USER_FETCHED_SUCCESS,
                 content=data,
                 status=status.HTTP_200_OK
             )
@@ -397,13 +395,13 @@ def user_management_view(request):
  
     elif request.method == "PUT":
         try:
-            body = json.loads(request.body.decode("utf-8"))
-            user_id = body.get("id")
+            body = json.loads(request.body)
+            user_id = body.get("user_id")
 
             user = UserProfile.objects.filter(id=user_id, is_deleted=False).first()
             if not user:
                 return prepare_response(
-                    message="User not found or already deleted",
+                    message=constants.USER_NOT_FOUND,
                     status=status.HTTP_404_NOT_FOUND
                 )
 
@@ -417,15 +415,11 @@ def user_management_view(request):
                 user.is_verified = body["is_verified"]
             if "is_login_allowed" in body:
                 user.is_login_allowed = body["is_login_allowed"]
-            if "is_deleted" in body:
-                user.is_deleted = body["is_deleted"]
-
-
   
             user.save()
 
             return prepare_response(
-                message="User updated successfully",
+                message=constants.USER_UPDATED_SUCCESS,
                 content={"id": user.id, "email": user.email},
                 status=status.HTTP_200_OK
             )
@@ -439,13 +433,13 @@ def user_management_view(request):
  
     elif request.method == "DELETE":
         try:
-            body = json.loads(request.body.decode("utf-8"))
-            user_id = body.get("id")
+            body = json.loads(request.body)
+            user_id = body.get("user_id")
 
             user = UserProfile.objects.filter(id=user_id).first()
             if not user:
                 return prepare_response(
-                    message="User not found",
+                    message=constants.USER_NOT_FOUND,
                     status=status.HTTP_404_NOT_FOUND
                 )
 
@@ -453,7 +447,7 @@ def user_management_view(request):
             user.save()
 
             return prepare_response(
-                message="User soft deleted successfully",
+                message=constants.USER_SOFT_DELETED,
                 content={"id": user.id, "is_deleted": user.is_deleted},
                 status=status.HTTP_200_OK
             )
@@ -466,14 +460,12 @@ def user_management_view(request):
 
     else:
         return prepare_response(
-            message="Invalid request method",
+            message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
     
 
 
-
-# pmc section  mai deleted users 
 def user_management_deleted_view(request):
     if request.method == "GET":
         try:
@@ -537,7 +529,7 @@ def user_management_deleted_view(request):
                 })
 
             return prepare_response(
-                message="User list fetched successfully",
+                message=constants.USER_FETCHED_SUCCESS,
                 content=data,
                 status=status.HTTP_200_OK
             )
@@ -551,13 +543,13 @@ def user_management_deleted_view(request):
  
     elif request.method == "PUT":
         try:
-            body = json.loads(request.body.decode("utf-8"))
-            user_id = body.get("id")
+            body = json.loads(request.body)
+            user_id = body.get("user_id")
 
             user = UserProfile.objects.filter(id=user_id, is_deleted=True).first()
             if not user:
                 return prepare_response(
-                    message="User not found or already deleted",
+                    message=constants.USER_DOES_NOT_EXIST,
                     status=status.HTTP_404_NOT_FOUND
                 )
 
@@ -571,15 +563,14 @@ def user_management_deleted_view(request):
                 user.is_verified = body["is_verified"]
             if "is_login_allowed" in body:
                 user.is_login_allowed = body["is_login_allowed"]
-            if "is_deleted" in body:
-                user.is_deleted = body["is_deleted"]
+
 
 
   
             user.save()
 
             return prepare_response(
-                message="User updated successfully",
+                message=constants.USER_UPDATED_SUCCESS,
                 content={"id": user.id, "email": user.email},
                 status=status.HTTP_200_OK
             )
@@ -593,13 +584,13 @@ def user_management_deleted_view(request):
  
     elif request.method == "DELETE":
         try:
-            body = json.loads(request.body.decode("utf-8"))
-            user_id = body.get("id")
+            body = json.loads(request.body)
+            user_id = body.get("user_id")
 
             user = UserProfile.objects.filter(id=user_id).first()
             if not user:
                 return prepare_response(
-                    message="User not found",
+                    message=constants.USER_NOT_FOUND,
                     status=status.HTTP_404_NOT_FOUND
                 )
 
@@ -607,7 +598,7 @@ def user_management_deleted_view(request):
             user.delete()
 
             return prepare_response(
-                message="User permanently deleted successfully",
+                message=constants.USER_PERMANENTLY_DELETED,
                 status=status.HTTP_200_OK
             )
 
@@ -619,6 +610,6 @@ def user_management_deleted_view(request):
 
     else:
         return prepare_response(
-            message="Invalid request method",
+            message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
