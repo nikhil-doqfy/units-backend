@@ -2500,21 +2500,38 @@ def invite_tenant_by_pmc(request):
 
 
 
-    
 
 
+@is_request_authenticated
+def assign_property_by_owner(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            property_id = data.get('property_id')
+            pmc_id = data.get('pmc_id')
+        except (ValueError, KeyError):
+            return prepare_response(message="Invalid input format.", status=400)
 
+        current_user = request.user
 
- 
+        print(f"Current User: {current_user.id}, Email: {current_user.email}, Property ID: {property_id}")
 
+        if current_user.user_type != constants.OWNER:
+            return prepare_response(message="Forbidden: You are not authorized to assign properties.", status=403)
 
+        property_to_assign = PropertyDetails.objects.filter(
+            id=property_id,
+            owner=current_user  
+        ).first()
 
+        print(f"Property to Assign: {property_to_assign}")
+        
+        if not property_to_assign:
+            return prepare_response(message="Property not found or does not belong to you.", status=404)
 
+        property_to_assign.property_manager_id = pmc_id
+        property_to_assign.save()
 
+        return prepare_response(message="Property assigned successfully.", status=200)
 
-
-
-
-
-
-
+    return prepare_response(message="Invalid request method.", status=405)
