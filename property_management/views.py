@@ -16,6 +16,7 @@ from django.forms.models import model_to_dict
 from django.db.models import Count
 import uuid
 from django.db.models import Prefetch
+from django.template.loader import render_to_string
 
 
 
@@ -1999,8 +2000,6 @@ def pmc_dashboard_view(request):
 
 
 def pmc_owner_view_list(request):
- 
-
     try:
  
         if request.method == "GET":
@@ -2141,12 +2140,6 @@ def pmc_owner_view_list(request):
 
 
 
-
-
-
-
-
-
 def property_details_list_view(request):
     if request.method == "GET":
         try:
@@ -2231,16 +2224,20 @@ def property_details_list_view(request):
         )
 
 
+
 @is_request_authenticated
 def invite_owner_pmc(request):
     if request.method == "POST":
         try:
             current_user = request.user
+
+           
             if current_user.user_type != constants.OWNER:
                 return prepare_response(
                     message=constants.ACCESS_DENIED_OWNER,
                     status=status.HTTP_403_FORBIDDEN
                 )
+
             data = json.loads(request.body)
             email = data.get("email")
 
@@ -2249,39 +2246,37 @@ def invite_owner_pmc(request):
                     message=constants.EMAIL_REQUIRED,
                     status=status.HTTP_400_BAD_REQUEST
                 )
+
+        
             if OwnerPMCInvitation.objects.filter(email=email, invited_by=current_user).exists():
                 return prepare_response(
                     message=constants.PMC_ALREADY_INVITED,
                     status=status.HTTP_400_BAD_REQUEST
                 )
+
+      
             token = str(uuid.uuid4())
             invitation = OwnerPMCInvitation.objects.create(
                 email=email,
                 invited_by=current_user,
                 token=token,
                 status=constants.PENDING if hasattr(constants, 'PENDING') else "pending",
-               
             )
+
+         
             invite_link = f"https://yourfrontend.com/pmc/invite/accept?token={token}"
             subject = "Invitation to Join Property Management Portal"
             body_text = f"You have been invited to join as a PMC by {current_user.email}. Use this link: {invite_link}"
-            body_html = f"""
-            <html>
-                <body>
-                    <h3>You're Invited!</h3>
-                    <p>Hello,</p>
-                    <p><b>{current_user.email}</b> has invited you to join the Property Management Portal.</p>
-                    <p>Click below to accept the invitation:</p>
-                    <p>
-                        <a href="{invite_link}" 
-                           style="background:#007bff;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;">
-                           Accept Invitation
-                        </a>
-                    </p>
-                    <p>If the button doesn’t work, copy this link: {invite_link}</p>
-                </body>
-            </html>
-            """
+
+   
+            body_html = render_to_string(
+                "email_templates/invite_owner_pmc.html",
+                {
+                    "inviter_email": current_user.email,
+                    "invite_link": invite_link,
+                }
+            )
+
             try:
                 send_ses_email(email, subject, body_text, body_html)
             except Exception as e:
@@ -2290,27 +2285,29 @@ def invite_owner_pmc(request):
                     message=constants.INVITATION_CREATED_EMAIL_FAILED,
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
+
             return prepare_response(
                 content={
                     "email": invitation.email,
                     "token": invitation.token,
-                    "status": invitation.status
+                    "status": invitation.status,
                 },
                 message=constants.PMC_INVITATION_SENT_SUCCESS,
                 status=status.HTTP_201_CREATED
             )
+
         except Exception as e:
-            print(f"Error in invite_pmc_view: {e}")
+            print(f"Error in invite_owner_pmc: {e}")
             return prepare_response(
                 message=f"Error sending invitation: {str(e)}",
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
     else:
         return prepare_response(
             message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
-
 
 
 
@@ -2320,12 +2317,12 @@ def invite_pmc_to_owner(request):
         try:
             current_user = request.user
 
-         
             if current_user.user_type != constants.PROPERTY_MANAGER:
                 return prepare_response(
                     message=constants.ACCESS_DENIED_PMC,
                     status=status.HTTP_403_FORBIDDEN
                 )
+
             data = json.loads(request.body)
             email = data.get("email")
 
@@ -2334,43 +2331,37 @@ def invite_pmc_to_owner(request):
                     message=constants.EMAIL_REQUIRED,
                     status=status.HTTP_400_BAD_REQUEST
                 )
+
+            
             if PMCOwnerInvitation.objects.filter(email=email, invited_by=current_user).exists():
                 return prepare_response(
                     message=constants.OWNER_ALREADY_INVITED,
                     status=status.HTTP_400_BAD_REQUEST
-                )      
+                )
+
+          
             token = str(uuid.uuid4())
             invitation = PMCOwnerInvitation.objects.create(
                 email=email,
                 invited_by=current_user,
                 token=token,
-                status=constants.PENDING,
-                
+                status=constants.PENDING if hasattr(constants, "PENDING") else "pending",
             )
 
-          
             invite_link = f"https://yourfrontend.com/owner/invite/accept?token={token}"
             subject = "Invitation to Join Property Management Portal"
             body_text = f"You have been invited by {current_user.email} to join as an Owner. Use this link: {invite_link}"
 
-            body_html = f"""
-            <html>
-                <body>
-                    <h3>You're Invited!</h3>
-                    <p>Hello,</p>
-                    <p><b>{current_user.email}</b> has invited you to join the Property Management Portal as an <b>Owner</b>.</p>
-                    <p>Click below to accept the invitation:</p>
-                    <p>
-                        <a href="{invite_link}" 
-                           style="background:#28a745;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;">
-                           Accept Invitation
-                        </a>
-                    </p>
-                    <p>If the button doesn’t work, copy this link: {invite_link}</p>
-                </body>
-            </html>
-            """
+          
+            body_html = render_to_string(
+                "email_templates/invite_pmc_to_owner.html",
+                {
+                    "inviter_email": current_user.email,
+                    "invite_link": invite_link,
+                }
+            )
 
+ 
             try:
                 send_ses_email(email, subject, body_text, body_html)
             except Exception as e:
@@ -2379,11 +2370,13 @@ def invite_pmc_to_owner(request):
                     message=constants.INVITATION_CREATED_EMAIL_FAILED,
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
+
+
             return prepare_response(
                 content={
                     "email": invitation.email,
                     "token": invitation.token,
-                    "status": invitation.status
+                    "status": invitation.status,
                 },
                 message=constants.OWNER_INVITATION_SENT_SUCCESS,
                 status=status.HTTP_201_CREATED
@@ -2409,12 +2402,15 @@ def invite_tenant_by_pmc(request):
     if request.method == "POST":
         try:
             current_user = request.user
+
+           
             if current_user.user_type != constants.PROPERTY_MANAGER:
                 return prepare_response(
                     message=constants.ACCESS_DENIED_TENANT_PMC,
                     status=status.HTTP_403_FORBIDDEN
                 )
 
+            
             data = json.loads(request.body)
             email = data.get("email")
 
@@ -2424,47 +2420,43 @@ def invite_tenant_by_pmc(request):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-         
+           
             if PMCTenantInvitation.objects.filter(email=email, invited_by=current_user).exists():
                 return prepare_response(
                     message=constants.TENANT_ALREADY_INVITED,
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-           
+        
             token = str(uuid.uuid4())
 
-      
+           
             invitation = PMCTenantInvitation.objects.create(
                 email=email,
                 invited_by=current_user,
                 token=token,
-                status=constants.PENDING,
-               
+                status=constants.PENDING if hasattr(constants, "PENDING") else "pending",
+            )
+
+          
+            invite_link = f"https://yourfrontend.com/tenant/invite/accept?token={token}"
+            subject = "Invitation to Join Property Management Portal"
+
+            body_text = (
+                f"You have been invited by {current_user.email} to join as a Tenant. "
+                f"Use this link to accept: {invite_link}"
             )
 
            
-            invite_link = f"https://yourfrontend.com/tenant/invite/accept?token={token}"
-            subject = "Invitation to Join Property Management Portal"
-            body_text = f"You have been invited to join as a Tenant by {current_user.email}. Use this link: {invite_link}"
-            body_html = f"""
-            <html>
-                <body>
-                    <h3>You're Invited!</h3>
-                    <p>Hello,</p>
-                    <p><b>{current_user.email}</b> has invited you to join the Property Management Portal as a Tenant.</p>
-                    <p>Click below to accept the invitation:</p>
-                    <p>
-                        <a href="{invite_link}" 
-                           style="background:#007bff;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;">
-                           Accept Invitation
-                        </a>
-                    </p>
-                    <p>If the button doesn’t work, copy this link: {invite_link}</p>
-                </body>
-            </html>
-            """
+            body_html = render_to_string(
+                "email_templates/invite_tenant_by_pmc.html",
+                {
+                    "inviter_email": current_user.email,
+                    "invite_link": invite_link,
+                }
+            )
 
+          
             try:
                 send_ses_email(email, subject, body_text, body_html)
             except Exception as e:
@@ -2474,11 +2466,12 @@ def invite_tenant_by_pmc(request):
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
 
+          
             return prepare_response(
                 content={
                     "email": invitation.email,
                     "token": invitation.token,
-                    "status": invitation.status
+                    "status": invitation.status,
                 },
                 message=constants.TENANT_INVITATION_SENT_SUCCESS,
                 status=status.HTTP_201_CREATED

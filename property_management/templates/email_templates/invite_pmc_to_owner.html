@@ -1,0 +1,15 @@
+<html>
+  <body>
+    <h3>You're Invited!</h3>
+    <p>Hello,</p>
+    <p><b>{{ inviter_email }}</b> has invited you to join the Property Management Portal as an <b>Owner</b>.</p>
+    <p>Click below to accept the invitation:</p>
+    <p>
+      <a href="{{ invite_link }}" 
+         style="background:#28a745;color:white;padding:10px 20px;text-decoration:none;border-radius:5px;">
+         Accept Invitation
+      </a>
+    </p>
+    <p>If the button doesn’t work, copy this link: {{ invite_link }}</p>
+  </body>
+</html>
