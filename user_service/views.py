@@ -443,7 +443,8 @@ def user_management_view(request):
                     status=status.HTTP_404_NOT_FOUND
                 )
 
-            user.is_deleted = True
+            user.is_deleted = body.get("is_deleted", user.is_deleted)
+
             user.save()
 
             return prepare_response(
