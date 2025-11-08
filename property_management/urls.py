@@ -29,6 +29,7 @@ urlpatterns = [
     path('property/details/list/view/', views.property_details_list_view, name='property_details_list_view') ,
     path('invite/owner/pmc', views.invite_owner_pmc, name='invite_owner_pmc') , 
     path('invite/pmc/owner', views.invite_pmc_to_owner, name='invite_pmc_to_owner'),
+    path('assign/property/by/owner', views.assign_property_by_owner, name='assign_property_by_owner'),
     
     
 ] 

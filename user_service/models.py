@@ -18,6 +18,7 @@ class UserProfile(Base):
     user_type = models.CharField(max_length=50, choices=USER_TYPE_CHOICES)
     otp = models.CharField(max_length=20, null=True, blank=True)
     is_verified = models.BooleanField(default=False)
+    is_deleted=models.BooleanField(default=False)
     is_detail_updated = models.BooleanField(default=False)
     is_document_uploaded = models.BooleanField(default=False)
     is_login_allowed = models.BooleanField(default=False)
@@ -46,7 +47,6 @@ class PropertyManagerCompanyDetails(models.Model):
     phone_number = models.CharField(max_length=20)
     email_address = models.EmailField(null=True, blank=True)
     pmc_documents = models.JSONField(default=dict)
-        
     state = models.CharField(max_length=100, blank=True, null=True)
    
 

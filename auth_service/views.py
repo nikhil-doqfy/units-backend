@@ -11,6 +11,7 @@ from utilities.jwt_token import create_jwt_token , get_jwt_token, decode_jwt_tok
 from utilities.oauth_utils import login_with_outlook ,login_with_google
 from django.utils import timezone
 from datetime import datetime, timedelta
+from django.template.loader import render_to_string
 
 def user_login(request):
     if request.method != "POST":
@@ -181,13 +182,14 @@ def verify_password_otp(request):
             )
         record = UserVerification.objects.filter(
             email=email, otp=otp, is_verified=False
-        ).order_by('-created_at').first()
+        ).order_by('-created').first()
         if not record:
             return prepare_response(
                 message=constants.INCORRECT_OTP,
                 status=status.HTTP_400_BAD_REQUEST
             )
-        expiry_time = record.created_at + timezone.timedelta(minutes=10)
+        expiry_time = record.created + timezone.timedelta(minutes=10)
+
         if timezone.now() > expiry_time:
             return prepare_response(
                 message=constants.OTP_EXPIRED,
@@ -255,16 +257,18 @@ def reset_password(request):
     
 
 
-def send_password_otp(request):
+def send_password_otp(request): 
     if request.method == "POST":
         try:
             data = json.loads(request.body)
             email = data.get("email")
+
             if not email:
                 return prepare_response(
                     message=constants.INVALID_REQUEST_METHOD,
                     status=status.HTTP_400_BAD_REQUEST
                 )
+
             try:
                 user = UserProfile.objects.get(email=email)
             except UserProfile.DoesNotExist:
@@ -272,7 +276,9 @@ def send_password_otp(request):
                     message=constants.USER_NOT_FOUND,
                     status=status.HTTP_404_NOT_FOUND
                 )
+
             otp = request_otp_sent()
+
             UserVerification.objects.create(
                 user=user,
                 email=email,
@@ -280,26 +286,26 @@ def send_password_otp(request):
                 verification_type="PASSWORD_RESET",
                 is_verified=False
             )
+
+            # ✅ Render email template
+            body_html = render_to_string(
+                "email_templates/send_password_otp.html",
+                {"otp": otp, "expiry_minutes": constants.OTP_EXPIRY_MINUTES}
+            )
+
             subject = "Password Reset OTP - DOQFY"
             body_text = f"Your OTP for password reset is: {otp}. It will expire in {constants.OTP_EXPIRY_MINUTES} minutes."
-            body_html = f"""
-            <html>
-                <body>
-                    <p>Your OTP for password reset is: <b>{otp}</b>.</p>
-                    <p>It will expire in {constants.OTP_EXPIRY_MINUTES} minutes.</p>
-                </body>
-            </html>
-            """
+
             success = send_ses_email(email, subject, body_text, body_html)
+
             if success:
-                return prepare_response(
-                    message=constants.OTP_SEND_SUCCESS
-                )
+                return prepare_response(message=constants.OTP_SEND_SUCCESS)
             else:
                 return prepare_response(
                     message=constants.OTP_SEND_FAILED,
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
+
         except Exception as e:
             print(f"Error sending OTP via SES: {e}")
             return prepare_response(

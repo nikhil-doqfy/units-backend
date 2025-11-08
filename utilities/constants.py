@@ -10,7 +10,7 @@ INVALID_USERNAME_OR_PASSWORD = "Invalid username or password"
 LOGIN_SUCCESSFUL ="Login successful"
 INVALID_REQUEST = "Invalid request method"
 INVALID_PARAMETER = "Only one parameter is allowed mobile number or email"
-USER_DOES_NOT_EXIST = "User does not exist" 
+
 OTP_GENERATED = "OTP generated successfully (Expire in 1 min)"
 BAD_REQUEST = "Bad Request"
 PASSWORD_MISMATCH = "Password does not match"
@@ -135,8 +135,34 @@ NOT_AVAILABLE="NOT_AVAILABLE"
 PROPERTY_MANAGER_DETAILS_DELETE_SUCCESS="PMC deleted successfully."
 PROFILE_UPDATED_SUCCESS="Profile updated successfully."
 PROFILE_FETCHED_SUCCESS="Profile fetched successfully."
+USER_PERMANENTLY_DELETED="User permanently deleted successfully"
+USER_UPDATED_SUCCESS="User updated successfully"
+USER_FETCHED_SUCCESS="User list fetched successfully"
+USER_SOFT_DELETED="user soft deleted successfully"
 
 
+ACCESS_DENIED_OWNER = "Access denied. Only owners can send invitations."
+EMAIL_REQUIRED = "Email field is required."
+PMC_ALREADY_INVITED = "This PMC has already been invited."
+INVITATION_CREATED_EMAIL_FAILED = "Invitation created but email sending failed."
+PMC_INVITATION_SENT_SUCCESS = "PMC invitation sent successfully."
+
+ACCESS_DENIED_PMC = "Access denied. Only Property Management Companies can send invitations."
+OWNER_ALREADY_INVITED = "This OWNER has already been invited."
+
+OWNER_INVITATION_SENT_SUCCESS = "Owner invitation sent successfully."
+
+ACCESS_DENIED_TENANT_PMC = "Access denied. Only PMCs can send invitations."
+TENANT_ALREADY_INVITED = "This Tenant has already been invited."
+TENANT_INVITATION_SENT_SUCCESS = "Tenant invitation sent successfully."
+
+INVALID_INPUT_FORMAT = "Invalid input format."
+FORBIDDEN_ASSIGN_PROPERTY = "Forbidden: You are not authorized to assign properties."
+PROPERTY_NOT_FOUND = "Property not found or does not belong to you."
+PROPERTY_ASSIGNED_SUCCESS = "Property assigned successfully."
+
+
+"Email field is required."
 LEASE_STATUS_CHOICES = [
     ("DRAFT", "Draft"),
     ("ACTIVE", "Active"),

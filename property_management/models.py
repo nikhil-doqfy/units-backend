@@ -12,7 +12,6 @@ class Base(models.Model):
         abstract = True
 
 
-
 class OwnerDetails(Base): 
     user = models.ForeignKey(
         "user_service.UserProfile",  
