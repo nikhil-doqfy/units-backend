@@ -10,7 +10,7 @@ INVALID_USERNAME_OR_PASSWORD = "Invalid username or password"
 LOGIN_SUCCESSFUL ="Login successful"
 INVALID_REQUEST = "Invalid request method"
 INVALID_PARAMETER = "Only one parameter is allowed mobile number or email"
-
+LOGIN_SUCCESSFUL_WITH_OTP="OTP verified successfully. Login successful."
 OTP_GENERATED = "OTP generated successfully (Expire in 1 min)"
 BAD_REQUEST = "Bad Request"
 PASSWORD_MISMATCH = "Password does not match"
