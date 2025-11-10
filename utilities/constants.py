@@ -10,7 +10,7 @@ INVALID_USERNAME_OR_PASSWORD = "Invalid username or password"
 LOGIN_SUCCESSFUL ="Login successful"
 INVALID_REQUEST = "Invalid request method"
 INVALID_PARAMETER = "Only one parameter is allowed mobile number or email"
-
+LOGIN_SUCCESSFUL_WITH_OTP="OTP verified successfully. Login successful."
 OTP_GENERATED = "OTP generated successfully (Expire in 1 min)"
 BAD_REQUEST = "Bad Request"
 PASSWORD_MISMATCH = "Password does not match"
@@ -139,7 +139,7 @@ USER_PERMANENTLY_DELETED="User permanently deleted successfully"
 USER_UPDATED_SUCCESS="User updated successfully"
 USER_FETCHED_SUCCESS="User list fetched successfully"
 USER_SOFT_DELETED="user soft deleted successfully"
-
+OTP_NOT_VERIFIED="otp not vrified or alredy verified "
 
 ACCESS_DENIED_OWNER = "Access denied. Only owners can send invitations."
 EMAIL_REQUIRED = "Email field is required."

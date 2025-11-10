@@ -19,53 +19,110 @@ def user_login(request):
             message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
+
     try:
         data = json.loads(request.body)
         email = data.get("email")
         password = data.get("password")
+        otp = data.get("otp")
     except json.JSONDecodeError:
         return prepare_response(
-            message="Invalid JSON",
+            message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_400_BAD_REQUEST
         )
-    if not all([email, password]):
+
+   
+    if email and password:
+        user = UserProfile.objects.filter(email=email).first()
+        if not user:
+            return prepare_response(
+                message=constants.USER_NOT_ONBOARDED,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not check_password(password, user.hashed_password):
+            return prepare_response(
+                message=constants.INVALID_CREDENTIALS,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not user.is_login_allowed:
+            return prepare_response(
+                message=constants.LOGIN_NOT_ALLOWED,
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        token = create_jwt_token(user)
+        return prepare_response(
+            content={
+                "id": user.id,
+                "email": user.email,
+                "user_type": user.user_type,
+                "is_verified": user.is_verified,
+                "is_detail_updated": user.is_detail_updated,
+                "is_document_uploaded": user.is_document_uploaded,
+                "access_token": token,
+                "token_type": "Bearer"
+            },
+            message=constants.LOGIN_SUCCESSFUL,
+            status=status.HTTP_200_OK
+        )
+
+    elif email and otp:
+        try:
+            user = UserProfile.objects.get(email=email)
+        except UserProfile.DoesNotExist:
+            return prepare_response(
+                message=constants.USER_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        record = UserVerification.objects.filter(
+            email=email, otp=otp
+        ).order_by('-created').first()
+
+        if not record:
+            return prepare_response(
+                message=constants.INCORRECT_OTP,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+        if record.is_verified:
+            token = create_jwt_token(user)
+            record.verified_time = timezone.now()
+           
+            token = create_jwt_token(user)
+            record.is_verified = False
+            record.save()
+            return prepare_response(
+                content={ 
+                "id": user.id,
+                "email": user.email,
+                "user_type": user.user_type,
+                "is_verified": user.is_verified,
+                "access_token": token,
+                "token_type": "Bearer"
+              },
+            message=constants.LOGIN_SUCCESSFUL_WITH_OTP,
+            status=status.HTTP_200_OK
+               )
+        else:
+            return prepare_response(       
+            message=constants. OTP_NOT_VERIFIED,
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+
+
+    else:
         return prepare_response(
             message=constants.FIELD_REQUIRED,
             status=status.HTTP_400_BAD_REQUEST
         )
-    user = UserProfile.objects.filter(email=email).first()
-    if not user:
-        return prepare_response(
-            message=constants.USER_NOT_ONBOARDED,
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    if not check_password(password, user.hashed_password):
-        print("DB hashed password:", user.hashed_password)
-        return prepare_response(
-            
-            message=constants.INVALID_CREDENTIALS,
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    if not user.is_login_allowed:
-        return prepare_response(
-            message=constants.LOGIN_NOT_ALLOWED,
-            status=status.HTTP_403_FORBIDDEN
-        )    
-    token = create_jwt_token(user)
-    return prepare_response(
-        content={
-            "id": user.id,
-            "email": user.email,
-            "user_type": user.user_type,
-            "is_verified": user.is_verified,
-            "is_detail_updated": user.is_detail_updated,
-            "is_document_uploaded": user.is_document_uploaded,
-            "access_token": token,      
-            "token_type": "Bearer"      
-        },
-        message=constants.LOGIN_SUCCESSFUL,
-        status=status.HTTP_200_OK
-    )
+
+
+
 
 
 def google_login(request):
@@ -75,7 +132,7 @@ def google_login(request):
     try:
         data = json.loads(request.body)
         oauth_token = data.get("token")
-        print("🔹 Received token from request:", oauth_token)
+     
 
     except json.JSONDecodeError:
         return prepare_response(message=constants.INVALID_JSON_BODY, status=status.HTTP_400_BAD_REQUEST)
@@ -287,7 +344,7 @@ def send_password_otp(request):
                 is_verified=False
             )
 
-            # ✅ Render email template
+        
             body_html = render_to_string(
                 "email_templates/send_password_otp.html",
                 {"otp": otp, "expiry_minutes": constants.OTP_EXPIRY_MINUTES}
