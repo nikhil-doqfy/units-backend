@@ -139,7 +139,7 @@ USER_PERMANENTLY_DELETED="User permanently deleted successfully"
 USER_UPDATED_SUCCESS="User updated successfully"
 USER_FETCHED_SUCCESS="User list fetched successfully"
 USER_SOFT_DELETED="user soft deleted successfully"
-
+OTP_NOT_VERIFIED="otp not vrified or alredy verified "
 
 ACCESS_DENIED_OWNER = "Access denied. Only owners can send invitations."
 EMAIL_REQUIRED = "Email field is required."

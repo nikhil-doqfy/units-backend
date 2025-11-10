@@ -68,8 +68,7 @@ def user_login(request):
             status=status.HTTP_200_OK
         )
 
-
-    elif email and not password and not otp:
+    elif email and otp:
         try:
             user = UserProfile.objects.get(email=email)
         except UserProfile.DoesNotExist:
@@ -78,38 +77,8 @@ def user_login(request):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        generated_otp = request_otp_sent()
-        UserVerification.objects.create(
-            user=user,
-            email=email,
-            otp=generated_otp,
-            verification_type="LOGIN_OTP",
-            is_verified=False
-        )
-
-        body_html = render_to_string(
-            "email_templates/send_password_otp.html",
-            {"otp": generated_otp, "expiry_minutes": constants.OTP_EXPIRY_MINUTES}
-        )
-        subject = "Login OTP - DOQFY"
-        body_text = f"Your OTP for login is: {generated_otp}. It will expire in {constants.OTP_EXPIRY_MINUTES} minutes."
-
-        success = send_ses_email(email, subject, body_text, body_html)
-        if success:
-            return prepare_response(
-                message="OTP sent successfully to your registered email.",
-                status=status.HTTP_200_OK
-            )
-        else:
-            return prepare_response(
-                message="Failed to send OTP. Please try again later.",
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-
-    elif email and otp:
         record = UserVerification.objects.filter(
-            email=email, otp=otp, is_verified=False
+            email=email, otp=otp
         ).order_by('-created').first()
 
         if not record:
@@ -118,32 +87,33 @@ def user_login(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        expiry_time = record.created + timezone.timedelta(minutes=10)
-        if timezone.now() > expiry_time:
+
+        if record.is_verified:
+            token = create_jwt_token(user)
+            record.verified_time = timezone.now()
+           
+            token = create_jwt_token(user)
+            record.is_verified = False
+            record.save()
             return prepare_response(
-                message=constants.OTP_EXPIRED,
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        record.is_verified = True
-        record.verified_time = timezone.now()
-        record.save()
-
-        user = UserProfile.objects.get(email=email)
-        token = create_jwt_token(user)
-
-        return prepare_response(
-            content={
+                content={ 
                 "id": user.id,
                 "email": user.email,
                 "user_type": user.user_type,
-                "is_verified": True,
+                "is_verified": user.is_verified,
                 "access_token": token,
                 "token_type": "Bearer"
-            },
+              },
             message=constants.LOGIN_SUCCESSFUL_WITH_OTP,
             status=status.HTTP_200_OK
+               )
+        else:
+            return prepare_response(       
+            message=constants. OTP_NOT_VERIFIED,
+            status=status.HTTP_400_BAD_REQUEST
         )
+
+
 
     else:
         return prepare_response(
