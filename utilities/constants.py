@@ -160,9 +160,9 @@ INVALID_INPUT_FORMAT = "Invalid input format."
 FORBIDDEN_ASSIGN_PROPERTY = "Forbidden: You are not authorized to assign properties."
 PROPERTY_NOT_FOUND = "Property not found or does not belong to you."
 PROPERTY_ASSIGNED_SUCCESS = "Property assigned successfully."
+PROPERTY_STATSTICS_FETCHED="Property statstics fetched successfully."
+SOMTHING_WENT_WRONG="Something went wrong while fetching property summary."
 
-
-"Email field is required."
 LEASE_STATUS_CHOICES = [
     ("DRAFT", "Draft"),
     ("ACTIVE", "Active"),

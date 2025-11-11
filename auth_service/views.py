@@ -374,3 +374,6 @@ def send_password_otp(request):
             message=constants.METHOD_NOT_ALLOWED,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
+
+
+

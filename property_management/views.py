@@ -17,7 +17,7 @@ from django.db.models import Count
 import uuid
 from django.db.models import Prefetch
 from django.template.loader import render_to_string
-
+from datetime import timedelta
 
 
 @is_request_authenticated
@@ -2370,8 +2370,6 @@ def invite_pmc_to_owner(request):
                     message=constants.INVITATION_CREATED_EMAIL_FAILED,
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
-
-
             return prepare_response(
                 content={
                     "email": invitation.email,
@@ -2402,15 +2400,11 @@ def invite_tenant_by_pmc(request):
     if request.method == "POST":
         try:
             current_user = request.user
-
-           
             if current_user.user_type != constants.PROPERTY_MANAGER:
                 return prepare_response(
                     message=constants.ACCESS_DENIED_TENANT_PMC,
                     status=status.HTTP_403_FORBIDDEN
                 )
-
-            
             data = json.loads(request.body)
             email = data.get("email")
 
@@ -2419,34 +2413,24 @@ def invite_tenant_by_pmc(request):
                     message=constants.EMAIL_REQUIRED,
                     status=status.HTTP_400_BAD_REQUEST
                 )
-
-           
             if PMCTenantInvitation.objects.filter(email=email, invited_by=current_user).exists():
                 return prepare_response(
                     message=constants.TENANT_ALREADY_INVITED,
                     status=status.HTTP_400_BAD_REQUEST
                 )
-
-        
             token = str(uuid.uuid4())
-
-           
             invitation = PMCTenantInvitation.objects.create(
                 email=email,
                 invited_by=current_user,
                 token=token,
                 status=constants.PENDING if hasattr(constants, "PENDING") else "pending",
             )
-
-          
             invite_link = f"https://yourfrontend.com/tenant/invite/accept?token={token}"
             subject = "Invitation to Join Property Management Portal"
-
             body_text = (
                 f"You have been invited by {current_user.email} to join as a Tenant. "
                 f"Use this link to accept: {invite_link}"
             )
-
            
             body_html = render_to_string(
                 "email_templates/invite_tenant_by_pmc.html",
@@ -2455,8 +2439,6 @@ def invite_tenant_by_pmc(request):
                     "invite_link": invite_link,
                 }
             )
-
-          
             try:
                 send_ses_email(email, subject, body_text, body_html)
             except Exception as e:
@@ -2465,8 +2447,6 @@ def invite_tenant_by_pmc(request):
                     message=constants.INVITATION_CREATED_EMAIL_FAILED,
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
-
-          
             return prepare_response(
                 content={
                     "email": invitation.email,
@@ -2492,8 +2472,6 @@ def invite_tenant_by_pmc(request):
 
 
 
-
-
 @is_request_authenticated
 def assign_property_by_owner(request):
     if request.method == 'POST':
@@ -2503,11 +2481,7 @@ def assign_property_by_owner(request):
             pmc_id = data.get('pmc_id')
         except (ValueError, KeyError):
             return prepare_response(message=constants.INVALID_INPUT_FORMAT, status=status.HTTP_400_BAD_REQUEST)
-
         current_user = request.user
-
-        print(f"Current User: {current_user.id}, Email: {current_user.email}, Property ID: {property_id}")
-
         if current_user.user_type != constants.OWNER:
             return prepare_response(message=constants.FORBIDDEN_ASSIGN_PROPERTY , status=status.HTTP_403_FORBIDDEN)
 
@@ -2515,15 +2489,69 @@ def assign_property_by_owner(request):
             id=property_id,
             owner=current_user  
         ).first()
-
-        print(f"Property to Assign: {property_to_assign}")
-        
         if not property_to_assign:
             return prepare_response(message=constants.PROPERTY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
-
         property_to_assign.property_manager_id = pmc_id
         property_to_assign.save()
-
         return prepare_response(message=constants.PROPERTY_ASSIGNED_SUCCESS, status=status.HTTP_200_OK)
-
     return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+
+
+@is_request_authenticated
+def property_statistics(request):
+    if request.method != "GET":
+        return prepare_response(
+            message=constants.INVALID_REQUEST_METHOD,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+    try:
+        user = request.user
+        user_type = user.user_type
+        now = timezone.now()
+        properties = PropertyDetails.objects.filter(owner=user)
+        renewal_window = now + timedelta(days=30)
+        lease_queryset = LeasePropertyDetails.objects.filter( 
+            lease_property__in=properties
+            )
+        active_count = lease_queryset.filter(
+            lease_start_date__lte=now,
+            lease_end_date__gte=now
+            ).count()
+        upcoming_renewals_count = lease_queryset.filter(
+            lease_end_date__gt=now,
+            lease_end_date__lte=renewal_window
+             ).count()
+        negotiations_count = lease_queryset.filter(
+            lease_end_date__lt=now
+            ).count()
+
+        total_properties = properties.count()
+        occupied_properties = properties.filter(is_occupied=True).count()
+        vacant_properties = total_properties - occupied_properties
+
+        data = {
+            "user_email": user.email,
+            "user_type": user_type,
+            "total_properties": total_properties,
+            "occupied_properties": occupied_properties,
+            "vacant_properties": vacant_properties,
+            "total_leases": lease_queryset.count(),
+            "active_leases": active_count,
+            "upcoming_renewals": upcoming_renewals_count,
+            "negotiations": negotiations_count
+        }
+
+        return prepare_response(
+            content=data,
+            message=constants.PROPERTY_STATSTICS_FETCHED,
+            status=status.HTTP_200_OK
+        )
+
+    except Exception as e:
+        print("Error in property_summary:", e)
+        return prepare_response(
+            message=constants.SOMTHING_WENT_WRONG,
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
