@@ -163,8 +163,6 @@ def owner_details_view(request):
 
 
 
-
-
 @is_request_authenticated
 def owner_details_list_view(request):
     try:
@@ -786,7 +784,7 @@ def update_tenant_documents(request):
 @is_request_authenticated
 def tenant_details_view(request):
     user = request.user
-    tenant_id = request.GET.get("id")  # Optional query param
+    tenant_id = request.GET.get("id")  
 
     def get_tenant():
         """Helper to fetch tenant by query param or current user"""
@@ -794,7 +792,7 @@ def tenant_details_view(request):
             return TenantDetails.objects.select_related("property").filter(id=tenant_id).first()
         return TenantDetails.objects.select_related("property").filter(user=user).first()
 
-    # ---------------- GET ----------------
+
     if request.method == "GET":
         try:
             tenant = get_tenant()
@@ -849,7 +847,6 @@ def tenant_details_view(request):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    # ---------------- POST ----------------
     elif request.method == "POST":
         try:
             data = json.loads(request.body.decode('utf-8'))
@@ -903,7 +900,7 @@ def tenant_details_view(request):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    # ---------------- PUT ----------------
+
     elif request.method == "PUT":
         try:
             data = json.loads(request.body)
@@ -1411,6 +1408,7 @@ def tenant_list_view(request):
                     "tenant_number": tenant.tenant_number,
                     "mobile_number": tenant.mobile_number,
                     "property_assigned": tenant.property.property_name if tenant.property else None,
+                    "rental_agreement":"None"
                     # "rental_agreement": (
                     #     tenant.lease_property_details.lease_file
                     #     if tenant.lease_property_details else None
@@ -1800,20 +1798,20 @@ def staff_view(request):
          
             if not all([staff_name, email, phone_number, staff_role_id, password, confirm_password]):
                 return prepare_response(
-                    message="All required fields are missing",
+                    message=constants.ALL_FIELD_REQUIRED,
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
             if password != confirm_password:
                 return prepare_response(
-                    message="Passwords do not match",
+                    message=constants.PASSWORD_MISMATCH,
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
            
             if UserProfile.objects.filter(email=email).exists():
                 return prepare_response(
-                    message="Email already registered",
+                    message=constants.EMAIL_ALREADY_REGISTERED,
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
@@ -1857,7 +1855,7 @@ def staff_view(request):
 
             return prepare_response(
                 content=data,
-                message="Staff created successfully",
+                message=constants.STAFF_CREATION_SUCCESS,
                 status=status.HTTP_201_CREATED
             )
 
@@ -1898,7 +1896,7 @@ def staff_view(request):
 
                     return prepare_response(
                         content=data,
-                        message="Staff details fetched successfully",
+                        message=constants.STAFF_LIST_FETCHED_SUCCESS,
                         status=status.HTTP_200_OK
                     )
                 except StaffDetails.DoesNotExist:
@@ -2639,5 +2637,95 @@ def property_statistics(request):
         print("Error in property_summary:", e)
         return prepare_response(
             message=constants.SOMTHING_WENT_WRONG,
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+
+
+@is_request_authenticated
+def tenant_my_property(request):
+    try:
+        user = request.user
+
+        
+        if user.user_type != "TENANT":
+            return prepare_response(
+                message=constants.ACCESS_DENIED_TENANTS_ONLY,
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+    
+        tenant = (
+            TenantDetails.objects
+            .select_related("property", "property__owner")
+            .filter(user=user)
+            .first()
+        )
+
+        if not tenant:
+            return prepare_response(
+                message="Tenant details not found.",
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+       
+        tenant_info = {
+            "full_name": tenant.full_name,
+            "email": user.email,
+            "mobile_number": tenant.mobile_number,
+            "nationality": tenant.nationality,
+            "emirate_id": tenant.emirate_id,
+            "tenant_number": tenant.tenant_number,
+        }
+
+        
+        property_list = []
+        tenant_properties = (
+            TenantDetails.objects
+            .select_related("property", "property__owner")
+            .filter(user=user)
+        )
+
+        for tenant_entry in tenant_properties:
+            property_obj = tenant_entry.property
+            if not property_obj:
+                continue
+
+            property_data = {
+                "property_name": property_obj.property_name,
+                "address": property_obj.address,
+                "property_code": property_obj.property_code,
+                "bedrooms": property_obj.bedrooms,
+                "balcony": property_obj.balcony,
+                "rental_status": property_obj.rental_status,
+                "is_occupied": property_obj.is_occupied,
+                "tenancy_start_date": property_obj.tenancy_start_date,
+                "tenancy_end_date": property_obj.tenancy_end_date,
+                "owner": {
+                    "email": property_obj.owner.email if property_obj.owner else None,
+                    "user_id": property_obj.owner.id if property_obj.owner else None,
+                }
+            }
+
+            property_list.append(property_data)
+
+       
+        response_content = {
+            "tenant": tenant_info,
+            "properties": property_list
+        }
+
+        return prepare_response(
+            content=response_content,
+            message=constants.TENANT_DETAILS_FETCHED_SUCCESS,
+            status=status.HTTP_200_OK
+        )
+
+    except Exception as e:
+        print("Tenant Dashboard Error:", e)
+        return prepare_response(
+            message=constants.SOMTHING_WENT_WRONG,
+            content={"error": str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )

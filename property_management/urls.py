@@ -31,7 +31,7 @@ urlpatterns = [
     path('invite/pmc/owner', views.invite_pmc_to_owner, name='invite_pmc_to_owner'),
     path('assign/property/by/owner', views.assign_property_by_owner, name='assign_property_by_owner'),
     path('property/statistics', views.property_statistics, name='dashboard_statistics'),
-    
+    path('tenant/property', views.tenant_my_property, name='tenant_my_property'),
 ] 
 urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

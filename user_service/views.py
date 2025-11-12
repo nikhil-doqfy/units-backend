@@ -324,8 +324,6 @@ def user_profile_view(request):
 
 
 def user_management_view(request):
-
-
     if request.method == "GET":
         try:
            
@@ -348,13 +346,13 @@ def user_management_view(request):
             return prepare_response(
                 message=constants.USER_FETCHED_SUCCESS,
                 content=data,
-                status=200
+                status=status.HTTP_200_OK
             )
 
         except Exception as e:
             return prepare_response(
                 message=f"Error fetching users: {str(e)}",
-                status=400
+                status=status.HTTP_400_BAD_REQUEST
             )
 
    
@@ -368,14 +366,14 @@ def user_management_view(request):
 
             if not email or not password or not user_type:
                 return prepare_response(
-                    message="Email, password, and user_type are required.",
-                    status=400
+                    message=constants.ALL_FIELD_REQUIRED,
+                    status=status.HTTP_400_BAD_REQUEST
                 )
 
             if UserProfile.objects.filter(email=email).exists():
                 return prepare_response(
-                    message="User already exists with this email.",
-                    status=409
+                    message=constants.EMAIL_ALREADY_REGISTERED,
+                    status=status.HTTP_409_CONFLICT
                 )
 
             hashed_password = make_password(password)
@@ -390,15 +388,15 @@ def user_management_view(request):
             )
 
             return prepare_response(
-                message="User created successfully.",
+                message=constants.STAFF_CREATION_SUCCESS,
                 content={"id": user.id, "email": user.email, "role": user.user_type},
-                status=201
+                status=status.HTTP_201_CREATED
             )
 
         except Exception as e:
             return prepare_response(
                 message=f"Error creating user: {str(e)}",
-                status=400
+                status=status.HTTP_400_BAD_REQUEST
             )
 
    
@@ -408,8 +406,8 @@ def user_management_view(request):
             user_id = request.GET.get("user_id")
             if not user_id:
                 return prepare_response(
-                    message="User ID is required in query params.",
-                    status=400
+                    message=constants.ID_REQUIRE_QUERY_PARAMS,
+                    status=status.HTTP_400_BAD_REQUEST
                 )
 
             body = json.loads(request.body)
@@ -417,7 +415,7 @@ def user_management_view(request):
             if not user:
                 return prepare_response(
                     message=constants.USER_NOT_FOUND,
-                    status=404
+                    status=status.HTTP_404_NOT_FOUND
                 )
 
             if "email" in body:
@@ -432,13 +430,13 @@ def user_management_view(request):
             return prepare_response(
                 message=constants.USER_UPDATED_SUCCESS,
                 content={"id": user.id, "email": user.email},
-                status=200
+                status=status.HTTP_200_OK
             )
 
         except Exception as e:
             return prepare_response(
                 message=f"Error updating user: {str(e)}",
-                status=400
+                status=status.HTTP_400_BAD_REQUEST
             )
 
   
@@ -448,15 +446,15 @@ def user_management_view(request):
             user_id = request.GET.get("user_id")
             if not user_id:
                 return prepare_response(
-                    message="User ID is required in query params.",
-                    status=400
+                    message=constants.ID_REQUIRE_QUERY_PARAMS,
+                    status=status.HTTP_400_BAD_REQUEST
                 )
 
             user = UserProfile.objects.filter(id=user_id).first()
             if not user:
                 return prepare_response(
                     message=constants.USER_NOT_FOUND,
-                    status=404
+                    status=status.HTTP_404_NOT_FOUND
                 )
 
             if not user.is_deleted:
@@ -465,25 +463,25 @@ def user_management_view(request):
                 return prepare_response(
                     message="User soft deleted successfully.",
                     content={"id": user.id, "is_deleted": user.is_deleted},
-                    status=200
+                    status=status.HTTP_200_OK
                 )
             else:
                 user.delete()
                 return prepare_response(
                     message="User permanently deleted.",
                     content={"id": user_id},
-                    status=200
+                    status=status.HTTP_200_OK
                 )
 
         except Exception as e:
             return prepare_response(
                 message=f"Error deleting user: {str(e)}",
-                status=400
+                status=status.HTTP_400_BAD_REQUEST
             )
 
   
     else:
         return prepare_response(
             message=constants.INVALID_REQUEST_METHOD,
-            status=405
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
