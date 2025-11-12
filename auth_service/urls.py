@@ -11,3 +11,4 @@ urlpatterns = [
     path("password/reset/", views.reset_password, name="reset_password"),
 
 ]
+# APPEND_SLASH = True

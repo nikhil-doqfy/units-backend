@@ -143,7 +143,14 @@ EMAIL_HOST_PASSWORD = ''
 EMAIL_PORT = 587
 
 
-
+UAE_PASS = {
+    "CLIENT_ID": "your_client_id_here",
+    "CLIENT_SECRET": "your_client_secret_here",
+    "REDIRECT_URI": "https://your-domain.com/api/uae_pass/callback/",
+    "AUTH_URL": "https://qa-id.uaepass.ae/trustedx-authserver/oauth/main-as",
+    "TOKEN_URL": "https://qa-id.uaepass.ae/trustedx-authserver/oauth/main-as/token",
+    "USERINFO_URL": "https://qa-id.uaepass.ae/trustedx-resources/openid/v1/users/me",
+}
 
 
 

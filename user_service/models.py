@@ -160,9 +160,6 @@ class PropertyCommercial(Base):
         return f"Commercial Details for {self.property.property_name}"
 
 
-
-
-
 class UserVerification(Base):
     VERIFICATION_TYPE_CHOICES = (
         (constants.MOBILE_VERIFICATION, "Mobile Verification"),
