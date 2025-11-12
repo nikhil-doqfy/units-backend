@@ -485,6 +485,10 @@ def all_owner_details(request):
         )
 
 
+
+
+
+
 @is_request_authenticated
 def choose_manage_option(request):
     if request.method != "POST":
@@ -939,7 +943,7 @@ def tenant_details_view(request):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-
+   
     elif request.method == "DELETE":
         tenant_details = get_tenant()
         if not tenant_details:
@@ -961,7 +965,6 @@ def tenant_details_view(request):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-  
     else:
         return prepare_response(
             message=constants.INVALID_REQUEST_METHOD,
