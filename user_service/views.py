@@ -403,7 +403,7 @@ def user_management_view(request):
     elif request.method == "PUT":
         try:
            
-            user_id = request.GET.get("user_id")
+            user_id = request.GET.get("id")
             if not user_id:
                 return prepare_response(
                     message=constants.ID_REQUIRE_QUERY_PARAMS,
@@ -420,10 +420,8 @@ def user_management_view(request):
 
             if "email" in body:
                 user.email = body["email"]
-            if "is_verified" in body:
-                user.is_verified = body["is_verified"]
-            if "is_login_allowed" in body:
-                user.is_login_allowed = body["is_login_allowed"]
+
+
 
             user.save()
 

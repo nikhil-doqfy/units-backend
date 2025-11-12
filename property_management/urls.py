@@ -41,7 +41,3 @@ urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
 
  
- # pip install django djangorestframework phonenumbers PyJWT python-dotenv requests pillow boto3 google-auth google-auth-oauthlib google-auth-httplib2
-# python -m venv venv
-# .\venv\Scripts\activate
-# pip install -r requirements.txt

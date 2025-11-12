@@ -485,10 +485,6 @@ def all_owner_details(request):
         )
 
 
-
-
-
-
 @is_request_authenticated
 def choose_manage_option(request):
     if request.method != "POST":
@@ -943,7 +939,7 @@ def tenant_details_view(request):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    # ---------------- DELETE ----------------
+
     elif request.method == "DELETE":
         tenant_details = get_tenant()
         if not tenant_details:
@@ -965,7 +961,7 @@ def tenant_details_view(request):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    # ---------------- INVALID METHOD ----------------
+  
     else:
         return prepare_response(
             message=constants.INVALID_REQUEST_METHOD,
@@ -1392,6 +1388,7 @@ def owner_property_tenants_view(request):
 
 @is_request_authenticated
 def tenant_list_view(request):
+    print("Inside tenant_list_view")
     current_user = request.user
 
 
@@ -1431,7 +1428,7 @@ def tenant_list_view(request):
 
     elif request.method == "DELETE":
         try:
-            tenant_id = request.GET.get("tenant_id")
+            tenant_id = request.GET.get("id")
             if not tenant_id:
                 return prepare_response(
                     message=constants.TENANT_ID_REQUIRE,
@@ -2146,7 +2143,8 @@ def pmc_owner_view_list(request):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            pmc_id = body.get("id")
+            pmc_id = request.GET.get("id")
+
             if not pmc_id:
                 return prepare_response(
                     message=constants.PROPERTY_MANAGER_ID_REQUIRE,
@@ -2180,15 +2178,16 @@ def pmc_owner_view_list(request):
             )
 
         elif request.method == "DELETE":
-            try:
-                body = json.loads(request.body)
-            except json.JSONDecodeError:
-                return prepare_response(
-                    message=constants.INVALID_REQUEST_METHOD,
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+            # try:
+            #     body = json.loads(request.body)
+            # except json.JSONDecodeError:
+            #     return prepare_response(
+            #         message=constants.INVALID_REQUEST_METHOD,
+            #         status=status.HTTP_400_BAD_REQUEST
+            #     )
 
-            pmc_id = body.get("id")
+            pmc_id = request.GET.get("id")
+
             if not pmc_id:
                 return prepare_response(
                     message=constants.PROPERTY_MANAGER_ID_REQUIRE,
