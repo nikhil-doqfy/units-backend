@@ -380,3 +380,114 @@ def send_password_otp(request):
 
 
 
+
+
+# import requests
+# from django.shortcuts import redirect
+# from django.http import JsonResponse
+# from .models import UserProfile, CompanyDetails
+# from django.conf import settings
+# import uuid
+
+# # ---------- 1️⃣ Redirect to UAE PASS ----------
+# def uaepass_login(request):
+#     state = str(uuid.uuid4())
+#     request.session["uae_state"] = state
+
+#     authorize_url = (
+#         "https://stg-id.uaepass.ae/idshub/authorize"
+#         "?response_type=code"
+#         "&client_id=sandbox_stage"
+#         "&scope=urn:uae:digitalid:profile:general"
+#         f"&state={state}"
+#         "&redirect_uri=https://your-domain.com/uaepass/callback"
+#         "&acr_values=urn:safelayer:tws:policies:authentication:level:low"
+#     )
+#     return redirect(authorize_url)
+
+
+# # ---------- 2️⃣ Callback from UAE PASS ----------
+# def uaepass_callback(request):
+#     code = request.GET.get("code")
+#     state = request.GET.get("state")
+
+#     if state != request.session.get("uae_state"):
+#         return JsonResponse({"error": "Invalid state"}, status=400)
+
+#     token_url = "https://stg-id.uaepass.ae/idshub/token"
+#     redirect_uri = "https://your-domain.com/uaepass/callback"
+
+#     # Exchange code → token
+#     token_resp = requests.post(
+#         token_url,
+#         data={
+#             "grant_type": "authorization_code",
+#             "code": code,
+#             "redirect_uri": redirect_uri,
+#         },
+#         auth=("sandbox_stage", "sandbox_stage"),
+#     )
+
+#     if token_resp.status_code != 200:
+#         return JsonResponse({"error": "Failed to fetch token", "details": token_resp.text}, status=400)
+
+#     token_data = token_resp.json()
+#     access_token = token_data.get("access_token")
+
+#     # ---------- 3️⃣ Get user info ----------
+#     headers = {"Authorization": f"Bearer {access_token}"}
+#     userinfo_resp = requests.get("https://stg-id.uaepass.ae/idshub/userinfo", headers=headers)
+
+#     if userinfo_resp.status_code != 200:
+#         return JsonResponse({"error": "Failed to fetch user info"}, status=400)
+
+#     userinfo = userinfo_resp.json()
+
+#     # UAE PASS returns data like:
+#     # {
+#     #   "uuid": "...",
+#     #   "fullname": "John Doe",
+#     #   "email": "john@uaepass.ae",
+#     #   "mobile": "+9715...",
+#     #   "emiratesid": "784-...."
+#     # }
+
+#     email = userinfo.get("email")
+#     full_name = userinfo.get("fullname", "UAE PASS User")
+#     emirates_id = userinfo.get("emiratesid", None)
+
+#     # ---------- 4️⃣ Check if user already exists ----------
+#     user, created = UserProfile.objects.get_or_create(
+#         email=email,
+#         defaults={
+#             "hashed_password": "uaepass_user",  # dummy (not used)
+#             "user_type": "PROPERTY_MANAGER",    # or OWNER/TENANT as per flow
+#             "is_verified": True,
+#             "is_login_allowed": True,
+#             "is_detail_updated": True,
+#         }
+#     )
+
+#     # ---------- 5️⃣ If new user → create CompanyDetails ----------
+#     if created:
+#         CompanyDetails.objects.create(
+#             user=user,
+#             company_name=full_name,
+#             emirates_id=emirates_id,
+#             company_code=f"COMP-{str(uuid.uuid4())[:8]}",
+#         )
+
+#     # Optional: update token field
+#     user.token = access_token
+#     user.save()
+
+#     return JsonResponse({
+#         "message": "Login successful",
+#         "new_user": created,
+#         "user": {
+#             "id": user.id,
+#             "email": user.email,
+#             "name": full_name,
+#             "emirates_id": emirates_id,
+#         }
+#     })
