@@ -25,9 +25,11 @@ DEBUG = True
 
 ALLOWED_HOSTS = ["*"]
 
-# CORS_ALLOWED_ORIGINS = [
-#     "http://localhost:4200"
-# ]
+CSRF_TRUSTED_ORIGINS = [ "https://34.14.170.254"]
+
+
+
+ 
 
 CORS_ALLOW_ALL_ORIGINS = True
 
@@ -38,18 +40,19 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django_celery_beat',
     'auth_service',
     'user_service',
     'property_management',
-    'sslserver',
-    'corsheaders',
+
 ]
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
-   
+    # 'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
@@ -107,25 +110,29 @@ AUTH_PASSWORD_VALIDATORS = [
 
 
 LANGUAGE_CODE = 'en-us'
-
+ 
 TIME_ZONE = 'UTC'
-
+ 
 USE_I18N = True
-
+ 
 USE_TZ = True
-
-
-
-
-STATIC_URL = '/static/'
-STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-STATICFILES_DIRS = [
-    os.path.join(BASE_DIR, 'static_images'),
+ 
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:4200",
+    "https://34.14.170.254",
 ]
-
-MEDIA_URL = '/media/'
+ 
+CORS_ALLOW_CREDENTIALS = True
+ 
+ 
+STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'static')
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
-
+MEDIA_URL = '/media/'
+ 
+ 
+MEDIA_URL = '/media/'
+MEDIA_ROOT = BASE_DIR /'media'
 
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
@@ -143,14 +150,6 @@ EMAIL_HOST_PASSWORD = ''
 EMAIL_PORT = 587
 
 
-UAE_PASS = {
-    "CLIENT_ID": "your_client_id_here",
-    "CLIENT_SECRET": "your_client_secret_here",
-    "REDIRECT_URI": "https://your-domain.com/api/uae_pass/callback/",
-    "AUTH_URL": "https://qa-id.uaepass.ae/trustedx-authserver/oauth/main-as",
-    "TOKEN_URL": "https://qa-id.uaepass.ae/trustedx-authserver/oauth/main-as/token",
-    "USERINFO_URL": "https://qa-id.uaepass.ae/trustedx-resources/openid/v1/users/me",
-}
 
 
 
