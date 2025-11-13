@@ -17,8 +17,8 @@ from django.db.models import Count
 import uuid
 from django.db.models import Prefetch
 from django.template.loader import render_to_string
-
-
+from datetime import timedelta
+from django.contrib.auth.hashers import make_password
 
 @is_request_authenticated
 def owner_details_view(request):
@@ -159,8 +159,6 @@ def owner_details_view(request):
             message=f"Something went wrong: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
-
 
 
 
@@ -785,19 +783,26 @@ def update_tenant_documents(request):
   
 @is_request_authenticated
 def tenant_details_view(request):
-    user = request.user  
+    user = request.user
+    tenant_id = request.GET.get("id")  
+
+    def get_tenant():
+        """Helper to fetch tenant by query param or current user"""
+        if tenant_id:
+            return TenantDetails.objects.select_related("property").filter(id=tenant_id).first()
+        return TenantDetails.objects.select_related("property").filter(user=user).first()
 
 
-    # if user.user_type != constants.TENANT:
-    #     return prepare_response(
-    #         message=constants.ACCESS_DENIED_TENANTS_ONLY,
-    #         status=status.HTTP_403_FORBIDDEN
-    #     )
     if request.method == "GET":
         try:
-            tenant = TenantDetails.objects.select_related("property").get(user=user)
-            property_details = tenant.property.property_name if tenant.property else None
+            tenant = get_tenant()
+            if not tenant:
+                return prepare_response(
+                    message=constants.TENANT_DETAILS_NOT_FOUND,
+                    status=status.HTTP_404_NOT_FOUND
+                )
 
+            property_details = tenant.property.property_name if tenant.property else None
             documents = [
                 {"file_url": tenant.emirates_id_file, "document_name": "Emirates ID"},
                 {"file_url": tenant.passport_self_file, "document_name": "Passport Self"},
@@ -807,14 +812,13 @@ def tenant_details_view(request):
                 {"file_url": tenant.employment_proof_file, "document_name": "Employment Proof"},
                 {"file_url": tenant.bank_statement_file, "document_name": "Bank Statement"},
             ]
-
             filtered_documents = [doc for doc in documents if doc["file_url"]]
 
             tenant_data = {
                 "tenant_id": tenant.id,
                 "full_name": tenant.full_name,
-                "type": user.user_type,
-                "email": user.email,
+                "type": tenant.user.user_type if hasattr(tenant, "user") else None,
+                "email": tenant.user.email if hasattr(tenant, "user") else None,
                 "phone": tenant.mobile_number,
                 "tenant_number": tenant.tenant_number,
                 "emirate_id": tenant.emirate_id,
@@ -827,7 +831,7 @@ def tenant_details_view(request):
                 "visa_expiry": tenant.visa_expiry,
                 "employment_proof": tenant.employment_proof,
                 "linked_property": property_details,
-                "profile_picture": user.profile_image,
+                "profile_picture": tenant.user.profile_image if hasattr(tenant, "user") else None,
                 "documents": filtered_documents,
             }
 
@@ -837,16 +841,12 @@ def tenant_details_view(request):
                 status=status.HTTP_200_OK
             )
 
-        except TenantDetails.DoesNotExist:
-            return prepare_response(
-                message=constants.TENANT_DETAILS_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
         except Exception as e:
             return prepare_response(
                 message=f"An unexpected error occurred: {str(e)}",
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
     elif request.method == "POST":
         try:
             data = json.loads(request.body.decode('utf-8'))
@@ -856,7 +856,7 @@ def tenant_details_view(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        if TenantDetails.objects.filter(user=user).exists():
+        if get_tenant():
             return prepare_response(
                 message=constants.TENANT_DETAILS_ALREADY_EXISTS,
                 status=status.HTTP_400_BAD_REQUEST
@@ -899,6 +899,8 @@ def tenant_details_view(request):
                 message=f"Failed to save tenant details: {str(e)}",
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+
     elif request.method == "PUT":
         try:
             data = json.loads(request.body)
@@ -908,7 +910,7 @@ def tenant_details_view(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        tenant_details = TenantDetails.objects.filter(user=user).first()
+        tenant_details = get_tenant()
         if not tenant_details:
             return prepare_response(
                 message=constants.TENANT_DETAILS_NOT_FOUND,
@@ -919,7 +921,6 @@ def tenant_details_view(request):
             for key, value in data.items():
                 if hasattr(tenant_details, key):
                     setattr(tenant_details, key, value)
-
             with transaction.atomic():
                 tenant_details.save()
 
@@ -936,45 +937,34 @@ def tenant_details_view(request):
                 message=constants.TENANT_DETAILS_UPDATED_SUCCESSFULLY,
                 status=status.HTTP_200_OK
             )
-
-        except IntegrityError as ie:
-            return prepare_response(
-                message=f"Database error: {str(ie)}",
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
         except Exception as e:
-            print("Error updating tenant details:", e)
             return prepare_response(
                 message=f"Failed to update tenant details: {str(e)}",
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-
+   
     elif request.method == "DELETE":
-        tenant_id = request.GET.get("id")
-        if not tenant_id:
+        tenant_details = get_tenant()
+        if not tenant_details:
             return prepare_response(
-                message="Tenant ID is required in query parameters.",
-                status=status.HTTP_400_BAD_REQUEST
+                message=constants.TENANT_DETAILS_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
             )
+
         try:
-            tenant = TenantDetails.objects.filter(id=tenant_id, user=user).first()
-            if not tenant:
-                return prepare_response(
-                     message=constants.TENANT_DETAILS_NOT_FOUND,
-                     status=status.HTTP_404_NOT_FOUND
-                )
             with transaction.atomic():
-                tenant.delete()
+                tenant_details.delete()
             return prepare_response(
                 message=constants.TENANT_DETAILS_DELETED_SUCCESS,
-                status=status.HTTP_200_OK)
-
+                status=status.HTTP_200_OK
+            )
         except Exception as e:
             return prepare_response(
                 message=f"Failed to delete tenant details: {str(e)}",
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
+            )
+
     else:
         return prepare_response(
             message=constants.INVALID_REQUEST_METHOD,
@@ -1313,9 +1303,7 @@ def property_details_view(request):
 
 @is_request_authenticated
 def owner_property_tenants_view(request):
-    """
-    Fetch all properties of the logged-in owner with tenant and tenancy status details.
-    """
+  
     if request.method != "GET":
         return prepare_response(
             message=constants.INVALID_REQUEST_METHOD,
@@ -1371,7 +1359,7 @@ def owner_property_tenants_view(request):
                 "property_name": prop.property_name,
                 "tenant_name": tenant.full_name if tenant else "N/A",
                 "tenant_id": tenant.id if tenant else None,
-                "tenancy_status": "Occupied" if tenant else "Vacant",
+                "tenancy_status": "Occupied" if prop.is_occupied else "Vacant",
                 "agreement_status": True if tenant and tenant.lease_property_details else False,
                 "owner_id": prop.owner.id if prop.owner else None,
                 "property_manager_name": prop.property_manager.company_name if prop.property_manager else None,
@@ -1403,13 +1391,24 @@ def owner_property_tenants_view(request):
 
 @is_request_authenticated
 def tenant_list_view(request):
+    
     current_user = request.user
 
 
     if request.method == "GET":
         try:
-
+            search_query = request.GET.get("search", "").strip()
+            page = int(request.GET.get("page", 1))
+            limit = int(request.GET.get("limit", 10))
             tenants = TenantDetails.objects.all().select_related("property", "lease_property_details")
+            if search_query:
+                tenants = tenants.filter(full_name__icontains=search_query)
+            total_count = tenants.count()
+            start = (page - 1) * limit
+            end = start + limit
+            tenants = tenants[start:end]
+
+            
 
             tenant_list = []
             for tenant in tenants:
@@ -1419,16 +1418,26 @@ def tenant_list_view(request):
                     "tenant_number": tenant.tenant_number,
                     "mobile_number": tenant.mobile_number,
                     "property_assigned": tenant.property.property_name if tenant.property else None,
+                    "rental_agreement":"None"
                     # "rental_agreement": (
                     #     tenant.lease_property_details.lease_file
                     #     if tenant.lease_property_details else None
                     # ),
                 })
+            
+            pagination_info = {
+                "current_page": page,
+                "limit": limit,
+                "total_records": total_count,
+                "total_pages": (total_count + limit - 1) // limit,  
+            }
 
             return prepare_response(
-                content=tenant_list,
+                content={"tenants": tenant_list},
+                pagination=pagination_info,
                 message=constants.TENANT_DETAILS_FETCHED_SUCCESS,
-                status=status.HTTP_200_OK
+                status=status.HTTP_200_OK,
+                
             )
 
         except Exception as e:
@@ -1441,7 +1450,7 @@ def tenant_list_view(request):
 
     elif request.method == "DELETE":
         try:
-            tenant_id = request.GET.get("tenant_id")
+            tenant_id = request.GET.get("id")
             if not tenant_id:
                 return prepare_response(
                     message=constants.TENANT_ID_REQUIRE,
@@ -1728,20 +1737,32 @@ def property_manager_list(request):
                 message=constants.INVALID_REQUEST_METHOD,
                 status=status.HTTP_405_METHOD_NOT_ALLOWED
             )
+
         page = int(request.GET.get("page", 1))
         limit = int(request.GET.get("limit", 10))
         search = request.GET.get("search", "").strip()
+
         managers = PropertyManagerCompanyDetails.objects.all().order_by("id")
+
         if search:
             managers = managers.filter(
                 Q(company_code__icontains=search) |
                 Q(company_name__icontains=search) |
                 Q(company_id__icontains=search)
             )
+
         paginator = Paginator(managers, limit)
         page_obj = paginator.get_page(page)
         data = []
+
         for manager in page_obj:
+            property_count = PropertyDetails.objects.filter(
+                property_manager=manager
+            ).count()
+            total_properties = PropertyDetails.objects.filter(property_manager=manager).count()
+            occupied = PropertyDetails.objects.filter(property_manager=manager, is_occupied=True).count()
+            vacant = total_properties - occupied
+            tenancy_ratio = f"{occupied}:{vacant}"
             data.append({
                 "id": manager.id,
                 "company_code": manager.company_code,
@@ -1752,6 +1773,8 @@ def property_manager_list(request):
                 "city": manager.city,
                 "locality": manager.locality,
                 "postal_code": manager.postal_code,
+                "property_handling": property_count,  
+                "tenancy_ratio":tenancy_ratio
             })
 
         response_content = {
@@ -1760,6 +1783,7 @@ def property_manager_list(request):
             "total_property_managers": paginator.count,
             "data": data
         }
+
         return prepare_response(
             message=constants.PROPERTY_MANAGER_LIST_FETCHED,
             content=response_content,
@@ -1775,21 +1799,95 @@ def property_manager_list(request):
 
 
 
-
 def staff_view(request):
     try:
+      
+        if request.method == "POST":
+            body = json.loads(request.body)
 
-        if request.method == "GET":
+            staff_name = body.get("staff_name")
+            email = body.get("email")
+            phone_number = body.get("phone_number")
+            staff_role_id = body.get("staff_role_id")
+            password = body.get("password")
+            confirm_password = body.get("confirm_password")
+            assign_property = body.get("assign_property")
+            assigned_property_ids = body.get("assigned_property_ids", [])
+
+         
+            if not all([staff_name, email, phone_number, staff_role_id, password, confirm_password]):
+                return prepare_response(
+                    message=constants.ALL_FIELD_REQUIRED,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if password != confirm_password:
+                return prepare_response(
+                    message=constants.PASSWORD_MISMATCH,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+           
+            if UserProfile.objects.filter(email=email).exists():
+                return prepare_response(
+                    message=constants.EMAIL_ALREADY_REGISTERED,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            
+            with transaction.atomic():
+                user = UserProfile.objects.create(
+                    email=email,
+                    hashed_password=make_password(password),
+                    user_type=constants.STAFF,
+                    is_verified=True,
+                    is_login_allowed=True
+                )
+
+                
+                staff_id = f"STF-{user.id:04d}"
+
+                staff = StaffDetails.objects.create(
+                    staff_name=staff_name,
+                    phone_number=phone_number,
+                    staff_id=staff_id,
+                    assign_property=assign_property,
+                    user=user,
+                    staff_role_id=staff_role_id,
+                )
+
+                if assigned_property_ids:
+                    staff.assigned_properties.set(assigned_property_ids)
+
+            
+            data = {
+                "id": staff.id,
+                "staff_name": staff.staff_name,
+                "staff_id": staff.staff_id,
+                "phone_number": staff.phone_number,
+                "user_email": user.email,
+                "staff_role": {
+                    "id": staff.staff_role.id,
+                    "name": staff.staff_role.name,
+                },
+            }
+
+            return prepare_response(
+                content=data,
+                message=constants.STAFF_CREATION_SUCCESS,
+                status=status.HTTP_201_CREATED
+            )
+
+      
+        elif request.method == "GET":
             staff_id = request.GET.get("id")
             search = request.GET.get("search", "")
             page = int(request.GET.get("page", 1))
             limit = int(request.GET.get("limit", 10))
 
-
             if staff_id:
                 try:
                     staff = StaffDetails.objects.select_related("staff_role", "user").prefetch_related("assigned_properties").get(id=staff_id)
-
                     assigned_props = staff.assigned_properties.all()
                     total_assigned = assigned_props.count()
 
@@ -1817,7 +1915,7 @@ def staff_view(request):
 
                     return prepare_response(
                         content=data,
-                        message="Staff details fetched successfully",
+                        message=constants.STAFF_LIST_FETCHED_SUCCESS,
                         status=status.HTTP_200_OK
                     )
                 except StaffDetails.DoesNotExist:
@@ -1825,7 +1923,6 @@ def staff_view(request):
                         message="Staff not found",
                         status=status.HTTP_404_NOT_FOUND
                     )
-
 
             staff_qs = StaffDetails.objects.select_related("staff_role", "user").prefetch_related("assigned_properties").all()
 
@@ -1864,8 +1961,7 @@ def staff_view(request):
                 total_records=paginator.count
             )
 
-
-
+       
         elif request.method == "PUT":
             staff_id = request.GET.get("id")
             if not staff_id:
@@ -1876,7 +1972,7 @@ def staff_view(request):
             except StaffDetails.DoesNotExist:
                 return prepare_response(message="Staff not found", status=status.HTTP_404_NOT_FOUND)
 
-            body =json.loads(request.body)
+            body = json.loads(request.body)
 
             staff.staff_name = body.get("staff_name", staff.staff_name)
             staff.phone_number = body.get("phone_number", staff.phone_number)
@@ -1892,7 +1988,7 @@ def staff_view(request):
                 status=status.HTTP_200_OK
             )
 
-
+       
         elif request.method == "DELETE":
             staff_id = request.GET.get("id")
             if not staff_id:
@@ -1916,6 +2012,9 @@ def staff_view(request):
             message=str(e),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+
     
 
 
@@ -2037,8 +2136,10 @@ def pmc_owner_view_list(request):
             data = []
             for p in pmc_qs:
                 total_properties = PropertyDetails.objects.filter(property_manager=p).count()
-                tenancy_ratio = f"{total_properties}:{total_properties * 2}" 
-
+                total_properties = PropertyDetails.objects.filter(property_manager=p).count()
+                occupied = PropertyDetails.objects.filter(property_manager=p, is_occupied=True).count()
+                vacant = total_properties - occupied
+                tenancy_ratio = f"{occupied}:{vacant}"
                 data.append({
                     "id": p.id,
                     "code": p.company_code,
@@ -2064,7 +2165,8 @@ def pmc_owner_view_list(request):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            pmc_id = body.get("id")
+            pmc_id = request.GET.get("id")
+
             if not pmc_id:
                 return prepare_response(
                     message=constants.PROPERTY_MANAGER_ID_REQUIRE,
@@ -2098,15 +2200,16 @@ def pmc_owner_view_list(request):
             )
 
         elif request.method == "DELETE":
-            try:
-                body = json.loads(request.body)
-            except json.JSONDecodeError:
-                return prepare_response(
-                    message=constants.INVALID_REQUEST_METHOD,
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+            # try:
+            #     body = json.loads(request.body)
+            # except json.JSONDecodeError:
+            #     return prepare_response(
+            #         message=constants.INVALID_REQUEST_METHOD,
+            #         status=status.HTTP_400_BAD_REQUEST
+            #     )
 
-            pmc_id = body.get("id")
+            pmc_id = request.GET.get("id")
+
             if not pmc_id:
                 return prepare_response(
                     message=constants.PROPERTY_MANAGER_ID_REQUIRE,
@@ -2185,7 +2288,8 @@ def property_details_list_view(request):
                     "phone_number": pmc.phone_number if pmc else "N/A",
                 }
 
-            
+                rental_status_display = "Not Available" if prop.is_occupied else prop.rental_status
+
                 data.append({
                     "id": prop.id,
                     "property_name": prop.property_name,
@@ -2197,8 +2301,9 @@ def property_details_list_view(request):
                     "bedrooms": prop.bedrooms,
                     "balcony": prop.balcony,
                     "plot_no": prop.plot_no,
+                    "is_occupied":prop.is_occupied,
                     "area_unit": prop.area_unit,
-                    "rental_status": rental_status,
+                    "rental_status": rental_status_display,
                     "tenants": tenant_data,
                     "owner_info": owner_info,
                     "pmc_info": pmc_info,
@@ -2370,8 +2475,6 @@ def invite_pmc_to_owner(request):
                     message=constants.INVITATION_CREATED_EMAIL_FAILED,
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
-
-
             return prepare_response(
                 content={
                     "email": invitation.email,
@@ -2402,15 +2505,11 @@ def invite_tenant_by_pmc(request):
     if request.method == "POST":
         try:
             current_user = request.user
-
-           
             if current_user.user_type != constants.PROPERTY_MANAGER:
                 return prepare_response(
                     message=constants.ACCESS_DENIED_TENANT_PMC,
                     status=status.HTTP_403_FORBIDDEN
                 )
-
-            
             data = json.loads(request.body)
             email = data.get("email")
 
@@ -2419,34 +2518,24 @@ def invite_tenant_by_pmc(request):
                     message=constants.EMAIL_REQUIRED,
                     status=status.HTTP_400_BAD_REQUEST
                 )
-
-           
             if PMCTenantInvitation.objects.filter(email=email, invited_by=current_user).exists():
                 return prepare_response(
                     message=constants.TENANT_ALREADY_INVITED,
                     status=status.HTTP_400_BAD_REQUEST
                 )
-
-        
             token = str(uuid.uuid4())
-
-           
             invitation = PMCTenantInvitation.objects.create(
                 email=email,
                 invited_by=current_user,
                 token=token,
                 status=constants.PENDING if hasattr(constants, "PENDING") else "pending",
             )
-
-          
             invite_link = f"https://yourfrontend.com/tenant/invite/accept?token={token}"
             subject = "Invitation to Join Property Management Portal"
-
             body_text = (
                 f"You have been invited by {current_user.email} to join as a Tenant. "
                 f"Use this link to accept: {invite_link}"
             )
-
            
             body_html = render_to_string(
                 "email_templates/invite_tenant_by_pmc.html",
@@ -2455,8 +2544,6 @@ def invite_tenant_by_pmc(request):
                     "invite_link": invite_link,
                 }
             )
-
-          
             try:
                 send_ses_email(email, subject, body_text, body_html)
             except Exception as e:
@@ -2465,8 +2552,6 @@ def invite_tenant_by_pmc(request):
                     message=constants.INVITATION_CREATED_EMAIL_FAILED,
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
-
-          
             return prepare_response(
                 content={
                     "email": invitation.email,
@@ -2492,8 +2577,6 @@ def invite_tenant_by_pmc(request):
 
 
 
-
-
 @is_request_authenticated
 def assign_property_by_owner(request):
     if request.method == 'POST':
@@ -2503,11 +2586,7 @@ def assign_property_by_owner(request):
             pmc_id = data.get('pmc_id')
         except (ValueError, KeyError):
             return prepare_response(message=constants.INVALID_INPUT_FORMAT, status=status.HTTP_400_BAD_REQUEST)
-
         current_user = request.user
-
-        print(f"Current User: {current_user.id}, Email: {current_user.email}, Property ID: {property_id}")
-
         if current_user.user_type != constants.OWNER:
             return prepare_response(message=constants.FORBIDDEN_ASSIGN_PROPERTY , status=status.HTTP_403_FORBIDDEN)
 
@@ -2515,15 +2594,159 @@ def assign_property_by_owner(request):
             id=property_id,
             owner=current_user  
         ).first()
-
-        print(f"Property to Assign: {property_to_assign}")
-        
         if not property_to_assign:
             return prepare_response(message=constants.PROPERTY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
-
         property_to_assign.property_manager_id = pmc_id
         property_to_assign.save()
-
         return prepare_response(message=constants.PROPERTY_ASSIGNED_SUCCESS, status=status.HTTP_200_OK)
-
     return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+
+
+@is_request_authenticated
+def property_statistics(request):
+    if request.method != "GET":
+        return prepare_response(
+            message=constants.INVALID_REQUEST_METHOD,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+    try:
+        user = request.user
+        user_type = user.user_type
+        now = timezone.now()
+        properties = PropertyDetails.objects.filter(owner=user)
+        renewal_window = now + timedelta(days=30)
+        lease_queryset = LeasePropertyDetails.objects.filter( 
+            lease_property__in=properties
+            )
+        active_count = lease_queryset.filter(
+            lease_start_date__lte=now,
+            lease_end_date__gte=now
+            ).count()
+        upcoming_renewals_count = lease_queryset.filter(
+            lease_end_date__gt=now,
+            lease_end_date__lte=renewal_window
+             ).count()
+        negotiations_count = lease_queryset.filter(
+            lease_end_date__lt=now
+            ).count()
+
+        total_properties = properties.count()
+        occupied_properties = properties.filter(is_occupied=True).count()
+        vacant_properties = total_properties - occupied_properties
+
+        data = {
+            "user_email": user.email,
+            "user_type": user_type,
+            "total_properties": total_properties,
+            "occupied_properties": occupied_properties,
+            "vacant_properties": vacant_properties,
+            "total_leases": lease_queryset.count(),
+            "active_leases": active_count,
+            "upcoming_renewals": upcoming_renewals_count,
+            "negotiations": negotiations_count
+        }
+
+        return prepare_response(
+            content=data,
+            message=constants.PROPERTY_STATSTICS_FETCHED,
+            status=status.HTTP_200_OK
+        )
+
+    except Exception as e:
+        print("Error in property_summary:", e)
+        return prepare_response(
+            message=constants.SOMTHING_WENT_WRONG,
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+
+
+@is_request_authenticated
+def tenant_my_property(request):
+    try:
+        user = request.user
+
+        
+        if user.user_type != "TENANT":
+            return prepare_response(
+                message=constants.ACCESS_DENIED_TENANTS_ONLY,
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+    
+        tenant = (
+            TenantDetails.objects
+            .select_related("property", "property__owner")
+            .filter(user=user)
+            .first()
+        )
+
+        if not tenant:
+            return prepare_response(
+                message="Tenant details not found.",
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+       
+        tenant_info = {
+            "full_name": tenant.full_name,
+            "email": user.email,
+            "mobile_number": tenant.mobile_number,
+            "nationality": tenant.nationality,
+            "emirate_id": tenant.emirate_id,
+            "tenant_number": tenant.tenant_number,
+        }
+
+        
+        property_list = []
+        tenant_properties = (
+            TenantDetails.objects
+            .select_related("property", "property__owner")
+            .filter(user=user)
+        )
+
+        for tenant_entry in tenant_properties:
+            property_obj = tenant_entry.property
+            if not property_obj:
+                continue
+
+            property_data = {
+                "property_name": property_obj.property_name,
+                "address": property_obj.address,
+                "property_code": property_obj.property_code,
+                "bedrooms": property_obj.bedrooms,
+                "balcony": property_obj.balcony,
+                "rental_status": property_obj.rental_status,
+                "is_occupied": property_obj.is_occupied,
+                "tenancy_start_date": property_obj.tenancy_start_date,
+                "tenancy_end_date": property_obj.tenancy_end_date,
+                "owner": {
+                    "email": property_obj.owner.email if property_obj.owner else None,
+                    "user_id": property_obj.owner.id if property_obj.owner else None,
+                }
+            }
+
+            property_list.append(property_data)
+
+       
+        response_content = {
+            "tenant": tenant_info,
+            "properties": property_list
+        }
+
+        return prepare_response(
+            content=response_content,
+            message=constants.TENANT_DETAILS_FETCHED_SUCCESS,
+            status=status.HTTP_200_OK
+        )
+
+    except Exception as e:
+        print("Tenant Dashboard Error:", e)
+        return prepare_response(
+            message=constants.SOMTHING_WENT_WRONG,
+            content={"error": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )

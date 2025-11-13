@@ -29,9 +29,12 @@ urlpatterns = [
     path('property/details/list/view/', views.property_details_list_view, name='property_details_list_view') ,
     path('invite/owner/pmc', views.invite_owner_pmc, name='invite_owner_pmc') , 
     path('invite/pmc/owner', views.invite_pmc_to_owner, name='invite_pmc_to_owner'),
+
+    path('invite/tenant/pmc', views.invite_tenant_by_pmc, name='invite_tenant_by_pmc'),
+    
     path('assign/property/by/owner', views.assign_property_by_owner, name='assign_property_by_owner'),
-    
-    
+    path('property/statistics', views.property_statistics, name='dashboard_statistics'),
+    path('tenant/property', views.tenant_my_property, name='tenant_my_property'),
 ] 
 urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
@@ -41,7 +44,3 @@ urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
 
 
  
- # pip install django djangorestframework phonenumbers PyJWT python-dotenv requests pillow boto3 google-auth google-auth-oauthlib google-auth-httplib2
-# python -m venv venv
-# .\venv\Scripts\activate
-# pip install -r requirements.txt

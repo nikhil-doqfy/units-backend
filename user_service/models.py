@@ -140,6 +140,25 @@ class PropertyDetails(Base):
 
 
 
+class PropertyCommercial(Base):
+    property = models.OneToOneField(   
+        PropertyDetails,
+        on_delete=models.CASCADE,
+        related_name="commercial"
+    )
+
+    rent = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    security_deposit = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    booking_amount = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    maintenance_charges = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+
+    cycle = models.CharField(max_length=50, blank=True, null=True)  
+    notice_period = models.CharField(max_length=50, blank=True, null=True)  
+    commission_percent = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
+
+    def __str__(self):
+        return f"Commercial Details for {self.property.property_name}"
+
 
 class UserVerification(Base):
     VERIFICATION_TYPE_CHOICES = (

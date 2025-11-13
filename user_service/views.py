@@ -176,6 +176,7 @@ def staff_signup(request):
 
 
 
+
 @is_request_authenticated
 def user_profile_view(request):
     try:
@@ -318,66 +319,28 @@ def user_profile_view(request):
 
 
 
+
+
+
+
 def user_management_view(request):
     if request.method == "GET":
         try:
-            users = UserProfile.objects.filter(is_deleted=False)
+           
+            is_deleted_param = request.GET.get("is_deleted", "false").lower()
+            is_deleted = is_deleted_param == "true"
+
+            users = UserProfile.objects.filter(is_deleted=is_deleted)
+
             data = []
-
             for user in users:
-                name = None
-                contact_number = None
-                details = None
-
-                if user.user_type == constants.TENANT:
-                    tenant = TenantDetails.objects.filter(user=user).first()
-                    if tenant:
-                        name = tenant.full_name
-                        contact_number = tenant.mobile_number
-                        details = {
-                            "address": tenant.address,
-                            "property_id": tenant.property.id if tenant.property else None,
-                            "state": tenant.state,
-                            "postal_code": tenant.postal_code,
-                        }
-
-                elif user.user_type == constants.OWNER:
-                    owner = OwnerDetails.objects.filter(user=user).first()
-                    if owner:
-                        name = owner.full_name
-                        contact_number = owner.mobile_number
-                        details = {
-                            "address": owner.address,
-                            "trade_license_number": owner.trade_license_number,
-                            "state": owner.state,
-                            "postal_code": owner.postal_code,
-                        }
-
-                elif user.user_type == constants.PROPERTY_MANAGER:
-                    pmc = PropertyManagerCompanyDetails.objects.filter(user=user).first()
-                    if pmc:
-                        name = pmc.company_name
-                        contact_number = pmc.phone_number
-                        details = {
-                            "email_address": pmc.email_address,
-                            "trade_license_number": pmc.trade_license_number,
-                            "company_id": pmc.company_id,
-                            "state": pmc.state,
-                            "postal_code": pmc.postal_code,
-                        }
-
-    
                 data.append({
                     "id": user.id,
-                    "name": name,
-                    "contact_number": contact_number,
                     "email": user.email,
                     "role": user.user_type,
-                    "created_on": user.created.strftime("%d %b %Y") if user.created else None,
                     "is_verified": user.is_verified,
                     "is_deleted": user.is_deleted,
                     "is_login_allowed": user.is_login_allowed,
-                    "details": details
                 })
 
             return prepare_response(
@@ -392,12 +355,62 @@ def user_management_view(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
- 
-    elif request.method == "PUT":
+   
+    elif request.method == "POST":
         try:
             body = json.loads(request.body)
-            user_id = body.get("user_id")
+            email = body.get("email")
+            password = body.get("password")
+            user_type = body.get("user_type")
+            profile_image = body.get("profile_image")
 
+            if not email or not password or not user_type:
+                return prepare_response(
+                    message=constants.ALL_FIELD_REQUIRED,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if UserProfile.objects.filter(email=email).exists():
+                return prepare_response(
+                    message=constants.EMAIL_ALREADY_REGISTERED,
+                    status=status.HTTP_409_CONFLICT
+                )
+
+            hashed_password = make_password(password)
+            user = UserProfile.objects.create(
+                email=email,
+                hashed_password=hashed_password,
+                user_type=user_type,
+                profile_image=profile_image,
+                is_verified=False,
+                is_deleted=False,
+                is_login_allowed=False
+            )
+
+            return prepare_response(
+                message=constants.STAFF_CREATION_SUCCESS,
+                content={"id": user.id, "email": user.email, "role": user.user_type},
+                status=status.HTTP_201_CREATED
+            )
+
+        except Exception as e:
+            return prepare_response(
+                message=f"Error creating user: {str(e)}",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+   
+    elif request.method == "PUT":
+        try:
+           
+            user_id = request.GET.get("id")
+            if not user_id:
+                return prepare_response(
+                    message=constants.ID_REQUIRE_QUERY_PARAMS,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            body = json.loads(request.body)
             user = UserProfile.objects.filter(id=user_id, is_deleted=False).first()
             if not user:
                 return prepare_response(
@@ -405,17 +418,11 @@ def user_management_view(request):
                     status=status.HTTP_404_NOT_FOUND
                 )
 
-            user.is_verified = body.get("is_verified", user.is_verified)
-            user.email = body.get("email", user.email)
-            user.is_login_allowed = body.get("is_login_allowed", user.is_login_allowed)
-            user.is_deleted = body.get("is_deleted", user.is_deleted)
             if "email" in body:
                 user.email = body["email"]
-            if "is_verified" in body:
-                user.is_verified = body["is_verified"]
-            if "is_login_allowed" in body:
-                user.is_login_allowed = body["is_login_allowed"]
-  
+
+
+
             user.save()
 
             return prepare_response(
@@ -430,11 +437,16 @@ def user_management_view(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
- 
+  
     elif request.method == "DELETE":
         try:
-            body = json.loads(request.body)
-            user_id = body.get("user_id")
+           
+            user_id = request.GET.get("user_id")
+            if not user_id:
+                return prepare_response(
+                    message=constants.ID_REQUIRE_QUERY_PARAMS,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
             user = UserProfile.objects.filter(id=user_id).first()
             if not user:
@@ -443,172 +455,29 @@ def user_management_view(request):
                     status=status.HTTP_404_NOT_FOUND
                 )
 
-            user.is_deleted = body.get("is_deleted", user.is_deleted)
-
-            user.save()
-
-            return prepare_response(
-                message=constants.USER_SOFT_DELETED,
-                content={"id": user.id, "is_deleted": user.is_deleted},
-                status=status.HTTP_200_OK
-            )
+            if not user.is_deleted:
+                user.is_deleted = True
+                user.save()
+                return prepare_response(
+                    message="User soft deleted successfully.",
+                    content={"id": user.id, "is_deleted": user.is_deleted},
+                    status=status.HTTP_200_OK
+                )
+            else:
+                user.delete()
+                return prepare_response(
+                    message="User permanently deleted.",
+                    content={"id": user_id},
+                    status=status.HTTP_200_OK
+                )
 
         except Exception as e:
             return prepare_response(
                 message=f"Error deleting user: {str(e)}",
                 status=status.HTTP_400_BAD_REQUEST
             )
-
-    else:
-        return prepare_response(
-            message=constants.INVALID_REQUEST_METHOD,
-            status=status.HTTP_405_METHOD_NOT_ALLOWED
-        )
-    
-
-
-def user_management_deleted_view(request):
-    if request.method == "GET":
-        try:
-            users = UserProfile.objects.filter(is_deleted=True)
-            data = []
-
-            for user in users:
-                name = None
-                contact_number = None
-                details = None
-
-                if user.user_type == constants.TENANT:
-                    tenant = TenantDetails.objects.filter(user=user).first()
-                    if tenant:
-                        name = tenant.full_name
-                        contact_number = tenant.mobile_number
-                        details = {
-                            "address": tenant.address,
-                            "property_id": tenant.property.id if tenant.property else None,
-                            "state": tenant.state,
-                            "postal_code": tenant.postal_code,
-                        }
-
-                elif user.user_type == constants.OWNER:
-                    owner = OwnerDetails.objects.filter(user=user).first()
-                    if owner:
-                        name = owner.full_name
-                        contact_number = owner.mobile_number
-                        details = {
-                            "address": owner.address,
-                            "trade_license_number": owner.trade_license_number,
-                            "state": owner.state,
-                            "postal_code": owner.postal_code,
-                        }
-
-                elif user.user_type == constants.PROPERTY_MANAGER:
-                    pmc = PropertyManagerCompanyDetails.objects.filter(user=user).first()
-                    if pmc:
-                        name = pmc.company_name
-                        contact_number = pmc.phone_number
-                        details = {
-                            "email_address": pmc.email_address,
-                            "trade_license_number": pmc.trade_license_number,
-                            "company_id": pmc.company_id,
-                            "state": pmc.state,
-                            "postal_code": pmc.postal_code,
-                        }
-
-    
-                data.append({
-                    "id": user.id,
-                    "name": name,
-                    "contact_number": contact_number,
-                    "email": user.email,
-                    "role": user.user_type,
-                    "created_on": user.created.strftime("%d %b %Y") if user.created else None,
-                    "is_verified": user.is_verified,
-                    "is_deleted": user.is_deleted,
-                    "is_login_allowed": user.is_login_allowed,
-                    "details": details
-                })
-
-            return prepare_response(
-                message=constants.USER_FETCHED_SUCCESS,
-                content=data,
-                status=status.HTTP_200_OK
-            )
-
-        except Exception as e:
-            return prepare_response(
-                message=f"Error fetching users: {str(e)}",
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
- 
-    elif request.method == "PUT":
-        try:
-            body = json.loads(request.body)
-            user_id = body.get("user_id")
-
-            user = UserProfile.objects.filter(id=user_id, is_deleted=True).first()
-            if not user:
-                return prepare_response(
-                    message=constants.USER_DOES_NOT_EXIST,
-                    status=status.HTTP_404_NOT_FOUND
-                )
-
-            user.is_verified = body.get("is_verified", user.is_verified)
-            user.email = body.get("email", user.email)
-            user.is_login_allowed = body.get("is_login_allowed", user.is_login_allowed)
-            user.is_deleted = body.get("is_deleted", user.is_deleted)
-            if "email" in body:
-                user.email = body["email"]
-            if "is_verified" in body:
-                user.is_verified = body["is_verified"]
-            if "is_login_allowed" in body:
-                user.is_login_allowed = body["is_login_allowed"]
-
-
 
   
-            user.save()
-
-            return prepare_response(
-                message=constants.USER_UPDATED_SUCCESS,
-                content={"id": user.id, "email": user.email},
-                status=status.HTTP_200_OK
-            )
-
-        except Exception as e:
-            return prepare_response(
-                message=f"Error updating user: {str(e)}",
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
- 
-    elif request.method == "DELETE":
-        try:
-            body = json.loads(request.body)
-            user_id = body.get("user_id")
-
-            user = UserProfile.objects.filter(id=user_id).first()
-            if not user:
-                return prepare_response(
-                    message=constants.USER_NOT_FOUND,
-                    status=status.HTTP_404_NOT_FOUND
-                )
-
-            
-            user.delete()
-
-            return prepare_response(
-                message=constants.USER_PERMANENTLY_DELETED,
-                status=status.HTTP_200_OK
-            )
-
-        except Exception as e:
-            return prepare_response(
-                message=f"Error deleting user: {str(e)}",
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
     else:
         return prepare_response(
             message=constants.INVALID_REQUEST_METHOD,

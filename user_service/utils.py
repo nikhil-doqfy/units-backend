@@ -2,5 +2,5 @@ import random
 from user_service.models import UserProfile
 
 def request_otp_sent():
-    otp = random.randint(1000, 9999)
+    otp = random.randint(100000, 999999)
     return otp

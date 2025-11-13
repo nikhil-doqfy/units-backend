@@ -20,12 +20,14 @@ from utilities.config import AWS_ACCESS_KEY, AWS_SECRET_KEY, AWS_REGION, S3_BUCK
 from utilities.ses_utils import send
 import logging
 
-def prepare_response(content={}, message='', status=status.HTTP_200_OK, paginator=None, total_records=0):
+def prepare_response(content={}, message='', status=status.HTTP_200_OK, paginator=None, total_records=0,pagination=None):
     resp = {
         "content": content,
         "message": message,
         "status" : status 
     }
+    if pagination:
+        resp["pagination"] = pagination
     if paginator:
         resp['pagination'] = {
             'has_previous': paginator.has_previous(),

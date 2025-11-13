@@ -25,8 +25,11 @@ DEBUG = True
 
 ALLOWED_HOSTS = ["*"]
 
+# CORS_ALLOWED_ORIGINS = [
+#     "http://localhost:4200"
+# ]
 
-
+CORS_ALLOW_ALL_ORIGINS = True
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -38,6 +41,8 @@ INSTALLED_APPS = [
     'auth_service',
     'user_service',
     'property_management',
+    'sslserver',
+    'corsheaders',
 ]
 
 MIDDLEWARE = [
@@ -48,6 +53,8 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
+    
 ]
 
 ROOT_URLCONF = 'property_management.urls'
@@ -136,7 +143,14 @@ EMAIL_HOST_PASSWORD = ''
 EMAIL_PORT = 587
 
 
-
+UAE_PASS = {
+    "CLIENT_ID": "your_client_id_here",
+    "CLIENT_SECRET": "your_client_secret_here",
+    "REDIRECT_URI": "https://your-domain.com/api/uae_pass/callback/",
+    "AUTH_URL": "https://qa-id.uaepass.ae/trustedx-authserver/oauth/main-as",
+    "TOKEN_URL": "https://qa-id.uaepass.ae/trustedx-authserver/oauth/main-as/token",
+    "USERINFO_URL": "https://qa-id.uaepass.ae/trustedx-resources/openid/v1/users/me",
+}
 
 
 

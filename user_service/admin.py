@@ -28,7 +28,7 @@ class StaffDetailsAdmin(admin.ModelAdmin):
 class PropertyDetailsAdmin(admin.ModelAdmin):
     list_display = ["id", "property_name", "owner", "property_manager", "is_occupied", "rental_status"]
 
-# ---------- Register ----------
+
 admin.site.register(UserProfile, UserProfileAdmin)
 admin.site.register(PropertyManagerCompanyDetails, PropertyManagerCompanyDetailsAdmin)
 admin.site.register(StaffRole, StaffRoleAdmin)

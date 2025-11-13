@@ -44,7 +44,7 @@ def user_login(request):
             return prepare_response(
                 message=constants.INVALID_CREDENTIALS,
                 status=status.HTTP_400_BAD_REQUEST
-            )
+            ) 
 
         if not user.is_login_allowed:
             return prepare_response(
@@ -307,7 +307,7 @@ def reset_password(request):
             return prepare_response(message=constants.USER_NOT_FOUND, status=status.HTTP_400_BAD_REQUEST)
         user.hashed_password = make_password(password)
         user.save(update_fields=['hashed_password'])
-        return prepare_response(message=constants.PASSWORD_RESET_SUCCESS, status=status.HTTP_400_BAD_REQUEST)
+        return prepare_response(message=constants.PASSWORD_RESET_SUCCESS, status=status.HTTP_200_OK)
     except Exception as e:
         print("Error:", e)
         return prepare_response(message=constants.INTERNAL_SERVER_ERROR, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -336,12 +336,15 @@ def send_password_otp(request):
 
             otp = request_otp_sent()
 
-            UserVerification.objects.create(
-                user=user,
-                email=email,
-                otp=otp,
-                verification_type="PASSWORD_RESET",
-                is_verified=False
+            UserVerification.objects.update_or_create(
+                 user=user,
+                 verification_type="PASSWORD_RESET",
+
+                defaults={
+                    "email": email,
+                    "otp": otp,
+                     "is_verified": False
+                         }
             )
 
         
@@ -374,3 +377,8 @@ def send_password_otp(request):
             message=constants.METHOD_NOT_ALLOWED,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
+
+
+
+
+
