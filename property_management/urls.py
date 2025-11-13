@@ -36,8 +36,16 @@ urlpatterns = [
     path('property/statistics', views.property_statistics, name='dashboard_statistics'),
     path('tenant/property', views.tenant_my_property, name='tenant_my_property'),
 ] 
-urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
-urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+
+if settings.DEBUG:
+    urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
+    urlpatterns += static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+
+   
+
+    
+
+ 
 
 
 
