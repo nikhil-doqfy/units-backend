@@ -44,7 +44,7 @@ def user_login(request):
             return prepare_response(
                 message=constants.INVALID_CREDENTIALS,
                 status=status.HTTP_400_BAD_REQUEST
-            )
+            ) 
 
         if not user.is_login_allowed:
             return prepare_response(

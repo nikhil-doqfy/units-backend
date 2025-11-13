@@ -1391,14 +1391,24 @@ def owner_property_tenants_view(request):
 
 @is_request_authenticated
 def tenant_list_view(request):
-    print("Inside tenant_list_view")
+    
     current_user = request.user
 
 
     if request.method == "GET":
         try:
-
+            search_query = request.GET.get("search", "").strip()
+            page = int(request.GET.get("page", 1))
+            limit = int(request.GET.get("limit", 10))
             tenants = TenantDetails.objects.all().select_related("property", "lease_property_details")
+            if search_query:
+                tenants = tenants.filter(full_name__icontains=search_query)
+            total_count = tenants.count()
+            start = (page - 1) * limit
+            end = start + limit
+            tenants = tenants[start:end]
+
+            
 
             tenant_list = []
             for tenant in tenants:
@@ -1414,11 +1424,20 @@ def tenant_list_view(request):
                     #     if tenant.lease_property_details else None
                     # ),
                 })
+            
+            pagination_info = {
+                "current_page": page,
+                "limit": limit,
+                "total_records": total_count,
+                "total_pages": (total_count + limit - 1) // limit,  
+            }
 
             return prepare_response(
-                content=tenant_list,
+                content={"tenants": tenant_list},
+                pagination=pagination_info,
                 message=constants.TENANT_DETAILS_FETCHED_SUCCESS,
-                status=status.HTTP_200_OK
+                status=status.HTTP_200_OK,
+                
             )
 
         except Exception as e:
