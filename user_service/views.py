@@ -177,61 +177,62 @@ def staff_signup(request):
 
 
 
+
+
 @is_request_authenticated
 def user_profile_view(request):
     try:
         current_user = request.user  
 
+        def safe_value(value):
+            return value if value not in [None, "", "null"] else "N/A"
+
+       
         if request.method == "GET":
             user_data = {
                 "id": current_user.id,
-                "full_name": "",
-                "email": current_user.email,
-                "contact": None,
-                "role": current_user.user_type,
-                "profile_image": current_user.profile_image,
-                "country": getattr(current_user, "country", ""),
-                "time_zone": getattr(current_user, "time_zone", "UTC"),
-                "utc": getattr(current_user, "utc", ""),
-                "address": "",
-                "state": "",
-                "postal_code": ""
+                "email": safe_value(current_user.email),
+                "role": safe_value(current_user.user_type),
+                "contact": "N/A",
+                "country": safe_value(getattr(current_user, "country", "")),
+                "time_zone": safe_value(getattr(current_user, "time_zone", "UTC")),
+                "utc": safe_value(getattr(current_user, "utc", "")),
+                "address": "N/A",
+                "state": "N/A",
+                "postal_code": "N/A",
+                "profile_image":safe_value(current_user.profile_image),
             }
 
-   
             if current_user.user_type == constants.OWNER:
                 owner = OwnerDetails.objects.filter(user=current_user).first()
                 if owner:
                     user_data.update({
-                        "full_name": owner.full_name,
-                        "contact": owner.mobile_number,
-                        "address": getattr(owner, "address", ""),
-                        "state": getattr(owner, "state", ""),
-                        "postal_code": getattr(owner, "postal_code", "")
+                        "contact": safe_value(owner.mobile_number),
+                        "address": safe_value(getattr(owner, "address", "")),
+                        "state": safe_value(getattr(owner, "state", "")),
+                        "postal_code": safe_value(getattr(owner, "postal_code", "")),
                     })
 
-
+          
             elif current_user.user_type == constants.PROPERTY_MANAGER:
                 pmc = PropertyManagerCompanyDetails.objects.filter(user=current_user).first()
                 if pmc:
                     user_data.update({
-                        "full_name": pmc.company_name,
-                        "contact": pmc.phone_number,
-                        "address": getattr(pmc, "company_address", ""),
-                        "state": getattr(pmc, "state", ""),
-                        "postal_code": getattr(pmc, "postal_code", "")
+                        "contact": safe_value(pmc.phone_number),
+                        "address": safe_value(getattr(pmc, "company_address", "")),
+                        "state": safe_value(getattr(pmc, "state", "")),
+                        "postal_code": safe_value(getattr(pmc, "postal_code", "")),
                     })
 
-
+           
             elif current_user.user_type == constants.TENANT:
                 tenant = TenantDetails.objects.filter(user=current_user).first()
                 if tenant:
                     user_data.update({
-                        "full_name": tenant.full_name,
-                        "contact": tenant.mobile_number,
-                        "address": getattr(tenant, "address", ""),
-                        "state": getattr(tenant, "state", ""),
-                        "postal_code": getattr(tenant, "postal_code", "")
+                        "contact": safe_value(tenant.mobile_number),
+                        "address": safe_value(getattr(tenant, "address", "")),
+                        "state": safe_value(getattr(tenant, "state", "")),
+                        "postal_code": safe_value(getattr(tenant, "postal_code", "")),
                     })
 
             return prepare_response(
@@ -240,14 +241,12 @@ def user_profile_view(request):
                 status=status.HTTP_200_OK
             )
 
-
+     
         elif request.method == "PUT":
             data = json.loads(request.body)
 
-         
             new_contact = data.get("contact")
-            new_full_name = data.get("full_name")
-            new_profile_image = data.get("profile_image")
+            new_profile_image = data.get("profile_image") 
             new_country = data.get("country")
             new_time_zone = data.get("time_zone")
             new_utc = data.get("utc")
@@ -256,9 +255,11 @@ def user_profile_view(request):
             new_postal_code = data.get("postal_code")
             new_role = data.get("role")
 
-       
+           
             if new_profile_image:
-                current_user.profile_image = new_profile_image
+                current_user.profile_image=new_profile_image
+              
+
             if new_country:
                 current_user.country = new_country
             if new_time_zone:
@@ -270,11 +271,10 @@ def user_profile_view(request):
 
             current_user.save()
 
-     
+           
             if current_user.user_type == constants.OWNER:
                 OwnerDetails.objects.filter(user=current_user).update(
                     mobile_number=new_contact,
-                    full_name=new_full_name,
                     address=new_address,
                     state=new_state,
                     postal_code=new_postal_code
@@ -283,16 +283,14 @@ def user_profile_view(request):
             elif current_user.user_type == constants.PROPERTY_MANAGER:
                 PropertyManagerCompanyDetails.objects.filter(user=current_user).update(
                     phone_number=new_contact,
-                    company_name=new_full_name,
                     company_address=new_address,
                     state=new_state,
                     postal_code=new_postal_code
-                )   
+                )
 
             elif current_user.user_type == constants.TENANT:
                 TenantDetails.objects.filter(user=current_user).update(
                     mobile_number=new_contact,
-                    full_name=new_full_name,
                     address=new_address,
                     state=new_state,
                     postal_code=new_postal_code
@@ -303,7 +301,7 @@ def user_profile_view(request):
                 status=status.HTTP_200_OK
             )
 
-
+     
         else:
             return prepare_response(
                 message=constants.INVALID_REQUEST_METHOD,
@@ -316,6 +314,7 @@ def user_profile_view(request):
             message=f"Error: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
 
 
 

@@ -19,6 +19,7 @@ from botocore.exceptions import ClientError
 from utilities.config import AWS_ACCESS_KEY, AWS_SECRET_KEY, AWS_REGION, S3_BUCKET_NAME ,DEFAULT_HOST,PASSWORD_EXPIRY_TIME
 from utilities.ses_utils import send
 import logging
+from django.core.files.base import ContentFile
 
 def prepare_response(content={}, message='', status=status.HTTP_200_OK, paginator=None, total_records=0,pagination=None):
     resp = {
@@ -236,3 +237,5 @@ def fetch_s3_file_as_base64(file_url):
     except Exception as e:
         logger.error(f" Unexpected error fetching from S3: {str(e)}")
         return None
+    
+
