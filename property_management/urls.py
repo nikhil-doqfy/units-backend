@@ -35,6 +35,9 @@ urlpatterns = [
     path('assign/property/by/owner', views.assign_property_by_owner, name='assign_property_by_owner'),
     path('property/statistics', views.property_statistics, name='dashboard_statistics'),
     path('tenant/property', views.tenant_my_property, name='tenant_my_property'),
+     path('tenant/owner/property/', views.property_tenant_list_view, name='property_tenant_list_view'),
+
+
 ] 
 
 if settings.DEBUG:

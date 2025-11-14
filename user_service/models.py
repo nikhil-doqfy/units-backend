@@ -102,6 +102,8 @@ class PropertyDetails(Base):
     plot_no = models.CharField(max_length=50, default="128")
     area_unit = models.CharField(max_length=20, default="Sq-ft")
     land_area_unit = models.CharField(max_length=20, default="Sq-ft", blank=True, null=True)
+    no_of_floors = models.IntegerField(default=1)
+
     owner = models.ForeignKey(
         UserProfile,
         on_delete=models.SET_NULL,

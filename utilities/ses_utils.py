@@ -15,6 +15,7 @@ client = boto3.client(
 
 def send(recipient, subject, body_text, body_html):
     try:
+        
         response = client.send_email(
             FromEmailAddress=config.EMAIL_SENDER,
             Destination={
