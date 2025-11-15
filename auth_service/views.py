@@ -221,6 +221,9 @@ def logout(request):
 
     return prepare_response(message=constants.LOGOUT_SUCCESSFULL, status=200)
 
+
+
+
 def verify_password_otp(request):
     if request.method != "POST":
         return prepare_response(
@@ -238,14 +241,15 @@ def verify_password_otp(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
         record = UserVerification.objects.filter(
-            email=email, otp=otp, is_verified=False
+            email=email, otp=otp, is_verified=False ,verification_type="PASSWORD_RESET"
         ).order_by('-created').first()
         if not record:
             return prepare_response(
                 message=constants.INCORRECT_OTP,
                 status=status.HTTP_400_BAD_REQUEST
             )
-        expiry_time = record.created + timezone.timedelta(minutes=10)
+        expiry_time = record.created + timezone.timedelta(minutes=constants.OTP_EXPIRY_MINUTES)
+
 
         if timezone.now() > expiry_time:
             return prepare_response(
@@ -314,69 +318,72 @@ def reset_password(request):
     
 
 
-def send_password_otp(request): 
-    if request.method == "POST":
-        try:
-            data = json.loads(request.body)
-            email = data.get("email")
 
-            if not email:
-                return prepare_response(
-                    message=constants.INVALID_REQUEST_METHOD,
-                    status=status.HTTP_400_BAD_REQUEST
-                )
 
-            try:
-                user = UserProfile.objects.get(email=email)
-            except UserProfile.DoesNotExist:
-                return prepare_response(
-                    message=constants.USER_NOT_FOUND,
-                    status=status.HTTP_404_NOT_FOUND
-                )
-
-            otp = request_otp_sent()
-
-            UserVerification.objects.update_or_create(
-                 user=user,
-                 verification_type="PASSWORD_RESET",
-
-                defaults={
-                    "email": email,
-                    "otp": otp,
-                     "is_verified": False
-                         }
-            )
-
-        
-            body_html = render_to_string(
-                "email_templates/send_password_otp.html",
-                {"otp": otp, "expiry_minutes": constants.OTP_EXPIRY_MINUTES}
-            )
-
-            subject = "Password Reset OTP - DOQFY"
-            body_text = f"Your OTP for password reset is: {otp}. It will expire in {constants.OTP_EXPIRY_MINUTES} minutes."
-
-            success = send_ses_email(email, subject, body_text, body_html)
-
-            if success:
-                return prepare_response(message=constants.OTP_SEND_SUCCESS)
-            else:
-                return prepare_response(
-                    message=constants.OTP_SEND_FAILED,
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
-
-        except Exception as e:
-            print(f"Error sending OTP via SES: {e}")
-            return prepare_response(
-                message=f"Unexpected error: {str(e)}",
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-    else:
+def send_password_otp(request):
+    if request.method != "POST":
         return prepare_response(
             message=constants.METHOD_NOT_ALLOWED,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
+
+    try:
+        data = json.loads(request.body)
+        email = data.get("email")
+
+        if not email:
+            return prepare_response(
+                message=constants.INVALID_REQUEST_METHOD,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            user = UserProfile.objects.get(email=email)
+        except UserProfile.DoesNotExist:
+            return prepare_response(
+                message=constants.USER_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        otp = request_otp_sent()
+
+       
+        record, created = UserVerification.objects.update_or_create(
+            user=user,
+            verification_type="PASSWORD_RESET",
+            defaults={
+                "email": email,
+                "otp": otp,
+                "is_verified": False,
+                "created": timezone.now(),  
+            }
+        )
+
+        
+        body_html = render_to_string(
+            "email_templates/send_password_otp.html",
+            {"otp": otp, "expiry_minutes": constants.OTP_EXPIRY_MINUTES}
+        )
+        subject = "Password Reset OTP - DOQFY"
+        body_text = f"Your OTP for password reset is: {otp}. It will expire in {constants.OTP_EXPIRY_MINUTES} minutes."
+
+        success = send_ses_email(email, subject, body_text, body_html)
+
+        if success:
+            return prepare_response(message=constants.OTP_SEND_SUCCESS)
+        else:
+            return prepare_response(
+                message=constants.OTP_SEND_FAILED,
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    except Exception as e:
+        print(f"Error sending OTP via SES: {e}")
+        return prepare_response(
+            message=f"Unexpected error: {str(e)}",
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
 
 
 

@@ -162,6 +162,9 @@ PROPERTY_NOT_FOUND = "Property not found or does not belong to you."
 PROPERTY_ASSIGNED_SUCCESS = "Property assigned successfully."
 PROPERTY_STATSTICS_FETCHED="Property statstics fetched successfully."
 SOMTHING_WENT_WRONG="Something went wrong while fetching property summary."
+ONLY_OWNER_AND_PMC="Only owners or property managers can create property"
+COMMERCIAL_DETAILS_SAVE="Commercial details saved"
+IMAGE_UPLOADED_SUCCESS="Images uploaded successfully"
 
 LEASE_STATUS_CHOICES = [
     ("DRAFT", "Draft"),

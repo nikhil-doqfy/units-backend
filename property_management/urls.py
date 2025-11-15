@@ -35,8 +35,13 @@ urlpatterns = [
     path('assign/property/by/owner', views.assign_property_by_owner, name='assign_property_by_owner'),
     path('property/statistics', views.property_statistics, name='dashboard_statistics'),
     path('tenant/property', views.tenant_my_property, name='tenant_my_property'),
-     path('tenant/owner/property/', views.property_tenant_list_view, name='property_tenant_list_view'),
 
+    path('tenant/owner/property/', views.property_tenant_list_view, name='property_tenant_list_view'),
+    
+    path('create/property/basic', views.create_property_basic, name='create_property_basic'),
+    path('property/commercial/details', views.add_commercial_details, name='add_commercial_details'),
+    path('upload/property/images', views.upload_property_images, name='upload_property_images'), 
+    path('options/', views.options, name='options'),
 
 ] 
 
