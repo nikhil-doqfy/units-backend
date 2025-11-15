@@ -20,6 +20,45 @@ from django.template.loader import render_to_string
 from datetime import timedelta
 from django.contrib.auth.hashers import make_password
 
+
+@is_request_authenticated
+def options(request):
+    if request.method != "GET":
+        return prepare_response(
+            content={},
+            message=constants.INVALID_REQUEST_METHOD,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+    option_types = request.GET.get("option_type")
+    if not option_types:
+        return prepare_response(
+            message=constants.QUERY_PARAMETER,
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    option_types = [t.strip() for t in option_types.split(",")]
+    content = {}
+    user = request.user
+
+    for option_type in option_types:
+       
+        if option_type == "OWNER_PROPERTIES":
+
+                properties = PropertyDetails.objects.filter(owner=user)
+                content["owner_properties"] = [
+                    {"id": prop.id, "property_name": prop.property_name} for prop in properties
+                ]
+        else:
+            content[option_type] = [] 
+
+    return prepare_response(
+        content=content,
+        message=constants.DROPDOWN_DATA_FETCHED_SUCEESS,
+        status=status.HTTP_200_OK
+    )
+
+
 @is_request_authenticated
 def owner_details_view(request):
 
@@ -1257,109 +1296,7 @@ def property_details_view(request):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    elif request.method == "POST":
-        try:
-            data = json.loads(request.body)
-        except Exception:
-            return prepare_response(
-                message=constants.INVALID_JSON_BODY,
-                status=status.HTTP_400_BAD_REQUEST,
-            )
 
-        current_user = request.user
-        property_manager_instance = None
-        owner_instance = None
-
-        if current_user.user_type == constants.OWNER:
-            owner_instance = current_user
-            manager_id = data.get("property_manager_id")
-
-            if manager_id:
-                try:
-                    property_manager_instance = PropertyManagerCompanyDetails.objects.get(id=manager_id)
-                except PropertyManagerCompanyDetails.DoesNotExist:
-                    return prepare_response(
-                        message="Property Manager not found.",
-                        status=status.HTTP_404_NOT_FOUND,
-                    )
-
-        elif current_user.user_type == constants.PROPERTY_MANAGER:
-            owner_instance = current_user
-            property_manager_instance = None
-
-        else:
-            return prepare_response(
-                message="Only Owner or Property Manager can add property.",
-                status=status.HTTP_403_FORBIDDEN,
-            )
-
-        try:
-            with transaction.atomic():
-
-                uploaded_image_urls = []
-                images = data.get("images", [])
-
-                for idx, img in enumerate(images):
-                    base64_data = img.get("data")
-                    file_name = img.get("file_name") or f"property_{datetime.now().timestamp()}_{idx}.jpg"
-                    if base64_data:
-                        s3_url = upload_file_to_s3_base64(
-                            base64_data,
-                            f"property_images/{current_user.id}/{file_name}"
-                        )
-                        uploaded_image_urls.append(s3_url)
-
-                property_obj = PropertyDetails.objects.create(
-                    property_name=data.get("property_name"),
-                    land_dm_no=data.get("land_dm_no"),
-                    address=data.get("address"),
-                    area_of_property=data.get("area_of_property"),
-                    no_of_parking=data.get("no_of_parking"),
-                    makani_no=data.get("makani_no"),
-                    dewa_no=data.get("dewa_no"),
-                    property_type=data.get("property_type", "Apartment"),
-                    land_area=data.get("land_area", "1048"),
-                    apartment_no=data.get("apartment_no", "48"),
-                    bedrooms=data.get("bedrooms", "Select bedroom"),
-                    apartment_floor_no=data.get("apartment_floor_no", "3"),
-                    balcony=data.get("balcony", "1"),
-                    plot_no=data.get("plot_no", "128"),
-                    area_unit=data.get("area_unit", "Sq-ft"),
-                    land_area_unit=data.get("land_area_unit", "Sq-ft"),
-                    property_code=data.get("property_code"),
-                    invited_email_id=data.get("invited_email_id"),
-                    property_manager=property_manager_instance,
-                    owner=owner_instance,
-                    is_occupied=data.get("is_occupied", False),
-                    rental_status=data.get("rental_status", "Available"),
-                    tenancy_start_date=data.get("tenancy_start_date"),
-                    tenancy_end_date=data.get("tenancy_end_date"),
-                    
-                    images=uploaded_image_urls,
-                )
-
-                if data.get("property_type") == "Commercial":
-                    PropertyCommercial.objects.create(
-                        property=property_obj,
-                        rent=data.get("rent"),
-                        security_deposit=data.get("security_deposit"),
-                        booking_amount=data.get("booking_amount"),
-                        maintenance_charges=data.get("maintenance_charges"),
-                        cycle=data.get("cycle"),
-                        notice_period=data.get("notice_period"),
-                        commission_percent=data.get("commission_percent"),
-                    )
-
-            return prepare_response(
-                message=constants.PROPERTY_ADDED,
-                status=status.HTTP_200_OK,
-            )
-
-        except Exception as e:
-            return prepare_response(
-                message=f"Failed to create property: {str(e)}",
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
 
     elif request.method == "PUT":
         try:
@@ -1465,6 +1402,190 @@ def property_details_view(request):
             message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED,
         )
+
+
+
+@is_request_authenticated
+def create_property_basic(request):
+    if request.method != "POST":
+        return prepare_response(message=constants.INVALID_REQUEST, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    try:
+        data = json.loads(request.body)
+        user = request.user   
+
+  
+        property_name = data.get("property_name")
+        land_dm_no = data.get("land_dm_no")
+        address = data.get("address")
+        area_of_property = data.get("area_of_property")
+        no_of_parking = data.get("no_of_parking")
+        makani_no = data.get("makani_no")
+        dewa_no = data.get("dewa_no")
+        property_type = data.get("property_type")
+        land_area = data.get("land_area")
+        apartment_no = data.get("apartment_no")
+        bedrooms = data.get("bedrooms")
+        apartment_floor_no = data.get("apartment_floor_no")
+        balcony = data.get("balcony")
+        plot_no = data.get("plot_no")
+        area_unit = data.get("area_unit")
+        land_area_unit = data.get("land_area_unit")
+        no_of_floors = data.get("no_of_floors")
+        property_code = data.get("property_code")
+        invited_email_id = data.get("invited_email_id")
+      
+
+        if user.user_type == "PROPERTY_MANAGER":
+            owner = user
+
+ 
+            property_manager = PropertyManagerCompanyDetails.objects.filter(user=user).first()
+            if not property_manager:
+                return prepare_response(message= constants.PROPERTY_MANAGER_DETAILS_NOT_FOUND, status=status.HTTP_400_BAD_REQUEST)
+
+        elif user.user_type == "OWNER":
+            owner = user 
+
+
+            pmc_id = data.get("property_manager_id")
+            if pmc_id:
+                property_manager = PropertyManagerCompanyDetails.objects.filter(id=pmc_id).first()
+            else:
+                property_manager = None
+
+        else:
+            return prepare_response( message=constants.ONLY_OWNER_AND_PMC, status=status.HTTP_403_FORBIDDEN)
+
+      
+
+        new_property = PropertyDetails.objects.create(
+            property_name=property_name,
+            land_dm_no=land_dm_no,
+            address=address,
+            area_of_property=area_of_property,
+            no_of_parking=no_of_parking,
+            makani_no=makani_no,
+            dewa_no=dewa_no,
+            property_type=property_type,
+            land_area=land_area,
+            apartment_no=apartment_no,
+            bedrooms=bedrooms,
+            apartment_floor_no=apartment_floor_no,
+            balcony=balcony,
+            plot_no=plot_no,
+            area_unit=area_unit,
+            land_area_unit=land_area_unit,
+            no_of_floors=no_of_floors,
+            property_code=property_code,
+            invited_email_id=invited_email_id,
+            owner=owner,
+            property_manager=property_manager,
+
+        )
+
+        return prepare_response(
+            message=constants.PROPERTY_ADDED,
+            content= {"property_id":new_property.id},
+         status=status.HTTP_201_CREATED  ) 
+
+    except Exception as e:
+        return prepare_response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+
+
+
+
+
+
+@is_request_authenticated
+def add_commercial_details(request):
+    if request.method != "POST":
+        return prepare_response(message=constants.INVALID_REQUEST, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    try:
+        data = json.loads(request.body)
+        property_id = data.get("property_id")
+
+        if not property_id:
+            return prepare_response(message=constants.PROPERTY_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
+
+        property_obj = PropertyDetails.objects.filter(id=property_id).first()
+        if not property_obj:
+            return prepare_response(constants.PROPERTY_MANAGER_Details_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+
+        commercial_obj, created = PropertyCommercial.objects.update_or_create(
+            property=property_obj,
+            defaults={
+                "rent": data.get("rent"),
+                "security_deposit": data.get("security_deposit"),
+                "booking_amount": data.get("booking_amount"),
+                "maintenance_charges": data.get("maintenance_charges"),
+                "cycle": data.get("cycle"),
+                "notice_period": data.get("notice_period"),
+                "commission_percent": data.get("commission_percent"),
+            }
+        )
+
+        return prepare_response(
+            message=constants.COMMERCIAL_DETAILS_SAVE,
+            status=status.HTTP_200_OK
+        )
+
+    except Exception as e:
+        return prepare_response(
+            message=f"Error: {str(e)}",
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+
+@is_request_authenticated
+def upload_property_images(request):
+    if request.method != "POST":
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    try:
+        data = json.loads(request.body)
+        property_id = data.get("property_id")
+        images = data.get("images", [])
+
+        if not property_id:
+            return prepare_response(message=constants.PROPERTY_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
+
+        property_obj = PropertyDetails.objects.filter(id=property_id).first()
+        if not property_obj:
+            return prepare_response(message=constants.PROPERTY_MANAGER_Details_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+
+        uploaded_urls = []
+        for idx, img in enumerate(images):
+            base64_data = img.get("data")
+            file_name = img.get("file_name", f"property_{property_id}_{idx}.jpg")
+
+            if base64_data:
+                url = upload_file_to_s3_base64(base64_data, f"property_images/{property_id}/{file_name}")
+                uploaded_urls.append(url)
+
+        
+        property_obj.images = (property_obj.images or []) + uploaded_urls
+        property_obj.save()
+
+        return prepare_response(
+            message=constants.IMAGE_UPLOADED_SUCCESS,
+            content={"images": uploaded_urls},
+            status=status.HTTP_200_OK
+        )
+
+    except Exception as e:
+        return prepare_response(
+            message=f"Error: {str(e)}",
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+
 
 
 
