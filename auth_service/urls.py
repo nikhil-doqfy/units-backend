@@ -18,4 +18,4 @@ urlpatterns = [
     
 
 ]
-# APPEND_SLASH = True
+
