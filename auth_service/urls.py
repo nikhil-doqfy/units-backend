@@ -10,11 +10,11 @@ urlpatterns = [
     path("password/otp/verify/", views.verify_password_otp, name="verify_password_otp"),
     path("password/reset/", views.reset_password, name="reset_password"),
 
-    path("uaepass/authorize", views.uaepass_authorize),
-    path("uaepass/callback", views.uaepass_callback),
-    path("uaepass/token", views.uaepass_token),
-    path("uaepass/userinfo", views.uaepass_userinfo),
-    path("uaepass/login", views.uaepass_final_login),
+    # path("uaepass/authorize", views.uaepass_authorize),
+    # path("uaepass/callback", views.uaepass_callback),
+    # path("uaepass/token", views.uaepass_token),
+    # path("uaepass/userinfo", views.uaepass_userinfo),
+    # path("uaepass/login", views.uaepass_final_login),
     
 
 ]

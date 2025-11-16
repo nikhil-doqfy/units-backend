@@ -1602,11 +1602,11 @@ def owner_property_tenants_view(request):
 
     user = request.user
 
-    if user.user_type != constants.OWNER:
-        return prepare_response(
-            message=constants.ACCESS_DENIED_OWNER_ONLY,
-            status=status.HTTP_403_FORBIDDEN
-        )
+    # if user.user_type != constants.OWNER:
+    #     return prepare_response(
+    #         message=constants.ACCESS_DENIED_OWNER_ONLY,
+    #         status=status.HTTP_403_FORBIDDEN
+    #     )
 
     try:
      
@@ -2088,7 +2088,7 @@ def property_manager_list(request):
 
 
 
-
+@is_request_authenticated
 def staff_view(request):
     try:
       
@@ -2526,7 +2526,7 @@ def pmc_owner_view_list(request):
         )
 
 
-
+@is_request_authenticated
 def property_details_list_view(request):
     if request.method == "GET":
         try:

@@ -179,134 +179,113 @@ def staff_signup(request):
 
 
 
+
+
 @is_request_authenticated
 def user_profile_view(request):
     try:
-        current_user = request.user  
+        current_user = request.user
 
-        def safe_value(value):
-            return value if value not in [None, "", "null"] else "N/A"
-
-       
-        if request.method == "GET":
-            user_data = {
-                "id": current_user.id,
-                "email": safe_value(current_user.email),
-                "role": safe_value(current_user.user_type),
-                "contact": "N/A",
-                "country": safe_value(getattr(current_user, "country", "")),
-                "time_zone": safe_value(getattr(current_user, "time_zone", "UTC")),
-                "utc": safe_value(getattr(current_user, "utc", "")),
-                "address": "N/A",
-                "state": "N/A",
-                "postal_code": "N/A",
-                "profile_image":safe_value(current_user.profile_image),
-            }
-
-            if current_user.user_type == constants.OWNER:
-                owner = OwnerDetails.objects.filter(user=current_user).first()
-                if owner:
-                    user_data.update({
-                        "contact": safe_value(owner.mobile_number),
-                        "address": safe_value(getattr(owner, "address", "")),
-                        "state": safe_value(getattr(owner, "state", "")),
-                        "postal_code": safe_value(getattr(owner, "postal_code", "")),
-                    })
-
-          
-            elif current_user.user_type == constants.PROPERTY_MANAGER:
-                pmc = PropertyManagerCompanyDetails.objects.filter(user=current_user).first()
-                if pmc:
-                    user_data.update({
-                        "contact": safe_value(pmc.phone_number),
-                        "address": safe_value(getattr(pmc, "company_address", "")),
-                        "state": safe_value(getattr(pmc, "state", "")),
-                        "postal_code": safe_value(getattr(pmc, "postal_code", "")),
-                    })
-
-           
-            elif current_user.user_type == constants.TENANT:
-                tenant = TenantDetails.objects.filter(user=current_user).first()
-                if tenant:
-                    user_data.update({
-                        "contact": safe_value(tenant.mobile_number),
-                        "address": safe_value(getattr(tenant, "address", "")),
-                        "state": safe_value(getattr(tenant, "state", "")),
-                        "postal_code": safe_value(getattr(tenant, "postal_code", "")),
-                    })
-
-            return prepare_response(
-                content=user_data,
-                message=constants.PROFILE_FETCHED_SUCCESS,
-                status=status.HTTP_200_OK
-            )
-
-     
-        elif request.method == "PUT":
+        if request.method == "PUT":
             data = json.loads(request.body)
 
-            new_contact = data.get("contact")
-            new_profile_image = data.get("profile_image") 
-            new_country = data.get("country")
-            new_time_zone = data.get("time_zone")
-            new_utc = data.get("utc")
-            new_address = data.get("address")
-            new_state = data.get("state")
-            new_postal_code = data.get("postal_code")
-            new_role = data.get("role")
-
            
-            if new_profile_image:
-                current_user.profile_image=new_profile_image
-              
-
-            if new_country:
-                current_user.country = new_country
-            if new_time_zone:
-                current_user.time_zone = new_time_zone
-            if new_utc:
-                current_user.utc = new_utc
-            if new_role:
-                current_user.user_type = new_role
-
+            user_fields = ["profile_image", "country", "time_zone", "utc"]
+            for field in user_fields:
+                if field in data and data[field] is not None:
+                    setattr(current_user, field, data[field])
             current_user.save()
 
            
+            related_data = {
+                "mobile_number": data.get("contact"),
+                "address": data.get("address"),
+                "state": data.get("state"),
+                "postal_code": data.get("postal_code"),
+            }
+            related_data = {k: v for k, v in related_data.items() if v is not None}
+
             if current_user.user_type == constants.OWNER:
-                OwnerDetails.objects.filter(user=current_user).update(
-                    mobile_number=new_contact,
-                    address=new_address,
-                    state=new_state,
-                    postal_code=new_postal_code
-                )
-
+                model = OwnerDetails
             elif current_user.user_type == constants.PROPERTY_MANAGER:
-                PropertyManagerCompanyDetails.objects.filter(user=current_user).update(
-                    phone_number=new_contact,
-                    company_address=new_address,
-                    state=new_state,
-                    postal_code=new_postal_code
-                )
-
+                model = PropertyManagerCompanyDetails
+                if "mobile_number" in related_data:
+                    related_data["phone_number"] = related_data.pop("mobile_number")
+                if "address" in related_data:
+                    related_data["company_address"] = related_data.pop("address")
             elif current_user.user_type == constants.TENANT:
-                TenantDetails.objects.filter(user=current_user).update(
-                    mobile_number=new_contact,
-                    address=new_address,
-                    state=new_state,
-                    postal_code=new_postal_code
-                )
+                model = TenantDetails
+            else:
+                model = None
+
+            if model:
+                obj = model.objects.filter(user=current_user).first()
+                if obj:
+                    for key, value in related_data.items():
+                        setattr(obj, key, value)
+                    obj.save()
+                else:
+                    model.objects.create(user=current_user, **related_data)
 
             return prepare_response(
                 message=constants.PROFILE_UPDATED_SUCCESS,
                 status=status.HTTP_200_OK
             )
 
-     
-        else:
+        elif request.method == "GET":
+          
+            user_data = {
+                "id": current_user.id,
+                "email": current_user.email,
+                
+                "profile_image": current_user.profile_image if current_user.profile_image else None,
+                "country": current_user.country,
+                "time_zone": current_user.time_zone,
+                "utc": current_user.utc,
+                "user_type": current_user.user_type,
+            }
+
+        
+            related_info = {}
+            if current_user.user_type == constants.OWNER:
+                obj = OwnerDetails.objects.filter(user=current_user).first()
+                if obj:
+                    related_info = {
+                        "Full name":obj.full_name,
+                        "mobile_number": obj.mobile_number,
+                        "address": obj.address,
+                        "state": obj.state,
+                        "postal_code": obj.postal_code,
+                    }
+            elif current_user.user_type == constants.PROPERTY_MANAGER:
+                obj = PropertyManagerCompanyDetails.objects.filter(user=current_user).first()
+                if obj:
+                    related_info = {
+                        "phone_number": obj.phone_number,
+                        "company_address": obj.company_address,
+                        "state": obj.state,
+                        "postal_code": obj.postal_code,
+                    }
+            elif current_user.user_type == constants.TENANT:
+                obj = TenantDetails.objects.filter(user=current_user).first()
+                if obj:
+                    related_info = {
+                        "mobile_number": obj.mobile_number,
+                        "address": obj.address,
+                        "state": obj.state,
+                        "postal_code": obj.postal_code,
+                    }
+
+            user_data.update(related_info)
+
             return prepare_response(
-                message=constants.INVALID_REQUEST_METHOD,
-                status=status.HTTP_405_METHOD_NOT_ALLOWED
+                message="User profile fetched successfully",
+                status=status.HTTP_200_OK,
+                content=user_data
             )
+
+        else:
+            return prepare_response("Invalid HTTP method", status=405)
 
     except Exception as e:
         print("Error in user_profile_view:", e)
@@ -314,6 +293,7 @@ def user_profile_view(request):
             message=f"Error: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
 
 
 
