@@ -315,11 +315,18 @@ def user_management_view(request):
             is_deleted_param = request.GET.get("is_deleted", "false").lower()
             is_deleted = is_deleted_param == "true"
 
+            recently_user_param = request.GET.get("recently_user", "false").lower()
+            recently_user = recently_user_param == "true"
+
+
             search = request.GET.get("search", "").strip()
             page = int(request.GET.get("page", 1))
             limit = int(request.GET.get("limit", 10))
 
             users_qs = UserProfile.objects.filter(is_deleted=is_deleted)
+            total_count = users_qs.count()
+            if recently_user:
+                users_qs = users_qs.filter(last_login__isnull=False).order_by("-last_login")[:5]
 
             if search:
                 users_qs = users_qs.filter(
@@ -328,6 +335,7 @@ def user_management_view(request):
                     Q(tenant_details__full_name__icontains=search) |
                     Q(property_manager_details__full_name__icontains=search)
                 ).distinct()
+
 
             paginator = Paginator(users_qs, limit)
             try:
@@ -366,7 +374,8 @@ def user_management_view(request):
                     "created_on": user.created,
                     "last_login": user.last_login,
                     "is_active": user.is_active,
-                    "profile_image":user.profile_image
+                    "profile_image":user.profile_image,
+                    
                 })
 
             pagination_meta = {
@@ -378,9 +387,13 @@ def user_management_view(request):
 
             return prepare_response(
                 message=constants.USER_FETCHED_SUCCESS,
-                content=data,
+                   content={
+                    "user_count": total_count,
+                     "data": data
+                        },
                 pagination=pagination_meta,
-                status=status.HTTP_200_OK
+                status=status.HTTP_200_OK,
+            
             )
 
         except Exception as e:
@@ -447,7 +460,7 @@ def user_management_view(request):
                     user=user,
                     full_name=full_name,
                     mobile_number=phone_number,
-                    location=location
+                    
                 )
 
             elif user_type.lower() == "tenant":
@@ -455,7 +468,7 @@ def user_management_view(request):
                     user=user,
                     full_name=full_name,
                     mobile_number=phone_number,
-                    location=location
+                  
                 )
 
             elif user_type.lower() == "property_manager":
@@ -463,7 +476,7 @@ def user_management_view(request):
                     user=user,
                     full_name=full_name,
                     phone_number=phone_number,
-                    location=location
+                    
                 )
 
             elif user_type.lower() == "staff":
@@ -471,7 +484,7 @@ def user_management_view(request):
                     user=user,
                     full_name=full_name,
                     phone_number=phone_number,
-                    location=location
+                   
                 )
 
             return prepare_response(

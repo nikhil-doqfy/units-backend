@@ -51,11 +51,11 @@ def options(request):
                 ]
         
         elif option_type == "PROPERTY_TYPES":
-            content["property_types"] = [{"value": choice[0], "label": choice[1]}for choice in constants.PROPERTY_TYPE_CHOICES]
+            content["property_types"] = [{"key": choice[0], "value": choice[1]}for choice in constants.PROPERTY_TYPE_CHOICES]
         elif option_type == "PMC_LIST":
             pmcs = PropertyManagerCompanyDetails.objects.all()
             content["pmc_list"] = [
-                 {"id": pmc.id, "company_name": pmc.company_name} for pmc in pmcs
+                 {"key": pmc.id, "value": pmc.company_name} for pmc in pmcs
                   ]
         else:
             content[option_type] = [] 
