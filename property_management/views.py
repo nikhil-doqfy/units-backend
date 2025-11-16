@@ -217,6 +217,8 @@ def owner_details_list_view(request):
         if request.method == "GET":
             search = request.GET.get("search")
             owners_qs = OwnerDetails.objects.all().select_related("user")
+            page = int(request.GET.get("page", 1))
+            limit = int(request.GET.get("limit", 10))
 
             if search:
                 owners_qs = owners_qs.filter(
@@ -225,8 +227,15 @@ def owner_details_list_view(request):
                     | Q(owner_number__icontains=search)
                 )
 
+            
+            paginator = Paginator(owners_qs, limit)
+            try:
+                owners_page = paginator.page(page)
+            except EmptyPage:
+                owners_page = paginator.page(paginator.num_pages)
             owners_data = []
-            for owner in owners_qs:
+
+            for owner in owners_page:
                 user = owner.user
                 properties = PropertyDetails.objects.filter(owner=owner.user).values(
                     "id",
@@ -254,9 +263,17 @@ def owner_details_list_view(request):
                     "email": user.email if user else None,
                     "profile_image": user.profile_image if user else None,
                 })
+            pagination_meta = {"total_items": paginator.count,
+                "total_pages": paginator.num_pages,
+                "current_page": owners_page.number,
+                "next_page": owners_page.next_page_number() if owners_page.has_next() else None,
+                "previous_page": owners_page.previous_page_number() if owners_page.has_previous() else None,
+                "limit": limit
+            }
 
             return prepare_response(
                 content={"total": len(owners_data), "owners": owners_data},
+                pagination=pagination_meta,
                 message=constants.OWNER_DETAILS_FETCHED_SUCCESS,
                 status=status.HTTP_200_OK
             )
@@ -389,6 +406,13 @@ def owner_details_list_view(request):
             message=f"Error: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+
+
+
+
+
 
 
 
@@ -586,6 +610,9 @@ def choose_manage_option(request):
             message=f"An error occurred: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+
 
 
 
@@ -2539,10 +2566,18 @@ def pmc_owner_view_list(request):
         )
 
 
+from django.core.paginator import Paginator, EmptyPage
+
 @is_request_authenticated
 def property_details_list_view(request):
     if request.method == "GET":
         try:
+            search = request.GET.get("search", "").strip()
+
+            page = int(request.GET.get("page", 1))       
+            limit = int(request.GET.get("limit", 10))     
+
+            
             properties = PropertyDetails.objects.select_related(
                 "owner",
                 "property_manager",
@@ -2551,10 +2586,25 @@ def property_details_list_view(request):
                 Prefetch("tenant_details", queryset=TenantDetails.objects.all())
             )
 
+           
+            if search:
+                properties = properties.filter(
+                    Q(property_name__icontains=search) |
+                    Q(owner__owner_details__full_name__icontains=search) |
+                    Q(tenant_details__full_name__icontains=search)
+                ).distinct()
+
+   
+            paginator = Paginator(properties, limit)
+            try:
+                properties_page = paginator.page(page)
+            except EmptyPage:
+                properties_page = paginator.page(paginator.num_pages)
+
             data = []
 
-            for prop in properties:
-              
+      
+            for prop in properties_page:
                 tenants = prop.tenant_details.all()
                 tenant_data = [
                     {
@@ -2566,9 +2616,6 @@ def property_details_list_view(request):
                     for tenant in tenants
                 ] if tenants.exists() else []
 
-       
-                rental_status = "Not Available" if tenants.exists() else "Available"
-
                 owner_details = OwnerDetails.objects.filter(user=prop.owner).first()
                 owner_info = {
                     "owner_name": owner_details.full_name if owner_details else "N/A",
@@ -2576,7 +2623,6 @@ def property_details_list_view(request):
                     "trade_license": owner_details.trade_license_number if owner_details else "N/A",
                 }
 
-      
                 pmc = prop.property_manager
                 pmc_info = {
                     "company_name": pmc.company_name if pmc else "N/A",
@@ -2585,7 +2631,9 @@ def property_details_list_view(request):
                     "phone_number": pmc.phone_number if pmc else "N/A",
                 }
 
-                rental_status_display = "Not Available" if prop.is_occupied else prop.rental_status
+                rental_status_display = (
+                    "Not Available" if prop.is_occupied else prop.rental_status
+                )
 
                 data.append({
                     "id": prop.id,
@@ -2598,18 +2646,31 @@ def property_details_list_view(request):
                     "bedrooms": prop.bedrooms,
                     "balcony": prop.balcony,
                     "plot_no": prop.plot_no,
-                    "is_occupied":prop.is_occupied,
+                    "is_occupied": prop.is_occupied,
                     "area_unit": prop.area_unit,
                     "rental_status": rental_status_display,
                     "tenants": tenant_data,
                     "owner_info": owner_info,
                     "pmc_info": pmc_info,
-                   
                 })
+
+
+            response_content = {
+              
+                "pagination": {
+                    "total_items": paginator.count,
+                    "total_pages": paginator.num_pages,
+                    "current_page": properties_page.number,
+                    "next_page": properties_page.next_page_number() if properties_page.has_next() else None,
+                    "previous_page": properties_page.previous_page_number() if properties_page.has_previous() else None,
+                    "limit": limit
+                }
+            }
 
             return prepare_response(
                 content=data,
                 message=constants.PROPERTY_LIST_FETCHED,
+                pagination=response_content,
                 status=status.HTTP_200_OK
             )
 
@@ -2624,6 +2685,8 @@ def property_details_list_view(request):
             message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
+
+
 
 
 
