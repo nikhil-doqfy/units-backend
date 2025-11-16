@@ -25,10 +25,12 @@ DEBUG = True
 
 ALLOWED_HOSTS = ["*"]
 
-CSRF_TRUSTED_ORIGINS = [ "https://34.14.170.254"]
+CSRF_TRUSTED_ORIGINS = ["https://units-api.doqfy.in",  "https://34.14.170.254"]
 
 
 
+
+ 
  
 
 CORS_ALLOW_ALL_ORIGINS = True
@@ -118,9 +120,12 @@ USE_I18N = True
 USE_TZ = True
  
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:4200",
-    "https://34.14.170.254",
+ "http://localhost:4200",
+ "https://34.14.170.254",
+"https://units-api.doqfy.in",
+
 ]
+
  
 CORS_ALLOW_CREDENTIALS = True
  
@@ -148,9 +153,3 @@ EMAIL_HOST = ""
 EMAIL_HOST_USER = ''
 EMAIL_HOST_PASSWORD = ''
 EMAIL_PORT = 587
-
-
-
-
-
-
