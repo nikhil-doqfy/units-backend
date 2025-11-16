@@ -2655,22 +2655,19 @@ def property_details_list_view(request):
                 })
 
 
-            response_content = {
+            pagination_meta = {
               
-                
-                    "total_items": paginator.count,
-                    "total_pages": paginator.num_pages,
-                    "current_page": properties_page.number,
-                    "next_page": properties_page.next_page_number() if properties_page.has_next() else None,
-                    "previous_page": properties_page.previous_page_number() if properties_page.has_previous() else None,
-                    "limit": limit
+                "current_page": properties_page.number,
+                "limit": limit,
+                "total_records": paginator.count,
+                "total_pages": paginator.num_pages
                 
             }
 
             return prepare_response(
                 content=data,
                 message=constants.PROPERTY_LIST_FETCHED,
-                pagination=response_content,
+                pagination=pagination_meta,
                 status=status.HTTP_200_OK
             )
 
