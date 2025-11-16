@@ -62,7 +62,8 @@ def user_login(request):
                 "is_detail_updated": user.is_detail_updated,
                 "is_document_uploaded": user.is_document_uploaded,
                 "access_token": token,
-                "token_type": "Bearer"
+                "token_type": "Bearer",
+                "profile_image":user.profile_image,
             },
             message=constants.LOGIN_SUCCESSFUL,
             status=status.HTTP_200_OK

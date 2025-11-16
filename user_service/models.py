@@ -27,6 +27,7 @@ class UserProfile(Base):
     country = models.CharField(max_length=100)  
     time_zone = models.CharField(max_length=50)  
     utc = models.CharField(max_length=10)  
+    last_login = models.DateTimeField(null=True, blank=True)
 
 
     def __str__(self):
@@ -72,14 +73,22 @@ class StaffRole(models.Model):
 
 
 class StaffDetails(models.Model):
+   
     staff_name = models.CharField(max_length=255, null=False, blank=False)
     phone_number = models.CharField(max_length=20, null=False, blank=False)
     staff_id = models.CharField(max_length=100, unique=True, null=False, blank=False)
     assign_property = models.IntegerField(null=True, blank=True)
-    user = models.ForeignKey(UserProfile, null=True, blank=True, related_name="staff_details",on_delete=models.SET_NULL) #changes 
+    user = models.ForeignKey(UserProfile, null=True, blank=True, related_name="staff_details",on_delete=models.SET_NULL) 
     staff_role = models.ForeignKey(StaffRole, on_delete=models.CASCADE, related_name="staff_details")
     property_manager = models.ForeignKey(PropertyManagerCompanyDetails, on_delete=models.CASCADE, null=True, blank=True)
     assigned_properties = models.ManyToManyField('PropertyDetails',blank=True)
+    emirate_id = models.CharField(max_length=100)
+
+    city = models.CharField(max_length=100)
+    locality = models.CharField(max_length=150)
+    postal_code = models.CharField(max_length=20)
+    address_line_1 = models.CharField(max_length=255)
+    address_line_2 = models.CharField(max_length=255, null=True, blank=True)
 
     def __str__(self):
         return "{}".format(self.staff_name)
