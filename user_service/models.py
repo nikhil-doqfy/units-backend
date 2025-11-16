@@ -22,7 +22,7 @@ class UserProfile(Base):
     is_detail_updated = models.BooleanField(default=False)
     is_document_uploaded = models.BooleanField(default=False)
     is_login_allowed = models.BooleanField(default=False)
-    profile_image = models.CharField(max_length=255, null=True, blank=True, default=None)
+    profile_image = models.TextField(null=True, blank=True)
     token = models.TextField(null=True, blank=True)
     country = models.CharField(max_length=100)  
     time_zone = models.CharField(max_length=50)  

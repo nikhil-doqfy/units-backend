@@ -215,6 +215,7 @@ def owner_details_list_view(request):
     try:    
         current_user = request.user
         if request.method == "GET":
+            owner_id = request.GET.get("owner_id")
             search = request.GET.get("search")
             owners_qs = OwnerDetails.objects.all().select_related("user")
             page = int(request.GET.get("page", 1))
@@ -227,7 +228,45 @@ def owner_details_list_view(request):
                     | Q(owner_number__icontains=search)
                 )
 
-            
+            if owner_id:
+                owner = owners_qs.filter(id=owner_id).first()
+                if not owner:
+                    return prepare_response(
+                        message="Owner not found.",
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+                user = owner.user
+                properties = PropertyDetails.objects.filter(owner=owner.user).values(
+                    "id",
+                    "property_name",
+                    "address",
+                    "rental_status",
+                    "property_code"
+                )
+                owner_data = {
+                    "id": owner.id,
+                    "user_id": user.id if user else None,
+                    "full_name": owner.full_name,
+                    "emirate_id": owner.emirate_id,
+                    "uae_residence_visa": owner.uae_residence_visa,
+                    "trade_license_number": owner.trade_license_number,
+                    "owner_number": owner.owner_number,
+                    "mobile_number": owner.mobile_number,
+                    "manage_manually": owner.manage_manually,
+                    "manage_through_pmc": owner.manage_through_pmc,
+                    "created_at": owner.created_at.strftime("%Y-%m-%d %H:%M:%S")
+                                    if hasattr(owner, "created_at") else None,
+                    "properties": list(properties),
+                    "property_count": len(properties),
+                    "email": user.email if user else None,
+                    "profile_image": user.profile_image if user else None,
+                }
+                return prepare_response(
+                    content=owner_data,
+                    message=constants.OWNER_DETAILS_FETCHED_SUCCESS,
+                    status=status.HTTP_200_OK
+                )
+
             paginator = Paginator(owners_qs, limit)
             try:
                 owners_page = paginator.page(page)
@@ -1626,6 +1665,54 @@ def upload_property_images(request):
 
 
 
+@is_request_authenticated
+def get_property_images(request):
+    try:
+        if request.method != "GET":
+            return prepare_response(
+                message=constants.INVALID_REQUEST_METHOD, 
+                status=status.HTTP_405_METHOD_NOT_ALLOWED
+            )
+
+        property_id = request.GET.get("property_id")
+
+        if not property_id:
+            return prepare_response(
+                message="Property ID is required",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        property_obj = PropertyDetails.objects.filter(id=property_id).first()
+
+        if not property_obj:
+            return prepare_response(
+                message="Property not found",
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+ 
+        images_base64 = []
+        if property_obj.images:
+            for img_url in property_obj.images:
+                base64_img = fetch_s3_file_as_base64(img_url)
+                images_base64.append({
+                    "url": img_url,
+                    "base64": base64_img
+                })
+
+        return prepare_response(
+            message="Property images fetched successfully",
+            content={"images": images_base64},
+            status=status.HTTP_200_OK
+        )
+
+    except Exception as e:
+        return prepare_response(
+            message=f"Error fetching property images: {str(e)}",
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
 
 
 
@@ -2596,20 +2683,17 @@ def property_details_list_view(request):
     if request.method == "GET":
         try:
             search = request.GET.get("search", "").strip()
+            page = int(request.GET.get("page", 1))
+            limit = int(request.GET.get("limit", 10))
 
-            page = int(request.GET.get("page", 1))       
-            limit = int(request.GET.get("limit", 10))     
-
-            
             properties = PropertyDetails.objects.select_related(
                 "owner",
                 "property_manager",
                 "staff"
             ).prefetch_related(
-                Prefetch("tenant_details", queryset=TenantDetails.objects.all())
+                Prefetch("tenant_details", queryset=TenantDetails.objects.select_related("user"))
             )
 
-           
             if search:
                 properties = properties.filter(
                     Q(property_name__icontains=search) |
@@ -2617,7 +2701,6 @@ def property_details_list_view(request):
                     Q(tenant_details__full_name__icontains=search)
                 ).distinct()
 
-   
             paginator = Paginator(properties, limit)
             try:
                 properties_page = paginator.page(page)
@@ -2626,32 +2709,53 @@ def property_details_list_view(request):
 
             data = []
 
-      
             for prop in properties_page:
+                
+
                 tenants = prop.tenant_details.all()
-                tenant_data = [
-                    {
+                tenant_data = []
+                for tenant in tenants:
+                    tenant_user = tenant.user
+                    tenant_data.append({
                         "tenant_name": tenant.full_name,
                         "mobile_number": tenant.mobile_number,
                         "tenant_number": tenant.tenant_number,
                         "nationality": tenant.nationality,
-                    }
-                    for tenant in tenants
-                ] if tenants.exists() else []
 
+                        # 🔥 Added User Info
+                        "email": tenant_user.email if tenant_user else None,
+                        "profile_image": tenant_user.profile_image if tenant_user else None,
+                    })
+
+                # --------------------------------------
+                # 🔵 OWNER + USER DETAILS
+                # --------------------------------------
                 owner_details = OwnerDetails.objects.filter(user=prop.owner).first()
+                owner_user = prop.owner
+
                 owner_info = {
                     "owner_name": owner_details.full_name if owner_details else "N/A",
                     "owner_mobile": owner_details.mobile_number if owner_details else "N/A",
                     "trade_license": owner_details.trade_license_number if owner_details else "N/A",
+
+                    # 🔥 Added User Info
+                    "email": owner_user.email if owner_user else None,
+                    "profile_image": owner_user.profile_image if owner_user else None,
                 }
 
+                # --------------------------------------
+                # 🔵 PMC + USER DETAILS
+                # --------------------------------------
                 pmc = prop.property_manager
                 pmc_info = {
                     "company_name": pmc.company_name if pmc else "N/A",
                     "company_code": pmc.company_code if pmc else "N/A",
                     "rera_license": pmc.rera_license if pmc else "N/A",
                     "phone_number": pmc.phone_number if pmc else "N/A",
+
+                    # 🔥 Added User Info
+                    "email": pmc.user.email if pmc and pmc.user else None,
+                    "profile_image": pmc.user.profile_image if pmc and pmc.user else None,
                 }
 
                 rental_status_display = (
@@ -2674,19 +2778,17 @@ def property_details_list_view(request):
                     "is_occupied": prop.is_occupied,
                     "area_unit": prop.area_unit,
                     "rental_status": rental_status_display,
+
                     "tenants": tenant_data,
                     "owner_info": owner_info,
                     "pmc_info": pmc_info,
                 })
 
-
             pagination_meta = {
-              
                 "current_page": properties_page.number,
                 "limit": limit,
                 "total_records": paginator.count,
                 "total_pages": paginator.num_pages
-                
             }
 
             return prepare_response(
@@ -2702,11 +2804,11 @@ def property_details_list_view(request):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    else:
-        return prepare_response(
-            message=constants.INVALID_REQUEST_METHOD,
-            status=status.HTTP_405_METHOD_NOT_ALLOWED
-        )
+    return prepare_response(
+        message=constants.INVALID_REQUEST_METHOD,
+        status=status.HTTP_405_METHOD_NOT_ALLOWED
+    )
+
 
 
 
