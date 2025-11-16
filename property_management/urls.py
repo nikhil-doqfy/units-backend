@@ -29,7 +29,7 @@ urlpatterns = [
     path('property/details/list/view/', views.property_details_list_view, name='property_details_list_view') ,
     path('invite/owner/pmc', views.invite_owner_pmc, name='invite_owner_pmc') , 
     path('invite/pmc/owner', views.invite_pmc_to_owner, name='invite_pmc_to_owner'),
-
+    
     path('invite/tenant/pmc', views.invite_tenant_by_pmc, name='invite_tenant_by_pmc'),
     
     path('assign/property/by/owner', views.assign_property_by_owner, name='assign_property_by_owner'),
@@ -41,6 +41,8 @@ urlpatterns = [
     path('create/property/basic', views.create_property_basic, name='create_property_basic'),
     path('property/commercial/details', views.add_commercial_details, name='add_commercial_details'),
     path('upload/property/images', views.upload_property_images, name='upload_property_images'), 
+    path('get/property/images', views.get_property_images, name='get_property_images'),
+    
     path('options/', views.options, name='options'),
 
 ] 
