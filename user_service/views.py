@@ -366,6 +366,7 @@ def user_management_view(request):
                     "created_on": user.created,
                     "last_login": user.last_login,
                     "is_active": user.is_active,
+                    "profile_image":user.profile_image
                 })
 
             pagination_meta = {
