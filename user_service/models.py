@@ -86,6 +86,7 @@ class StaffDetails(models.Model):
     
 
 class PropertyDetails(Base):
+
     RENTAL_STATUS_CHOICES = [
         (constants.AVAILABLE, "Available"),
         (constants.NOT_AVAILABLE, "Not Available"),
@@ -98,6 +99,11 @@ class PropertyDetails(Base):
     makani_no = models.CharField(max_length=255, blank=True, null=True)
     dewa_no = models.CharField(max_length=255, blank=True, null=True)
     property_type = models.CharField(max_length=50, default="Apartment")
+    property_type_options = models.CharField(max_length=50,
+        choices=constants.PROPERTY_TYPE_CHOICES,
+        default="Apartment"
+    )
+
     land_area = models.CharField(max_length=50, default="1048")
     apartment_no = models.CharField(max_length=50, default="48")
     bedrooms = models.CharField(max_length=50, default="Select bedroom")
