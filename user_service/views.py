@@ -8,7 +8,7 @@ from property_management.models import OwnerDetails , TenantDetails
 from user_service.utils import request_otp_sent
 from django.db import transaction
 from utilities.decorator import is_request_authenticated
-
+from django.core.paginator import Paginator, EmptyPage
 def user_sign_up(request):
     if request.method == "POST":
         data = json.loads(request.body)
@@ -172,7 +172,7 @@ def staff_signup(request):
         },
         message=constants.STAFF_USER_CREATED_SUCCESS,
         status=status.HTTP_201_CREATED
-    )
+    ) 
 
 
 
@@ -302,17 +302,59 @@ def user_profile_view(request):
 
 
 
+
+
+from django.core.paginator import Paginator, EmptyPage
+from django.db.models import Q
+from django.utils import timezone
+
 def user_management_view(request):
+
     if request.method == "GET":
         try:
-           
             is_deleted_param = request.GET.get("is_deleted", "false").lower()
             is_deleted = is_deleted_param == "true"
 
-            users = UserProfile.objects.filter(is_deleted=is_deleted)
+            search = request.GET.get("search", "").strip()
+            page = int(request.GET.get("page", 1))
+            limit = int(request.GET.get("limit", 10))
+
+            users_qs = UserProfile.objects.filter(is_deleted=is_deleted)
+
+            if search:
+                users_qs = users_qs.filter(
+                    Q(email__icontains=search) |
+                    Q(owner_details__full_name__icontains=search) |
+                    Q(tenant_details__full_name__icontains=search) |
+                    Q(property_manager_details__full_name__icontains=search)
+                ).distinct()
+
+            paginator = Paginator(users_qs, limit)
+            try:
+                page_obj = paginator.page(page)
+            except EmptyPage:
+                page_obj = paginator.page(paginator.num_pages)
 
             data = []
-            for user in users:
+            for user in page_obj:
+                phone_number = None
+                user_type = user.user_type.lower()
+
+                if user_type == "owner":
+                    details = getattr(user, "owner_details", None)
+                    if details.exists():
+                        phone_number = details.first().mobile_number
+
+                elif user_type == "tenant":
+                    details = getattr(user, "tenant_details", None)
+                    if details.exists():
+                        phone_number = details.first().mobile_number
+
+                elif user_type == "property_manager":
+                    details = getattr(user, "property_manager_details", None)
+                    if details.exists():
+                        phone_number = details.first().phone_number
+
                 data.append({
                     "id": user.id,
                     "email": user.email,
@@ -320,11 +362,23 @@ def user_management_view(request):
                     "is_verified": user.is_verified,
                     "is_deleted": user.is_deleted,
                     "is_login_allowed": user.is_login_allowed,
+                    "phone_number": phone_number,
+                    "created_on": user.created,
+                    "last_login": user.last_login,
+                    "is_active": user.is_active,
                 })
+
+            pagination_meta = {
+                "current_page": page_obj.number,
+                "limit": limit,
+                "total_records": paginator.count,
+                "total_pages": paginator.num_pages
+            }
 
             return prepare_response(
                 message=constants.USER_FETCHED_SUCCESS,
                 content=data,
+                pagination=pagination_meta,
                 status=status.HTTP_200_OK
             )
 
@@ -334,18 +388,32 @@ def user_management_view(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-   
+
     elif request.method == "POST":
         try:
             body = json.loads(request.body)
+
+           
+            first_name = body.get("first_name")
+            last_name = body.get("last_name")
             email = body.get("email")
-            password = body.get("password")
+            phone_number = body.get("phone_number")
             user_type = body.get("user_type")
+            location = body.get("location")
+            password = body.get("password")
+            confirm_password = body.get("confirm_password")
             profile_image = body.get("profile_image")
 
-            if not email or not password or not user_type:
+        
+            if not all([first_name, last_name, email, phone_number, user_type, location, password, confirm_password]):
                 return prepare_response(
-                    message=constants.ALL_FIELD_REQUIRED,
+                    message="All fields (first_name, last_name, email, phone_number, role, location, password, confirm_password) are required.",
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if password != confirm_password:
+                return prepare_response(
+                    message="Password and Confirm Password do not match.",
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
@@ -355,7 +423,12 @@ def user_management_view(request):
                     status=status.HTTP_409_CONFLICT
                 )
 
+          
+            full_name = f"{first_name} {last_name}"
+
+         
             hashed_password = make_password(password)
+
             user = UserProfile.objects.create(
                 email=email,
                 hashed_password=hashed_password,
@@ -363,12 +436,56 @@ def user_management_view(request):
                 profile_image=profile_image,
                 is_verified=False,
                 is_deleted=False,
-                is_login_allowed=False
+                is_login_allowed=False,
+                last_login=timezone.now()    
             )
 
+       
+            if user_type.lower() == "owner":
+                OwnerDetails.objects.create(
+                    user=user,
+                    full_name=full_name,
+                    mobile_number=phone_number,
+                    location=location
+                )
+
+            elif user_type.lower() == "tenant":
+                TenantDetails.objects.create(
+                    user=user,
+                    full_name=full_name,
+                    mobile_number=phone_number,
+                    location=location
+                )
+
+            elif user_type.lower() == "property_manager":
+                PropertyManagerCompanyDetails.objects.create(
+                    user=user,
+                    full_name=full_name,
+                    phone_number=phone_number,
+                    location=location
+                )
+
+            elif user_type.lower() == "staff":
+                StaffDetails.objects.create(
+                    user=user,
+                    full_name=full_name,
+                    phone_number=phone_number,
+                    location=location
+                )
+
             return prepare_response(
-                message=constants.STAFF_CREATION_SUCCESS,
-                content={"id": user.id, "email": user.email, "role": user.user_type},
+                message="User created successfully.",
+                content={
+                    "id": user.id,
+                    "email": user.email,
+                    "full_name": full_name,
+                    "phone_number": phone_number,
+                    "role": user.user_type,
+                    "location": location,
+                    "created_on": user.created,
+                    "last_login": user.last_login,
+                    "is_active": user.is_active
+                },
                 status=status.HTTP_201_CREATED
             )
 
@@ -378,10 +495,9 @@ def user_management_view(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-   
+ 
     elif request.method == "PUT":
         try:
-           
             user_id = request.GET.get("id")
             if not user_id:
                 return prepare_response(
@@ -400,8 +516,6 @@ def user_management_view(request):
             if "email" in body:
                 user.email = body["email"]
 
-
-
             user.save()
 
             return prepare_response(
@@ -416,10 +530,8 @@ def user_management_view(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-  
     elif request.method == "DELETE":
         try:
-           
             user_id = request.GET.get("user_id")
             if not user_id:
                 return prepare_response(
@@ -456,7 +568,7 @@ def user_management_view(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-  
+
     else:
         return prepare_response(
             message=constants.INVALID_REQUEST_METHOD,
