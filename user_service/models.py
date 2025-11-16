@@ -24,6 +24,10 @@ class UserProfile(Base):
     is_login_allowed = models.BooleanField(default=False)
     profile_image = models.CharField(max_length=255, null=True, blank=True, default=None)
     token = models.TextField(null=True, blank=True)
+    country = models.CharField(max_length=100)  
+    time_zone = models.CharField(max_length=50)  
+    utc = models.CharField(max_length=10)  
+
 
     def __str__(self):
         return '{}-{}-{}'.format(self.id, self.email, self.user_type)
@@ -48,7 +52,7 @@ class PropertyManagerCompanyDetails(models.Model):
     email_address = models.EmailField(null=True, blank=True)
     pmc_documents = models.JSONField(default=dict)
     state = models.CharField(max_length=100, blank=True, null=True)
-   
+    
 
     def __str__(self):
         return "{}".format(self.company_name)

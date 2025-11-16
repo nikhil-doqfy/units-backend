@@ -165,6 +165,9 @@ SOMTHING_WENT_WRONG="Something went wrong while fetching property summary."
 ONLY_OWNER_AND_PMC="Only owners or property managers can create property"
 COMMERCIAL_DETAILS_SAVE="Commercial details saved"
 IMAGE_UPLOADED_SUCCESS="Images uploaded successfully"
+QUERY_PARAMETER="option_type query parameter is required"
+
+DROPDOWN_DATA_FETCHED_SUCEESS="Dropdown data fetched successfully"
 
 LEASE_STATUS_CHOICES = [
     ("DRAFT", "Draft"),
