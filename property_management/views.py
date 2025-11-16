@@ -19,7 +19,7 @@ from django.db.models import Prefetch
 from django.template.loader import render_to_string
 from datetime import timedelta
 from django.contrib.auth.hashers import make_password
-
+from django.core.paginator import Paginator, EmptyPage
 
 @is_request_authenticated
 def options(request):
@@ -2264,7 +2264,11 @@ def staff_view(request):
                 )
 
             paginator = Paginator(staff_qs, limit)
-            page_obj = paginator.get_page(page)
+            try:
+                page_obj = paginator.page(page)
+            except EmptyPage:
+                page_obj = paginator.page(paginator.num_pages)
+            
 
             data = []
             for staff in page_obj:
@@ -2282,13 +2286,17 @@ def staff_view(request):
                     "user_email": staff.user.email if staff.user else None,
                     "total_assigned_properties": total_assigned,
                 })
-
+            pagination_meta = {
+                "current_page": page_obj.number,
+                "limit": limit,
+                "total_records": paginator.count,
+                "total_pages": paginator.num_pages
+            }
             return prepare_response(
                 content=data,
                 message=constants.STAFF_LIST_FETCHED_SUCCESS,
                 status=status.HTTP_200_OK,
-                paginator=page_obj,
-                total_records=paginator.count
+                pagination=pagination_meta,
             )
 
        
@@ -2427,13 +2435,15 @@ def pmc_dashboard_view(request):
 
 
 
-
+@is_request_authenticated
 def pmc_owner_view_list(request):
     try:
  
         if request.method == "GET":
             pmc_id = request.GET.get("id", None)
             search = request.GET.get("search", "").strip()
+            page = int(request.GET.get("page", 1))
+            limit = int(request.GET.get("limit", 10))
 
             pmc_qs = PropertyManagerCompanyDetails.objects.all()
 
@@ -2461,6 +2471,12 @@ def pmc_owner_view_list(request):
                     message=constants.PROPERTY_MANAGER_DETAILS_FETCHED,
                     status=status.HTTP_200_OK
                 )
+            paginator = Paginator(pmc_qs, limit)
+            try:
+                pmc_page = paginator.page(page)
+            except EmptyPage:
+                pmc_page = paginator.page(paginator.num_pages)
+
 
             
             data = []
@@ -2478,11 +2494,18 @@ def pmc_owner_view_list(request):
                     "tenancy_ratio": tenancy_ratio,
                     "address": p.company_address,
                 })
+            pagination_meta = {
+                "current_page": pmc_page.number,
+                "limit": limit,
+                "total_records": paginator.count,
+                "total_pages": paginator.num_pages
+            }
 
             return prepare_response(
                 content=data,
                 message=constants.PROPERTY_MANAGER_DETAILS_FETCHED,
-                status=status.HTTP_200_OK
+                status=status.HTTP_200_OK,
+                pagination=pagination_meta,
             )
 
 
@@ -2566,7 +2589,7 @@ def pmc_owner_view_list(request):
         )
 
 
-from django.core.paginator import Paginator, EmptyPage
+
 
 @is_request_authenticated
 def property_details_list_view(request):
@@ -2632,7 +2655,9 @@ def property_details_list_view(request):
                 }
 
                 rental_status_display = (
-                    "Not Available" if prop.is_occupied else prop.rental_status
+                    constants.RENTAL_NOT_AVAILABLE
+                    if prop.is_occupied
+                    else constants.RENTAL_AVAILABLE
                 )
 
                 data.append({
