@@ -252,6 +252,7 @@ def owner_details_list_view(request):
                     "trade_license_number": owner.trade_license_number,
                     "owner_number": owner.owner_number,
                     "mobile_number": owner.mobile_number,
+                    "user_type": user.user_type,
                     "manage_manually": owner.manage_manually,
                     "manage_through_pmc": owner.manage_through_pmc,
                     "created_at": owner.created_at.strftime("%Y-%m-%d %H:%M:%S")
