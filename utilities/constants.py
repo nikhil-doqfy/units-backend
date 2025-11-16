@@ -176,6 +176,14 @@ LEASE_STATUS_CHOICES = [
     ("EXPIRED", "Expired"),
 ]
 
+PROPERTY_TYPE_CHOICES = (
+        ("Apartment", "Apartment"),
+        ("Villa", "Villa"),
+        ("Townhouse", "Townhouse"),
+        ("Penthouse", "Penthouse"),
+        ("Duplex", "Duplex"),
+       
+    )
 LAYOUT_CHOICES = [
         ("AI_GENERATED", "Create Layout by AI"),
         ("TEMPLATE_SELECTED", "Select Template"),

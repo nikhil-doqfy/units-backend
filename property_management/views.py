@@ -49,6 +49,14 @@ def options(request):
                 content["owner_properties"] = [
                     {"id": prop.id, "property_name": prop.property_name} for prop in properties
                 ]
+        
+        elif option_type == "PROPERTY_TYPES":
+            content["property_types"] = [{"value": choice[0], "label": choice[1]}for choice in constants.PROPERTY_TYPE_CHOICES]
+        elif option_type == "PMC_LIST":
+            pmcs = PropertyManagerCompanyDetails.objects.all()
+            content["pmc_list"] = [
+                 {"id": pmc.id, "company_name": pmc.company_name} for pmc in pmcs
+                  ]
         else:
             content[option_type] = [] 
 
@@ -204,7 +212,7 @@ def owner_details_view(request):
 
 @is_request_authenticated
 def owner_details_list_view(request):
-    try:
+    try:    
         current_user = request.user
         if request.method == "GET":
             search = request.GET.get("search")
@@ -219,6 +227,7 @@ def owner_details_list_view(request):
 
             owners_data = []
             for owner in owners_qs:
+                user = owner.user
                 properties = PropertyDetails.objects.filter(owner=owner.user).values(
                     "id",
                     "property_name",
@@ -240,6 +249,10 @@ def owner_details_list_view(request):
                     "manage_through_pmc": owner.manage_through_pmc,
                     "created_at": owner.created_at.strftime("%Y-%m-%d %H:%M:%S") if hasattr(owner, "created_at") else None,
                     "properties": list(properties),
+                    "property_count": len(properties),
+                    
+                    "email": user.email if user else None,
+                    "profile_image": user.profile_image if user else None,
                 })
 
             return prepare_response(
