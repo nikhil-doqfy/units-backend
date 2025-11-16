@@ -263,14 +263,14 @@ def owner_details_list_view(request):
                     "email": user.email if user else None,
                     "profile_image": user.profile_image if user else None,
                 })
-            pagination_meta = {"total_items": paginator.count,
-                "total_pages": paginator.num_pages,
+            pagination_meta = {
                 "current_page": owners_page.number,
-                "next_page": owners_page.next_page_number() if owners_page.has_next() else None,
-                "previous_page": owners_page.previous_page_number() if owners_page.has_previous() else None,
-                "limit": limit
+                "limit": limit,
+                "total_records": paginator.count,
+                "total_pages": paginator.num_pages
             }
 
+            
             return prepare_response(
                 content={"total": len(owners_data), "owners": owners_data},
                 pagination=pagination_meta,
@@ -2657,14 +2657,14 @@ def property_details_list_view(request):
 
             response_content = {
               
-                "pagination": {
+                
                     "total_items": paginator.count,
                     "total_pages": paginator.num_pages,
                     "current_page": properties_page.number,
                     "next_page": properties_page.next_page_number() if properties_page.has_next() else None,
                     "previous_page": properties_page.previous_page_number() if properties_page.has_previous() else None,
                     "limit": limit
-                }
+                
             }
 
             return prepare_response(
