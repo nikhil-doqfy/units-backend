@@ -87,6 +87,11 @@ def user_login(request):
                 message=constants.USER_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
             )
+        if  user.user_type != user_type:
+            return prepare_response(message="User type does not match our records",
+                status=status.HTTP_400_BAD_REQUEST
+                )
+
 
         record = UserVerification.objects.filter(
             email=email, otp=otp
@@ -97,12 +102,9 @@ def user_login(request):
                 message=constants.INCORRECT_OTP,
                 status=status.HTTP_400_BAD_REQUEST
             )
-        if  user.user_type != user_type:
-            return prepare_response(
-                message="User type does not match our records",
-                status=status.HTTP_400_BAD_REQUEST
-                )
-
+        
+            
+                
         if record.is_verified:
             token = create_jwt_token(user)
             record.verified_time = timezone.now()
