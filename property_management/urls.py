@@ -42,8 +42,11 @@ urlpatterns = [
     path('property/commercial/details', views.add_commercial_details, name='add_commercial_details'),
     path('upload/property/images', views.upload_property_images, name='upload_property_images'), 
     path('get/property/images', views.get_property_images, name='get_property_images'),
-    
-    path('options/', views.options, name='options'),
+
+    path('upload/property/documents', views.upload_property_documents, name='upload_property_documents'),
+    path('fetch/property/documents', views.fetch_property_documents, name='fetch_property_documents'),
+
+    path('options/', views.options, name='options'),  
 
 ] 
 

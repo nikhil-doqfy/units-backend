@@ -2,8 +2,8 @@ import json
 import uuid
 from django.contrib.auth.hashers import make_password
 from utilities import status, constants
-from utilities.helper_functions import prepare_response ,upload_file_to_s3_base64
-from user_service.models import UserProfile ,StaffDetails , PropertyManagerCompanyDetails , StaffRole
+from utilities.helper_functions import prepare_response ,upload_file_to_s3_base64 ,datetime_to_epoch,epoch_to_datetime
+from user_service.models import UserProfile ,StaffDetails , PropertyManagerCompanyDetails , StaffRole  
 from property_management.models import OwnerDetails , TenantDetails
 from user_service.utils import request_otp_sent
 from django.db import transaction
@@ -11,6 +11,8 @@ from utilities.decorator import is_request_authenticated
 from django.core.paginator import Paginator, EmptyPage
 from django.db.models import Q
 from django.utils import timezone
+from django.utils.timezone import make_aware
+
 
 def user_sign_up(request):
     if request.method != "POST":
@@ -106,10 +108,6 @@ def user_sign_up(request):
             
             pmc_documents=documents_json
 
-
-
-
-            
         )
 
     elif user_type == constants.TENANT:
@@ -407,9 +405,27 @@ def user_management_view(request):
             search = request.GET.get("search", "").strip()
             page = int(request.GET.get("page", 1))
             limit = int(request.GET.get("limit", 10))
+            start_epoch = request.GET.get("start_date")
+            end_epoch = request.GET.get("end_date")
 
             users_qs = UserProfile.objects.filter(is_deleted=is_deleted)
-            total_count = users_qs.count()
+            if start_epoch and end_epoch:
+                try:
+                    s = epoch_to_datetime(int(start_epoch))
+                    e = epoch_to_datetime(int(end_epoch))
+
+                    start_dt = make_aware(s) if timezone.is_naive(s) else s
+                    end_dt = make_aware(e) if timezone.is_naive(e) else e
+
+                    users_qs = users_qs.filter(created__range=[start_dt, end_dt])
+
+                except Exception as e:
+                    return prepare_response(
+            message=f"Invalid epoch format: {str(e)}",
+            status=status.HTTP_400_BAD_REQUEST
+         )
+
+            
             if recently_user:
                 users_qs = users_qs.filter(last_login__isnull=False).order_by("-last_login")[:5]
 
@@ -421,7 +437,7 @@ def user_management_view(request):
                     Q(property_manager_details__full_name__icontains=search)
                 ).distinct()
 
-
+            total_count = users_qs.count()
             paginator = Paginator(users_qs, limit)
             try:
                 page_obj = paginator.page(page)
@@ -460,6 +476,9 @@ def user_management_view(request):
                     "last_login": user.last_login,
                     "is_active": user.is_active,
                     "profile_image":user.profile_image,
+                    "first_name ":user.first_name ,
+                    "last_name":user.last_name,
+                    
                     
                 })
 
