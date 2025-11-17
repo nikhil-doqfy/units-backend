@@ -2,56 +2,143 @@ import json
 import uuid
 from django.contrib.auth.hashers import make_password
 from utilities import status, constants
-from utilities.helper_functions import prepare_response 
+from utilities.helper_functions import prepare_response ,upload_file_to_s3_base64
 from user_service.models import UserProfile ,StaffDetails , PropertyManagerCompanyDetails , StaffRole
 from property_management.models import OwnerDetails , TenantDetails
 from user_service.utils import request_otp_sent
 from django.db import transaction
 from utilities.decorator import is_request_authenticated
 from django.core.paginator import Paginator, EmptyPage
-def user_sign_up(request):
-    if request.method == "POST":
-        data = json.loads(request.body)
-        email = data.get("email")
-        password = data.get("password")
-        confirm_password = data.get("confirm_password")
-        user_type = data.get("user_type")
+from django.db.models import Q
+from django.utils import timezone
 
-        if not all([email, password, confirm_password, user_type]):
-            return prepare_response(
-                message=constants.FIELD_REQUIRED,
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        if password != confirm_password:
-            return prepare_response(
-                message=constants.PASSWORD_MISMATCH,
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        if UserProfile.objects.filter(email=email).exists():
-            return prepare_response(
-                message=constants.EMAIL_ALREADY_REGISTERED,
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        user = UserProfile.objects.create(
-            email=email,
-            hashed_password=make_password(password),
-            user_type=user_type,
-            is_login_allowed=True
-        )
-        return prepare_response(
-            content={
-                "id": user.id,
-                "email": user.email,
-                "user_type": user.user_type
-            },
-            message=constants.USER_REGISTERED_SUCCESSFULLY,
-            status=status.HTTP_201_CREATED
-        )
-    else:
+def user_sign_up(request):
+    if request.method != "POST":
         return prepare_response(
             message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
+
+    data = json.loads(request.body)
+
+    email = data.get("email")
+    password = data.get("password")
+    confirm_password = data.get("confirm_password")
+    user_type = data.get("user_type")
+    first_name = data.get("first_name")
+    last_name = data.get("last_name")
+
+    if not all([email, password, confirm_password, user_type]):
+        return prepare_response(
+            message=constants.FIELD_REQUIRED,
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if password != confirm_password:
+        return prepare_response(
+            message=constants.PASSWORD_MISMATCH,
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if UserProfile.objects.filter(email=email).exists():
+        return prepare_response(
+            message=constants.EMAIL_ALREADY_REGISTERED,
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+
+    user = UserProfile.objects.create(
+        email=email,
+        hashed_password=make_password(password),
+        user_type=user_type,
+        first_name=first_name,
+        last_name=last_name,
+        is_login_allowed=True
+    )
+
+
+    documents_json = {}
+    folder_name = f"{user_type.lower()}_documents/{user.id}"
+
+    def upload_if_exists(base64_doc, filename):
+        if base64_doc:
+            object_name = f"{folder_name}/{filename}"
+            return upload_file_to_s3_base64(base64_doc, object_name)
+        return None
+
+
+    emirates_id_doc = upload_if_exists(data.get("emirates_id_doc"), "emirates_id.pdf")
+    uae_residence_visa_doc = upload_if_exists(data.get("uae_residence_visa_doc"), "uae_residence_visa.pdf")
+    dld_certificate_doc = upload_if_exists(data.get("dld_certificate_doc"), "dld_certificate.pdf")
+ 
+
+    if emirates_id_doc:
+        documents_json["emirates_id_doc"] = emirates_id_doc
+    if uae_residence_visa_doc:
+        documents_json["uae_residence_visa_doc"] = uae_residence_visa_doc
+    if dld_certificate_doc:
+        documents_json["dld_certificate_doc"] = dld_certificate_doc
+    
+
+
+    if user_type == constants.OWNER:
+        OwnerDetails.objects.create(
+            user=user,
+            full_name=f"{first_name} {last_name}",
+            emirate_id=data.get("emirate_id"),
+            uae_residence_visa=data.get("uae_residence_visa"),
+            trade_license_number=data.get("trade_license_number"),
+            owner_number=data.get("owner_number"),
+            mobile_number=data.get("mobile_number"),
+            manage_through=data.get("manage_through"),
+            owner_documents=documents_json
+        )
+
+    elif user_type == constants.PROPERTY_MANAGER:
+        PropertyManagerCompanyDetails.objects.create(
+            user=user,
+            company_name=data.get("company_name"),
+            uae_residence_visa =data.get("uae_residence_visa"),
+            company_emirate_id=data.get("company_emirate_id"),
+            trade_license_number=data.get("trade_license_number"),
+            phone_number=data.get("phone_number"),
+            emirate_id=data.get("emirate_id"),
+            
+            pmc_documents=documents_json
+
+
+
+
+            
+        )
+
+    elif user_type == constants.TENANT:
+        TenantDetails.objects.create(
+            user=user,
+            full_name=f"{first_name} {last_name}",
+            emirate_id=data.get("emirate_id"),
+            uae_residence_visa=data.get("uae_residence_visa"),
+            trade_license_number=data.get("trade_license_number"),
+            mobile_number=data.get("mobile_number"),
+            tenant_number=data.get("tenant_number"),
+            nationality=data.get("nationality"),
+            manage_through=data.get("manage_through"),
+            tenant_documents=documents_json
+        )
+
+    return prepare_response(
+        content={
+            "id": user.id,
+            "email": user.email,
+            "user_type": user.user_type
+        },
+        message=constants.USER_REGISTERED_SUCCESSFULLY,
+        status=status.HTTP_201_CREATED
+    )
+
+
+
+
 
 
 def send_otp(request):
@@ -304,9 +391,7 @@ def user_profile_view(request):
 
 
 
-from django.core.paginator import Paginator, EmptyPage
-from django.db.models import Q
-from django.utils import timezone
+
 
 def user_management_view(request):
 

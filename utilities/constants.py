@@ -169,6 +169,8 @@ QUERY_PARAMETER="option_type query parameter is required"
 
 DROPDOWN_DATA_FETCHED_SUCEESS="Dropdown data fetched successfully"
 
+choices=[("MYSELF", "Myself"), ("PMC", "PMC")]
+
 LEASE_STATUS_CHOICES = [
     ("DRAFT", "Draft"),
     ("ACTIVE", "Active"),

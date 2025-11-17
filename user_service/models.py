@@ -28,6 +28,9 @@ class UserProfile(Base):
     time_zone = models.CharField(max_length=50)  
     utc = models.CharField(max_length=10)  
     last_login = models.DateTimeField(null=True, blank=True)
+    first_name = models.CharField(max_length=100)
+    last_name = models.CharField(max_length=100)
+    
 
 
     def __str__(self):
@@ -46,14 +49,17 @@ class PropertyManagerCompanyDetails(models.Model):
     address_line_1 = models.CharField(max_length=255, null=True, blank=True)
     address_line_2 = models.CharField(max_length=255, null=True, blank=True)
     company_emirate_id = models.CharField(max_length=255)
+    uae_residence_visa = models.CharField(max_length=100)
+    emirate_id = models.CharField(max_length=255)
+
     trade_license_number = models.CharField(max_length=255)
     license_issuer = models.CharField(max_length=255)
     rera_license = models.CharField(max_length=255)
     phone_number = models.CharField(max_length=20)
     email_address = models.EmailField(null=True, blank=True)
-    pmc_documents = models.JSONField(default=dict)
+    pmc_documents = models.JSONField(default=dict, blank=True)
     state = models.CharField(max_length=100, blank=True, null=True)
-    
+     
 
     def __str__(self):
         return "{}".format(self.company_name)
@@ -155,6 +161,7 @@ class PropertyDetails(Base):
     property_code = models.CharField(max_length=255, unique=True, blank=True, null=True)
     invited_email_id = models.EmailField(blank=True, null=True)
     images = models.JSONField(default=list, blank=True, null=True)
+   
 
     def __str__(self):
         return "{}".format(self.property_name)    
