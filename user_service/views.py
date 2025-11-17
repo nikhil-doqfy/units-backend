@@ -142,7 +142,10 @@ def user_sign_up(request):
 def send_otp(request):
     if request.method == "POST":
         data = json.loads(request.body)
-        email = data.get("email")
+        email = data.get("email")   
+        purpose = data.get("purpose")
+         
+    
         user_profile = UserProfile.objects.filter(email=email).first()
         if not user_profile:
             return prepare_response(

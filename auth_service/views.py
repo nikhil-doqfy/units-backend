@@ -72,7 +72,7 @@ def user_login(request):
                 "access_token": token,
                 "token_type": "Bearer",
                 "profile_image":user.profile_image,
-                "first_name ":user.first_name ,
+                "first_name ":user.first_name,
                 "last_name":user.last_name,
             },
             message=constants.LOGIN_SUCCESSFUL,
@@ -88,7 +88,7 @@ def user_login(request):
                 status=status.HTTP_404_NOT_FOUND
             )
         if  user.user_type != user_type:
-            return prepare_response(message="User type does not match our records",
+            return prepare_response(message="User type does not match",
                 status=status.HTTP_400_BAD_REQUEST
                 )
 
@@ -120,7 +120,7 @@ def user_login(request):
                 "access_token": token,
                 "token_type": "Bearer",
                 "profile_image":user.profile_image,
-                "first_name ":user.first_name ,
+                "first_name ":user.first_name,
                 "last_name":user.last_name,
 
 
@@ -245,52 +245,70 @@ def logout(request):
 
 
 
+
 def verify_password_otp(request):
     if request.method != "POST":
         return prepare_response(
             message=constants.INVALID_REQUEST,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
+
     try:
         data = json.loads(request.body)
         email = data.get("email")
         otp = data.get("otp")
+        purpose = data.get("purpose")
 
-        if not email or not otp:
+        if not (email and otp ):
             return prepare_response(
-                message=constants.EMAIL_AND_OTP_REQUIRED,
+                message="Email & OTP  are required",
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+       
         record = UserVerification.objects.filter(
-            email=email, otp=otp, is_verified=False ,verification_type="PASSWORD_RESET"
+            email=email,
+            is_verified=False
         ).order_by('-created').first()
+
         if not record:
             return prepare_response(
                 message=constants.INCORRECT_OTP,
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        if record.otp != otp:
+            return prepare_response(
+                message=constants.INCORRECT_OTP,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
         expiry_time = record.created + timezone.timedelta(minutes=constants.OTP_EXPIRY_MINUTES)
-
-
         if timezone.now() > expiry_time:
             return prepare_response(
                 message=constants.OTP_EXPIRED,
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+     
         record.is_verified = True
         record.verified_time = timezone.now()
         record.save()
+
         return prepare_response(
-            message=constants.OTP_VERIFIED_SUCCESS,
+            message="OTP verified successfully",
             content={"email": email},
             status=status.HTTP_200_OK
         )
+
     except Exception as e:
-        print("Error:", e)
+        print("VERIFY OTP ERROR:", e)
         return prepare_response(
             message=constants.INTERNAL_SERVER_ERROR,
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
 
 
 def reset_password(request):
@@ -351,60 +369,92 @@ def send_password_otp(request):
     try:
         data = json.loads(request.body)
         email = data.get("email")
+        purpose = data.get("purpose")  
 
         if not email:
             return prepare_response(
-                message=constants.INVALID_REQUEST_METHOD,
+                message="Email is required",
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        try:
-            user = UserProfile.objects.get(email=email)
-        except UserProfile.DoesNotExist:
-            return prepare_response(
-                message=constants.USER_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
+        if purpose is None:
+
+            
+            try:
+                user_obj = UserProfile.objects.get(email=email)
+            except UserProfile.DoesNotExist:
+                return prepare_response(
+                    message="User does not exist",
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            otp = request_otp_sent()
+
+            UserVerification.objects.update_or_create(
+                email=email,
+                defaults={
+                    "otp": otp,
+                    "user": user_obj,
+                    "is_verified": False,
+                    "created": timezone.now()
+                }
             )
 
-        otp = request_otp_sent()
+            purpose_text = "login"
 
-       
-        record, created = UserVerification.objects.update_or_create(
-            user=user,
-            verification_type="PASSWORD_RESET",
-            defaults={
-                "email": email,
-                "otp": otp,
-                "is_verified": False,
-                "created": timezone.now(),  
-            }
-        )
+        elif purpose == "signup":
 
-        
+            # signup: user must NOT exist
+            if UserProfile.objects.filter(email=email).exists():
+                return prepare_response(
+                    message="Email already registered",
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            otp = request_otp_sent()
+
+            UserVerification.objects.update_or_create(
+                email=email,
+                defaults={
+                    "otp": otp,
+                    "user": None,
+                    "is_verified": False,
+                    "created": timezone.now()
+                }
+            )
+
+            purpose_text = "signup"
+
+        else:
+            return prepare_response(
+                message="Invalid purpose",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         body_html = render_to_string(
             "email_templates/send_password_otp.html",
-            {"otp": otp, "expiry_minutes": constants.OTP_EXPIRY_MINUTES}
+            {"otp": otp, "purpose": purpose_text, "expiry_minutes": constants.OTP_EXPIRY_MINUTES}
         )
-        subject = "Password Reset OTP - DOQFY"
-        body_text = f"Your OTP for password reset is: {otp}. It will expire in {constants.OTP_EXPIRY_MINUTES} minutes."
+
+        subject = f"{purpose_text.capitalize()} OTP - DOQFY"
+        body_text = f"Your OTP is: {otp}"
 
         success = send_ses_email(email, subject, body_text, body_html)
 
         if success:
-            return prepare_response(message=constants.OTP_SEND_SUCCESS)
+            return prepare_response(message="OTP sent successfully")
         else:
             return prepare_response(
-                message=constants.OTP_SEND_FAILED,
+                message="Failed to send OTP Email",
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
     except Exception as e:
-        print(f"Error sending OTP via SES: {e}")
+        print("SEND OTP ERROR:", e)
         return prepare_response(
             message=f"Unexpected error: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
 
 
 

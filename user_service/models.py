@@ -14,7 +14,7 @@ class UserProfile(Base):
        (constants.OWNER, "Owner"),
        (constants.PROPERTY_MANAGER, "Property Manager"),
        (constants.TENANT, "Tenant"),
-       (constants.STAFF, "Staff"),
+       (constants.STAFF, "Staff"),  
     )
     email = models.EmailField(unique=True, db_index=True)
     hashed_password = models.CharField(max_length=255)
