@@ -25,6 +25,7 @@ def user_login(request):
         email = data.get("email")
         password = data.get("password")
         otp = data.get("otp")
+        user_type = data.get("user_type")
     except json.JSONDecodeError:
         return prepare_response(
             message=constants.INVALID_REQUEST_METHOD,
@@ -51,6 +52,13 @@ def user_login(request):
                 message=constants.LOGIN_NOT_ALLOWED,
                 status=status.HTTP_403_FORBIDDEN
             )
+        
+        if  user.user_type != user_type:
+            return prepare_response(
+                message="User type does not match our records",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
 
         token = create_jwt_token(user)
         return prepare_response(
@@ -89,7 +97,11 @@ def user_login(request):
                 message=constants.INCORRECT_OTP,
                 status=status.HTTP_400_BAD_REQUEST
             )
-
+        if  user.user_type != user_type:
+            return prepare_response(
+                message="User type does not match our records",
+                status=status.HTTP_400_BAD_REQUEST
+                )
 
         if record.is_verified:
             token = create_jwt_token(user)
