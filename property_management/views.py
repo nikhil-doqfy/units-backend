@@ -1491,90 +1491,164 @@ def property_details_view(request):
 
 @is_request_authenticated
 def create_property_basic(request):
-    if request.method != "POST":
-        return prepare_response(message=constants.INVALID_REQUEST, status=status.HTTP_405_METHOD_NOT_ALLOWED)
-
-    try:
-        data = json.loads(request.body)
-        user = request.user   
-
-  
-        property_name = data.get("property_name")
-        land_dm_no = data.get("land_dm_no")
-        address = data.get("address")
-        area_of_property = data.get("area_of_property")
-        no_of_parking = data.get("no_of_parking")
-        makani_no = data.get("makani_no")
-        dewa_no = data.get("dewa_no")
-        property_type = data.get("property_type")
-        land_area = data.get("land_area")
-        apartment_no = data.get("apartment_no")
-        bedrooms = data.get("bedrooms")
-        # apartment_floor_no = data.get("apartment_floor_no")
-        balcony = data.get("balcony")
-        plot_no = data.get("plot_no")
-        area_unit = data.get("area_unit")
-        land_area_unit = data.get("land_area_unit")
-        no_of_floors = data.get("no_of_floors")
-        property_code = data.get("property_code")
-        invited_email_id = data.get("invited_email_id")
-      
-
-        if user.user_type == "PROPERTY_MANAGER":
-            owner = user
-
- 
-            property_manager = PropertyManagerCompanyDetails.objects.filter(user=user).first()
-            if not property_manager:
-                return prepare_response(message= constants.PROPERTY_MANAGER_DETAILS_NOT_FOUND, status=status.HTTP_400_BAD_REQUEST)
-
-        elif user.user_type == "OWNER":
-            owner = user 
 
 
-            pmc_id = data.get("property_manager_id")
-            if pmc_id:
-                property_manager = PropertyManagerCompanyDetails.objects.filter(id=pmc_id).first()
+    if request.method == "GET":
+        try:
+            property_id = request.GET.get("property_id")
+
+            if not property_id:
+                return prepare_response("Property ID required", status=400)
+
+            prop = PropertyDetails.objects.filter(id=property_id).first()
+            if not prop:
+                return prepare_response("Property not found", status=404)
+
+            content = {
+                "id": prop.id,
+                "property_name": prop.property_name,
+                "address": prop.address,
+                "area_of_property": prop.area_of_property,
+                "no_of_parking": prop.no_of_parking,
+                "bedrooms": prop.bedrooms,
+                "balcony": prop.balcony,
+                "plot_no": prop.plot_no,
+                "area_unit": prop.area_unit,
+                "property_code": prop.property_code,
+                "property_type": prop.property_type,
+               
+            }
+
+            return prepare_response(content=content, status=200)
+
+        except Exception as e:
+            return prepare_response({"error": str(e)}, status=500)
+
+
+    elif request.method == "PUT":
+        try:
+            data = json.loads(request.body)
+            property_id = data.get("property_id")
+
+            if not property_id:
+                return prepare_response("Property ID required for update", status=400)
+
+            prop = PropertyDetails.objects.filter(id=property_id).first()
+            if not prop:
+                return prepare_response("Property not found", status=404)
+
+        
+            updatable_fields = [
+                "property_name", "land_dm_no", "address", "area_of_property",
+                "no_of_parking", "makani_no", "dewa_no", "property_type",
+                "land_area", "apartment_no", "bedrooms", "balcony",
+                "plot_no", "area_unit", "land_area_unit", "no_of_floors",
+                "property_code", "invited_email_id"
+            ]
+
+            for field in updatable_fields:
+                if field in data:
+                    setattr(prop, field, data[field])
+
+            prop.save()
+
+            return prepare_response(
+                message="Property updated successfully",
+                content={"property_id": prop.id},
+                status=200
+            )
+
+        except Exception as e:
+            return prepare_response({"error": str(e)}, status=500)
+
+
+    elif request.method == "POST":
+        try:
+            data = json.loads(request.body)
+            user = request.user
+
+            property_name = data.get("property_name")
+            land_dm_no = data.get("land_dm_no")
+            address = data.get("address")
+            area_of_property = data.get("area_of_property")
+            no_of_parking = data.get("no_of_parking")
+            makani_no = data.get("makani_no")
+            dewa_no = data.get("dewa_no")
+            property_type = data.get("property_type")
+            land_area = data.get("land_area")
+            apartment_no = data.get("apartment_no")
+            bedrooms = data.get("bedrooms")
+            balcony = data.get("balcony")
+            plot_no = data.get("plot_no")
+            area_unit = data.get("area_unit")
+            land_area_unit = data.get("land_area_unit")
+            no_of_floors = data.get("no_of_floors")
+            property_code = data.get("property_code")
+            invited_email_id = data.get("invited_email_id")
+
+         
+            if user.user_type == "PROPERTY_MANAGER":
+                owner = user
+                property_manager = PropertyManagerCompanyDetails.objects.filter(user=user).first()
+
+                if not property_manager:
+                    return prepare_response(
+                        message=constants.PROPERTY_MANAGER_DETAILS_NOT_FOUND,
+                        status=400
+                    )
+
+            elif user.user_type == "OWNER":
+                owner = user
+                pmc_id = data.get("property_manager_id")
+
+                property_manager = (
+                    PropertyManagerCompanyDetails.objects.filter(id=pmc_id).first()
+                    if pmc_id else None
+                )
+
             else:
-                property_manager = None
+                return prepare_response(
+                    message=constants.ONLY_OWNER_AND_PMC,
+                    status=403
+                )
 
-        else:
-            return prepare_response( message=constants.ONLY_OWNER_AND_PMC, status=status.HTTP_403_FORBIDDEN)
+            new_property = PropertyDetails.objects.create(
+                property_name=property_name,
+                land_dm_no=land_dm_no,
+                address=address,
+                area_of_property=area_of_property,
+                no_of_parking=no_of_parking,
+                makani_no=makani_no,
+                dewa_no=dewa_no,
+                property_type=property_type,
+                land_area=land_area,
+                apartment_no=apartment_no,
+                bedrooms=bedrooms,
+                balcony=balcony,
+                plot_no=plot_no,
+                area_unit=area_unit,
+                land_area_unit=land_area_unit,
+                no_of_floors=no_of_floors,
+                property_code=property_code,
+                invited_email_id=invited_email_id,
+                owner=owner,
+                property_manager=property_manager,
+            )
 
-      
+            return prepare_response(
+                message=constants.PROPERTY_ADDED,
+                content={"property_id": new_property.id},
+                status=201
+            )
 
-        new_property = PropertyDetails.objects.create(
-            property_name=property_name,
-            land_dm_no=land_dm_no,
-            address=address,
-            area_of_property=area_of_property,
-            no_of_parking=no_of_parking,
-            makani_no=makani_no,
-            dewa_no=dewa_no,
-            property_type=property_type,
-            land_area=land_area,
-            apartment_no=apartment_no,
-            bedrooms=bedrooms,
-            # apartment_floor_no=apartment_floor_no,
-            balcony=balcony,
-            plot_no=plot_no,
-            area_unit=area_unit,
-            land_area_unit=land_area_unit,
-            no_of_floors=no_of_floors,
-            property_code=property_code,
-            invited_email_id=invited_email_id,
-            owner=owner,
-            property_manager=property_manager,
+        except Exception as e:
+            return prepare_response({"error": str(e)}, status=500)
 
-        )
-
+    else:
         return prepare_response(
-            message=constants.PROPERTY_ADDED,
-            content= {"property_id":new_property.id},
-         status=status.HTTP_201_CREATED  ) 
-
-    except Exception as e:
-        return prepare_response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            message=constants.INVALID_REQUEST_METHOD,
+            status=405
+        )
 
 
 
@@ -1586,43 +1660,91 @@ def create_property_basic(request):
 
 @is_request_authenticated
 def add_commercial_details(request):
-    if request.method != "POST":
-        return prepare_response(message=constants.INVALID_REQUEST, status=status.HTTP_405_METHOD_NOT_ALLOWED)
-
     try:
-        data = json.loads(request.body)
-        property_id = data.get("property_id")
 
-        if not property_id:
-            return prepare_response(message=constants.PROPERTY_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
+        if request.method == "GET":
+            property_id = request.GET.get("property_id")
+            if not property_id:
+                return prepare_response("Property ID required", status=400)
 
-        property_obj = PropertyDetails.objects.filter(id=property_id).first()
-        if not property_obj:
-            return prepare_response(constants.PROPERTY_MANAGER_Details_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+            commercial_obj = PropertyCommercial.objects.filter(property_id=property_id).first()
+            if not commercial_obj:
+                return prepare_response("Commercial details not found", status=404)
 
-        commercial_obj, created = PropertyCommercial.objects.update_or_create(
-            property=property_obj,
-            defaults={
-                "rent": data.get("rent"),
-                "security_deposit": data.get("security_deposit"),
-                "booking_amount": data.get("booking_amount"),
-                "maintenance_charges": data.get("maintenance_charges"),
-                "cycle": data.get("cycle"),
-                "notice_period": data.get("notice_period"),
-                "commission_percent": data.get("commission_percent"),
+         
+            data = {
+                "rent": commercial_obj.rent,
+                "security_deposit": commercial_obj.security_deposit,
+                "booking_amount": commercial_obj.booking_amount,
+                "maintenance_charges": commercial_obj.maintenance_charges,
+                "cycle": commercial_obj.cycle,
+                "notice_period": commercial_obj.notice_period,
+                "commission_percent": commercial_obj.commission_percent,
             }
-        )
 
-        return prepare_response(
-            message=constants.COMMERCIAL_DETAILS_SAVE,
-            status=status.HTTP_200_OK
-        )
+            return prepare_response(content=data, message="Commercial details fetched", status=200)
+
+        if request.method in ["POST", "PUT"]:
+            data = json.loads(request.body)
+            property_id = data.get("property_id")
+
+            if not property_id:
+                return prepare_response("Property ID required", status=400)
+
+            property_obj = PropertyDetails.objects.filter(id=property_id).first()
+            if not property_obj:
+                return prepare_response("Property not found", status=404)
+
+
+        if request.method == "POST":
+            PropertyCommercial.objects.update_or_create(
+                property=property_obj,
+                defaults={
+                    "rent": data.get("rent"),
+                    "security_deposit": data.get("security_deposit"),
+                    "booking_amount": data.get("booking_amount"),
+                    "maintenance_charges": data.get("maintenance_charges"),
+                    "cycle": data.get("cycle"),
+                    "notice_period": data.get("notice_period"),
+                    "commission_percent": data.get("commission_percent"),
+                }
+            )
+
+            return prepare_response(
+                message="Commercial details created successfully",
+                status=200
+            )
+
+
+        if request.method == "PUT":
+            commercial_obj = PropertyCommercial.objects.filter(property=property_obj).first()
+            if not commercial_obj:
+                return prepare_response("Commercial details not found", status=404)
+
+            updatable_fields = [
+                "rent", "security_deposit", "booking_amount",
+                "maintenance_charges", "cycle", "notice_period",
+                "commission_percent"
+            ]
+
+            for field in updatable_fields:
+                if field in data:
+                    setattr(commercial_obj, field, data[field])
+
+            commercial_obj.save()
+
+            return prepare_response(
+                message="Commercial details updated successfully",
+                status=200
+            )
+
+        return prepare_response("Invalid request method", status=405)
 
     except Exception as e:
-        return prepare_response(
-            message=f"Error: {str(e)}",
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+        return prepare_response(f"Error: {str(e)}", status=500)
+
+
+
 
 
 
@@ -2826,6 +2948,8 @@ def pmc_owner_view_list(request):
 def property_details_list_view(request):
     if request.method == "GET":
         try:
+            property_id = request.GET.get("property_id")
+
             search = request.GET.get("search", "").strip()
             page = int(request.GET.get("page", 1))
             limit = int(request.GET.get("limit", 10))
@@ -2833,10 +2957,19 @@ def property_details_list_view(request):
             properties = PropertyDetails.objects.select_related(
                 "owner",
                 "property_manager",
-                "staff"
+                "staff",
+                "commercial"   
             ).prefetch_related(
                 Prefetch("tenant_details", queryset=TenantDetails.objects.select_related("user"))
             )
+
+            if property_id:
+                properties = properties.filter(id=property_id)
+                if not properties.exists():
+                    return prepare_response(
+                        message="Property Not Found",
+                        status=status.HTTP_404_NOT_FOUND
+                    )
 
             if search:
                 properties = properties.filter(
@@ -2845,16 +2978,18 @@ def property_details_list_view(request):
                     Q(tenant_details__full_name__icontains=search)
                 ).distinct()
 
-            paginator = Paginator(properties, limit)
-            try:
-                properties_page = paginator.page(page)
-            except EmptyPage:
-                properties_page = paginator.page(paginator.num_pages)
+            if not property_id:
+                paginator = Paginator(properties, limit)
+                try:
+                    properties_page = paginator.page(page)
+                except EmptyPage:
+                    properties_page = paginator.page(paginator.num_pages)
+            else:
+                properties_page = properties  
 
             data = []
 
             for prop in properties_page:
-                
 
                 tenants = prop.tenant_details.all()
                 tenant_data = []
@@ -2865,15 +3000,10 @@ def property_details_list_view(request):
                         "mobile_number": tenant.mobile_number,
                         "tenant_number": tenant.tenant_number,
                         "nationality": tenant.nationality,
-
-                        # 🔥 Added User Info
                         "email": tenant_user.email if tenant_user else None,
                         "profile_image": tenant_user.profile_image if tenant_user else None,
                     })
 
-                # --------------------------------------
-                # 🔵 OWNER + USER DETAILS
-                # --------------------------------------
                 owner_details = OwnerDetails.objects.filter(user=prop.owner).first()
                 owner_user = prop.owner
 
@@ -2881,27 +3011,37 @@ def property_details_list_view(request):
                     "owner_name": owner_details.full_name if owner_details else "N/A",
                     "owner_mobile": owner_details.mobile_number if owner_details else "N/A",
                     "trade_license": owner_details.trade_license_number if owner_details else "N/A",
-
-                    # 🔥 Added User Info
                     "email": owner_user.email if owner_user else None,
                     "profile_image": owner_user.profile_image if owner_user else None,
                 }
 
-                # --------------------------------------
-                # 🔵 PMC + USER DETAILS
-                # --------------------------------------
+
                 pmc = prop.property_manager
                 pmc_info = {
                     "company_name": pmc.company_name if pmc else "N/A",
                     "company_code": pmc.company_code if pmc else "N/A",
                     "rera_license": pmc.rera_license if pmc else "N/A",
                     "phone_number": pmc.phone_number if pmc else "N/A",
-
-                    # 🔥 Added User Info
                     "email": pmc.user.email if pmc and pmc.user else None,
                     "profile_image": pmc.user.profile_image if pmc and pmc.user else None,
                 }
 
+     
+                commercial = getattr(prop, "commercial", None)
+
+                commercial_info = {
+                    "rent": commercial.rent if commercial else None,
+                    "security_deposit": commercial.security_deposit if commercial else None,
+                    "booking_amount": commercial.booking_amount if commercial else None,
+                    "maintenance_charges": commercial.maintenance_charges if commercial else None,
+                    "cycle": commercial.cycle if commercial else None,
+                    "notice_period": commercial.notice_period if commercial else None,
+                    "commission_percent": commercial.commission_percent if commercial else None,
+                }
+
+                # -------------------------
+                # 🔵 RENTAL STATUS
+                # -------------------------
                 rental_status_display = (
                     constants.RENTAL_NOT_AVAILABLE
                     if prop.is_occupied
@@ -2922,21 +3062,27 @@ def property_details_list_view(request):
                     "is_occupied": prop.is_occupied,
                     "area_unit": prop.area_unit,
                     "rental_status": rental_status_display,
-
+                    
                     "tenants": tenant_data,
                     "owner_info": owner_info,
                     "pmc_info": pmc_info,
+
+                    # 🔥 ADDED HERE
+                    "commercial_info": commercial_info
                 })
 
-            pagination_meta = {
-                "current_page": properties_page.number,
-                "limit": limit,
-                "total_records": paginator.count,
-                "total_pages": paginator.num_pages
-            }
+            if property_id:
+                pagination_meta = None
+            else:
+                pagination_meta = {
+                    "current_page": properties_page.number,
+                    "limit": limit,
+                    "total_records": paginator.count,
+                    "total_pages": paginator.num_pages
+                }
 
             return prepare_response(
-                content=data,
+                content=data if not property_id else data[0],
                 message=constants.PROPERTY_LIST_FETCHED,
                 pagination=pagination_meta,
                 status=status.HTTP_200_OK
