@@ -1,8 +1,8 @@
 
 from django.shortcuts import get_object_or_404
 from django.db import IntegrityError, transaction
-from property_management.models import OwnerDetails ,PropertyDocuments,TenantDetails , LeasePropertyDetails ,LeaseCommercials,LeaseEjariUpload,LeaseDocumentLayout,OwnerPMCInvitation,PMCOwnerInvitation , PMCTenantInvitation 
-from user_service.models import PropertyManagerCompanyDetails ,PropertyDetails ,UserProfile,StaffDetails  ,PropertyCommercial
+from property_management.models import OwnerDetails ,TenantDetails , LeasePropertyDetails ,LeaseCommercials,LeaseEjariUpload,LeaseDocumentLayout,OwnerPMCInvitation,PMCOwnerInvitation , PMCTenantInvitation 
+from user_service.models import PropertyManagerCompanyDetails ,PropertyDetails ,UserProfile,StaffDetails  ,PropertyCommercial,PropertyDocuments
 from utilities.decorator import is_request_authenticated
 import json
 from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger,send_ses_email
@@ -20,6 +20,10 @@ from django.template.loader import render_to_string
 from datetime import timedelta
 from django.contrib.auth.hashers import make_password
 from django.core.paginator import Paginator, EmptyPage
+
+
+
+
 
 @is_request_authenticated
 def options(request):
@@ -709,14 +713,14 @@ def upload_owner_documents(request):
     owner_details.save()
     current_user.is_document_uploaded = True
     current_user.save()
-    prop_doc_instance, created = PropertyDocuments.objects.get_or_create(
-        document_title=f"Owner {current_user.id} Documents",
-        defaults={"property_documents": prop_docs_dict}
-    )
-    if not created:
-        prop_doc_instance.property_documents = prop_docs_dict
-        prop_doc_instance.updated_at = timezone.now()
-        prop_doc_instance.save()
+    # prop_doc_instance, created = PropertyDocuments.objects.get_or_create(
+    #     document_title=f"Owner {current_user.id} Documents",
+    #     defaults={"property_documents": prop_docs_dict}
+    # )
+    # if not created:
+    #     prop_doc_instance.property_documents = prop_docs_dict
+    #     prop_doc_instance.updated_at = timezone.now()
+    #     prop_doc_instance.save()
 
     return prepare_response(
         message=constants.DOCUMENTS_UPLOAD_SUCCESS,
@@ -1506,7 +1510,7 @@ def create_property_basic(request):
         land_area = data.get("land_area")
         apartment_no = data.get("apartment_no")
         bedrooms = data.get("bedrooms")
-        apartment_floor_no = data.get("apartment_floor_no")
+        # apartment_floor_no = data.get("apartment_floor_no")
         balcony = data.get("balcony")
         plot_no = data.get("plot_no")
         area_unit = data.get("area_unit")
@@ -1551,7 +1555,7 @@ def create_property_basic(request):
             land_area=land_area,
             apartment_no=apartment_no,
             bedrooms=bedrooms,
-            apartment_floor_no=apartment_floor_no,
+            # apartment_floor_no=apartment_floor_no,
             balcony=balcony,
             plot_no=plot_no,
             area_unit=area_unit,
@@ -1664,6 +1668,145 @@ def upload_property_images(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
+
+
+def upload_property_documents(request):
+    try:
+        if request.method != "POST":
+            return prepare_response(
+                message="Invalid request method. Only POST allowed.",
+                status=405
+            )
+
+      
+        try:
+            body = json.loads(request.body)
+        except:
+            return prepare_response(
+                message="Invalid JSON data",
+                status=400
+            )
+
+        property_id = body.get("property_id")
+        if not property_id:
+            return prepare_response(
+                message="property_id is required",
+                status=400
+            )
+
+        category_map = {
+            "floor_plan": "floor_plan_documents",
+            "tenant_documents": "tenant_documents",
+            "ejaricertificates": "ejari_certificates",
+            "pmc_documents": "pmc_documents",
+            "cheque_documents": "cheque_documents",
+        }
+
+        doc_obj, _ = PropertyDocuments.objects.get_or_create(property_id=property_id)
+
+        all_uploaded = {}
+
+     
+        for req_key, model_field in category_map.items():
+
+            if req_key in body:
+                files = body.get(req_key, [])
+                existing_list = getattr(doc_obj, model_field, [])
+
+                uploaded_docs = []
+
+                for file in files:
+                    file_name = file["name"]
+                    base64_data = file["base64"]
+
+                    ext = file_name.split(".")[-1]
+                    unique_name = f"{uuid.uuid4()}.{ext}"
+
+                    s3_url = upload_file_to_s3_base64(
+                        base64_data=base64_data,
+                        object_name=f"property/{property_id}/{unique_name}"
+                    )
+
+                    data = {
+                        "name": file_name,
+                        "url": s3_url,
+                        "type": ext
+                    }
+
+                    existing_list.append(data)
+                    uploaded_docs.append(data)
+
+                setattr(doc_obj, model_field, existing_list)
+                all_uploaded[req_key] = uploaded_docs
+
+        doc_obj.save()
+
+        return prepare_response(
+            content={"uploaded": all_uploaded},
+            message="Documents uploaded successfully",
+            status=200
+        )
+
+    except Exception as e:
+        return prepare_response(
+            message=str(e),
+            status=500
+        )
+
+
+
+def fetch_property_documents(request):
+    try:
+        if request.method != "GET":
+            return prepare_response(message="Only GET method allowed", status=405)
+
+        property_id = request.GET.get("property_id")
+        if not property_id:
+            return prepare_response(message="property_id is required", status=400)
+
+        try:
+            doc_obj = PropertyDocuments.objects.get(property_id=property_id)
+        except PropertyDocuments.DoesNotExist:
+            return prepare_response(message="No documents found for this property", status=404)
+
+        category_map = {
+            "floor_plan": "floor_plan_documents",
+            "tenant_documents": "tenant_documents",
+            "ejaricertificates": "ejari_certificates",
+            "pmc_documents": "pmc_documents",
+            "cheque_documents": "cheque_documents",
+        }
+
+        all_docs_base64 = {}
+
+        for key, field_name in category_map.items():
+            docs_list = getattr(doc_obj, field_name, [])
+            docs_base64 = []
+
+            for doc in docs_list:
+                url = doc.get("url")
+                name = doc.get("name")
+                ext = doc.get("type")
+                base64_data = fetch_s3_file_as_base64(url)
+                if base64_data:
+                    docs_base64.append({
+                        "name": name,
+                        "type": ext,
+                        "base64": base64_data
+                    })
+
+            if docs_base64:
+                all_docs_base64[key] = docs_base64
+
+        return prepare_response(
+            content={"documents": all_docs_base64},
+            message="Fetched successfully",
+            status=200
+        )
+
+    except Exception as e:
+        logger.error(f"Error fetching property documents: {str(e)}")
+        return prepare_response(message=str(e), status=500)
 
 
 @is_request_authenticated
@@ -2490,8 +2633,8 @@ def pmc_dashboard_view(request):
             tenant_name = tenant.full_name if tenant else "N/A"
             tenancy_status = "Occupied" if prop.is_occupied else "Vacant"
             dimension = prop.bedrooms or "-" 
-            document = PropertyDocuments.objects.filter(property=prop).first() if "PropertyDocuments" in globals() else None
-            document_title = document.document_title if document else "-"
+            # document = PropertyDocuments.objects.filter(property=prop).first() if "PropertyDocuments" in globals() else None
+            # document_title = document.document_title if document else "-"
 
             property_list.append({
                 "code": prop.property_code or "-",
@@ -2499,7 +2642,7 @@ def pmc_dashboard_view(request):
                 "tenant_name": tenant_name,
                 "tenancy_status": tenancy_status,
                 "dimension": dimension,
-                "document": document_title,
+                # "document": document_title,
             })
 
 

@@ -4,10 +4,10 @@ from user_service.models import (
     PropertyManagerCompanyDetails, 
     StaffRole, 
     StaffDetails, 
-    PropertyDetails,UserVerification,
+    PropertyDetails,UserVerification,PropertyDocuments
 )
 
-from property_management.models import OwnerDetails, PropertyDocuments ,TenantDetails,LeasePropertyDetails,LeaseCommercials ,LeaseEjariUpload , OwnerPMCInvitation ,PMCOwnerInvitation
+from property_management.models import OwnerDetails ,TenantDetails,LeasePropertyDetails,LeaseCommercials ,LeaseEjariUpload , OwnerPMCInvitation ,PMCOwnerInvitation
  
 class UserProfileAdmin(admin.ModelAdmin):
     list_display = ["id", "email", "user_type"]
@@ -75,11 +75,14 @@ class OwnerPMCInvitationAdmin(admin.ModelAdmin):
 class PMCOwnerInvitationAdmin(admin.ModelAdmin):
     list_display = ["id", "email","invited_by" ,"status","token",] 
 
+class PropertyDocumentsAdmin(admin.ModelAdmin):
+    list_display = ["id"] 
+    
 
 
 
 admin.site.register(OwnerDetails, OwnerDetailsAdmin)  
-admin.site.register(PropertyDocuments, PropertyDocumentsAdmin)
+# admin.site.register(PropertyDocuments, PropertyDocumentsAdmin)
 admin.site.register(TenantDetails, TenantDetailsAdmin)  
 
 admin.site.register(LeasePropertyDetails, LeasePropertyDetailsAdmin)  
@@ -89,4 +92,5 @@ admin.site.register(LeaseEjariUpload, LeaseEjariUploadAdmin)
 admin.site.register( OwnerPMCInvitation, OwnerPMCInvitationAdmin)  
 
 admin.site.register( PMCOwnerInvitation, PMCOwnerInvitationAdmin)  
-  
+
+admin.site.register( PropertyDocuments, PropertyDocumentsAdmin) 

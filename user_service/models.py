@@ -6,6 +6,9 @@ from django.conf import settings
 
 
 
+
+
+
 class UserProfile(Base):
     USER_TYPE_CHOICES = (
        (constants.OWNER, "Owner"),
@@ -164,7 +167,21 @@ class PropertyDetails(Base):
    
 
     def __str__(self):
-        return "{}".format(self.property_name)    
+        return "{}".format(self.property_name)  
+
+
+class PropertyDocuments(Base):
+    property = models.ForeignKey(
+        "PropertyDetails",
+        on_delete=models.CASCADE,
+        related_name="property_documents"
+    )
+
+    rental_documents = models.JSONField(default=list)
+    tenant_documents = models.JSONField(default=list)
+    ejari_certificates = models.JSONField(default=list)
+    owner_documents = models.JSONField(default=list)
+    cheque_documents = models.JSONField(default=list)
 
 
 
@@ -186,6 +203,9 @@ class PropertyCommercial(Base):
 
     def __str__(self):
         return f"Commercial Details for {self.property.property_name}"
+    
+
+
 
 
 class UserVerification(Base):

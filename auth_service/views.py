@@ -64,6 +64,8 @@ def user_login(request):
                 "access_token": token,
                 "token_type": "Bearer",
                 "profile_image":user.profile_image,
+                "first_name ":user.first_name ,
+                "last_name":user.last_name,
             },
             message=constants.LOGIN_SUCCESSFUL,
             status=status.HTTP_200_OK
@@ -92,7 +94,6 @@ def user_login(request):
         if record.is_verified:
             token = create_jwt_token(user)
             record.verified_time = timezone.now()
-           
             token = create_jwt_token(user)
             record.is_verified = False
             record.save()
@@ -103,7 +104,12 @@ def user_login(request):
                 "user_type": user.user_type,
                 "is_verified": user.is_verified,
                 "access_token": token,
-                "token_type": "Bearer"
+                "token_type": "Bearer",
+                "profile_image":user.profile_image,
+                "first_name ":user.first_name ,
+                "last_name":user.last_name,
+
+
               },
             message=constants.LOGIN_SUCCESSFUL_WITH_OTP,
             status=status.HTTP_200_OK
