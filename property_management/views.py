@@ -713,14 +713,14 @@ def upload_owner_documents(request):
     owner_details.save()
     current_user.is_document_uploaded = True
     current_user.save()
-    prop_doc_instance, created = PropertyDocuments.objects.get_or_create(
-        document_title=f"Owner {current_user.id} Documents",
-        defaults={"property_documents": prop_docs_dict}
-    )
-    if not created:
-        prop_doc_instance.property_documents = prop_docs_dict
-        prop_doc_instance.updated_at = timezone.now()
-        prop_doc_instance.save()
+    # prop_doc_instance, created = PropertyDocuments.objects.get_or_create(
+    #     document_title=f"Owner {current_user.id} Documents",
+    #     defaults={"property_documents": prop_docs_dict}
+    # )
+    # if not created:
+    #     prop_doc_instance.property_documents = prop_docs_dict
+    #     prop_doc_instance.updated_at = timezone.now()
+    #     prop_doc_instance.save()
 
     return prepare_response(
         message=constants.DOCUMENTS_UPLOAD_SUCCESS,
