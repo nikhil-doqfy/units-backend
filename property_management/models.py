@@ -34,7 +34,8 @@ class OwnerDetails(Base):
     address = models.TextField(blank=True, null=True)
     state = models.CharField(max_length=100, blank=True, null=True)
     postal_code = models.CharField(max_length=20, blank=True, null=True)
-
+    manage_through = models.CharField(max_length=20, choices=constants.choices)
+    owner_documents = models.JSONField(default=dict, blank=True)
     def __str__(self):
         return self.full_name
     
@@ -79,6 +80,8 @@ class TenantDetails(Base):
     )
     full_name = models.CharField(max_length=255)
     emirate_id = models.CharField(max_length=255)
+    uae_residence_visa = models.CharField(max_length=100)
+    trade_license_number = models.CharField(max_length=100)
     mobile_number = models.CharField(max_length=20)
     tenant_number = models.CharField(max_length=100)
     nationality = models.CharField(max_length=100)
@@ -100,6 +103,9 @@ class TenantDetails(Base):
     state = models.CharField(max_length=100, blank=True, null=True)
     postal_code = models.CharField(max_length=20, blank=True, null=True)
     city = models.CharField(max_length=255, null=True, blank=True)
+    manage_through = models.CharField(max_length=20, choices=constants.choices)
+    tenant_documents = models.JSONField(default=dict, blank=True)
+
 
 
     def __str__(self):
