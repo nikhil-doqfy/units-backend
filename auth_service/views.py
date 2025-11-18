@@ -72,7 +72,7 @@ def user_login(request):
                 "access_token": token,
                 "token_type": "Bearer",
                 "profile_image":user.profile_image,
-                "first_name ":user.first_name,
+                "first_name":user.first_name,
                 "last_name":user.last_name,
             },
             message=constants.LOGIN_SUCCESSFUL,
@@ -120,7 +120,7 @@ def user_login(request):
                 "access_token": token,
                 "token_type": "Bearer",
                 "profile_image":user.profile_image,
-                "first_name ":user.first_name,
+                "first_name":user.first_name,
                 "last_name":user.last_name,
 
 

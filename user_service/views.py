@@ -12,7 +12,8 @@ from django.core.paginator import Paginator, EmptyPage
 from django.db.models import Q
 from django.utils import timezone
 from django.utils.timezone import make_aware
-
+import random
+import time
 
 def user_sign_up(request):
     if request.method != "POST":
@@ -29,7 +30,7 @@ def user_sign_up(request):
     user_type = data.get("user_type")
     first_name = data.get("first_name")
     last_name = data.get("last_name")
-
+    unique_id = f"{random.randint(1000,9999)}_{int(time.time()*1000)}"
     if not all([email, password, confirm_password, user_type]):
         return prepare_response(
             message=constants.FIELD_REQUIRED,
@@ -90,7 +91,7 @@ def user_sign_up(request):
             emirate_id=data.get("emirate_id"),
             uae_residence_visa=data.get("uae_residence_visa"),
             trade_license_number=data.get("trade_license_number"),
-            owner_number=data.get("owner_number"),
+            owner_number=unique_id,
             mobile_number=data.get("mobile_number"),
             manage_through=data.get("manage_through"),
             owner_documents=documents_json
@@ -103,7 +104,7 @@ def user_sign_up(request):
             uae_residence_visa =data.get("uae_residence_visa"),
             company_emirate_id=data.get("company_emirate_id"),
             trade_license_number=data.get("trade_license_number"),
-            phone_number=data.get("phone_number"),
+            phone_number=data.get("mobile_number"),
             emirate_id=data.get("emirate_id"),
             
             pmc_documents=documents_json
@@ -118,8 +119,8 @@ def user_sign_up(request):
             uae_residence_visa=data.get("uae_residence_visa"),
             trade_license_number=data.get("trade_license_number"),
             mobile_number=data.get("mobile_number"),
-            tenant_number=data.get("tenant_number"),
-            nationality=data.get("nationality"),
+            tenant_number=unique_id,
+            nationality="Dubai",
             manage_through=data.get("manage_through"),
             tenant_documents=documents_json
         )
@@ -134,6 +135,23 @@ def user_sign_up(request):
         status=status.HTTP_201_CREATED
     )
 
+
+# import imghdr
+# import mimetypes
+# import base64
+
+# def upload_if_exists(base64_doc, filename_without_ext):
+#     if base64_doc:
+#         decoded = base64.b64decode(base64_doc.split(",")[1])  # agar data URI hai
+#         # Try to detect type
+#         file_ext = mimetypes.guess_extension(mimetypes.guess_type(filename_without_ext)[0] or "")
+#         # Agar image hai
+#         img_type = imghdr.what(None, h=decoded)
+#         if img_type:
+#             file_ext = f".{img_type}"
+#         object_name = f"{folder_name}/{filename_without_ext}{file_ext}"
+#         return upload_file_to_s3_base64(base64_doc, object_name)
+#     return None
 
 
 
