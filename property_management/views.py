@@ -956,6 +956,7 @@ def tenant_details_view(request):
                 "linked_property": property_details,
                 "profile_picture": tenant.user.profile_image if hasattr(tenant, "user") else None,
                 "documents": filtered_documents,
+                
             }
 
             return prepare_response(
