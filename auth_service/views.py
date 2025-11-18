@@ -31,6 +31,9 @@ def user_login(request):
             message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_400_BAD_REQUEST
         )
+    
+    
+        
 
    
     if email and password:
@@ -40,6 +43,12 @@ def user_login(request):
                 message=constants.USER_NOT_ONBOARDED,
                 status=status.HTTP_400_BAD_REQUEST
             )
+        
+        if not user.is_active:
+            return prepare_response(
+                 message="User account is disabled",
+            status=status.HTTP_403_FORBIDDEN)
+
 
         if not check_password(password, user.hashed_password):
             return prepare_response(
@@ -55,12 +64,15 @@ def user_login(request):
         
         if  user.user_type != user_type:
             return prepare_response(
-                message="User type does not match our records",
+                message="User type does not match",
                 status=status.HTTP_400_BAD_REQUEST
             )
         
 
         token = create_jwt_token(user)
+        user.last_login = timezone.now()
+        user.save(update_fields=["last_login"])
+
         return prepare_response(
             content={
                 "id": user.id,
@@ -92,6 +104,10 @@ def user_login(request):
                 status=status.HTTP_400_BAD_REQUEST
                 )
 
+        if not user.is_active:
+            return prepare_response(
+                 message="User account is disabled",
+            status=status.HTTP_403_FORBIDDEN)
 
         record = UserVerification.objects.filter(
             email=email, otp=otp
@@ -111,6 +127,8 @@ def user_login(request):
             token = create_jwt_token(user)
             record.is_verified = False
             record.save()
+            user.last_login = timezone.now()
+            user.save(update_fields=["last_login"])
             return prepare_response(
                 content={ 
                 "id": user.id,
