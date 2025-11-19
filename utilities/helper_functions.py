@@ -91,6 +91,25 @@ def validate_phone_number(value):
 def datetime_to_epoch(dt):
     return int(dt.strftime('%s'))
 
+
+
+def datetime_to_epoch_millis(dt):
+    if not dt:
+        return None
+    if timezone.is_naive(dt):
+        dt = timezone.make_aware(dt)
+    return int(dt.timestamp() * 1000)
+
+
+
+def safe_epoch_to_datetime(epoch_ms):
+    try:
+        return datetime.fromtimestamp(epoch_ms / 1000.0)
+    except Exception:
+        return None
+
+
+
 def epoch_to_datetime(epoach):
     return datetime.fromtimestamp(epoach)
    

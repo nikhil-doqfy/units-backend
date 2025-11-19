@@ -2,7 +2,7 @@ import json
 import uuid
 from django.contrib.auth.hashers import make_password
 from utilities import status, constants
-from utilities.helper_functions import prepare_response ,upload_file_to_s3_base64 ,datetime_to_epoch,epoch_to_datetime
+from utilities.helper_functions import prepare_response ,upload_file_to_s3_base64 ,datetime_to_epoch,epoch_to_datetime,datetime_to_epoch_millis,safe_epoch_to_datetime
 from user_service.models import UserProfile ,StaffDetails , PropertyManagerCompanyDetails , StaffRole  
 from property_management.models import OwnerDetails , TenantDetails
 from user_service.utils import request_otp_sent
@@ -294,49 +294,51 @@ def user_profile_view(request):
 
         if request.method == "PUT":
             data = json.loads(request.body)
-
-           
             user_fields = ["profile_image", "country", "time_zone", "utc"]
+            if "full_name" in data:
+                full_name = data["full_name"].strip()
+                parts = full_name.split(" ", 1)
+                current_user.first_name = parts[0]
+                current_user.last_name = parts[1] if len(parts) > 1 else ""
             for field in user_fields:
                 if field in data and data[field] is not None:
                     setattr(current_user, field, data[field])
             current_user.save()
-
-           
             related_data = {
-                "mobile_number": data.get("contact"),
+                "mobile_number": data.get("contact_number"),
                 "address": data.get("address"),
                 "state": data.get("state"),
                 "postal_code": data.get("postal_code"),
             }
-            related_data = {k: v for k, v in related_data.items() if v is not None}
+            if "full_name" in data:
+                related_data["full_name"] = data["full_name"]
 
+                
+            related_data = {k: v for k, v in related_data.items() if v is not None}
             if current_user.user_type == constants.OWNER:
                 model = OwnerDetails
+            elif current_user.user_type == constants.TENANT:
+                model = TenantDetails
             elif current_user.user_type == constants.PROPERTY_MANAGER:
                 model = PropertyManagerCompanyDetails
                 if "mobile_number" in related_data:
                     related_data["phone_number"] = related_data.pop("mobile_number")
                 if "address" in related_data:
                     related_data["company_address"] = related_data.pop("address")
-            elif current_user.user_type == constants.TENANT:
-                model = TenantDetails
             else:
                 model = None
-
             if model:
                 obj = model.objects.filter(user=current_user).first()
                 if obj:
-                    for key, value in related_data.items():
-                        setattr(obj, key, value)
+                    for field, value in related_data.items():
+                        setattr(obj, field, value)
                     obj.save()
                 else:
                     model.objects.create(user=current_user, **related_data)
-
-            return prepare_response(
-                message=constants.PROFILE_UPDATED_SUCCESS,
+            return prepare_response(message="Profile updated successfully.",
                 status=status.HTTP_200_OK
             )
+            
 
         elif request.method == "GET":
           
@@ -357,8 +359,8 @@ def user_profile_view(request):
                 obj = OwnerDetails.objects.filter(user=current_user).first()
                 if obj:
                     related_info = {
-                        "Full name":obj.full_name,
-                        "mobile_number": obj.mobile_number,
+                        "full_name":obj.full_name,
+                        "contact_number": obj.mobile_number,
                         "address": obj.address,
                         "state": obj.state,
                         "postal_code": obj.postal_code,
@@ -367,7 +369,7 @@ def user_profile_view(request):
                 obj = PropertyManagerCompanyDetails.objects.filter(user=current_user).first()
                 if obj:
                     related_info = {
-                        "phone_number": obj.phone_number,
+                        "contact_number": obj.phone_number,
                         "company_address": obj.company_address,
                         "state": obj.state,
                         "postal_code": obj.postal_code,
@@ -376,7 +378,7 @@ def user_profile_view(request):
                 obj = TenantDetails.objects.filter(user=current_user).first()
                 if obj:
                     related_info = {
-                        "mobile_number": obj.mobile_number,
+                        "contact_number": obj.mobile_number,
                         "address": obj.address,
                         "state": obj.state,
                         "postal_code": obj.postal_code,
@@ -432,13 +434,20 @@ def user_management_view(request):
             users_qs = UserProfile.objects.filter(is_deleted=is_deleted)
             if start_epoch and end_epoch:
                 try:
-                    s = epoch_to_datetime(int(start_epoch))
-                    e = epoch_to_datetime(int(end_epoch))
+                    start_epoch = int(start_epoch)
+                    end_epoch = int(end_epoch)
 
-                    start_dt = make_aware(s) if timezone.is_naive(s) else s
-                    end_dt = make_aware(e) if timezone.is_naive(e) else e
+                    s = safe_epoch_to_datetime(start_epoch)
+                    e = safe_epoch_to_datetime(end_epoch)
 
-                    users_qs = users_qs.filter(created__range=[start_dt, end_dt])
+                    if not s or not e:
+                        return prepare_response(
+                            message="Invalid epoch timestamp",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+                    users_qs = users_qs.filter(created__range=[s, e])
+
+
 
                 except Exception as e:
                     return prepare_response(
@@ -493,11 +502,11 @@ def user_management_view(request):
                     "is_deleted": user.is_deleted,
                     "is_login_allowed": user.is_login_allowed,
                     "phone_number": phone_number,
-                    "created_on": user.created,
-                    "last_login": user.last_login,
+                    "created_on": datetime_to_epoch_millis(user.created),
+                    "last_login": datetime_to_epoch_millis(user.last_login) if user.last_login else None,
                     "is_active": user.is_active,
                     "profile_image":user.profile_image,
-                    "first_name ":user.first_name ,
+                    "first_name":user.first_name,
                     "last_name":user.last_name,
                     
                     
@@ -654,6 +663,8 @@ def user_management_view(request):
 
             if "email" in body:
                 user.email = body["email"]
+            
+
 
             user.save()
 

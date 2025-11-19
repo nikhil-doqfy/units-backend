@@ -48,7 +48,7 @@ def is_request_authenticated(view_func):
             print("Auth Error:", e)
             return prepare_response(
                 message="Authentication failed",
-                status=500
+                status=401
             )
         return view_func(request, *args, **kwargs)
     return wrapper
