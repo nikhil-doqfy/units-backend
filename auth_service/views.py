@@ -86,6 +86,7 @@ def user_login(request):
                 "profile_image":user.profile_image,
                 "first_name":user.first_name,
                 "last_name":user.last_name,
+                "profile_image_type":user.profile_image_type,
             },
             message=constants.LOGIN_SUCCESSFUL,
             status=status.HTTP_200_OK
@@ -140,6 +141,7 @@ def user_login(request):
                 "profile_image":user.profile_image,
                 "first_name":user.first_name,
                 "last_name":user.last_name,
+                "profile_image_type":user.profile_image_type,
 
 
               },

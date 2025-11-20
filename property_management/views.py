@@ -51,7 +51,7 @@ def options(request):
 
                 properties = PropertyDetails.objects.filter(owner=user)
                 content["owner_properties"] = [
-                    {"id": prop.id, "property_name": prop.property_name} for prop in properties
+                    {"key": prop.id, "value": prop.property_name} for prop in properties
                 ]
         
         elif option_type == "PROPERTY_TYPES":
@@ -242,7 +242,7 @@ def owner_details_list_view(request):
                 user = owner.user
                 properties = PropertyDetails.objects.filter(owner=owner.user).values(
                     "id",
-                    "property_name",
+                    "property_name",  
                     "address",
                     "rental_status",
                     "property_code"
@@ -903,19 +903,21 @@ def update_tenant_documents(request):
     )
 
 
-  
+
+
+
 @is_request_authenticated
 def tenant_details_view(request):
     user = request.user
-    tenant_id = request.GET.get("id")
+    tenant_id = request.GET.get("tenant_id")
 
     def get_tenant():
         """Helper to fetch tenant by query param or current user"""
         if tenant_id:
-            return TenantDetails.objects.select_related("property").filter(id=tenant_id).first()
-        return TenantDetails.objects.select_related("property").filter(user=user).first()
+            return TenantDetails.objects.select_related("property", "user").filter(id=tenant_id).first()
+        return TenantDetails.objects.select_related("property", "user").filter(user=user).first()
 
-   
+ 
     if request.method == "GET":
         try:
             tenant = get_tenant()
@@ -925,38 +927,22 @@ def tenant_details_view(request):
                     status=status.HTTP_404_NOT_FOUND
                 )
 
-            property_details = tenant.property.property_name if tenant.property else None
-            documents = [
-                {"file_url": tenant.emirates_id_file, "document_name": "Emirates ID"},
-                {"file_url": tenant.passport_self_file, "document_name": "Passport Self"},
-                {"file_url": tenant.passport_family_file, "document_name": "Passport Family Member"},
-                {"file_url": tenant.visa_self_file, "document_name": "Visa Self"},
-                {"file_url": tenant.visa_family_file, "document_name": "Visa Family Member"},
-                {"file_url": tenant.employment_proof_file, "document_name": "Employment Proof"},
-                {"file_url": tenant.bank_statement_file, "document_name": "Bank Statement"},
-            ]
-            filtered_documents = [doc for doc in documents if doc["file_url"]]
+            user_profile = tenant.user
+            property_name = tenant.property.property_name if tenant.property else None
 
             tenant_data = {
                 "tenant_id": tenant.id,
-                "full_name": tenant.full_name,
-                "type": tenant.user.user_type if hasattr(tenant, "user") else None,
-                "email": tenant.user.email if hasattr(tenant, "user") else None,
-                "phone": tenant.mobile_number,
-                "tenant_number": tenant.tenant_number,
+                "type": user_profile.user_type if user_profile else None,
+                "email": user_profile.email if user_profile else None,
+                "first_name": user_profile.first_name if user_profile else None,
+                "last_name": user_profile.last_name if user_profile else None,
+                "country": user_profile.country if user_profile else None,
+                "profile_image": user_profile.profile_image if user_profile else None,
                 "emirate_id": tenant.emirate_id,
+                "contact_number": tenant.mobile_number,
                 "nationality": tenant.nationality,
-                "passport_self": tenant.passport_self,
-                "passport_family_member": tenant.passport_family_member,
-                "passport_expiry": tenant.passport_expiry,
-                "visa_self": tenant.visa_self,
-                "visa_family_member": tenant.visa_family_member,
-                "visa_expiry": tenant.visa_expiry,
-                "employment_proof": tenant.employment_proof,
-                "linked_property": property_details,
-                "profile_picture": tenant.user.profile_image if hasattr(tenant, "user") else None,
-                "documents": filtered_documents,
-                
+                "address": tenant.address,
+                "linked_property": property_name,
             }
 
             return prepare_response(
@@ -971,7 +957,7 @@ def tenant_details_view(request):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-  
+ 
     elif request.method == "POST":
         try:
             data = json.loads(request.body.decode('utf-8'))
@@ -988,90 +974,57 @@ def tenant_details_view(request):
                     message="Email is required.",
                     status=status.HTTP_400_BAD_REQUEST
                 )
-            property_id = data.get("property_id")
-            
-            user, created = UserProfile.objects.get_or_create(
-                email=email,
-                defaults={
-                    "user_type": constants.TENANT,
-                    "is_verified": True,
-                    "is_login_allowed": True,
-                    "is_detail_updated": True,
-                    "profile_image": data.get("profile_image")
-                }
-            )
 
-            
-            existing_tenant = TenantDetails.objects.filter(user=user).first()
-            if existing_tenant:
+            if UserProfile.objects.filter(email=email).exists():
                 return prepare_response(
-                    message=constants.TENANT_DETAILS_ALREADY_EXISTS,
+                    message="This email is already registered.",
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-           
+            property_id = data.get("property_id")
+            first_name = (data.get("first_name") or "").strip()
+            last_name = (data.get("last_name") or "").strip()
+            full_name = f"{first_name} {last_name}".strip()
+            tenant_number = str(uuid.uuid4())
+
+            user = UserProfile.objects.create(
+                email=email,
+                user_type=constants.TENANT,
+                is_verified=True,
+                is_login_allowed=True,
+                is_detail_updated=True,
+                profile_image=data.get("profile_image"),
+                first_name=first_name,
+                last_name=last_name
+            )
+
             tenant_details = TenantDetails.objects.create(
                 user=user,
-                full_name=data.get("full_name"),
+                full_name=full_name,
                 emirate_id=data.get("emirate_id"),
-                mobile_number=data.get("mobile_number"),
-                tenant_number=data.get("tenant_number"),
-                nationality=data.get("nationality"),
-                passport_self=data.get("passport_self"),
-                passport_family_member=data.get("passport_family_member"),
-                passport_expiry=data.get("passport_expiry"),
-                visa_self=data.get("visa_self"),
-                visa_family_member=data.get("visa_family_member"),
-                visa_expiry=data.get("visa_expiry"),
-                employment_proof=data.get("employment_proof"),
-                emirates_id_file=data.get("emirates_id_file"),
-                passport_self_file=data.get("passport_self_file"),
-                passport_family_file=data.get("passport_family_file"),
-                visa_self_file=data.get("visa_self_file"),
-                visa_family_file=data.get("visa_family_file"),
-                employment_proof_file=data.get("employment_proof_file"),
-                bank_statement_file=data.get("bank_statement_file"),
-                address=data.get("address"),
-                state=data.get("state"),
-                postal_code=data.get("postal_code"),
+                mobile_number=data.get("contact_number"),
+                tenant_number=tenant_number,
                 property=PropertyDetails.objects.get(id=property_id) if property_id else None,
-                
             )
 
             user.is_detail_updated = True
             user.save()
 
             return prepare_response(
-                content={
-                    "tenant_details": {
-                        "id": tenant_details.id,
-                        "full_name": tenant_details.full_name,
-                        "mobile_number": tenant_details.mobile_number,
-                        "nationality": tenant_details.nationality,
-                    },
-                    "user": {
-                        "id": user.id,
-                        "email": user.email,
-                        "profile_image": user.profile_image,
-                        "user_type": user.user_type,
-                        "is_detail_updated": user.is_detail_updated,
-                    },
-                },
+                content={"id": tenant_details.id},
                 message=constants.TENANT_DETAILS_SAVED_SUCCESS,
                 status=status.HTTP_201_CREATED
             )
 
         except Exception as e:
-            print("Error in POST tenant creation:", e)
             return prepare_response(
                 message=f"Failed to save tenant details: {str(e)}",
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-
     elif request.method == "PUT":
         try:
-            data = json.loads(request.body)
+            data = json.loads(request.body.decode('utf-8'))
         except Exception:
             return prepare_response(
                 message=constants.INVALID_JSON_BODY,
@@ -1082,36 +1035,43 @@ def tenant_details_view(request):
         if not tenant_details:
             return prepare_response(
                 message=constants.TENANT_DETAILS_NOT_FOUND,
-                status=404
+                status=status.HTTP_404_NOT_FOUND
             )
 
+        user_profile = tenant_details.user
+
         try:
-            for key, value in data.items():
-                if hasattr(tenant_details, key):
-                    setattr(tenant_details, key, value)
-            with transaction.atomic():
-                tenant_details.save()
+     
+            for field in ["first_name", "last_name", "email", "country", "profile_image"]:
+                if field in data:
+                    setattr(user_profile, field, data[field])
+            user_profile.save()
+
+
+            for field_map in [("emirate_id", "emirate_id"),
+                              ("contact_number", "mobile_number"),
+                              ("nationality", "nationality"),
+                              ("address", "address")]:
+                if field_map[0] in data:
+                    setattr(tenant_details, field_map[1], data[field_map[0]])
+
+       
+            tenant_details.full_name = f"{user_profile.first_name} {user_profile.last_name}".strip()
+            tenant_details.save()
 
             return prepare_response(
-                content={
-                    "tenant_details": {
-                        "id": tenant_details.id,
-                        "full_name": tenant_details.full_name,
-                        "mobile_number": tenant_details.mobile_number,
-                        "nationality": tenant_details.nationality,
-                    },
-                    "is_detail_updated": getattr(user, "is_detail_updated", None),
-                },
+                content={"email": user_profile.email},
                 message=constants.TENANT_DETAILS_UPDATED_SUCCESSFULLY,
                 status=status.HTTP_200_OK
             )
+
         except Exception as e:
             return prepare_response(
                 message=f"Failed to update tenant details: {str(e)}",
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-   
+
     elif request.method == "DELETE":
         tenant_details = get_tenant()
         if not tenant_details:
@@ -1133,12 +1093,13 @@ def tenant_details_view(request):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-
+ 
     else:
         return prepare_response(
             message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
+
 
 
 

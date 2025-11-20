@@ -136,22 +136,7 @@ def user_sign_up(request):
     )
 
 
-# import imghdr
-# import mimetypes
-# import base64
 
-# def upload_if_exists(base64_doc, filename_without_ext):
-#     if base64_doc:
-#         decoded = base64.b64decode(base64_doc.split(",")[1])  # agar data URI hai
-#         # Try to detect type
-#         file_ext = mimetypes.guess_extension(mimetypes.guess_type(filename_without_ext)[0] or "")
-#         # Agar image hai
-#         img_type = imghdr.what(None, h=decoded)
-#         if img_type:
-#             file_ext = f".{img_type}"
-#         object_name = f"{folder_name}/{filename_without_ext}{file_ext}"
-#         return upload_file_to_s3_base64(base64_doc, object_name)
-#     return None
 
 
 
@@ -282,11 +267,6 @@ def staff_signup(request):
 
 
 
-
-
-
-
-
 @is_request_authenticated
 def user_profile_view(request):
     try:
@@ -294,7 +274,7 @@ def user_profile_view(request):
 
         if request.method == "PUT":
             data = json.loads(request.body)
-            user_fields = ["profile_image", "country", "time_zone", "utc"]
+            user_fields = ["profile_image", "country", "time_zone", "utc","profile_image_type"]
 
           
             first_name = data.get("first_name")
@@ -382,8 +362,8 @@ def user_profile_view(request):
                 "utc": current_user.utc,
                 "user_type": current_user.user_type,
                 "first_name":current_user.first_name,
-                "last_name":current_user.last_name
-                
+                "last_name":current_user.last_name,
+                "profile_image_type":current_user.profile_image_type,
                 
             }
 
@@ -404,7 +384,7 @@ def user_profile_view(request):
                 if obj:
                     related_info = {
                         "contact_number": obj.phone_number,
-                        "company_address": obj.company_address,
+                        "address": obj.company_address,
                         "state": obj.state,
                         "postal_code": obj.postal_code,
                         "company_name":obj.company_name,
@@ -437,15 +417,6 @@ def user_profile_view(request):
             message=f"Error: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
-
-
-
-
-
-
-
-
 
 
 
@@ -544,6 +515,7 @@ def user_management_view(request):
                     "profile_image":user.profile_image,
                     "first_name":user.first_name,
                     "last_name":user.last_name,
+                    "profile_image_type":user.profile_image_type,
                     
                     
                 })

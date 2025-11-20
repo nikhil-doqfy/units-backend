@@ -26,6 +26,7 @@ class UserProfile(Base):
     is_document_uploaded = models.BooleanField(default=False)
     is_login_allowed = models.BooleanField(default=False)
     profile_image = models.TextField(null=True, blank=True)
+    profile_image_type = models.CharField(max_length=10, null=True, blank=True)
     token = models.TextField(null=True, blank=True)
     country = models.CharField(max_length=100)  
     time_zone = models.CharField(max_length=50)  

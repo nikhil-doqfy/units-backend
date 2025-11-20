@@ -4,6 +4,7 @@ from utilities import constants
 from django.core.validators import EmailValidator
 
 class Base(models.Model):
+
     created = models.DateTimeField(auto_now_add=True)
     modified = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)
@@ -110,7 +111,7 @@ class TenantDetails(Base):
 
     def __str__(self):
         return f"{self.full_name}"
-    
+        
 
 class LeasePropertyDetails(models.Model):
     lease_property = models.ForeignKey(
@@ -177,7 +178,7 @@ class LeaseDocumentLayout(models.Model):
         upload_to="lease_documents/generated/",
         null=True, blank=True
     )
-    created_at = models.DateTimeField(auto_now_add=True)
+
 
     def __str__(self):
         return f"Document Layout for Lease ID {self.lease_id}"
