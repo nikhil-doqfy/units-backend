@@ -16,6 +16,6 @@ urlpatterns = [
     # path("uaepass/userinfo", views.uaepass_userinfo),
     # path("uaepass/login", views.uaepass_final_login),
     
-
+        
 ]
 
