@@ -5,7 +5,7 @@ from property_management.models import OwnerDetails ,TenantDetails , LeaseProper
 from user_service.models import PropertyManagerCompanyDetails ,PropertyDetails ,UserProfile,StaffDetails  ,PropertyCommercial,PropertyDocuments
 from utilities.decorator import is_request_authenticated
 import json
-from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger,send_ses_email
+from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger,send_ses_email,safe_decimal
 from utilities import status ,  constants
 from django.utils import timezone
 from utilities import config
@@ -1701,13 +1701,13 @@ def add_commercial_details(request):
             PropertyCommercial.objects.update_or_create(
                 property=property_obj,
                 defaults={
-                    "rent": data.get("rent"),
-                    "security_deposit": data.get("security_deposit"),
-                    "booking_amount": data.get("booking_amount"),
-                    "maintenance_charges": data.get("maintenance_charges"),
-                    "cycle": data.get("cycle"),
-                    "notice_period": data.get("notice_period"),
-                    "commission_percent": data.get("commission_percent"),
+                        "rent": safe_decimal(data.get("rent")),
+                         "security_deposit": safe_decimal(data.get("security_deposit")),
+                         "booking_amount": safe_decimal(data.get("booking_amount")),
+                        "maintenance_charges": safe_decimal(data.get("maintenance_charges")),
+                         "commission_percent": safe_decimal(data.get("commission_percent")),
+                         "cycle": data.get("cycle"),
+                        "notice_period": data.get("notice_period"),
                 }
             )
 
@@ -1721,14 +1721,19 @@ def add_commercial_details(request):
             commercial_obj = PropertyCommercial.objects.filter(property=property_obj).first()
             if not commercial_obj:
                 return prepare_response("Commercial details not found", status=404)
-
+            decimal_fields = ["rent", "security_deposit", "booking_amount", "maintenance_charges", "commission_percent"]
+            other_fields = ["cycle", "notice_period"]
             updatable_fields = [
                 "rent", "security_deposit", "booking_amount",
                 "maintenance_charges", "cycle", "notice_period",
                 "commission_percent"
             ]
 
-            for field in updatable_fields:
+            for field in decimal_fields:
+                if field in data:
+                    setattr(commercial_obj, field, safe_decimal(data[field])
+                            )
+            for field in other_fields:
                 if field in data:
                     setattr(commercial_obj, field, data[field])
 
@@ -1739,7 +1744,7 @@ def add_commercial_details(request):
                 status=200
             )
 
-        return prepare_response("Invalid request method", status=405)
+        return prepare_response(message="Invalid request method", status=405)
 
     except Exception as e:
         return prepare_response(f"Error: {str(e)}", status=500)

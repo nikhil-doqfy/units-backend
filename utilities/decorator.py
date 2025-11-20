@@ -3,6 +3,7 @@ from user_service.models import UserProfile
 from utilities import constants, status
 from utilities.helper_functions import prepare_response
 from utilities.jwt_token import get_jwt_token, decode_jwt_token  
+from jwt import ExpiredSignatureError
 
 def is_request_authenticated(view_func):
     @wraps(view_func)
@@ -20,7 +21,15 @@ def is_request_authenticated(view_func):
                     message=token["message"],
                     status=401
                 )
-            decoded_token = decode_jwt_token(token)
+            try:
+                decoded_token = decode_jwt_token(token)
+            except ExpiredSignatureError:
+                return prepare_response(
+                    message="Token expired. Please login again.",
+                    status=401
+                )
+            
+
             if isinstance(decoded_token, dict) and "error" in decoded_token:
                 return prepare_response(
                     message=decoded_token["error"],
@@ -40,7 +49,7 @@ def is_request_authenticated(view_func):
                 )
             if user.token != token:
                 return prepare_response(
-                    message="Token invalid or expired",
+                    message="Token invalid or expired. Please login again.",
                     status=401
                 )
             request.user = user
