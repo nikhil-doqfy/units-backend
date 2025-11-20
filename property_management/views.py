@@ -35,7 +35,7 @@ def options(request):
         )
 
     option_types = request.GET.get("option_type")
-    if not option_types:
+    if not option_types:    
         return prepare_response(
             message=constants.QUERY_PARAMETER,
             status=status.HTTP_400_BAD_REQUEST
@@ -1752,7 +1752,10 @@ def add_commercial_details(request):
 @is_request_authenticated
 def upload_property_images(request):
     if request.method != "POST":
-        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+        return prepare_response(
+            message=constants.INVALID_REQUEST_METHOD,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
 
     try:
         data = json.loads(request.body)
@@ -1760,28 +1763,43 @@ def upload_property_images(request):
         images = data.get("images", [])
 
         if not property_id:
-            return prepare_response(message=constants.PROPERTY_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
+            return prepare_response(
+                message=constants.PROPERTY_ID_REQUIRED,
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         property_obj = PropertyDetails.objects.filter(id=property_id).first()
         if not property_obj:
-            return prepare_response(message=constants.PROPERTY_MANAGER_Details_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+            return prepare_response(
+                message=constants.PROPERTY_MANAGER_Details_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
 
-        uploaded_urls = []
+        uploaded_images = []
+
         for idx, img in enumerate(images):
             base64_data = img.get("data")
             file_name = img.get("file_name", f"property_{property_id}_{idx}.jpg")
+            img_type = img.get("type", "unknown")  # ⭐ NEW FIELD
 
             if base64_data:
-                url = upload_file_to_s3_base64(base64_data, f"property_images/{property_id}/{file_name}")
-                uploaded_urls.append(url)
+                url = upload_file_to_s3_base64(
+                    base64_data,
+                    f"property_images/{property_id}/{file_name}"
+                )
 
-        
-        property_obj.images = (property_obj.images or []) + uploaded_urls
+                uploaded_images.append({
+                    "url": url,
+                    "type": img_type  
+                })
+
+      
+        property_obj.images = (property_obj.images or []) + uploaded_images
         property_obj.save()
 
         return prepare_response(
             message=constants.IMAGE_UPLOADED_SUCCESS,
-            content={"images": uploaded_urls},
+            content={"images": uploaded_images},
             status=status.HTTP_200_OK
         )
 
@@ -1790,6 +1808,197 @@ def upload_property_images(request):
             message=f"Error: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+@is_request_authenticated
+def property_images_view(request):
+    try:
+
+        if request.method == "GET":
+            property_id = request.GET.get("property_id")
+
+            if not property_id:
+                return prepare_response(
+                    message="Property ID is required",
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            property_obj = PropertyDetails.objects.filter(id=property_id).first()
+
+            if not property_obj:
+                return prepare_response(
+                    message="Property not found",
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            images_base64 = []
+            if property_obj.images:
+                for img_obj in property_obj.images:
+                    if isinstance(img_obj, dict):
+                        url = img_obj.get("url")
+                        img_type = img_obj.get("type", "unknown")
+                    elif isinstance(img_obj, str):
+                        url = img_obj
+                        img_type = "unknown"
+                    else:
+                        continue
+                    base64_img = fetch_s3_file_as_base64(url)
+
+
+
+                    images_base64.append({
+                        "url": url,
+                        "type": img_type,
+                        "base64": base64_img
+                    })
+
+            return prepare_response(
+                message="Images fetched successfully",
+                content={"images": images_base64},
+                status=status.HTTP_200_OK
+            )
+
+     
+        elif request.method == "POST":
+            data = json.loads(request.body)
+            property_id = data.get("property_id")
+            images = data.get("images", [])
+
+            if not property_id:
+                return prepare_response(
+                    message="Property ID is required",
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            property_obj = PropertyDetails.objects.filter(id=property_id).first()
+            if not property_obj:
+                return prepare_response(
+                    message="Property not found",
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            uploaded_images = []
+
+            for idx, img in enumerate(images):
+                base64_data = img.get("data")
+                file_name = img.get("file_name", f"property_{property_id}_{idx}.jpg")
+                img_type = img.get("type", "unknown")
+
+                if base64_data:
+                    url = upload_file_to_s3_base64(
+                        base64_data,
+                        f"property_images/{property_id}/{file_name}"
+                    )
+
+                    uploaded_images.append({
+                        "url": url,
+                        "type": img_type
+                    })
+
+            property_obj.images = (property_obj.images or []) + uploaded_images
+            property_obj.save()
+
+            return prepare_response(
+                message="Images uploaded successfully",
+                content={"images": uploaded_images},
+                status=status.HTTP_201_CREATED
+            )
+
+
+        elif request.method == "PUT":
+            data = json.loads(request.body)
+            property_id = data.get("property_id")
+            image_url = data.get("url")
+            new_type = data.get("type")
+
+            if not property_id or not image_url or not new_type:
+                return prepare_response(
+                    message="property_id, url & type are required",
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            property_obj = PropertyDetails.objects.filter(id=property_id).first()
+            if not property_obj:
+                return prepare_response(
+                    message="Property not found",
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            updated = False
+            for img_obj in property_obj.images:
+                if img_obj.get("url") == image_url:
+                    img_obj["type"] = new_type
+                    updated = True
+                    break
+
+            if not updated:
+                return prepare_response(
+                    message="Image not found",
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            property_obj.save()
+
+            return prepare_response(
+                message="Image type updated successfully",
+                status=status.HTTP_200_OK
+            )
+
+
+        elif request.method == "DELETE":
+            data = json.loads(request.body)
+            property_id = data.get("property_id")
+            image_url = data.get("url")
+
+            if not property_id or not image_url:
+                return prepare_response(
+                    message="property_id & url required",
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            property_obj = PropertyDetails.objects.filter(id=property_id).first()
+            if not property_obj:
+                return prepare_response(
+                    message="Property not found",
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            new_images = [
+                img for img in property_obj.images
+                if img.get("url") != image_url
+            ]
+
+            if len(new_images) == len(property_obj.images):
+                return prepare_response(
+                    message="Image not found",
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            property_obj.images = new_images
+            property_obj.save()
+
+            return prepare_response(
+                message="Image deleted successfully",
+                status=status.HTTP_200_OK
+            )
+
+  
+        else:
+            return prepare_response(
+                message="Invalid request method",
+                status=status.HTTP_405_METHOD_NOT_ALLOWED
+            )
+
+    except Exception as e:
+        return prepare_response(
+            message=f"Error: {str(e)}",
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+
+
+
 
 
 
@@ -1841,6 +2050,15 @@ def upload_property_documents(request):
                 for file in files:
                     file_name = file["name"]
                     base64_data = file["base64"]
+                    if not file_name:
+                        return prepare_response(
+                            message=f"File name missing in category '{req_key}'",
+                            status=400
+                        )
+                    if not base64_data:
+                        return prepare_response(message=f"Base64 data missing for file '{file_name}' in category '{req_key}'",
+                                               status=400
+                                                    )
 
                     ext = file_name.split(".")[-1]
                     unique_name = f"{uuid.uuid4()}.{ext}"
@@ -1957,13 +2175,22 @@ def get_property_images(request):
                 status=status.HTTP_404_NOT_FOUND
             )
 
- 
         images_base64 = []
+
         if property_obj.images:
-            for img_url in property_obj.images:
-                base64_img = fetch_s3_file_as_base64(img_url)
+            for img_obj in property_obj.images:
+
+                # img_obj looks like:
+                # { "url": "...", "type": "interior" }
+
+                url = img_obj.get("url")
+                img_type = img_obj.get("type", "unknown")
+
+                base64_img = fetch_s3_file_as_base64(url)
+
                 images_base64.append({
-                    "url": img_url,
+                    "url": url,
+                    "type": img_type,
                     "base64": base64_img
                 })
 
@@ -3637,3 +3864,5 @@ def property_tenant_list_view(request):
             message=f"Error fetching properties: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+

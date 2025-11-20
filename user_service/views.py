@@ -295,38 +295,66 @@ def user_profile_view(request):
         if request.method == "PUT":
             data = json.loads(request.body)
             user_fields = ["profile_image", "country", "time_zone", "utc"]
-            if "full_name" in data:
-                full_name = data["full_name"].strip()
-                parts = full_name.split(" ", 1)
-                current_user.first_name = parts[0]
-                current_user.last_name = parts[1] if len(parts) > 1 else ""
-            for field in user_fields:
-                if field in data and data[field] is not None:
-                    setattr(current_user, field, data[field])
+
+          
+            first_name = data.get("first_name")
+            last_name = data.get("last_name")
+
+            if first_name:
+                current_user.first_name = first_name.strip()
+            if last_name:
+                current_user.last_name = last_name.strip()
+
             current_user.save()
+    
+
+  
+            full_name = f"{current_user.first_name} {current_user.last_name}".strip()
+
+       
             related_data = {
                 "mobile_number": data.get("contact_number"),
                 "address": data.get("address"),
                 "state": data.get("state"),
                 "postal_code": data.get("postal_code"),
             }
-            if "full_name" in data:
-                related_data["full_name"] = data["full_name"]
 
-                
+
+            if current_user.user_type in [constants.OWNER, constants.TENANT]:
+                related_data["full_name"] = full_name
+
+            elif current_user.user_type == constants.PROPERTY_MANAGER:
+                related_data["company_name"] = data.get("company_name", full_name)
+
+   
             related_data = {k: v for k, v in related_data.items() if v is not None}
+
+   
+            for field in user_fields:
+                if field in data and data[field] is not None:
+                    setattr(current_user, field, data[field])
+            current_user.save()
+
+        
             if current_user.user_type == constants.OWNER:
                 model = OwnerDetails
+
             elif current_user.user_type == constants.TENANT:
                 model = TenantDetails
+
             elif current_user.user_type == constants.PROPERTY_MANAGER:
                 model = PropertyManagerCompanyDetails
+
+                
                 if "mobile_number" in related_data:
                     related_data["phone_number"] = related_data.pop("mobile_number")
                 if "address" in related_data:
                     related_data["company_address"] = related_data.pop("address")
+
             else:
                 model = None
+
+        
             if model:
                 obj = model.objects.filter(user=current_user).first()
                 if obj:
@@ -335,10 +363,12 @@ def user_profile_view(request):
                     obj.save()
                 else:
                     model.objects.create(user=current_user, **related_data)
-            return prepare_response(message="Profile updated successfully.",
+
+            return prepare_response(
+                message="Profile updated successfully.",
                 status=status.HTTP_200_OK
             )
-            
+
 
         elif request.method == "GET":
           
@@ -351,6 +381,10 @@ def user_profile_view(request):
                 "time_zone": current_user.time_zone,
                 "utc": current_user.utc,
                 "user_type": current_user.user_type,
+                "first_name":current_user.first_name,
+                "last_name":current_user.last_name
+                
+                
             }
 
         
@@ -373,6 +407,8 @@ def user_profile_view(request):
                         "company_address": obj.company_address,
                         "state": obj.state,
                         "postal_code": obj.postal_code,
+                        "company_name":obj.company_name,
+
                     }
             elif current_user.user_type == constants.TENANT:
                 obj = TenantDetails.objects.filter(user=current_user).first()
