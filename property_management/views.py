@@ -1,7 +1,7 @@
 
 from django.shortcuts import get_object_or_404
 from django.db import IntegrityError, transaction
-from property_management.models import OwnerDetails ,TenantDetails , LeasePropertyDetails ,LeaseCommercials,LeaseEjariUpload,LeaseDocumentLayout,OwnerPMCInvitation,PMCOwnerInvitation , PMCTenantInvitation 
+from property_management.models import OwnerDetails ,TenantDetails , LeasePropertyDetails ,LeaseCommercials,LeaseEjariUpload,LeaseDocumentLayout,OwnerPMCInvitation,PMCOwnerInvitation , PMCTenantInvitation ,DocumentTemplate
 from user_service.models import PropertyManagerCompanyDetails ,PropertyDetails ,UserProfile,StaffDetails  ,PropertyCommercial,PropertyDocuments
 from utilities.decorator import is_request_authenticated
 import json
@@ -20,8 +20,8 @@ from django.template.loader import render_to_string
 from datetime import timedelta
 from django.contrib.auth.hashers import make_password
 from django.core.paginator import Paginator, EmptyPage
-
-
+from django.conf import settings
+import os
 
 
 
@@ -1976,89 +1976,89 @@ def upload_property_documents(request):
                 status=405
             )
 
-      
         try:
             body = json.loads(request.body)
         except:
-            return prepare_response(
-                message="Invalid JSON data",
-                status=400
-            )
+            return prepare_response(message="Invalid JSON data", status=400)
 
         property_id = body.get("property_id")
+        documents = body.get("documents")
+
         if not property_id:
-            return prepare_response(
-                message="property_id is required",
-                status=400
+            return prepare_response(message="property_id is required", status=400)
+
+        if not documents:
+            return prepare_response(message="documents array is required", status=400)
+
+        allowed_types = [
+            "floor_plan_documents",
+            "tenant_documents",
+            "ejari_certificates",
+            "pmc_documents",
+            "cheque_documents"
+        ]
+
+      
+        try:
+            property_obj = PropertyDetails.objects.get(id=property_id)
+        except PropertyDetails.DoesNotExist:
+            return prepare_response(message="Invalid property_id", status=404)
+
+    
+        existing_images = property_obj.images or []
+
+        all_uploaded = []
+
+        for file in documents:
+
+            file_name = file.get("file_name")
+            base64_data = file.get("data")
+            doc_type = file.get("type")
+
+            if not file_name:
+                return prepare_response(message="file_name missing", status=400)
+
+            if not base64_data:
+                return prepare_response(message=f"base64 missing for {file_name}", status=400)
+
+            if doc_type not in allowed_types:
+                return prepare_response(
+                    message=f"Invalid document type: {doc_type}",
+                    status=400
+                )
+
+          
+            ext = file_name.split(".")[-1]
+            unique_name = f"{uuid.uuid4()}.{ext}"
+
+        
+            s3_url = upload_file_to_s3_base64(
+                base64_data=base64_data,
+                object_name=f"property/{property_id}/{unique_name}"
             )
 
-        category_map = {
-            "floor_plan": "floor_plan_documents",
-            "tenant_documents": "tenant_documents",
-            "ejaricertificates": "ejari_certificates",
-            "pmc_documents": "pmc_documents",
-            "cheque_documents": "cheque_documents",
-        }
+            saved_data = {
+                "file_name": file_name,
+                "url": s3_url,
+                "type": doc_type
+            }
 
-        doc_obj, _ = PropertyDocuments.objects.get_or_create(property_id=property_id)
+            existing_images.append(saved_data)
+            all_uploaded.append(saved_data)
 
-        all_uploaded = {}
 
-     
-        for req_key, model_field in category_map.items():
-
-            if req_key in body:
-                files = body.get(req_key, [])
-                existing_list = getattr(doc_obj, model_field, [])
-
-                uploaded_docs = []
-
-                for file in files:
-                    file_name = file["name"]
-                    base64_data = file["base64"]
-                    if not file_name:
-                        return prepare_response(
-                            message=f"File name missing in category '{req_key}'",
-                            status=400
-                        )
-                    if not base64_data:
-                        return prepare_response(message=f"Base64 data missing for file '{file_name}' in category '{req_key}'",
-                                               status=400
-                                                    )
-
-                    ext = file_name.split(".")[-1]
-                    unique_name = f"{uuid.uuid4()}.{ext}"
-
-                    s3_url = upload_file_to_s3_base64(
-                        base64_data=base64_data,
-                        object_name=f"property/{property_id}/{unique_name}"
-                    )
-
-                    data = {
-                        "name": file_name,
-                        "url": s3_url,
-                        "type": ext
-                    }
-
-                    existing_list.append(data)
-                    uploaded_docs.append(data)
-
-                setattr(doc_obj, model_field, existing_list)
-                all_uploaded[req_key] = uploaded_docs
-
-        doc_obj.save()
+        property_obj.images = existing_images
+        property_obj.save()
 
         return prepare_response(
             content={"uploaded": all_uploaded},
-            message="Documents uploaded successfully",
+            message="Documents uploaded and saved into PropertyDetails successfully",
             status=200
         )
 
     except Exception as e:
-        return prepare_response(
-            message=str(e),
-            status=500
-        )
+        return prepare_response(message=str(e), status=500)
+
 
 
 
@@ -2071,49 +2071,44 @@ def fetch_property_documents(request):
         if not property_id:
             return prepare_response(message="property_id is required", status=400)
 
+       
         try:
-            doc_obj = PropertyDocuments.objects.get(property_id=property_id)
-        except PropertyDocuments.DoesNotExist:
-            return prepare_response(message="No documents found for this property", status=404)
+            property_obj = PropertyDetails.objects.get(id=property_id)
+        except PropertyDetails.DoesNotExist:
+            return prepare_response(message="Invalid property_id", status=404)
 
-        category_map = {
-            "floor_plan": "floor_plan_documents",
-            "tenant_documents": "tenant_documents",
-            "ejaricertificates": "ejari_certificates",
-            "pmc_documents": "pmc_documents",
-            "cheque_documents": "cheque_documents",
-        }
+        images_list = property_obj.images or []  
+        final_documents = []
 
-        all_docs_base64 = {}
+        for doc in images_list:
 
-        for key, field_name in category_map.items():
-            docs_list = getattr(doc_obj, field_name, [])
-            docs_base64 = []
+            url = doc.get("url")
+            file_name = doc.get("file_name")
+            doc_type = doc.get("type")
 
-            for doc in docs_list:
-                url = doc.get("url")
-                name = doc.get("name")
-                ext = doc.get("type")
-                base64_data = fetch_s3_file_as_base64(url)
-                if base64_data:
-                    docs_base64.append({
-                        "name": name,
-                        "type": ext,
-                        "base64": base64_data
-                    })
+          
+            base64_data = fetch_s3_file_as_base64(url)
 
-            if docs_base64:
-                all_docs_base64[key] = docs_base64
+            final_documents.append({
+                "file_name": file_name,
+                "data": base64_data,
+                "type": doc_type   
+            })
 
         return prepare_response(
-            content={"documents": all_docs_base64},
+            content={"documents": final_documents},
             message="Fetched successfully",
             status=200
         )
 
     except Exception as e:
-        logger.error(f"Error fetching property documents: {str(e)}")
         return prepare_response(message=str(e), status=500)
+
+
+
+
+
+
 
 
 @is_request_authenticated
