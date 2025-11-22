@@ -1,11 +1,11 @@
 
 from django.shortcuts import get_object_or_404
 from django.db import IntegrityError, transaction
-from property_management.models import OwnerDetails ,TenantDetails , LeasePropertyDetails ,LeaseCommercials,LeaseEjariUpload,OwnerPMCInvitation,PMCOwnerInvitation , PMCTenantInvitation ,Template, TemplateFields
+from property_management.models import OwnerDetails ,TenantDetails , LeasePropertyDetails ,LeaseCommercials,LeaseEjariUpload,OwnerPMCInvitation,PMCOwnerInvitation , PMCTenantInvitation ,Template, TemplateFields ,TemplateValues
 from user_service.models import PropertyManagerCompanyDetails ,PropertyDetails ,UserProfile,StaffDetails  ,PropertyCommercial
 from utilities.decorator import is_request_authenticated
 import json
-from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger,send_ses_email,safe_decimal
+from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger,send_ses_email,safe_decimal ,safe_epoch_to_datetime
 from utilities import status ,  constants
 from django.utils import timezone
 from utilities import config
@@ -62,6 +62,14 @@ def options(request):
             content["pmc_list"] = [
                  {"key": pmc.id, "value": pmc.company_name} for pmc in pmcs
                   ]
+        elif option_type == "USER_TYPES":
+            content["user_types"] = [
+                 {"key": constants.OWNER, "value": "Owner"},
+                {"key": constants.PROPERTY_MANAGER, "value": "Property Manager"},
+                {"key": constants.TENANT, "value": "Tenant"},
+                {"key": constants.STAFF, "value": "Staff"},
+            ]
+
         else:
             content[option_type] = [] 
 
@@ -933,6 +941,7 @@ def tenant_details_view(request):
 
             tenant_data = {
                 "tenant_id": tenant.id,
+                # "profile_image_type":user_profile.profile_image_type,
                 "type": user_profile.user_type if user_profile else None,
                 "email": user_profile.email if user_profile else None,
                 "first_name": user_profile.first_name if user_profile else None,
@@ -944,6 +953,7 @@ def tenant_details_view(request):
                 "nationality": tenant.nationality,
                 "address": tenant.address,
                 "linked_property": property_name,
+
             }
 
             return prepare_response(
@@ -1466,6 +1476,13 @@ def create_property_basic(request):
             prop = PropertyDetails.objects.filter(id=property_id).first()
             if not prop:
                 return prepare_response("Property not found", status=404)
+            property_type_options = dict(constants.PROPERTY_TYPE_CHOICES)
+            property_data = {
+                                
+                                "key": prop.property_type,            
+                                "value":property_type_options[prop.property_type]
+                             
+                                    }
 
             content = {
                 "id": prop.id,
@@ -1478,7 +1495,15 @@ def create_property_basic(request):
                 "plot_no": prop.plot_no,
                 "area_unit": prop.area_unit,
                 "property_code": prop.property_code,
-                "property_type": prop.property_type,
+                "property_type": property_data,
+                "land_area":prop.land_area,
+                "land_dm_no":prop.land_dm_no,
+                "apartment_no":prop.apartment_no,
+                "no_of_floors":prop.no_of_floors,
+                 "makani_no" :prop.makani_no,
+                 "dewa_no":prop.dewa_no,
+
+                
                
             }
 
@@ -1585,6 +1610,7 @@ def create_property_basic(request):
                 invited_email_id=invited_email_id,
                 owner=owner,
                 property_manager=property_manager,
+                step_status="property_basic"
             )
 
             return prepare_response(
@@ -1673,7 +1699,7 @@ def add_commercial_details(request):
                         "notice_period": data.get("notice_period"),
                 }
             )
-
+            property_obj.step_status = "property_commercial"
             return prepare_response(
                 message="Commercial details created successfully",
                 status=200
@@ -1748,7 +1774,7 @@ def upload_property_images(request):
         for idx, img in enumerate(images):
             base64_data = img.get("data")
             file_name = img.get("file_name", f"property_{property_id}_{idx}.jpg")
-            img_type = img.get("type", "unknown")  # ⭐ NEW FIELD
+            img_type = img.get("type", "unknown")
 
             if base64_data:
                 url = upload_file_to_s3_base64(
@@ -1864,11 +1890,12 @@ def property_images_view(request):
                     })
 
             property_obj.images = (property_obj.images or []) + uploaded_images
+            property_obj.step_status = "property_image"
             property_obj.save()
 
             return prepare_response(
                 message="Images uploaded successfully",
-                content={"images": uploaded_images},
+                content={"images": uploaded_images,"status": property_obj.step_status},
                 status=status.HTTP_201_CREATED
             )
 
@@ -1966,10 +1993,6 @@ def property_images_view(request):
 
 
 
-
-
-
-
 def upload_property_documents(request):
     try:
         if request.method != "POST":
@@ -2000,14 +2023,13 @@ def upload_property_documents(request):
             "cheque_documents"
         ]
 
-      
         try:
             property_obj = PropertyDetails.objects.get(id=property_id)
         except PropertyDetails.DoesNotExist:
             return prepare_response(message="Invalid property_id", status=404)
 
-    
-        existing_images = property_obj.images or []
+   
+        existing_documents = property_obj.documents or []
 
         all_uploaded = []
 
@@ -2029,11 +2051,9 @@ def upload_property_documents(request):
                     status=400
                 )
 
-          
             ext = file_name.split(".")[-1]
             unique_name = f"{uuid.uuid4()}.{ext}"
 
-        
             s3_url = upload_file_to_s3_base64(
                 base64_data=base64_data,
                 object_name=f"property/{property_id}/{unique_name}"
@@ -2045,21 +2065,23 @@ def upload_property_documents(request):
                 "type": doc_type
             }
 
-            existing_images.append(saved_data)
+        
+            existing_documents.append(saved_data)
             all_uploaded.append(saved_data)
 
-
-        property_obj.images = existing_images
+        property_obj.documents = existing_documents
+        property_obj.step_status = "property_doc"
         property_obj.save()
 
         return prepare_response(
-            content={"uploaded": all_uploaded},
-            message="Documents uploaded and saved into PropertyDetails successfully",
+            content={"uploaded": all_uploaded , "stetus":property_obj.step_status},
+            message="Documents uploaded successfully",
             status=200
         )
 
     except Exception as e:
         return prepare_response(message=str(e), status=500)
+
 
 
 
@@ -2073,28 +2095,25 @@ def fetch_property_documents(request):
         if not property_id:
             return prepare_response(message="property_id is required", status=400)
 
-       
         try:
             property_obj = PropertyDetails.objects.get(id=property_id)
         except PropertyDetails.DoesNotExist:
             return prepare_response(message="Invalid property_id", status=404)
-
-        images_list = property_obj.images or []  
+        documents_list = property_obj.documents or []
         final_documents = []
 
-        for doc in images_list:
+        for doc in documents_list:
 
             url = doc.get("url")
             file_name = doc.get("file_name")
             doc_type = doc.get("type")
 
-          
             base64_data = fetch_s3_file_as_base64(url)
 
             final_documents.append({
                 "file_name": file_name,
                 "data": base64_data,
-                "type": doc_type   
+                "type": doc_type
             })
 
         return prepare_response(
@@ -2105,6 +2124,7 @@ def fetch_property_documents(request):
 
     except Exception as e:
         return prepare_response(message=str(e), status=500)
+
 
 
 
@@ -3832,87 +3852,209 @@ def property_tenant_list_view(request):
 
 
 
-
-
-
-
 from django.http import JsonResponse
-def get_template(request):
-    try:
-        template_id= request.GET.get("template_id")
-        
-        template = Template.objects.get(id=template_id, is_active=True)
 
-        template_path = os.path.join(
-            settings.BASE_DIR,
-            "property_management",
-            "templates",
-            "lease_templates",
-            os.path.basename(template.template_path)
+
+def create_lease_property(request):
+    if request.method != "POST":
+        return JsonResponse({"message": "Invalid request method"}, status=405)
+
+    try:
+        body = json.loads(request.body)
+
+      
+        lease_property_id = body.get("lease_property_id")
+        lease_tenant_id = body.get("lease_tenant_id")
+        created_by_id = body.get("created_by_id")
+        lease_start_date = safe_epoch_to_datetime(body.get("lease_start_date"))
+        lease_end_date = safe_epoch_to_datetime(body.get("lease_end_date"))
+
+        if not lease_start_date or not lease_end_date:
+            return JsonResponse({"message": "Invalid lease start or end date"}, status=400)
+
+     
+        lease_grace_start_date = safe_epoch_to_datetime(body.get("lease_grace_start_date")) if body.get("lease_grace_start_date") else None
+        lease_grace_end_date = safe_epoch_to_datetime(body.get("lease_grace_end_date")) if body.get("lease_grace_end_date") else None
+        lease_remarks = body.get("lease_remarks", "")
+        lease_status = body.get("lease_status", "DRAFT")
+        owner_id = body.get("owner_id")
+
+        # Fetch related objects
+        lease_property = PropertyDetails.objects.get(id=lease_property_id)
+        tenant = TenantDetails.objects.get(id=lease_tenant_id)
+        created_by = PropertyManagerCompanyDetails.objects.get(id=created_by_id)
+        owner = OwnerDetails.objects.get(id=owner_id) if owner_id else None
+
+        # Create Lease
+        lease = LeasePropertyDetails.objects.create(
+            lease_property=lease_property,
+            lease_tenant=tenant,
+            owner=owner,
+            created_by=created_by,
+            lease_start_date=lease_start_date,
+            lease_end_date=lease_end_date,
+            lease_grace_start_date=lease_grace_start_date,
+            lease_grace_end_date=lease_grace_end_date,
+            lease_remarks=lease_remarks,
+            lease_status=lease_status
         )
 
-        if not os.path.exists(template_path):
-            return JsonResponse({"message": "Template file not found"}, status=404)
+        return JsonResponse({"message": "Lease created successfully", "lease_id": lease.id}, status=201)
 
-        with open(template_path, "r", encoding="utf-8") as file:
-            html = file.read()
-
-
-        import re
-        variables = re.findall(r"\$[a-zA-Z_]+", html)
-        variables = list(set(variables))
-
-        return JsonResponse({
-            "id": template.id,
-            "name": template.name,
-            "template_html": html,
-            "variables": variables
-        })
-
-    except Template.DoesNotExist:
-        return JsonResponse({"message": "Invalid template id"}, status=400)
-    
+    except Exception as e:
+        return JsonResponse({"message": str(e)}, status=400)
 
 
 
 
 
 
-def save_generated_template(request):
+
+def create_lease_commercials(request):
     if request.method != "POST":
-        return JsonResponse({"message": "Only POST allowed"}, status=405)
-
-    import json
-    body = json.loads(request.body)
-
-    template_id = body.get("template_id")
-    html = body.get("html")
-    lease_id = body.get("lease_id")
-
-    if not template_id or not html:
-        return JsonResponse({"message": "template_id and html required"}, status=400)
+        return JsonResponse({"message": "Invalid request method"}, status=405)
 
     try:
-        template = Template.objects.get(id=template_id)
+        body = json.loads(request.body)
+
+        lease_id = body.get("lease_id")
+        if not lease_id:
+            return JsonResponse({"message": "lease_id is required"}, status=400)
+
         lease = LeasePropertyDetails.objects.get(id=lease_id)
-    except:
-        return JsonResponse({"message": "Invalid template_id or lease_id"}, status=400)
-
-
-    folder_path = os.path.join(settings.MEDIA_ROOT, "generated_templates")
-    os.makedirs(folder_path, exist_ok=True)
-
-    filename = f"lease_{lease_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}.html"
-    final_path = os.path.join(folder_path, filename)
-
-    with open(final_path, "w", encoding="utf-8") as f:
-        f.write(html)
 
    
-    template.template_path = f"generated_templates/{filename}"
-    template.save()
+        annual_amount = body.get("annual_amount")
+        rent = body.get("rent")
 
-    return JsonResponse({
-        "message": "Generated template saved successfully",
-        "file_url": settings.MEDIA_URL + "generated_templates/" + filename
-    })
+        if annual_amount is None or rent is None:
+            return JsonResponse({"message": "annual_amount and rent are required"}, status=400)
+
+     
+        actual_annual_amount = body.get("actual_annual_amount")
+        booking_amount = body.get("booking_amount")
+        security_deposit = body.get("security_deposit")
+        maintenance_charges = body.get("maintenance_charges")
+        commission_percentage = body.get("commission_percentage")
+        notice_period = body.get("notice_period")
+        discount = body.get("discount")
+
+        commercial = LeaseCommercials.objects.create(
+            lease=lease,
+            annual_amount=annual_amount,
+            rent=rent,
+            actual_annual_amount=actual_annual_amount,
+            booking_amount=booking_amount,
+            security_deposit=security_deposit,
+            maintenance_charges=maintenance_charges,
+            commission_percentage=commission_percentage,
+            notice_period=notice_period,
+            discount=discount
+        )
+
+        return JsonResponse({
+            "message": "LeaseCommercials created successfully",
+            "commercial_id": commercial.id
+        }, status=201)
+
+    except LeasePropertyDetails.DoesNotExist:
+        return JsonResponse({"message": "Lease not found"}, status=404)
+    except Exception as e:
+        return JsonResponse({"message": str(e)}, status=400)
+
+
+
+
+# def get_template(request, template_id):
+#     try:
+#         template = Template.objects.get(id=template_id, is_active=True)
+#         template_file_path = os.path.join(settings.BASE_DIR, template.template_path)
+
+#         with open(template_file_path, "r", encoding="utf-8") as f:
+#             html_content = f.read()
+
+#         return JsonResponse({
+#             "template": {
+#                 "id": template.id,
+#                 "name": template.name,
+#                 "html": html_content
+#             }
+#         }, status=200)
+
+#     except Template.DoesNotExist:
+#         return JsonResponse({"error": "Template not found"}, status=404)
+#     except FileNotFoundError:
+#         return JsonResponse({"error": "Template file not found"}, status=404)
+
+
+
+
+
+# def get_final_template(request, lease_id, template_id):
+#     final_file_name = f"lease_{lease_id}_{template_id}.html"
+#     final_file_path = os.path.join(settings.MEDIA_ROOT, "final_templates", final_file_name)
+
+#     try:
+#         with open(final_file_path, "r", encoding="utf-8") as f:
+#             html_content = f.read()
+#         return JsonResponse({"html": html_content}, status=200)
+#     except FileNotFoundError:
+#         return JsonResponse({"error": "Final template not found"}, status=404)
+
+
+
+
+def save_template_values(request):
+    if request.method != "POST":
+        return JsonResponse({"error": "Only POST allowed"}, status=405)
+
+    try:
+        body = json.loads(request.body)
+        template_id = body.get("template_id")
+        lease_id = body.get("lease_id")
+        values = body.get("values")  
+
+      
+        template = Template.objects.get(id=template_id, is_active=True)
+        lease = LeasePropertyDetails.objects.get(id=lease_id)
+
+        for key, value in values.items():
+            TemplateValues.objects.update_or_create(
+                document_template=template,
+                key=key,
+                lease=lease,
+                defaults={"value": value}
+            )
+
+    
+        template_file_path = os.path.join(
+            settings.BASE_DIR,
+            'property_management/templates/lease_templates/lease_agreement.html'
+        )
+        with open(template_file_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+
+        for key, value in values.items():
+            html_content = html_content.replace(f"${key}", str(value))
+
+  
+        final_path = os.path.join(settings.MEDIA_ROOT, "final_templates")
+        os.makedirs(final_path, exist_ok=True)
+
+        final_file_name = f"lease_{lease.id}_{template.id}.html"
+        final_file_path = os.path.join(final_path, final_file_name)
+
+        with open(final_file_path, "w", encoding="utf-8") as f:
+            f.write(html_content)
+
+        return JsonResponse({
+            "message": "Template saved successfully",
+            "file_path": f"final_templates/{final_file_name}"
+        }, status=200)
+
+    except Template.DoesNotExist:
+        return JsonResponse({"error": "Template not found"}, status=404)
+    except LeasePropertyDetails.DoesNotExist:
+        return JsonResponse({"error": "Lease not found"}, status=404)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)

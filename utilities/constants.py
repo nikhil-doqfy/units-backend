@@ -248,3 +248,11 @@ TEXT = "text"
 RADIO = "radio"
 CHOICE = "choice"
 CHECKBOX = "checkbox"
+
+STEP_CHOICES = (
+        ("property_basic", "Property Basic"),
+        ("property_commercial", "Property Commercial"),
+        ("property_image", "Property Image"),
+        ("property_doc", "Property Document"),
+        ("final", "Final Completed"),
+    )
