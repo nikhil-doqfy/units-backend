@@ -2069,7 +2069,7 @@ def upload_property_documents(request):
             existing_documents.append(saved_data)
             all_uploaded.append(saved_data)
 
-        property_obj.documents = existing_documents
+        property_obj.property_documents = existing_documents
         property_obj.step_status = "property_doc"
         property_obj.save()
 
@@ -2099,7 +2099,7 @@ def fetch_property_documents(request):
             property_obj = PropertyDetails.objects.get(id=property_id)
         except PropertyDetails.DoesNotExist:
             return prepare_response(message="Invalid property_id", status=404)
-        documents_list = property_obj.documents or []
+        documents_list = property_obj.property_documents or []
         final_documents = []
 
         for doc in documents_list:
