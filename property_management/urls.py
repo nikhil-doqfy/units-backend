@@ -46,11 +46,13 @@ urlpatterns = [
     path('upload/property/documents', views.upload_property_documents, name='upload_property_documents'),
     path('fetch/property/documents', views.fetch_property_documents, name='fetch_property_documents'),
 
-    # path('fetch/property/documents', views.fetch_property_documents, name='fetch_property_documents'),
+    
     path('options/', views.options, name='options'),  
 
     path('property/images/', views.property_images_view, name='property_images_view'),
-    
+    path("get/template/", views.get_template, name="get_template"), 
+
+    path("save/template", views.save_generated_template, name="save_generated_template"),
 
 ] 
 

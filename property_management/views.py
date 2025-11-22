@@ -1,7 +1,7 @@
 
 from django.shortcuts import get_object_or_404
 from django.db import IntegrityError, transaction
-from property_management.models import OwnerDetails ,TenantDetails , LeasePropertyDetails ,LeaseCommercials,LeaseEjariUpload,LeaseDocumentLayout,OwnerPMCInvitation,PMCOwnerInvitation , PMCTenantInvitation 
+from property_management.models import OwnerDetails ,TenantDetails , LeasePropertyDetails ,LeaseCommercials,LeaseEjariUpload,OwnerPMCInvitation,PMCOwnerInvitation , PMCTenantInvitation ,Template, TemplateFields
 from user_service.models import PropertyManagerCompanyDetails ,PropertyDetails ,UserProfile,StaffDetails  ,PropertyCommercial
 from utilities.decorator import is_request_authenticated
 import json
@@ -22,6 +22,7 @@ from django.contrib.auth.hashers import make_password
 from django.core.paginator import Paginator, EmptyPage
 from django.conf import settings
 import os
+from datetime import datetime
 
 
 
@@ -1548,31 +1549,20 @@ def create_property_basic(request):
             property_code = data.get("property_code")
             invited_email_id = data.get("invited_email_id")
 
-         
-            if user.user_type == "PROPERTY_MANAGER":
+            if user.user_type == "OWNER":
                 owner = user
-                property_manager = PropertyManagerCompanyDetails.objects.filter(user=user).first()
+                property_manager = None
 
-                if not property_manager:
-                    return prepare_response(
-                        message=constants.PROPERTY_MANAGER_DETAILS_NOT_FOUND,
-                        status=400
-                    )
+            elif  user.user_type == "PROPERTY_MANAGER":
+                pmc_obj = PropertyManagerCompanyDetails.objects.filter(user=user).first()
+                if not pmc_obj:
+                    return prepare_response("Property Manager details not found", status=400)
+                property_manager = pmc_obj
+                owner = None
+   
+            
 
-            elif user.user_type == "OWNER":
-                owner = user
-                pmc_id = data.get("property_manager_id")
-
-                property_manager = (
-                    PropertyManagerCompanyDetails.objects.filter(id=pmc_id).first()
-                    if pmc_id else None
-                )
-
-            else:
-                return prepare_response(
-                    message=constants.ONLY_OWNER_AND_PMC,
-                    status=403
-                )
+            
 
             new_property = PropertyDetails.objects.create(
                 property_name=property_name,
@@ -1622,6 +1612,7 @@ def create_property_basic(request):
 
 @is_request_authenticated
 def add_commercial_details(request):
+    user = request.user
     try:
 
         if request.method == "GET":
@@ -1656,8 +1647,19 @@ def add_commercial_details(request):
             property_obj = PropertyDetails.objects.filter(id=property_id).first()
             if not property_obj:
                 return prepare_response("Property not found", status=404)
+            
 
+            
+            if user.user_type == "OWNER":
+                pmc_id = data.get("pmc_id")
+                if pmc_id:
+                    pmc_obj = PropertyManagerCompanyDetails.objects.filter(id=pmc_id).first()
+                    if not pmc_obj:
+                        return prepare_response("Invalid PMC ID", status=400)
+                    property_obj.property_manager = pmc_obj
+                    property_obj.save()
 
+                        
         if request.method == "POST":
             PropertyCommercial.objects.update_or_create(
                 property=property_obj,
@@ -3827,3 +3829,90 @@ def property_tenant_list_view(request):
         )
 
 
+
+
+
+
+
+
+
+from django.http import JsonResponse
+def get_template(request):
+    try:
+        template_id= request.GET.get("template_id")
+        
+        template = Template.objects.get(id=template_id, is_active=True)
+
+        template_path = os.path.join(
+            settings.BASE_DIR,
+            "property_management",
+            "templates",
+            "lease_templates",
+            os.path.basename(template.template_path)
+        )
+
+        if not os.path.exists(template_path):
+            return JsonResponse({"message": "Template file not found"}, status=404)
+
+        with open(template_path, "r", encoding="utf-8") as file:
+            html = file.read()
+
+
+        import re
+        variables = re.findall(r"\$[a-zA-Z_]+", html)
+        variables = list(set(variables))
+
+        return JsonResponse({
+            "id": template.id,
+            "name": template.name,
+            "template_html": html,
+            "variables": variables
+        })
+
+    except Template.DoesNotExist:
+        return JsonResponse({"message": "Invalid template id"}, status=400)
+    
+
+
+
+
+
+
+def save_generated_template(request):
+    if request.method != "POST":
+        return JsonResponse({"message": "Only POST allowed"}, status=405)
+
+    import json
+    body = json.loads(request.body)
+
+    template_id = body.get("template_id")
+    html = body.get("html")
+    lease_id = body.get("lease_id")
+
+    if not template_id or not html:
+        return JsonResponse({"message": "template_id and html required"}, status=400)
+
+    try:
+        template = Template.objects.get(id=template_id)
+        lease = LeasePropertyDetails.objects.get(id=lease_id)
+    except:
+        return JsonResponse({"message": "Invalid template_id or lease_id"}, status=400)
+
+
+    folder_path = os.path.join(settings.MEDIA_ROOT, "generated_templates")
+    os.makedirs(folder_path, exist_ok=True)
+
+    filename = f"lease_{lease_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}.html"
+    final_path = os.path.join(folder_path, filename)
+
+    with open(final_path, "w", encoding="utf-8") as f:
+        f.write(html)
+
+   
+    template.template_path = f"generated_templates/{filename}"
+    template.save()
+
+    return JsonResponse({
+        "message": "Generated template saved successfully",
+        "file_url": settings.MEDIA_URL + "generated_templates/" + filename
+    })

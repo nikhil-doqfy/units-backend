@@ -239,3 +239,12 @@ OTP_EXPIRY_MINUTES = 5
 
 RENTAL_AVAILABLE = "Available"
 RENTAL_NOT_AVAILABLE = "Not Available"
+
+
+
+NUMBER = "number"
+DATE = "date"
+TEXT = "text"
+RADIO = "radio"
+CHOICE = "choice"
+CHECKBOX = "checkbox"

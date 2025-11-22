@@ -4,10 +4,10 @@ from user_service.models import (
     PropertyManagerCompanyDetails, 
     StaffRole, 
     StaffDetails, 
-    PropertyDetails,UserVerification,PropertyDocuments
+    PropertyDetails,UserVerification,PropertyDocuments 
 )
 
-from property_management.models import OwnerDetails ,TenantDetails,LeasePropertyDetails,LeaseCommercials ,LeaseEjariUpload , OwnerPMCInvitation ,PMCOwnerInvitation
+from property_management.models import OwnerDetails ,TenantDetails,LeasePropertyDetails,LeaseCommercials ,LeaseEjariUpload , OwnerPMCInvitation ,PMCOwnerInvitation , Template , TemplateFields
  
 class UserProfileAdmin(admin.ModelAdmin):
     list_display = ["id", "email", "user_type"]
@@ -57,6 +57,17 @@ class TenantDetailsAdmin(admin.ModelAdmin):
         'id', 'full_name', 'mobile_number'
     )
 
+class DocumentTemplateFieldsAdmin(admin.ModelAdmin):
+    list_display = [
+        "id",
+        "document_template",
+        "tenant",
+        "owner",
+        "amount",
+    ]
+    search_fields = ["document_template__name", "tenant__name", "owner__name"]
+    list_filter = ["document_template"]
+
 
 class LeasePropertyDetailsAdmin(admin.ModelAdmin):
     list_display = ["id", "lease_property", "lease_tenant","lease_status","lease_start_date","lease_end_date"]
@@ -77,7 +88,11 @@ class PMCOwnerInvitationAdmin(admin.ModelAdmin):
 
 class PropertyDocumentsAdmin(admin.ModelAdmin):
     list_display = ["id"] 
-    
+class TemplateAdmin(admin.ModelAdmin):
+    list_display = ["id", "name", "template_path", "is_active"]   
+
+class TemplateFieldsAdmin(admin.ModelAdmin):
+    list_display = ["id", "document_template","name_attribute"]    
 
 
 
@@ -94,3 +109,5 @@ admin.site.register( OwnerPMCInvitation, OwnerPMCInvitationAdmin)
 admin.site.register( PMCOwnerInvitation, PMCOwnerInvitationAdmin)  
 
 admin.site.register( PropertyDocuments, PropertyDocumentsAdmin) 
+admin.site.register(Template, TemplateAdmin)
+admin.site.register(TemplateFields, TemplateFieldsAdmin)
