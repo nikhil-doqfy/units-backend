@@ -165,6 +165,13 @@ class PropertyDetails(Base):
     property_code = models.CharField(max_length=255, unique=True, blank=True, null=True)
     invited_email_id = models.EmailField(blank=True, null=True)
     images = models.JSONField(default=list, blank=True, null=True)
+    property_documents =models.JSONField(default=list, blank=True, null=True)
+
+    step_status = models.CharField(
+        max_length=50,
+        choices=constants.STEP_CHOICES,
+        default="property_basic"
+    )
    
 
     def __str__(self):
@@ -175,7 +182,7 @@ class PropertyDocuments(Base):
     property = models.ForeignKey(
         "PropertyDetails",
         on_delete=models.CASCADE,
-        related_name="property_documents"
+        related_name="property_docs_relationship"
     )
 
     rental_documents = models.JSONField(default=list)

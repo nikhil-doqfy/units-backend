@@ -239,3 +239,20 @@ OTP_EXPIRY_MINUTES = 5
 
 RENTAL_AVAILABLE = "Available"
 RENTAL_NOT_AVAILABLE = "Not Available"
+
+
+
+NUMBER = "number"
+DATE = "date"
+TEXT = "text"
+RADIO = "radio"
+CHOICE = "choice"
+CHECKBOX = "checkbox"
+
+STEP_CHOICES = (
+        ("property_basic", "Property Basic"),
+        ("property_commercial", "Property Commercial"),
+        ("property_image", "Property Image"),
+        ("property_doc", "Property Document"),
+        ("final", "Final Completed"),
+    )

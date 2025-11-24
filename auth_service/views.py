@@ -4,7 +4,7 @@ import uuid
 from django.contrib.auth.hashers import make_password ,check_password
 from utilities import status, constants
 from utilities.helper_functions import prepare_response , validate_email, send_email, validate_password,send_ses_email
-from user_service.models import UserProfile  ,UserVerification
+from user_service.models import UserProfile  ,UserVerification ,PropertyManagerCompanyDetails
 from user_service.utils import request_otp_sent
 from utilities.decorator import is_request_authenticated
 from utilities.jwt_token import create_jwt_token , get_jwt_token, decode_jwt_token
@@ -67,6 +67,11 @@ def user_login(request):
                 message="User type does not match",
                 status=status.HTTP_400_BAD_REQUEST
             )
+        company_details = None
+        if user.user_type == constants.PROPERTY_MANAGER:
+            company_details = PropertyManagerCompanyDetails.objects.filter(user=user).first()
+        company_name = company_details.company_name if company_details else None
+
         
 
         token = create_jwt_token(user)
@@ -87,6 +92,7 @@ def user_login(request):
                 "first_name":user.first_name,
                 "last_name":user.last_name,
                 "profile_image_type":user.profile_image_type,
+                "company_name": company_name,
             },
             message=constants.LOGIN_SUCCESSFUL,
             status=status.HTTP_200_OK
@@ -127,6 +133,14 @@ def user_login(request):
             record.verified_time = timezone.now()
             token = create_jwt_token(user)
             record.is_verified = False
+            company_details = None
+            if user.user_type == constants.PROPERTY_MANAGER:
+                company_details = PropertyManagerCompanyDetails.objects.filter(user=user).first()
+            company_name = company_details.company_name if company_details else None
+
+
+
+
             record.save()
             user.last_login = timezone.now()
             user.save(update_fields=["last_login"])
@@ -142,6 +156,7 @@ def user_login(request):
                 "first_name":user.first_name,
                 "last_name":user.last_name,
                 "profile_image_type":user.profile_image_type,
+                "company_name": company_name,
 
 
               },
@@ -424,7 +439,7 @@ def send_password_otp(request):
 
         elif purpose == "signup":
 
-            # signup: user must NOT exist
+           
             if UserProfile.objects.filter(email=email).exists():
                 return prepare_response(
                     message="Email already registered",
