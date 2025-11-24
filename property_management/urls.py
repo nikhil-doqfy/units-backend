@@ -52,7 +52,7 @@ urlpatterns = [
     path('property/images/', views.property_images_view, name='property_images_view'),
     # path("get/template/", views.get_template, name="get_template"), 
 
-    path("save/template", views.save_template_values, name="save_generated_template"),
+    # path("save/template", views.save_template_values, name="save_generated_template"),
 
 ] 
 
