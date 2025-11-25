@@ -105,7 +105,7 @@ class TenantDetails(Base):
     postal_code = models.CharField(max_length=20, blank=True, null=True)
     city = models.CharField(max_length=255, null=True, blank=True)
     manage_through = models.CharField(max_length=20, choices=constants.choices)
-    tenant_documents = models.JSONField(default=dict, blank=True)
+    tenant_documents = models.JSONField(default=dict, blank=True)   
 
 
 
@@ -144,6 +144,8 @@ class LeasePropertyDetails(models.Model):
     lease_grace_start_date = models.DateTimeField(null=True, blank=True)
     lease_grace_end_date = models.DateTimeField(null=True, blank=True)
     lease_remarks = models.TextField(null=True, blank=True)
+    step_status = models.CharField(max_length=50,
+                                   choices=constants.LEASE_STEP_STATUS, default="LEASE_DETAILS")
     lease_status = models.CharField(
         max_length=20,
         choices=constants.LEASE_STATUS_CHOICES,

@@ -63,8 +63,11 @@ def user_login(request):
             )
         
         if  user.user_type != user_type:
+            if  user_type==constants.PROPERTY_MANAGER:
+                user_type="Property Manager"
             return prepare_response(
-                message="User type does not match",
+                message = f"This user does not belong to the {user_type.title()}.",
+
                 status=status.HTTP_400_BAD_REQUEST
             )
         company_details = None

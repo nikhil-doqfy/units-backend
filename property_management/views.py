@@ -70,6 +70,15 @@ def options(request):
                 {"key": constants.TENANT, "value": "Tenant"},
                 {"key": constants.STAFF, "value": "Staff"},
             ]
+        elif option_type == "TENANTS_LIST":
+            tenants = TenantDetails.objects.all()
+            content["tenants_list"] = [{
+                "key": tenant.id,
+            "value": tenant.full_name   }
+            for tenant in tenants]
+
+
+
 
         else:
             content[option_type] = [] 
@@ -79,6 +88,8 @@ def options(request):
         message=constants.DROPDOWN_DATA_FETCHED_SUCEESS,
         status=status.HTTP_200_OK
     )
+
+
 
 
 @is_request_authenticated
@@ -1762,14 +1773,15 @@ def property_images_view(request):
             property_id = request.GET.get("property_id")
 
             if not property_id:
-                return prepare_response("property_id is required", 400)
+                return prepare_response(message="property_id is required", status=400)
 
             try:
                 property_obj = PropertyDetails.objects.get(id=property_id)
             except PropertyDetails.DoesNotExist:
-                return prepare_response("Invalid property_id", 404)
+                return prepare_response(message="Invalid property_id", status=404)
 
-            images_qs = PropertyImages.objects.filter(property_id=property_id)
+            images_qs = PropertyImages.objects.filter(property_id=property_id).order_by("-id")
+         
             final_images = []
 
             for img in images_qs:
@@ -1783,6 +1795,7 @@ def property_images_view(request):
                     "file_name": file_name,
                     "data": base64_data,
                     "type": img_type,
+                    "id":img.id,
                 })
 
             return prepare_response(
@@ -1802,15 +1815,15 @@ def property_images_view(request):
             images = body.get("images", [])
 
             if not property_id:
-                return prepare_response("Property ID is required", 400)
+                return prepare_response(message="Property ID is required", status=400)
 
             if not isinstance(images, list) or not images:
-                return prepare_response("Images must be a list", 400)
+                return prepare_response(message="Images must be a list", status=400)
 
             try:
                 property_obj = PropertyDetails.objects.get(id=property_id)
             except PropertyDetails.DoesNotExist:
-                return prepare_response("Property not found", 404)
+                return prepare_response(message="Property not found",status= 404)
 
             uploaded_files = []
 
@@ -1820,7 +1833,7 @@ def property_images_view(request):
                 img_type = img.get("type", "INTERIOR").upper()
 
                 if not file_name or not base64_data:
-                    return prepare_response("Missing file_name or data", 400)
+                    return prepare_response(message="Missing file_name or data", status=400)
 
                 object_name = f"property_images/{property_id}/{file_name}"
 
@@ -1859,15 +1872,15 @@ def property_images_view(request):
             images = body.get("images", [])
 
             if not property_id:
-                return prepare_response("Property ID is required", 400)
+                return prepare_response(message="Property ID is required", status=400)
 
             if not isinstance(images, list):
-                return prepare_response("Images must be a list", 400)
+                return prepare_response(message="Images must be a list", status=400)
 
             try:
                 property_obj = PropertyDetails.objects.get(id=property_id)
             except PropertyDetails.DoesNotExist:
-                return prepare_response("Property not found", 404)
+                return prepare_response(message="Property not found", status=404)
 
             updated_files = []
 
@@ -1877,7 +1890,7 @@ def property_images_view(request):
                 img_type = img.get("type", "INTERIOR").upper()
 
                 if not file_name or not base64_data:
-                    return prepare_response("Missing file_name or data", 400)
+                    return prepare_response(message="Missing file_name or data", status=400)
 
              
                 img_obj, created = PropertyImages.objects.get_or_create(
@@ -1909,10 +1922,10 @@ def property_images_view(request):
                 status=200
             )
 
-        return prepare_response("Method not allowed", 405)
+        return prepare_response(message="Method not allowed", status=405)
 
     except Exception as e:
-        return prepare_response(str(e), 500)
+        return prepare_response(message=str(e), status=500)
 
 
 
@@ -1934,7 +1947,7 @@ def property_documents_view(request):
             except PropertyDetails.DoesNotExist:
                 return prepare_response("Invalid property_id", 404)
 
-            docs_qs = PropertyDocuments.objects.filter(property_id=property_id)
+            docs_qs = PropertyDocuments.objects.filter(property_id=property_id).order_by("-id")
             final_docs = []
 
             for doc in docs_qs:
@@ -1948,6 +1961,7 @@ def property_documents_view(request):
                     "file_name": file_name,
                     "data": base64_data,
                     "type": doc_type,
+                    "id":doc.id,
                 })
             
 
@@ -1969,15 +1983,15 @@ def property_documents_view(request):
             documents = body.get("documents", [])
 
             if not property_id:
-                return prepare_response("Property ID is required", 400)
+                return prepare_response(message="Property ID is required", status=400)
 
             if not isinstance(documents, list) or not documents:
-                return prepare_response("Documents must be a list", 400)
+                return prepare_response(message="Documents must be a list", status=400)
 
             try:
                 property_obj = PropertyDetails.objects.get(id=property_id)
             except PropertyDetails.DoesNotExist:
-                return prepare_response("Property not found", 404)
+                return prepare_response(message="Property not found", status=404)
 
             uploaded_files = []
 
@@ -1987,7 +2001,7 @@ def property_documents_view(request):
                 doc_type = doc.get("type", "RENTAL_DOCUMENT").upper()
 
                 if not file_name or not base64_data:
-                    return prepare_response("Missing file_name or data", 400)
+                    return prepare_response(message="Missing file_name or data", status=400)
 
                 object_name = f"property_documents/{property_id}/{file_name}"
 
@@ -3727,142 +3741,285 @@ def property_tenant_list_view(request):
 
 
 
-def create_lease_property(request):
-    if request.method != "POST":
-        return prepare_response(
-            message="Invalid request method",
-            status=status.HTTP_405_METHOD_NOT_ALLOWED
-        )
-
+@is_request_authenticated
+def lease_property_view(request):
     try:
-        body = json.loads(request.body)
+        if request.method == "POST":
+            body = json.loads(request.body)
+            lease_property_id = body.get("lease_property_id")
+            lease_tenant_id = body.get("lease_tenant_id")
+            
 
-        lease_property_id = body.get("lease_property_id")
-        lease_tenant_id = body.get("lease_tenant_id")
-        created_by_id = body.get("created_by_id")
+        
+            if not lease_property_id or not lease_tenant_id:
+                return prepare_response(
+                    message="lease_property_id and lease_tenant_id  are required",
+                    status=400
+                )
+            
+            lease_property = PropertyDetails.objects.get(id=lease_property_id)
+            tenant = TenantDetails.objects.get(id=lease_tenant_id)
+            # created_by = PropertyManagerCompanyDetails.objects.get(id=created_by_id)
 
-        lease_start_date = safe_epoch_to_datetime(body.get("lease_start_date"))
-        lease_end_date = safe_epoch_to_datetime(body.get("lease_end_date"))
+           
+            if not lease_property.owner:
+                return prepare_response(message="Property has no owner assigned", status=400)
+            owner = OwnerDetails.objects.get(user=lease_property.owner) 
 
-        if not lease_start_date or not lease_end_date:
-            return prepare_response(
-                message="Invalid lease start or end date",
-                status=status.HTTP_400_BAD_REQUEST
+         
+            lease_start_date = safe_epoch_to_datetime(body.get("lease_start_date"))
+            lease_end_date = safe_epoch_to_datetime(body.get("lease_end_date"))
+            if not lease_start_date or not lease_end_date:
+                return prepare_response(message="Invalid lease start or end date", status=400)
+
+            lease_grace_start_date = safe_epoch_to_datetime(body.get("lease_grace_start_date")) if body.get("lease_grace_start_date") else None
+            lease_grace_end_date = safe_epoch_to_datetime(body.get("lease_grace_end_date")) if body.get("lease_grace_end_date") else None
+
+            lease_remarks = body.get("lease_remarks", "")
+            lease_status = body.get("lease_status", "DRAFT")
+
+            created_by = PropertyManagerCompanyDetails.objects.filter(user=request.user).first()
+            if not created_by:
+                return prepare_response(
+                    message="Logged-in user is not a property manager",
+                    status=400
+                    )
+             
+
+           
+            lease = LeasePropertyDetails.objects.create(
+                lease_property=lease_property,
+                lease_tenant=tenant,
+                owner=owner,
+                created_by=created_by,
+                lease_start_date=lease_start_date,
+                lease_end_date=lease_end_date,
+                lease_grace_start_date=lease_grace_start_date,
+                lease_grace_end_date=lease_grace_end_date,
+                lease_remarks=lease_remarks,
+                lease_status=lease_status,
+                step_status="LEASE_DETAILS"
             )
 
-        lease_grace_start_date = (
-            safe_epoch_to_datetime(body.get("lease_grace_start_date"))
-            if body.get("lease_grace_start_date") else None
-        )
-        lease_grace_end_date = (
-            safe_epoch_to_datetime(body.get("lease_grace_end_date"))
-            if body.get("lease_grace_end_date") else None
-        )
+            return prepare_response(
+                content={"lease_id": lease.id},
+                message="Lease created successfully",
+                status=201
+            )
 
-        lease_remarks = body.get("lease_remarks", "")
-        lease_status = body.get("lease_status", "DRAFT")
-        owner_id = body.get("owner_id")
+        elif request.method == "PUT":
+            body = json.loads(request.body)
+            lease_id = body.get("lease_id")
+            if not lease_id:
+                return prepare_response(message="lease_id is required for update", status=400)
 
-        lease_property = PropertyDetails.objects.get(id=lease_property_id)
-        tenant = TenantDetails.objects.get(id=lease_tenant_id)
-        created_by = PropertyManagerCompanyDetails.objects.get(id=created_by_id)
-        owner = OwnerDetails.objects.get(id=owner_id) if owner_id else None
+            lease = LeasePropertyDetails.objects.get(id=lease_id)
 
-        lease = LeasePropertyDetails.objects.create(
-            lease_property=lease_property,
-            lease_tenant=tenant,
-            owner=owner,
-            created_by=created_by,
-            lease_start_date=lease_start_date,
-            lease_end_date=lease_end_date,
-            lease_grace_start_date=lease_grace_start_date,
-            lease_grace_end_date=lease_grace_end_date,
-            lease_remarks=lease_remarks,
-            lease_status=lease_status
-        )
+          
+            lease_property_id = body.get("lease_property_id")
+            # lease_tenant_id = body.get("lease_tenant_id")
+            # created_by_id = body.get("created_by_id")
 
-        return prepare_response(
-            content={"lease_id": lease.id},
-            message="Lease created successfully",
-            status=status.HTTP_201_CREATED
-        )
+            if lease_property_id:
+                lease_property = PropertyDetails.objects.get(id=lease_property_id)
+                lease.lease_property = lease_property
 
+                if not lease_property.owner:
+                    return prepare_response(message="Property has no owner assigned", status=400)
+                lease.owner = OwnerDetails.objects.get(user=lease_property.owner)
+
+            # if lease_tenant_id:
+            #     lease.lease_tenant = TenantDetails.objects.get(id=lease_tenant_id)
+                           
+            created_by = PropertyManagerCompanyDetails.objects.filter(user=request.user).first()
+            if not created_by:
+                return prepare_response(
+                    message="Logged-in user is not a property manager",
+                    status=400
+                    )
+       
+            lease_start_date = safe_epoch_to_datetime(body.get("lease_start_date"))
+            lease_end_date = safe_epoch_to_datetime(body.get("lease_end_date"))
+            lease_grace_start_date = safe_epoch_to_datetime(body.get("lease_grace_start_date"))
+            lease_grace_end_date = safe_epoch_to_datetime(body.get("lease_grace_end_date"))
+
+            if lease_start_date: lease.lease_start_date = lease_start_date
+            if lease_end_date: lease.lease_end_date = lease_end_date
+            if lease_grace_start_date: lease.lease_grace_start_date = lease_grace_start_date
+            if lease_grace_end_date: lease.lease_grace_end_date = lease_grace_end_date
+
+            lease.lease_remarks = body.get("lease_remarks", lease.lease_remarks)
+            lease.lease_status = body.get("lease_status", lease.lease_status)
+            lease.save()
+
+            return prepare_response(
+                content={"lease_id": lease.id},
+                message="Lease updated successfully",
+                status=200
+            )
+
+        elif request.method == "GET":
+            lease_id = request.GET.get("lease_id")
+            if not lease_id:
+                return prepare_response(message="lease_id is required", status=400)
+
+            lease = LeasePropertyDetails.objects.get(id=lease_id)
+            lease_data = {
+                "lease_id": lease.id,
+                "lease_property_id": lease.lease_property.id,
+                "lease_tenant_id": lease.lease_tenant.id,
+                "owner_id": lease.owner.id if lease.owner else None,
+                "owner_name": f"{lease.owner.full_name}" if lease.owner else None,
+                "created_by_id": lease.created_by.id if lease.created_by else None,
+                "lease_start_date": int(lease.lease_start_date.timestamp() * 1000) if lease.lease_start_date else None,
+                "lease_end_date": int(lease.lease_end_date.timestamp() * 1000) if lease.lease_end_date else None,
+                "lease_grace_start_date": int(lease.lease_grace_start_date.timestamp() * 1000) if lease.lease_grace_start_date else None,
+                "lease_grace_end_date": int(lease.lease_grace_end_date.timestamp() * 1000) if lease.lease_grace_end_date else None,
+                "lease_remarks": lease.lease_remarks,
+                # "lease_status": lease.lease_status,
+                "step_status":lease.step_status
+            }
+
+            return prepare_response(content=lease_data , message="Lease fetched successfully", status=200)
+
+        else:
+            return prepare_response(message="Invalid request method", status=405)
+
+    except PropertyDetails.DoesNotExist:
+        return prepare_response(message="Property not found", status=404)
+    except TenantDetails.DoesNotExist:
+        return prepare_response(message="Tenant not found", status=404)
+    except PropertyManagerCompanyDetails.DoesNotExist:
+        return prepare_response(message="Created By user not found", status=404)
+    except OwnerDetails.DoesNotExist:
+        return prepare_response(message="Owner not found", status=404)
+    except LeasePropertyDetails.DoesNotExist:
+        return prepare_response(message="Lease not found", status=404)
     except Exception as e:
-        return prepare_response(
-            message=str(e),
-            status=status.HTTP_400_BAD_REQUEST
-        )
+        return prepare_response(message=str(e), status=400)
+
+
 
     
 
 
 
-def create_lease_commercials(request):
-    if request.method != "POST":
-        return prepare_response(
-            message="Invalid request method",
-            status=status.HTTP_405_METHOD_NOT_ALLOWED
-        )
-
+@is_request_authenticated
+def lease_commercials_view(request):
     try:
-        body = json.loads(request.body)
+        if request.method == "POST":
+            
+            body = json.loads(request.body)
+            lease_id = body.get("lease_id")
+            if not lease_id:
+                return prepare_response(message="lease_id is required", status=status.HTTP_400_BAD_REQUEST)
 
-        lease_id = body.get("lease_id")
-        if not lease_id:
-            return prepare_response(
-                message="lease_id is required",
-                status=status.HTTP_400_BAD_REQUEST
+            lease = LeasePropertyDetails.objects.get(id=lease_id)
+
+            annual_amount = body.get("annual_amount")
+            rent = body.get("rent")
+            if annual_amount is None or rent is None:
+                return prepare_response(message="annual_amount and rent are required", status=status.HTTP_400_BAD_REQUEST)
+
+            commercial = LeaseCommercials.objects.create(
+                lease=lease,
+                annual_amount=annual_amount,
+                rent=rent,
+                actual_annual_amount= safe_decimal(body.get("actual_annual_amount")),
+                booking_amount= safe_decimal(body.get("booking_amount")),
+                security_deposit= safe_decimal(body.get("security_deposit")),
+                maintenance_charges= safe_decimal (body.get("maintenance_charges")),
+                commission_percentage= safe_decimal(body.get("commission_percentage")),
+                notice_period=body.get("notice_period"),
+                discount=safe_decimal(body.get("discount"))
             )
 
-        lease = LeasePropertyDetails.objects.get(id=lease_id)
-
-        annual_amount = body.get("annual_amount")
-        rent = body.get("rent")
-
-        if annual_amount is None or rent is None:
             return prepare_response(
-                message="annual_amount and rent are required",
-                status=status.HTTP_400_BAD_REQUEST
+                message="LeaseCommercials created successfully",
+                content={"commercial_id": commercial.id},
+                status=status.HTTP_201_CREATED
             )
 
-        actual_annual_amount = body.get("actual_annual_amount")
-        booking_amount = body.get("booking_amount")
-        security_deposit = body.get("security_deposit")
-        maintenance_charges = body.get("maintenance_charges")
-        commission_percentage = body.get("commission_percentage")
-        notice_period = body.get("notice_period")
-        discount = body.get("discount")
+        elif request.method == "PUT":
+        
+            body = json.loads(request.body)
+            commercial_id = body.get("commercial_id")
+            if not commercial_id:
+                return prepare_response(message="commercial_id is required for update", status=status.HTTP_400_BAD_REQUEST)
 
-        commercial = LeaseCommercials.objects.create(
-            lease=lease,
-            annual_amount=annual_amount,
-            rent=rent,
-            actual_annual_amount=actual_annual_amount,
-            booking_amount=booking_amount,
-            security_deposit=security_deposit,
-            maintenance_charges=maintenance_charges,
-            commission_percentage=commission_percentage,
-            notice_period=notice_period,
-            discount=discount
-        )
+            commercial = LeaseCommercials.objects.get(id=commercial_id)
 
-        return prepare_response(
-            message="LeaseCommercials created successfully",
-            content={"commercial_id": commercial.id},
-            status=status.HTTP_201_CREATED
-        )
+         
+            for field in ["annual_amount", "rent", "actual_annual_amount", "booking_amount",
+                          "security_deposit", "maintenance_charges", "commission_percentage",
+                          "notice_period", "discount"]:
+                if field in body:
+                    setattr(commercial, field, body[field])
+
+            lease_id = body.get("lease_id")
+            if lease_id:
+                commercial.lease = LeasePropertyDetails.objects.get(id=lease_id)
+
+            commercial.save()
+
+            return prepare_response(
+                message="LeaseCommercials updated successfully",
+                content={"commercial_id": commercial.id},
+                status=status.HTTP_200_OK
+            )
+
+        elif request.method == "GET":
+      
+            commercial_id = request.GET.get("commercial_id")
+            lease_id = request.GET.get("lease_id")
+
+            if commercial_id:
+                commercial = LeaseCommercials.objects.get(id=commercial_id)
+                data = {
+                    "commercial_id": commercial.id,
+                    "lease_id": commercial.lease.id,
+                    "annual_amount": commercial.annual_amount,
+                    "rent": commercial.rent,
+                    "actual_annual_amount": commercial.actual_annual_amount,
+                    "booking_amount": commercial.booking_amount,
+                    "security_deposit": commercial.security_deposit,
+                    "maintenance_charges": commercial.maintenance_charges,
+                    "commission_percentage": commercial.commission_percentage,
+                    "notice_period": commercial.notice_period,
+                    "discount": commercial.discount
+                }
+                return prepare_response(content=data, message="LeaseCommercials fetched successfully", status=status.HTTP_200_OK)
+
+            elif lease_id:
+                commercials = LeaseCommercials.objects.filter(lease_id=lease_id)
+                data = [{
+                    "commercial_id": c.id,
+                    "lease_id": c.lease.id,
+                    "annual_amount": c.annual_amount,
+                    "rent": c.rent,
+                    "actual_annual_amount": c.actual_annual_amount,
+                    "booking_amount": c.booking_amount,
+                    "security_deposit": c.security_deposit,
+                    "maintenance_charges": c.maintenance_charges,
+                    "commission_percentage": c.commission_percentage,
+                    "notice_period": c.notice_period,
+                    "discount": c.discount
+                } for c in commercials]
+                return prepare_response(content={"commercials": data}, message="LeaseCommercials list fetched successfully", status=status.HTTP_200_OK)
+            else:
+                return prepare_response(message="commercial_id or lease_id is required", status=status.HTTP_400_BAD_REQUEST)
+
+        else:
+            return prepare_response(message="Invalid request method", status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     except LeasePropertyDetails.DoesNotExist:
-        return prepare_response(
-            message="Lease not found",
-            status=status.HTTP_404_NOT_FOUND
-        )
-
+        return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
+    except LeaseCommercials.DoesNotExist:
+        return prepare_response(message="LeaseCommercials not found", status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
-        return prepare_response(
-            message=str(e),
-            status=status.HTTP_400_BAD_REQUEST
-        )
+        return prepare_response(message=str(e), status=status.HTTP_400_BAD_REQUEST)
+
+
 
 
 
@@ -4003,7 +4160,10 @@ def generate_contract(request):
         timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
         filename = f"lease_{timestamp}.html"
 
-        save_dir = os.path.join(settings.BASE_DIR, "media", "generated_templates")
+        save_dir = os.path.join(settings.BASE_DIR, r"property_management\templates\genrate_lease_temaplates")
+        os.makedirs(save_dir, exist_ok=True)
+
+
         os.makedirs(save_dir, exist_ok=True)
 
         save_path = os.path.join(save_dir, filename)

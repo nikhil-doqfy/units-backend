@@ -36,13 +36,14 @@ urlpatterns = [
     path('tenant/owner/property/', views.property_tenant_list_view, name='property_tenant_list_view'),
     path('create/property/basic', views.create_property_basic, name='create_property_basic'),
     path('property/commercial/details', views.add_commercial_details, name='add_commercial_details'),
-
     path('property/documents/view', views.property_documents_view, name='property_documents_view'),
-     
     path('options/', views.options, name='options'),  
     path('property/images/', views.property_images_view, name='property_images_view'),
-    path("save/template", views.generate_contract, name="save_generated_template"),
+    path("save/template", views.generate_contract, name="save_generated_template"), 
 
+    path("lease/property/view/", views.lease_property_view, name="lease_property_view"),
+    path("lease/commercials/view/", views.lease_commercials_view, name="lease_commercials_view"),
+    
 
   
 ] 

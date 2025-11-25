@@ -180,10 +180,7 @@ class PropertyDetails(Base):
 
 
 class PropertyImages(Base):
-    IMAGE_TYPE_CHOICES = (
-         ("INTERIOR", "Interior"),
-         ("EXTERIOR", "Exterior"),
-          )
+
     property = models.ForeignKey(
         PropertyDetails,
         on_delete=models.CASCADE,
@@ -192,7 +189,7 @@ class PropertyImages(Base):
     image_path = models.TextField() 
     image_type = models.CharField(
         max_length=20,
-        choices=IMAGE_TYPE_CHOICES,
+        choices=constants.IMAGE_TYPE_CHOICES,
         default="INTERIOR"
     )   
     file_name = models.CharField(max_length=255)
@@ -202,23 +199,13 @@ class PropertyImages(Base):
 
 
 
-
-
-
-
-
 class PropertyDocuments(Base):
-    DOCUMENT_TYPE_CHOICES = (("RENTAL_DOCUMENT", "Rental Document"),
-        ("TENANT_DOCUMENT", "Tenant Document"),
-        ("EJARI_CERTIFICATE", "Ejari Certificate"),
-        ("OWNER_DOCUMENT", "Owner Document"),
-        ("CHEQUE_DOCUMENT", "Cheque Document"),
-    )   
+ 
     file_name = models.CharField(max_length=200)
     file_path = models.CharField(max_length=500)
     document_type = models.CharField(
          max_length=50,
-        choices=DOCUMENT_TYPE_CHOICES
+        choices=constants.DOCUMENT_TYPE_CHOICES
     )
     property = models.ForeignKey(
         "PropertyDetails",
