@@ -250,9 +250,9 @@ CHOICE = "choice"
 CHECKBOX = "checkbox"
 
 STEP_CHOICES = (
-        ("property_basic", "Property Basic"),
-        ("property_commercial", "Property Commercial"),
-        ("property_image", "Property Image"),
-        ("property_doc", "Property Document"),
-        ("final", "Final Completed"),
+        ("BASIC_DETAILS", "Basic Details"),
+        ("COMMERCIALS_DETAILS", "Commercials Details"),
+        ("PROPERTY_IMAGES_DETAILS", "Property Images Details"),
+        ("DOCUMENTS_DETAILS", "Documents Details"),
+        
     )

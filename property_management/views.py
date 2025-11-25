@@ -941,7 +941,7 @@ def tenant_details_view(request):
 
             tenant_data = {
                 "tenant_id": tenant.id,
-                # "profile_image_type":user_profile.profile_image_type,
+                "profile_image_type":user_profile.profile_image_type if user_profile else None,
                 "type": user_profile.user_type if user_profile else None,
                 "email": user_profile.email if user_profile else None,
                 "first_name": user_profile.first_name if user_profile else None,
@@ -951,8 +951,12 @@ def tenant_details_view(request):
                 "emirate_id": tenant.emirate_id,
                 "contact_number": tenant.mobile_number,
                 "nationality": tenant.nationality,
+                "country":user_profile.country if user_profile else None ,
                 "address": tenant.address,
                 "linked_property": property_name,
+                "postal_code":tenant.postal_code,
+                "city":tenant.city,
+                
 
             }
 
@@ -1502,7 +1506,7 @@ def create_property_basic(request):
                 "no_of_floors":prop.no_of_floors,
                  "makani_no" :prop.makani_no,
                  "dewa_no":prop.dewa_no,
-
+                "step_choice": prop.step_status if prop else None
                 
                
             }
@@ -1610,7 +1614,7 @@ def create_property_basic(request):
                 invited_email_id=invited_email_id,
                 owner=owner,
                 property_manager=property_manager,
-                step_status="property_basic"
+                step_status="BASIC_DETAILS"
             )
 
             return prepare_response(
@@ -1649,9 +1653,11 @@ def add_commercial_details(request):
             commercial_obj = PropertyCommercial.objects.filter(property_id=property_id).first()
             if not commercial_obj:
                 return prepare_response("Commercial details not found", status=404)
+            property_obj = PropertyDetails.objects.filter(id=property_id).first()
 
          
             data = {
+                "property_id":property_id,
                 "rent": commercial_obj.rent,
                 "security_deposit": commercial_obj.security_deposit,
                 "booking_amount": commercial_obj.booking_amount,
@@ -1659,6 +1665,7 @@ def add_commercial_details(request):
                 "cycle": commercial_obj.cycle,
                 "notice_period": commercial_obj.notice_period,
                 "commission_percent": commercial_obj.commission_percent,
+                "step_choice": property_obj.step_status if property_obj else None
             }
 
             return prepare_response(content=data, message="Commercial details fetched", status=200)
@@ -1697,10 +1704,14 @@ def add_commercial_details(request):
                          "commission_percent": safe_decimal(data.get("commission_percent")),
                          "cycle": data.get("cycle"),
                         "notice_period": data.get("notice_period"),
+                       
+                       
                 }
             )
-            property_obj.step_status = "property_commercial"
+            property_obj.step_status = "COMMERCIALS_DETAILS"
+            property_obj.save()
             return prepare_response(
+                
                 message="Commercial details created successfully",
                 status=200
             )
@@ -1843,12 +1854,14 @@ def property_images_view(request):
                     images_base64.append({
                         "url": url,
                         "type": img_type,
-                        "base64": base64_img
+                        "base64": base64_img,
+                        
                     })
+                
 
             return prepare_response(
                 message="Images fetched successfully",
-                content={"images": images_base64},
+                content={"images": images_base64,"step_choice": property_obj.step_status},
                 status=status.HTTP_200_OK
             )
 
@@ -1890,7 +1903,7 @@ def property_images_view(request):
                     })
 
             property_obj.images = (property_obj.images or []) + uploaded_images
-            property_obj.step_status = "property_image"
+            property_obj.step_status = "PROPERTY_IMAGES_DETAILS"
             property_obj.save()
 
             return prepare_response(
@@ -2070,7 +2083,7 @@ def upload_property_documents(request):
             all_uploaded.append(saved_data)
 
         property_obj.property_documents = existing_documents
-        property_obj.step_status = "property_doc"
+        property_obj.step_status = "DOCUMENTS_DETAILS"
         property_obj.save()
 
         return prepare_response(
@@ -2113,11 +2126,12 @@ def fetch_property_documents(request):
             final_documents.append({
                 "file_name": file_name,
                 "data": base64_data,
-                "type": doc_type
+                "type": doc_type,
+                
             })
 
         return prepare_response(
-            content={"documents": final_documents},
+            content={"documents": final_documents , "step_choice": property_obj.step_status,"property_id":property_id},
             message="Fetched successfully",
             status=200
         )
@@ -3965,96 +3979,81 @@ def create_lease_commercials(request):
 
 
 
-# def get_template(request, template_id):
-#     try:
-#         template = Template.objects.get(id=template_id, is_active=True)
-#         template_file_path = os.path.join(settings.BASE_DIR, template.template_path)
+def get_template(request):
 
-#         with open(template_file_path, "r", encoding="utf-8") as f:
-#             html_content = f.read()
-
-#         return JsonResponse({
-#             "template": {
-#                 "id": template.id,
-#                 "name": template.name,
-#                 "html": html_content
-#             }
-#         }, status=200)
-
-#     except Template.DoesNotExist:
-#         return JsonResponse({"error": "Template not found"}, status=404)
-#     except FileNotFoundError:
-#         return JsonResponse({"error": "Template file not found"}, status=404)
-
-
-
-
-
-# def get_final_template(request, lease_id, template_id):
-#     final_file_name = f"lease_{lease_id}_{template_id}.html"
-#     final_file_path = os.path.join(settings.MEDIA_ROOT, "final_templates", final_file_name)
-
-#     try:
-#         with open(final_file_path, "r", encoding="utf-8") as f:
-#             html_content = f.read()
-#         return JsonResponse({"html": html_content}, status=200)
-#     except FileNotFoundError:
-#         return JsonResponse({"error": "Final template not found"}, status=404)
-
-
-
-
-def save_template_values(request):
-    if request.method != "POST":
-        return JsonResponse({"error": "Only POST allowed"}, status=405)
+    if request.method != "GET":
+        return prepare_response(
+            message="Invalid request method. Only GET allowed.",
+            status=405
+        )
 
     try:
-        body = json.loads(request.body)
-        template_id = body.get("template_id")
-        lease_id = body.get("lease_id")
-        values = body.get("values")  
+        template_id = request.GET.get("template_id")
 
-      
-        template = Template.objects.get(id=template_id, is_active=True)
-        lease = LeasePropertyDetails.objects.get(id=lease_id)
-
-        for key, value in values.items():
-            TemplateValues.objects.update_or_create(
-                document_template=template,
-                key=key,
-                lease=lease,
-                defaults={"value": value}
+        if not template_id:
+            return prepare_response(
+                message="template_id is required",
+                status=400
             )
 
-    
+        template_id = int(template_id)
+        template = Template.objects.filter(id=template_id, is_active=True).first()
+        if not template:
+            return prepare_response(message="Template not found", status=404)
+        TEMPLATE_FILE_MAP = {
+            1: "property_management/templates/lease_templates/lease_agreement.html",
+            2: "property_management/templates/lease_templates/rent_receipt.html",
+            3: "property_management/templates/lease_templates/commercial_lease.html",
+        }
+
+        if template_id not in TEMPLATE_FILE_MAP:
+            return prepare_response(
+                message="No template file mapped for this template ID",
+                status=404
+            )
+
         template_file_path = os.path.join(
             settings.BASE_DIR,
-            'property_management/templates/lease_templates/lease_agreement.html'
+            TEMPLATE_FILE_MAP[template_id]
         )
-        with open(template_file_path, "r", encoding="utf-8") as f:
-            html_content = f.read()
 
-        for key, value in values.items():
-            html_content = html_content.replace(f"${key}", str(value))
+        try:
+            with open(template_file_path, "r", encoding="utf-8") as f:
+                html_content = f.read()
+        except FileNotFoundError:
+            return prepare_response(
+                message="Template HTML file not found on server",
+                status=404
+            )
 
-  
-        final_path = os.path.join(settings.MEDIA_ROOT, "final_templates")
-        os.makedirs(final_path, exist_ok=True)
+        # 4) Fetch dynamic fields
+        fields = TemplateFields.objects.filter(document_template=template)
 
-        final_file_name = f"lease_{lease.id}_{template.id}.html"
-        final_file_path = os.path.join(final_path, final_file_name)
+        field_list = []
+        for f in fields:
+            field_list.append({
+                "name_attribute": f.name_attribute,
+                "id_attribute": f.id_attribute,
+                "label_attribute": f.label_attribute,
+                "html_tag": f.html_tag,
+                "required": f.required,
+                "predefined_value": f.predefined_value
+            })
 
-        with open(final_file_path, "w", encoding="utf-8") as f:
-            f.write(html_content)
+        return prepare_response(
+            content={
+                "template_id": template.id,
+                "template_name": template.name,
+                "html": html_content,
+                "fields": field_list
+            },
+            message="Template fetched successfully",
+            status=200
+        )
 
-        return JsonResponse({
-            "message": "Template saved successfully",
-            "file_path": f"final_templates/{final_file_name}"
-        }, status=200)
-
-    except Template.DoesNotExist:
-        return JsonResponse({"error": "Template not found"}, status=404)
-    except LeasePropertyDetails.DoesNotExist:
-        return JsonResponse({"error": "Lease not found"}, status=404)
     except Exception as e:
-        return JsonResponse({"error": str(e)}, status=500)
+        return prepare_response(message=str(e), status=500)
+
+
+
+

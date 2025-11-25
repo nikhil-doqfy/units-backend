@@ -302,8 +302,8 @@ class TemplateFields(Base):
  
 class TemplateValues(Base):
     document_template = models.ForeignKey(Template, on_delete=models.CASCADE)
-    key = models.CharField(max_length=50)
-    value = models.CharField(max_length=500)
+    value = models.JSONField(default=dict, blank=True)
+
     lease = models.ForeignKey(
         "LeasePropertyDetails",
         on_delete=models.CASCADE,

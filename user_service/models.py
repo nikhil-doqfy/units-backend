@@ -170,7 +170,7 @@ class PropertyDetails(Base):
     step_status = models.CharField(
         max_length=50,
         choices=constants.STEP_CHOICES,
-        default="property_basic"
+        default="BASIC_DETAILS"
     )
    
 
@@ -205,7 +205,7 @@ class PropertyCommercial(Base):
     booking_amount = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
     maintenance_charges = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
 
-    cycle = models.CharField(max_length=50, blank=True, null=True)  
+    cycle = models.CharField(max_length=50, blank=True, null=True)   
     notice_period = models.CharField(max_length=50, blank=True, null=True)  
     commission_percent = models.DecimalField(max_digits=5, decimal_places=2, blank=True, null=True)
 
