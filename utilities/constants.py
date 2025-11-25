@@ -256,3 +256,25 @@ STEP_CHOICES = (
         ("DOCUMENTS_DETAILS", "Documents Details"),
         
     )
+
+DOCUMENT_TYPE_CHOICES = (("FLOOR_PLAN_DOCUMENT", "Floor Plan Document"),
+        ("TENANT_DOCUMENT", "Tenant Document"),
+        ("EJARI_CERTIFICATE", "Ejari Certificate"),
+        ("PMC_DOCUMENT", "Pmc Document"),
+        ("CHEQUE_DOCUMENT", "Cheque Document"),
+    )  
+
+
+IMAGE_TYPE_CHOICES = (
+         ("INTERIOR", "Interior"),
+         ("EXTERIOR", "Exterior"),
+          )
+
+
+LEASE_STEP_STATUS = (
+    ("LEASE_DETAILS", "Lease Details"),
+    ("LEASE_COMMERCIALS", "Lease Commercials"),
+    ("DOCUMENTS_LAYOUT", "Documents Layout"),
+    ("NEGOTIATION", "Negotiation"),
+    ("UPLOAD_EJARI", "Upload Ejari"),
+)

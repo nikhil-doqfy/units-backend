@@ -4,7 +4,7 @@ from user_service.models import (
     PropertyManagerCompanyDetails, 
     StaffRole, 
     StaffDetails, 
-    PropertyDetails,UserVerification,PropertyDocuments ,PropertyCommercial
+    PropertyDetails,UserVerification,PropertyDocuments ,PropertyCommercial ,PropertyImages
 )
 
 from property_management.models import OwnerDetails ,TenantDetails,LeasePropertyDetails,LeaseCommercials ,LeaseEjariUpload , OwnerPMCInvitation ,PMCOwnerInvitation , Template , TemplateFields ,TemplateValues
@@ -103,8 +103,15 @@ class TemplateFieldsAdmin(admin.ModelAdmin):
 class PropertyCommercialAdmin(admin.ModelAdmin):
     list_display = ["id"]
 
-class TemplateValuesAdmin(admin.ModelAdmin):
+class TemplateValuesAdmin(admin.ModelAdmin):   
     list_display = ["id"]
+
+
+class PropertyImagesAdmin(admin.ModelAdmin): 
+    list_display = ["id"]
+    
+
+
 
 
 admin.site.register(OwnerDetails, OwnerDetailsAdmin)  
@@ -125,7 +132,9 @@ admin.site.register(TemplateFields, TemplateFieldsAdmin)
 
 admin.site.register(PropertyCommercial, PropertyCommercialAdmin) 
 
-admin.site.register(TemplateValues, TemplateValuesAdmin)
+admin.site.register(TemplateValues, TemplateValuesAdmin) 
+
+admin.site.register(PropertyImages, PropertyImagesAdmin)
 
 
 

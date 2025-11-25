@@ -1,11 +1,11 @@
 
 from django.shortcuts import get_object_or_404
 from django.db import IntegrityError, transaction
-from property_management.models import OwnerDetails ,TenantDetails , LeasePropertyDetails ,LeaseCommercials,LeaseEjariUpload,OwnerPMCInvitation,PMCOwnerInvitation , PMCTenantInvitation ,Template, TemplateFields ,TemplateValues
-from user_service.models import PropertyManagerCompanyDetails ,PropertyDetails ,UserProfile,StaffDetails  ,PropertyCommercial
+from property_management.models import OwnerDetails ,TenantDetails , LeasePropertyDetails ,LeaseCommercials,LeaseEjariUpload,OwnerPMCInvitation,PMCOwnerInvitation , PMCTenantInvitation ,Template, TemplateFields ,TemplateValues 
+from user_service.models import PropertyManagerCompanyDetails ,PropertyDetails ,UserProfile,StaffDetails  ,PropertyCommercial ,PropertyImages ,PropertyDocuments
 from utilities.decorator import is_request_authenticated
 import json
-from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger,send_ses_email,safe_decimal ,safe_epoch_to_datetime
+from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger,send_ses_email,safe_decimal ,safe_epoch_to_datetime ,replace_placeholders
 from utilities import status ,  constants
 from django.utils import timezone
 from utilities import config
@@ -23,7 +23,8 @@ from django.core.paginator import Paginator, EmptyPage
 from django.conf import settings
 import os
 from datetime import datetime
-
+import datetime
+import re
 
 
 @is_request_authenticated
@@ -69,6 +70,15 @@ def options(request):
                 {"key": constants.TENANT, "value": "Tenant"},
                 {"key": constants.STAFF, "value": "Staff"},
             ]
+        elif option_type == "TENANTS_LIST":
+            tenants = TenantDetails.objects.all()
+            content["tenants_list"] = [{
+                "key": tenant.id,
+            "value": tenant.full_name   }
+            for tenant in tenants]
+
+
+
 
         else:
             content[option_type] = [] 
@@ -78,6 +88,8 @@ def options(request):
         message=constants.DROPDOWN_DATA_FETCHED_SUCEESS,
         status=status.HTTP_200_OK
     )
+
+
 
 
 @is_request_authenticated
@@ -1753,455 +1765,328 @@ def add_commercial_details(request):
 
 
 
-
-@is_request_authenticated
-def upload_property_images(request):
-    if request.method != "POST":
-        return prepare_response(
-            message=constants.INVALID_REQUEST_METHOD,
-            status=status.HTTP_405_METHOD_NOT_ALLOWED
-        )
-
-    try:
-        data = json.loads(request.body)
-        property_id = data.get("property_id")
-        images = data.get("images", [])
-
-        if not property_id:
-            return prepare_response(
-                message=constants.PROPERTY_ID_REQUIRED,
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        property_obj = PropertyDetails.objects.filter(id=property_id).first()
-        if not property_obj:
-            return prepare_response(
-                message=constants.PROPERTY_MANAGER_Details_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        uploaded_images = []
-
-        for idx, img in enumerate(images):
-            base64_data = img.get("data")
-            file_name = img.get("file_name", f"property_{property_id}_{idx}.jpg")
-            img_type = img.get("type", "unknown")
-
-            if base64_data:
-                url = upload_file_to_s3_base64(
-                    base64_data,
-                    f"property_images/{property_id}/{file_name}"
-                )
-
-                uploaded_images.append({
-                    "url": url,
-                    "type": img_type  
-                })
-
-      
-        property_obj.images = (property_obj.images or []) + uploaded_images
-        property_obj.save()
-
-        return prepare_response(
-            message=constants.IMAGE_UPLOADED_SUCCESS,
-            content={"images": uploaded_images},
-            status=status.HTTP_200_OK
-        )
-
-    except Exception as e:
-        return prepare_response(
-            message=f"Error: {str(e)}",
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-
-@is_request_authenticated
 def property_images_view(request):
     try:
+
 
         if request.method == "GET":
             property_id = request.GET.get("property_id")
 
             if not property_id:
-                return prepare_response(
-                    message="Property ID is required",
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return prepare_response(message="property_id is required", status=400)
 
-            property_obj = PropertyDetails.objects.filter(id=property_id).first()
+            try:
+                property_obj = PropertyDetails.objects.get(id=property_id)
+            except PropertyDetails.DoesNotExist:
+                return prepare_response(message="Invalid property_id", status=404)
 
-            if not property_obj:
-                return prepare_response(
-                    message="Property not found",
-                    status=status.HTTP_404_NOT_FOUND
-                )
+            images_qs = PropertyImages.objects.filter(property_id=property_id).order_by("-id")
+         
+            final_images = []
 
-            images_base64 = []
-            if property_obj.images:
-                for img_obj in property_obj.images:
-                    if isinstance(img_obj, dict):
-                        url = img_obj.get("url")
-                        img_type = img_obj.get("type", "unknown")
-                    elif isinstance(img_obj, str):
-                        url = img_obj
-                        img_type = "unknown"
-                    else:
-                        continue
-                    base64_img = fetch_s3_file_as_base64(url)
+            for img in images_qs:
+                url = img.image_path
+                file_name = img.file_name
+                img_type = img.image_type
 
+                base64_data = fetch_s3_file_as_base64(url)
 
-
-                    images_base64.append({
-                        "url": url,
-                        "type": img_type,
-                        "base64": base64_img,
-                        
-                    })
-                
+                final_images.append({
+                    "file_name": file_name,
+                    "data": base64_data,
+                    "type": img_type,
+                    "id":img.id,
+                })
 
             return prepare_response(
-                message="Images fetched successfully",
-                content={"images": images_base64,"step_choice": property_obj.step_status},
-                status=status.HTTP_200_OK
+                message="Fetched successfully",
+                content={
+                    "images": final_images,
+                    "property_id": property_id,
+                    "step_choice": property_obj.step_status
+                },
+                status=200
             )
 
-     
-        elif request.method == "POST":
-            data = json.loads(request.body)
-            property_id = data.get("property_id")
-            images = data.get("images", [])
+
+        if request.method == "POST":
+            body = json.loads(request.body)
+            property_id = body.get("property_id")
+            images = body.get("images", [])
 
             if not property_id:
-                return prepare_response(
-                    message="Property ID is required",
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+                return prepare_response(message="Property ID is required", status=400)
 
-            property_obj = PropertyDetails.objects.filter(id=property_id).first()
-            if not property_obj:
-                return prepare_response(
-                    message="Property not found",
-                    status=status.HTTP_404_NOT_FOUND
-                )
+            if not isinstance(images, list) or not images:
+                return prepare_response(message="Images must be a list", status=400)
 
-            uploaded_images = []
+            try:
+                property_obj = PropertyDetails.objects.get(id=property_id)
+            except PropertyDetails.DoesNotExist:
+                return prepare_response(message="Property not found",status= 404)
 
-            for idx, img in enumerate(images):
+            uploaded_files = []
+
+            for img in images:
+                file_name = img.get("file_name")
                 base64_data = img.get("data")
-                file_name = img.get("file_name", f"property_{property_id}_{idx}.jpg")
-                img_type = img.get("type", "unknown")
+                img_type = img.get("type", "INTERIOR").upper()
 
-                if base64_data:
-                    url = upload_file_to_s3_base64(
-                        base64_data,
-                        f"property_images/{property_id}/{file_name}"
-                    )
+                if not file_name or not base64_data:
+                    return prepare_response(message="Missing file_name or data", status=400)
 
-                    uploaded_images.append({
-                        "url": url,
-                        "type": img_type
-                    })
+                object_name = f"property_images/{property_id}/{file_name}"
 
-            property_obj.images = (property_obj.images or []) + uploaded_images
-            property_obj.step_status = "PROPERTY_IMAGES_DETAILS"
-            property_obj.save()
+                image_url = upload_file_to_s3_base64(base64_data, object_name)
+
+                PropertyImages.objects.create(
+                    property=property_obj,
+                    file_name=file_name,
+                    image_path=image_url,
+                    image_type=img_type
+                )
+
+                uploaded_files.append({
+                    "file_name": file_name,
+                    "image_url": image_url,
+                    "image_type": img_type
+                })
+                property_obj.step_status = "PROPERTY_IMAGES_DETAILS"
+                property_obj.save()
+                 
+                         
+                
+                
 
             return prepare_response(
                 message="Images uploaded successfully",
-                content={"images": uploaded_images,"status": property_obj.step_status},
-                status=status.HTTP_201_CREATED
+                content={"uploaded": uploaded_files},
+                status=200
             )
 
-
-        elif request.method == "PUT":
-            data = json.loads(request.body)
-            property_id = data.get("property_id")
-            image_url = data.get("url")
-            new_type = data.get("type")
-
-            if not property_id or not image_url or not new_type:
-                return prepare_response(
-                    message="property_id, url & type are required",
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            property_obj = PropertyDetails.objects.filter(id=property_id).first()
-            if not property_obj:
-                return prepare_response(
-                    message="Property not found",
-                    status=status.HTTP_404_NOT_FOUND
-                )
-
-            updated = False
-            for img_obj in property_obj.images:
-                if img_obj.get("url") == image_url:
-                    img_obj["type"] = new_type
-                    updated = True
-                    break
-
-            if not updated:
-                return prepare_response(
-                    message="Image not found",
-                    status=status.HTTP_404_NOT_FOUND
-                )
-
-            property_obj.save()
-
-            return prepare_response(
-                message="Image type updated successfully",
-                status=status.HTTP_200_OK
-            )
-
-
-        elif request.method == "DELETE":
-            data = json.loads(request.body)
-            property_id = data.get("property_id")
-            image_url = data.get("url")
-
-            if not property_id or not image_url:
-                return prepare_response(
-                    message="property_id & url required",
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            property_obj = PropertyDetails.objects.filter(id=property_id).first()
-            if not property_obj:
-                return prepare_response(
-                    message="Property not found",
-                    status=status.HTTP_404_NOT_FOUND
-                )
-
-            new_images = [
-                img for img in property_obj.images
-                if img.get("url") != image_url
-            ]
-
-            if len(new_images) == len(property_obj.images):
-                return prepare_response(
-                    message="Image not found",
-                    status=status.HTTP_404_NOT_FOUND
-                )
-
-            property_obj.images = new_images
-            property_obj.save()
-
-            return prepare_response(
-                message="Image deleted successfully",
-                status=status.HTTP_200_OK
-            )
-
-  
-        else:
-            return prepare_response(
-                message="Invalid request method",
-                status=status.HTTP_405_METHOD_NOT_ALLOWED
-            )
-
-    except Exception as e:
-        return prepare_response(
-            message=f"Error: {str(e)}",
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-
-
-
-def upload_property_documents(request):
-    try:
-        if request.method != "POST":
-            return prepare_response(
-                message="Invalid request method. Only POST allowed.",
-                status=405
-            )
-
-        try:
+    
+        if request.method == "PUT":
             body = json.loads(request.body)
-        except:
-            return prepare_response(message="Invalid JSON data", status=400)
 
-        property_id = body.get("property_id")
-        documents = body.get("documents")
+            property_id = body.get("property_id")
+            images = body.get("images", [])
 
-        if not property_id:
-            return prepare_response(message="property_id is required", status=400)
+            if not property_id:
+                return prepare_response(message="Property ID is required", status=400)
 
-        if not documents:
-            return prepare_response(message="documents array is required", status=400)
+            if not isinstance(images, list):
+                return prepare_response(message="Images must be a list", status=400)
 
-        allowed_types = [
-            "floor_plan_documents",
-            "tenant_documents",
-            "ejari_certificates",
-            "pmc_documents",
-            "cheque_documents"
-        ]
+            try:
+                property_obj = PropertyDetails.objects.get(id=property_id)
+            except PropertyDetails.DoesNotExist:
+                return prepare_response(message="Property not found", status=404)
 
-        try:
-            property_obj = PropertyDetails.objects.get(id=property_id)
-        except PropertyDetails.DoesNotExist:
-            return prepare_response(message="Invalid property_id", status=404)
+            updated_files = []
 
-   
-        existing_documents = property_obj.documents or []
+            for img in images:
+                file_name = img.get("file_name")
+                base64_data = img.get("data")
+                img_type = img.get("type", "INTERIOR").upper()
 
-        all_uploaded = []
+                if not file_name or not base64_data:
+                    return prepare_response(message="Missing file_name or data", status=400)
 
-        for file in documents:
-
-            file_name = file.get("file_name")
-            base64_data = file.get("data")
-            doc_type = file.get("type")
-
-            if not file_name:
-                return prepare_response(message="file_name missing", status=400)
-
-            if not base64_data:
-                return prepare_response(message=f"base64 missing for {file_name}", status=400)
-
-            if doc_type not in allowed_types:
-                return prepare_response(
-                    message=f"Invalid document type: {doc_type}",
-                    status=400
+             
+                img_obj, created = PropertyImages.objects.get_or_create(
+                    property=property_obj,
+                    file_name=file_name,
+                    defaults={
+                        "image_type": img_type
+                    }
                 )
 
-            ext = file_name.split(".")[-1]
-            unique_name = f"{uuid.uuid4()}.{ext}"
+              
+                object_name = f"property_images/{property_id}/{file_name}"
+                image_url = upload_file_to_s3_base64(base64_data, object_name)
 
-            s3_url = upload_file_to_s3_base64(
-                base64_data=base64_data,
-                object_name=f"property/{property_id}/{unique_name}"
-            )
+                img_obj.image_path = image_url
+                img_obj.image_type = img_type
+                img_obj.save()
 
-            saved_data = {
-                "file_name": file_name,
-                "url": s3_url,
-                "type": doc_type
-            }
-
-        
-            existing_documents.append(saved_data)
-            all_uploaded.append(saved_data)
-
-        property_obj.property_documents = existing_documents
-        property_obj.step_status = "DOCUMENTS_DETAILS"
-        property_obj.save()
-
-        return prepare_response(
-            content={"uploaded": all_uploaded , "stetus":property_obj.step_status},
-            message="Documents uploaded successfully",
-            status=200
-        )
-
-    except Exception as e:
-        return prepare_response(message=str(e), status=500)
-
-
-
-
-
-def fetch_property_documents(request):
-    try:
-        if request.method != "GET":
-            return prepare_response(message="Only GET method allowed", status=405)
-
-        property_id = request.GET.get("property_id")
-        if not property_id:
-            return prepare_response(message="property_id is required", status=400)
-
-        try:
-            property_obj = PropertyDetails.objects.get(id=property_id)
-        except PropertyDetails.DoesNotExist:
-            return prepare_response(message="Invalid property_id", status=404)
-        documents_list = property_obj.property_documents or []
-        final_documents = []
-
-        for doc in documents_list:
-
-            url = doc.get("url")
-            file_name = doc.get("file_name")
-            doc_type = doc.get("type")
-
-            base64_data = fetch_s3_file_as_base64(url)
-
-            final_documents.append({
-                "file_name": file_name,
-                "data": base64_data,
-                "type": doc_type,
-                
-            })
-
-        return prepare_response(
-            content={"documents": final_documents , "step_choice": property_obj.step_status,"property_id":property_id},
-            message="Fetched successfully",
-            status=200
-        )
-
-    except Exception as e:
-        return prepare_response(message=str(e), status=500)
-
-
-
-
-
-
-
-
-
-@is_request_authenticated
-def get_property_images(request):
-    try:
-        if request.method != "GET":
-            return prepare_response(
-                message=constants.INVALID_REQUEST_METHOD, 
-                status=status.HTTP_405_METHOD_NOT_ALLOWED
-            )
-
-        property_id = request.GET.get("property_id")
-
-        if not property_id:
-            return prepare_response(
-                message="Property ID is required",
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        property_obj = PropertyDetails.objects.filter(id=property_id).first()
-
-        if not property_obj:
-            return prepare_response(
-                message="Property not found",
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        images_base64 = []
-
-        if property_obj.images:
-            for img_obj in property_obj.images:
-
-                # img_obj looks like:
-                # { "url": "...", "type": "interior" }
-
-                url = img_obj.get("url")
-                img_type = img_obj.get("type", "unknown")
-
-                base64_img = fetch_s3_file_as_base64(url)
-
-                images_base64.append({
-                    "url": url,
-                    "type": img_type,
-                    "base64": base64_img
+                updated_files.append({
+                    "file_name": file_name,
+                    "image_url": image_url,
+                    "image_type": img_type,
+                    "status": "updated" if not created else "created"
                 })
 
-        return prepare_response(
-            message="Property images fetched successfully",
-            content={"images": images_base64},
-            status=status.HTTP_200_OK
-        )
+            return prepare_response(
+                message="Images updated successfully",
+                content={"updated": updated_files},
+                status=200
+            )
+
+        return prepare_response(message="Method not allowed", status=405)
 
     except Exception as e:
-        return prepare_response(
-            message=f"Error fetching property images: {str(e)}",
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+        return prepare_response(message=str(e), status=500)
+
+
+
+
+
+
+def property_documents_view(request):
+    try:
+
+       
+        if request.method == "GET":
+            property_id = request.GET.get("property_id")
+
+            if not property_id:
+                return prepare_response("property_id is required", 400)
+
+            try:
+                property_obj = PropertyDetails.objects.get(id=property_id)
+            except PropertyDetails.DoesNotExist:
+                return prepare_response("Invalid property_id", 404)
+
+            docs_qs = PropertyDocuments.objects.filter(property_id=property_id).order_by("-id")
+            final_docs = []
+
+            for doc in docs_qs:
+                url = doc.file_path
+                file_name = doc.file_name
+                doc_type = doc.document_type
+
+                base64_data = fetch_s3_file_as_base64(url)
+
+                final_docs.append({
+                    "file_name": file_name,
+                    "data": base64_data,
+                    "type": doc_type,
+                    "id":doc.id,
+                })
+            
+
+            return prepare_response(
+                message="Fetched successfully",
+                content={
+                    "documents": final_docs,
+                    "property_id": property_id,
+                    "step_choice": property_obj.step_status
+                },
+                status=200
+            )
+
+
+
+        if request.method == "POST":
+            body = json.loads(request.body)
+            property_id = body.get("property_id")
+            documents = body.get("documents", [])
+
+            if not property_id:
+                return prepare_response(message="Property ID is required", status=400)
+
+            if not isinstance(documents, list) or not documents:
+                return prepare_response(message="Documents must be a list", status=400)
+
+            try:
+                property_obj = PropertyDetails.objects.get(id=property_id)
+            except PropertyDetails.DoesNotExist:
+                return prepare_response(message="Property not found", status=404)
+
+            uploaded_files = []
+
+            for doc in documents:
+                file_name = doc.get("file_name")
+                base64_data = doc.get("data")
+                doc_type = doc.get("type", "RENTAL_DOCUMENT").upper()
+
+                if not file_name or not base64_data:
+                    return prepare_response(message="Missing file_name or data", status=400)
+
+                object_name = f"property_documents/{property_id}/{file_name}"
+
+                file_url = upload_file_to_s3_base64(base64_data, object_name)
+
+                PropertyDocuments.objects.create(
+                    property=property_obj,
+                    file_name=file_name,
+                    file_path=file_url,
+                    document_type=doc_type
+                )
+
+                uploaded_files.append({
+                    "file_name": file_name,
+                    "file_url": file_url,
+                    "type": doc_type
+                })
+                property_obj.step_status = "DOCUMENTS_DETAILS"
+                property_obj.save()
+
+            return prepare_response(
+                message="Documents uploaded successfully",
+                content={"uploaded": uploaded_files},
+                status=200
+            )
+
+
+    
+        if request.method == "PUT":
+            body = json.loads(request.body)
+            property_id = body.get("property_id")
+            documents = body.get("documents", [])
+
+            if not property_id:
+                return prepare_response("Property ID is required", 400)
+
+            if not isinstance(documents, list):
+                return prepare_response("Documents must be a list", 400)
+
+            try:
+                property_obj = PropertyDetails.objects.get(id=property_id)
+            except PropertyDetails.DoesNotExist:
+                return prepare_response("Property not found", 404)
+
+            updated_files = []
+
+            for doc in documents:
+                file_name = doc.get("file_name")
+                base64_data = doc.get("data")
+                doc_type = doc.get("type", "RENTAL_DOCUMENT").upper()
+
+                if not file_name or not base64_data:
+                    return prepare_response("Missing file_name or data", 400)
+
+                doc_obj, created = PropertyDocuments.objects.get_or_create(
+                    property=property_obj,
+                    file_name=file_name,
+                    defaults={"document_type": doc_type}
+                )
+
+                object_name = f"property_documents/{property_id}/{file_name}"
+                file_url = upload_file_to_s3_base64(base64_data, object_name)
+
+                doc_obj.file_path = file_url
+                doc_obj.document_type = doc_type
+                doc_obj.save()
+
+                updated_files.append({
+                    "file_name": file_name,
+                    "file_url": file_url,
+                    "type": doc_type,
+                    "status": "updated" if not created else "created"
+                })
+
+            return prepare_response(
+                message="Documents updated successfully",
+                content={"updated": updated_files},
+                status=200
+            )
+
+        return prepare_response("Method not allowed", 405)
+
+    except Exception as e:
+        return prepare_response(str(e), 500)
+
 
 
 
@@ -2989,7 +2874,7 @@ def pmc_dashboard_view(request):
                 "tenant_name": tenant_name,
                 "tenancy_status": tenancy_status,
                 "dimension": dimension,
-                # "document": document_title,
+               
             })
 
 
@@ -3186,7 +3071,7 @@ def property_details_list_view(request):
                 "commercial"   
             ).prefetch_related(
                 Prefetch("tenant_details", queryset=TenantDetails.objects.select_related("user"))
-            )
+            ).order_by("-id") 
 
             if property_id:
                 properties = properties.filter(id=property_id)
@@ -3264,9 +3149,7 @@ def property_details_list_view(request):
                     "commission_percent": commercial.commission_percent if commercial else None,
                 }
 
-                # -------------------------
-                # 🔵 RENTAL STATUS
-                # -------------------------
+        
                 rental_status_display = (
                     constants.RENTAL_NOT_AVAILABLE
                     if prop.is_occupied
@@ -3292,7 +3175,7 @@ def property_details_list_view(request):
                     "owner_info": owner_info,
                     "pmc_info": pmc_info,
 
-                    # 🔥 ADDED HERE
+              
                     "commercial_info": commercial_info
                 })
 
@@ -3323,10 +3206,6 @@ def property_details_list_view(request):
         message=constants.INVALID_REQUEST_METHOD,
         status=status.HTTP_405_METHOD_NOT_ALLOWED
     )
-
-
-
-
 
 
 @is_request_authenticated
@@ -3752,8 +3631,6 @@ def tenant_my_property(request):
     
 
 
-
-
 @is_request_authenticated
 def property_tenant_list_view(request):
     if request.method != "GET":
@@ -3864,117 +3741,286 @@ def property_tenant_list_view(request):
 
 
 
-
-
-from django.http import JsonResponse
-
-
-def create_lease_property(request):
-    if request.method != "POST":
-        return JsonResponse({"message": "Invalid request method"}, status=405)
-
+@is_request_authenticated
+def lease_property_view(request):
     try:
-        body = json.loads(request.body)
+        if request.method == "POST":
+            body = json.loads(request.body)
+            lease_property_id = body.get("lease_property_id")
+            lease_tenant_id = body.get("lease_tenant_id")
+            
 
-      
-        lease_property_id = body.get("lease_property_id")
-        lease_tenant_id = body.get("lease_tenant_id")
-        created_by_id = body.get("created_by_id")
-        lease_start_date = safe_epoch_to_datetime(body.get("lease_start_date"))
-        lease_end_date = safe_epoch_to_datetime(body.get("lease_end_date"))
+        
+            if not lease_property_id or not lease_tenant_id:
+                return prepare_response(
+                    message="lease_property_id and lease_tenant_id  are required",
+                    status=400
+                )
+            
+            lease_property = PropertyDetails.objects.get(id=lease_property_id)
+            tenant = TenantDetails.objects.get(id=lease_tenant_id)
+            # created_by = PropertyManagerCompanyDetails.objects.get(id=created_by_id)
 
-        if not lease_start_date or not lease_end_date:
-            return JsonResponse({"message": "Invalid lease start or end date"}, status=400)
+           
+            if not lease_property.owner:
+                return prepare_response(message="Property has no owner assigned", status=400)
+            owner = OwnerDetails.objects.get(user=lease_property.owner) 
 
-     
-        lease_grace_start_date = safe_epoch_to_datetime(body.get("lease_grace_start_date")) if body.get("lease_grace_start_date") else None
-        lease_grace_end_date = safe_epoch_to_datetime(body.get("lease_grace_end_date")) if body.get("lease_grace_end_date") else None
-        lease_remarks = body.get("lease_remarks", "")
-        lease_status = body.get("lease_status", "DRAFT")
-        owner_id = body.get("owner_id")
+         
+            lease_start_date = safe_epoch_to_datetime(body.get("lease_start_date"))
+            lease_end_date = safe_epoch_to_datetime(body.get("lease_end_date"))
+            if not lease_start_date or not lease_end_date:
+                return prepare_response(message="Invalid lease start or end date", status=400)
 
-        # Fetch related objects
-        lease_property = PropertyDetails.objects.get(id=lease_property_id)
-        tenant = TenantDetails.objects.get(id=lease_tenant_id)
-        created_by = PropertyManagerCompanyDetails.objects.get(id=created_by_id)
-        owner = OwnerDetails.objects.get(id=owner_id) if owner_id else None
+            lease_grace_start_date = safe_epoch_to_datetime(body.get("lease_grace_start_date")) if body.get("lease_grace_start_date") else None
+            lease_grace_end_date = safe_epoch_to_datetime(body.get("lease_grace_end_date")) if body.get("lease_grace_end_date") else None
 
-        # Create Lease
-        lease = LeasePropertyDetails.objects.create(
-            lease_property=lease_property,
-            lease_tenant=tenant,
-            owner=owner,
-            created_by=created_by,
-            lease_start_date=lease_start_date,
-            lease_end_date=lease_end_date,
-            lease_grace_start_date=lease_grace_start_date,
-            lease_grace_end_date=lease_grace_end_date,
-            lease_remarks=lease_remarks,
-            lease_status=lease_status
-        )
+            lease_remarks = body.get("lease_remarks", "")
+            lease_status = body.get("lease_status", "DRAFT")
 
-        return JsonResponse({"message": "Lease created successfully", "lease_id": lease.id}, status=201)
+            created_by = PropertyManagerCompanyDetails.objects.filter(user=request.user).first()
+            if not created_by:
+                return prepare_response(
+                    message="Logged-in user is not a property manager",
+                    status=400
+                    )
+             
 
+           
+            lease = LeasePropertyDetails.objects.create(
+                lease_property=lease_property,
+                lease_tenant=tenant,
+                owner=owner,
+                created_by=created_by,
+                lease_start_date=lease_start_date,
+                lease_end_date=lease_end_date,
+                lease_grace_start_date=lease_grace_start_date,
+                lease_grace_end_date=lease_grace_end_date,
+                lease_remarks=lease_remarks,
+                lease_status=lease_status,
+                step_status="LEASE_DETAILS"
+            )
+
+            return prepare_response(
+                content={"lease_id": lease.id},
+                message="Lease created successfully",
+                status=201
+            )
+
+        elif request.method == "PUT":
+            body = json.loads(request.body)
+            lease_id = body.get("lease_id")
+            if not lease_id:
+                return prepare_response(message="lease_id is required for update", status=400)
+
+            lease = LeasePropertyDetails.objects.get(id=lease_id)
+
+          
+            lease_property_id = body.get("lease_property_id")
+            # lease_tenant_id = body.get("lease_tenant_id")
+            # created_by_id = body.get("created_by_id")
+
+            if lease_property_id:
+                lease_property = PropertyDetails.objects.get(id=lease_property_id)
+                lease.lease_property = lease_property
+
+                if not lease_property.owner:
+                    return prepare_response(message="Property has no owner assigned", status=400)
+                lease.owner = OwnerDetails.objects.get(user=lease_property.owner)
+
+            # if lease_tenant_id:
+            #     lease.lease_tenant = TenantDetails.objects.get(id=lease_tenant_id)
+                           
+            created_by = PropertyManagerCompanyDetails.objects.filter(user=request.user).first()
+            if not created_by:
+                return prepare_response(
+                    message="Logged-in user is not a property manager",
+                    status=400
+                    )
+       
+            lease_start_date = safe_epoch_to_datetime(body.get("lease_start_date"))
+            lease_end_date = safe_epoch_to_datetime(body.get("lease_end_date"))
+            lease_grace_start_date = safe_epoch_to_datetime(body.get("lease_grace_start_date"))
+            lease_grace_end_date = safe_epoch_to_datetime(body.get("lease_grace_end_date"))
+
+            if lease_start_date: lease.lease_start_date = lease_start_date
+            if lease_end_date: lease.lease_end_date = lease_end_date
+            if lease_grace_start_date: lease.lease_grace_start_date = lease_grace_start_date
+            if lease_grace_end_date: lease.lease_grace_end_date = lease_grace_end_date
+
+            lease.lease_remarks = body.get("lease_remarks", lease.lease_remarks)
+            lease.lease_status = body.get("lease_status", lease.lease_status)
+            lease.save()
+
+            return prepare_response(
+                content={"lease_id": lease.id},
+                message="Lease updated successfully",
+                status=200
+            )
+
+        elif request.method == "GET":
+            lease_id = request.GET.get("lease_id")
+            if not lease_id:
+                return prepare_response(message="lease_id is required", status=400)
+
+            lease = LeasePropertyDetails.objects.get(id=lease_id)
+            lease_data = {
+                "lease_id": lease.id,
+                "lease_property_id": lease.lease_property.id,
+                "lease_tenant_id": lease.lease_tenant.id,
+                "owner_id": lease.owner.id if lease.owner else None,
+                "owner_name": f"{lease.owner.full_name}" if lease.owner else None,
+                "created_by_id": lease.created_by.id if lease.created_by else None,
+                "lease_start_date": int(lease.lease_start_date.timestamp() * 1000) if lease.lease_start_date else None,
+                "lease_end_date": int(lease.lease_end_date.timestamp() * 1000) if lease.lease_end_date else None,
+                "lease_grace_start_date": int(lease.lease_grace_start_date.timestamp() * 1000) if lease.lease_grace_start_date else None,
+                "lease_grace_end_date": int(lease.lease_grace_end_date.timestamp() * 1000) if lease.lease_grace_end_date else None,
+                "lease_remarks": lease.lease_remarks,
+                # "lease_status": lease.lease_status,
+                "step_status":lease.step_status
+            }
+
+            return prepare_response(content=lease_data , message="Lease fetched successfully", status=200)
+
+        else:
+            return prepare_response(message="Invalid request method", status=405)
+
+    except PropertyDetails.DoesNotExist:
+        return prepare_response(message="Property not found", status=404)
+    except TenantDetails.DoesNotExist:
+        return prepare_response(message="Tenant not found", status=404)
+    except PropertyManagerCompanyDetails.DoesNotExist:
+        return prepare_response(message="Created By user not found", status=404)
+    except OwnerDetails.DoesNotExist:
+        return prepare_response(message="Owner not found", status=404)
+    except LeasePropertyDetails.DoesNotExist:
+        return prepare_response(message="Lease not found", status=404)
     except Exception as e:
-        return JsonResponse({"message": str(e)}, status=400)
+        return prepare_response(message=str(e), status=400)
 
 
 
+    
 
 
 
-
-def create_lease_commercials(request):
-    if request.method != "POST":
-        return JsonResponse({"message": "Invalid request method"}, status=405)
-
+@is_request_authenticated
+def lease_commercials_view(request):
     try:
-        body = json.loads(request.body)
+        if request.method == "POST":
+            
+            body = json.loads(request.body)
+            lease_id = body.get("lease_id")
+            if not lease_id:
+                return prepare_response(message="lease_id is required", status=status.HTTP_400_BAD_REQUEST)
 
-        lease_id = body.get("lease_id")
-        if not lease_id:
-            return JsonResponse({"message": "lease_id is required"}, status=400)
+            lease = LeasePropertyDetails.objects.get(id=lease_id)
 
-        lease = LeasePropertyDetails.objects.get(id=lease_id)
+            annual_amount = body.get("annual_amount")
+            rent = body.get("rent")
+            if annual_amount is None or rent is None:
+                return prepare_response(message="annual_amount and rent are required", status=status.HTTP_400_BAD_REQUEST)
 
-   
-        annual_amount = body.get("annual_amount")
-        rent = body.get("rent")
+            commercial = LeaseCommercials.objects.create(
+                lease=lease,
+                annual_amount=annual_amount,
+                rent=rent,
+                actual_annual_amount= safe_decimal(body.get("actual_annual_amount")),
+                booking_amount= safe_decimal(body.get("booking_amount")),
+                security_deposit= safe_decimal(body.get("security_deposit")),
+                maintenance_charges= safe_decimal (body.get("maintenance_charges")),
+                commission_percentage= safe_decimal(body.get("commission_percentage")),
+                notice_period=body.get("notice_period"),
+                discount=safe_decimal(body.get("discount"))
+            )
 
-        if annual_amount is None or rent is None:
-            return JsonResponse({"message": "annual_amount and rent are required"}, status=400)
+            return prepare_response(
+                message="LeaseCommercials created successfully",
+                content={"commercial_id": commercial.id},
+                status=status.HTTP_201_CREATED
+            )
 
-     
-        actual_annual_amount = body.get("actual_annual_amount")
-        booking_amount = body.get("booking_amount")
-        security_deposit = body.get("security_deposit")
-        maintenance_charges = body.get("maintenance_charges")
-        commission_percentage = body.get("commission_percentage")
-        notice_period = body.get("notice_period")
-        discount = body.get("discount")
+        elif request.method == "PUT":
+        
+            body = json.loads(request.body)
+            commercial_id = body.get("commercial_id")
+            if not commercial_id:
+                return prepare_response(message="commercial_id is required for update", status=status.HTTP_400_BAD_REQUEST)
 
-        commercial = LeaseCommercials.objects.create(
-            lease=lease,
-            annual_amount=annual_amount,
-            rent=rent,
-            actual_annual_amount=actual_annual_amount,
-            booking_amount=booking_amount,
-            security_deposit=security_deposit,
-            maintenance_charges=maintenance_charges,
-            commission_percentage=commission_percentage,
-            notice_period=notice_period,
-            discount=discount
-        )
+            commercial = LeaseCommercials.objects.get(id=commercial_id)
 
-        return JsonResponse({
-            "message": "LeaseCommercials created successfully",
-            "commercial_id": commercial.id
-        }, status=201)
+         
+            for field in ["annual_amount", "rent", "actual_annual_amount", "booking_amount",
+                          "security_deposit", "maintenance_charges", "commission_percentage",
+                          "notice_period", "discount"]:
+                if field in body:
+                    setattr(commercial, field, body[field])
+
+            lease_id = body.get("lease_id")
+            if lease_id:
+                commercial.lease = LeasePropertyDetails.objects.get(id=lease_id)
+
+            commercial.save()
+
+            return prepare_response(
+                message="LeaseCommercials updated successfully",
+                content={"commercial_id": commercial.id},
+                status=status.HTTP_200_OK
+            )
+
+        elif request.method == "GET":
+      
+            commercial_id = request.GET.get("commercial_id")
+            lease_id = request.GET.get("lease_id")
+
+            if commercial_id:
+                commercial = LeaseCommercials.objects.get(id=commercial_id)
+                data = {
+                    "commercial_id": commercial.id,
+                    "lease_id": commercial.lease.id,
+                    "annual_amount": commercial.annual_amount,
+                    "rent": commercial.rent,
+                    "actual_annual_amount": commercial.actual_annual_amount,
+                    "booking_amount": commercial.booking_amount,
+                    "security_deposit": commercial.security_deposit,
+                    "maintenance_charges": commercial.maintenance_charges,
+                    "commission_percentage": commercial.commission_percentage,
+                    "notice_period": commercial.notice_period,
+                    "discount": commercial.discount
+                }
+                return prepare_response(content=data, message="LeaseCommercials fetched successfully", status=status.HTTP_200_OK)
+
+            elif lease_id:
+                commercials = LeaseCommercials.objects.filter(lease_id=lease_id)
+                data = [{
+                    "commercial_id": c.id,
+                    "lease_id": c.lease.id,
+                    "annual_amount": c.annual_amount,
+                    "rent": c.rent,
+                    "actual_annual_amount": c.actual_annual_amount,
+                    "booking_amount": c.booking_amount,
+                    "security_deposit": c.security_deposit,
+                    "maintenance_charges": c.maintenance_charges,
+                    "commission_percentage": c.commission_percentage,
+                    "notice_period": c.notice_period,
+                    "discount": c.discount
+                } for c in commercials]
+                return prepare_response(content={"commercials": data}, message="LeaseCommercials list fetched successfully", status=status.HTTP_200_OK)
+            else:
+                return prepare_response(message="commercial_id or lease_id is required", status=status.HTTP_400_BAD_REQUEST)
+
+        else:
+            return prepare_response(message="Invalid request method", status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     except LeasePropertyDetails.DoesNotExist:
-        return JsonResponse({"message": "Lease not found"}, status=404)
+        return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
+    except LeaseCommercials.DoesNotExist:
+        return prepare_response(message="LeaseCommercials not found", status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
-        return JsonResponse({"message": str(e)}, status=400)
+        return prepare_response(message=str(e), status=status.HTTP_400_BAD_REQUEST)
+
+
+
 
 
 
@@ -3984,7 +4030,7 @@ def get_template(request):
     if request.method != "GET":
         return prepare_response(
             message="Invalid request method. Only GET allowed.",
-            status=405
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
 
     try:
@@ -3993,7 +4039,7 @@ def get_template(request):
         if not template_id:
             return prepare_response(
                 message="template_id is required",
-                status=400
+                status=status.HTTP_400_BAD_REQUEST
             )
 
         template_id = int(template_id)
@@ -4009,7 +4055,7 @@ def get_template(request):
         if template_id not in TEMPLATE_FILE_MAP:
             return prepare_response(
                 message="No template file mapped for this template ID",
-                status=404
+                status=status.HTTP_405_METHOD_NOT_ALLOWED
             )
 
         template_file_path = os.path.join(
@@ -4023,10 +4069,8 @@ def get_template(request):
         except FileNotFoundError:
             return prepare_response(
                 message="Template HTML file not found on server",
-                status=404
+                status=status.HTTP_404_NOT_FOUND
             )
-
-        # 4) Fetch dynamic fields
         fields = TemplateFields.objects.filter(document_template=template)
 
         field_list = []
@@ -4048,7 +4092,7 @@ def get_template(request):
                 "fields": field_list
             },
             message="Template fetched successfully",
-            status=200
+            status=status.HTTP_200_OK
         )
 
     except Exception as e:
@@ -4057,3 +4101,83 @@ def get_template(request):
 
 
 
+
+
+def generate_contract(request):
+    if request.method != "POST":    
+        return prepare_response(message="Only POST allowed", status=405)
+
+    try:
+        body = json.loads(request.body)
+
+        template_id = body.get("template_id")
+        lease_id = body.get("lease_id")
+        values_dict = body.get("values")
+
+        if not template_id or not lease_id or not values_dict:
+            return prepare_response(
+                message="template_id, lease_id, and values are required",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        template = Template.objects.get(id=template_id)
+        lease = LeasePropertyDetails.objects.get(id=lease_id)
+
+        TemplateValues.objects.create(
+            document_template=template,
+            lease=lease,
+            value=values_dict
+        )
+
+        template_path = template.template_path
+
+        if os.path.isdir(template_path):
+            return prepare_response(
+                message=f"Template path is a folder, not a file: {template_path}",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not os.path.exists(template_path):
+            return prepare_response(
+                message=f"Template not found: {template_path}",
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        with open(template_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+
+        mapping = {}
+
+        fields = TemplateFields.objects.filter(document_template=template)
+        for field in fields:
+            key = field.id_attribute or field.name_attribute  
+
+            if key and key in values_dict:
+                mapping[key] = values_dict[key]
+
+        html_content = replace_placeholders(html_content, mapping)
+
+        timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        filename = f"lease_{timestamp}.html"
+
+        save_dir = os.path.join(settings.BASE_DIR, r"property_management\templates\genrate_lease_temaplates")
+        os.makedirs(save_dir, exist_ok=True)
+
+
+        os.makedirs(save_dir, exist_ok=True)
+
+        save_path = os.path.join(save_dir, filename)
+
+        with open(save_path, "w", encoding="utf-8") as f:
+            f.write(html_content)
+
+        file_url = f"/media/generated_templates/{filename}"
+
+        return prepare_response(
+            message="Contract generated successfully",
+            content={"file_url": file_url},
+            status=status.HTTP_200_OK
+        )
+
+    except Exception as e:
+        return prepare_response(message=str(e), status=500)

@@ -178,18 +178,43 @@ class PropertyDetails(Base):
         return "{}".format(self.property_name)  
 
 
+
+class PropertyImages(Base):
+
+    property = models.ForeignKey(
+        PropertyDetails,
+        on_delete=models.CASCADE,
+        related_name="property_images"
+    )
+    image_path = models.TextField() 
+    image_type = models.CharField(
+        max_length=20,
+        choices=constants.IMAGE_TYPE_CHOICES,
+        default="INTERIOR"
+    )   
+    file_name = models.CharField(max_length=255)
+
+    def __str__(self):
+        return f"Image for {self.property.property_name}"
+
+
+
 class PropertyDocuments(Base):
+ 
+    file_name = models.CharField(max_length=200)
+    file_path = models.CharField(max_length=500)
+    document_type = models.CharField(
+         max_length=50,
+        choices=constants.DOCUMENT_TYPE_CHOICES
+    )
     property = models.ForeignKey(
         "PropertyDetails",
         on_delete=models.CASCADE,
         related_name="property_docs_relationship"
     )
+    def __str__(self):
+        return f"{self.document_type} - {self.file_name}"
 
-    rental_documents = models.JSONField(default=list)
-    tenant_documents = models.JSONField(default=list)
-    ejari_certificates = models.JSONField(default=list)
-    owner_documents = models.JSONField(default=list)
-    cheque_documents = models.JSONField(default=list)
 
 
 
