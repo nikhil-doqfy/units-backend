@@ -272,3 +272,18 @@ def safe_decimal(value):
         return Decimal(str(value))
     except InvalidOperation:
         return None  
+
+
+def replace_placeholders(template_html, mapping):
+    """
+    Replace ${variable} placeholders using regex.
+    mapping = { "var1": "value1", "var2": "value2" }
+    """
+
+    pattern = r"\$\{(.*?)\}"   
+
+    def replacer(match):
+        key = match.group(1).strip()  
+        return str(mapping.get(key, match.group(0))) 
+
+    return re.sub(pattern, replacer, template_html)

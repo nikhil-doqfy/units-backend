@@ -29,31 +29,22 @@ urlpatterns = [
     path('property/details/list/view/', views.property_details_list_view, name='property_details_list_view') ,
     path('invite/owner/pmc', views.invite_owner_pmc, name='invite_owner_pmc') , 
     path('invite/pmc/owner', views.invite_pmc_to_owner, name='invite_pmc_to_owner'),
-    
     path('invite/tenant/pmc', views.invite_tenant_by_pmc, name='invite_tenant_by_pmc'),
-    
     path('assign/property/by/owner', views.assign_property_by_owner, name='assign_property_by_owner'),
     path('property/statistics', views.property_statistics, name='dashboard_statistics'),
     path('tenant/property', views.tenant_my_property, name='tenant_my_property'),
-
     path('tenant/owner/property/', views.property_tenant_list_view, name='property_tenant_list_view'),
-    
     path('create/property/basic', views.create_property_basic, name='create_property_basic'),
     path('property/commercial/details', views.add_commercial_details, name='add_commercial_details'),
-    path('upload/property/images', views.upload_property_images, name='upload_property_images'), 
-    path('get/property/images', views.get_property_images, name='get_property_images'),
 
-    path('upload/property/documents', views.upload_property_documents, name='upload_property_documents'),
-    path('fetch/property/documents', views.fetch_property_documents, name='fetch_property_documents'),
-
-    
+    path('property/documents/view', views.property_documents_view, name='property_documents_view'),
+     
     path('options/', views.options, name='options'),  
-
     path('property/images/', views.property_images_view, name='property_images_view'),
-    # path("get/template/", views.get_template, name="get_template"), 
+    path("save/template", views.generate_contract, name="save_generated_template"),
 
-    # path("save/template", views.save_template_values, name="save_generated_template"),
 
+  
 ] 
 
 if settings.DEBUG:
