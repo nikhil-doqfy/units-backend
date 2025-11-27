@@ -21,6 +21,7 @@ from utilities.ses_utils import send
 import logging
 from django.core.files.base import ContentFile
 from decimal import Decimal, InvalidOperation
+import mimetypes
 
 def prepare_response(content={}, message='', status=status.HTTP_200_OK, paginator=None, total_records=0,pagination=None):
     resp = {
@@ -260,6 +261,50 @@ def fetch_s3_file_as_base64(file_url):
     
 
 
+
+
+def fetch_s3_presigned_url(file_url, file_name=None, expiration=3600):
+    """
+    Returns a pre-signed URL for the given S3 file URL.
+    Uses file_name to determine content type for inline browser view.
+    expiration: time in seconds for which URL is valid (default 1 hour)
+    """
+    try:
+        bucket_name = config.S3_BUCKET_NAME
+        key = file_url.split(".amazonaws.com/")[1]
+
+     
+        if file_name:
+            content_type, _ = mimetypes.guess_type(file_name)
+        else:
+         
+            content_type = "application/octet-stream"
+
+        s3_client = boto3.client(
+            "s3",
+            aws_access_key_id=config.AWS_ACCESS_KEY,
+            aws_secret_access_key=config.AWS_SECRET_KEY,
+            region_name=config.AWS_REGION,
+        )
+
+        presigned_url = s3_client.generate_presigned_url(
+            "get_object",
+            Params={
+                "Bucket": bucket_name,
+                "Key": key,
+                "ResponseContentDisposition": "inline",  
+                "ResponseContentType": content_type or "application/octet-stream"
+            },
+            ExpiresIn=expiration
+        )
+        return presigned_url
+
+    except ClientError as e:
+        logger.error(f"ClientError generating presigned URL: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error generating presigned URL: {str(e)}")
+        return None
 
 
 

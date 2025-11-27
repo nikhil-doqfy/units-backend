@@ -41,8 +41,13 @@ urlpatterns = [
     path('property/images/', views.property_images_view, name='property_images_view'),
     path("save/template", views.generate_contract, name="save_generated_template"), 
 
+    path("get/template/fields/", views.get_template_fields, name="get_template_fields"), 
+    
+
     path("lease/property/view/", views.lease_property_view, name="lease_property_view"),
-    path("lease/commercials/view/", views.lease_commercials_view, name="lease_commercials_view"),
+    path("lease/commercials/view/", views.lease_commercials_view, name="lease_commercials_view"),  
+
+    path("lease/ejari/documents/view/", views.lease_ejari_documents_view, name="lease_ejari_documents_view"),
     
 
   

@@ -264,6 +264,17 @@ DOCUMENT_TYPE_CHOICES = (("FLOOR_PLAN_DOCUMENT", "Floor Plan Document"),
         ("CHEQUE_DOCUMENT", "Cheque Document"),
     )  
 
+Ejari_DOCUMENT_CATEGORY_CHOICES = (
+    ("EMIRATES_ID", "Emirates ID"),
+    ("PASSPORT_SELF", "Passport(Self)"),
+    ("PASSPORT_FAMILY", "Passport(Family)"),
+    ("EMPLOYMENT_PROOF", "Employment Proof"),
+    ("VISA_SELF", "Visa(Self)"),
+    ("VISA_FAMILY", "Visa(Family)"),
+    ("BANK_STATEMENT", "Bank Statement"),
+)
+
+
 
 IMAGE_TYPE_CHOICES = (
          ("INTERIOR", "Interior"),

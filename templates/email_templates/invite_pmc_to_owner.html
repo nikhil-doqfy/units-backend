@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Invitation Email</title>
+    <style>
+      body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background-color: #f5f6fa;
+        margin: 0;
+        padding: 0;
+      }
+
+      .email-container {
+        background-color: #ffffff;
+        max-width: 600px;
+        margin: 30px auto;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        overflow: hidden;
+      }
+
+    
+      .header {
+        text-align: center;
+        padding: 30px 20px;
+        background: linear-gradient(90deg, #6a11cb 0%, #2575fc 100%);
+        color: white;
+      }
+
+      
+      .logo-text {
+        font-size: 36px;
+        font-weight: 700;
+        letter-spacing: 2px;
+        margin: 0;
+        background: linear-gradient(90deg, #ffffff, #d4e0ff);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+      }
+
+      .tagline {
+        font-size: 14px;
+        margin-top: 5px;
+        color: #f0f0f0;
+        letter-spacing: 1px;
+      }
+
+      .content {
+        padding: 25px;
+        color: #333;
+      }
+
+      h2 {
+        color: #222;
+      }
+
+      p {
+        line-height: 1.6;
+      }
+
+      .button {
+        display: inline-block;
+        margin-top: 15px;
+        padding: 10px 20px;
+        background-color: #2575fc;
+        color: white;
+        text-decoration: none;
+        border-radius: 6px;
+        font-weight: 500;
+      }
+
+      .footer {
+        background-color: #f1f1f1;
+        text-align: center;
+        padding: 15px;
+        font-size: 13px;
+        color: #666;
+      }
+
+      .footer a {
+        color: #2575fc;
+        text-decoration: none;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="email-container">
+    
+      <div class="header">
+        <h1 class="logo-text">DOQFY</h1>
+        <div class="tagline">Smart Contract & Document Management</div>
+      </div>
+
+      <div class="content">
+        <h2>You're Invited!</h2>
+        <p>Hello,</p>
+        <p><strong>{{ inviter_email }}</strong> has invited you to join the Property Management Portal.</p>
+        <p>Click below to accept the invitation:</p>
+        <a href="{{ invite_link }}" class="button">Accept Invitation</a>
+        <p>If the button doesn’t work, copy this link:</p>
+        <p><a href="{{ invite_link }}">{{ invite_link }}</a></p>
+        <p>Thank you,<br />The Doqfy Team</p>
+      </div>
+
+      <div class="footer">
+        <p>© 2025 Doqfy Internet Pvt. Ltd. All Rights Reserved.</p>
+        <p>Need help? <a href="mailto:admin@doqfy.in">admin@doqfy.in</a></p>
+      </div>
+    </div>
+  </body>
+</html>
