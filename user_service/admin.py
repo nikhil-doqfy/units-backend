@@ -82,7 +82,7 @@ class LeaseCommercialsAdmin(admin.ModelAdmin):
     list_display = ["id", "lease", "annual_amount","booking_amount"]
 
 class LeaseEjariUploadAdmin(admin.ModelAdmin):
-    list_display = ["id", "lease", "tenant_doc","ejari_certificates","pmc_docs","cheque"] 
+    list_display = ["id", "lease"]
 
 
 class OwnerPMCInvitationAdmin(admin.ModelAdmin):

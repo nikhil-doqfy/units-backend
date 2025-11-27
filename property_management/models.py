@@ -184,23 +184,15 @@ class LeaseEjariUpload(models.Model):
         on_delete=models.CASCADE,
         related_name="ejari_uploads"
     )
-    property_floor_plan = models.TextField(null=True, blank=True)   
-    tenant_doc = models.TextField(null=True, blank=True)            
-    ejari_certificates = models.TextField(null=True, blank=True)   
-    pmc_docs = models.TextField(null=True, blank=True)             
-    cheque = models.TextField(null=True, blank=True)                 
-    uploaded_by = models.ForeignKey(
-        "user_service.UserProfile",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True
+    file_name = models.CharField(max_length=200)
+    file_path = models.CharField(max_length=500)
+    document_type = models.CharField(
+     max_length=50,
+    choices=constants.Ejari_DOCUMENT_CATEGORY_CHOICES 
     )
-    uploaded_at = models.DateTimeField(default=timezone.now)  
-    is_finalized = models.BooleanField(default=False)
-    finalized_at = models.DateTimeField(null=True, blank=True)
-
+ 
     def __str__(self):
-        return f"Ejari Upload for Lease ID {self.lease.id}"
+        return f"{self.document_type} - {self.file_name}"
     
 
 

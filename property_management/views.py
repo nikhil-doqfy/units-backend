@@ -2,10 +2,10 @@
 from django.shortcuts import get_object_or_404
 from django.db import IntegrityError, transaction
 from property_management.models import OwnerDetails ,TenantDetails , LeasePropertyDetails ,LeaseCommercials,LeaseEjariUpload,OwnerPMCInvitation,PMCOwnerInvitation , PMCTenantInvitation ,Template, TemplateFields ,TemplateValues 
-from user_service.models import PropertyManagerCompanyDetails ,PropertyDetails ,UserProfile,StaffDetails  ,PropertyCommercial ,PropertyImages ,PropertyDocuments
+from user_service.models import PropertyManagerCompanyDetails ,PropertyDetails ,UserProfile,StaffDetails  ,PropertyCommercial ,PropertyImages ,PropertyDocuments 
 from utilities.decorator import is_request_authenticated
 import json
-from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger,send_ses_email,safe_decimal ,safe_epoch_to_datetime ,replace_placeholders
+from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger,send_ses_email,safe_decimal ,safe_epoch_to_datetime ,replace_placeholders ,fetch_s3_presigned_url
 from utilities import status ,  constants
 from django.utils import timezone
 from utilities import config
@@ -1333,7 +1333,7 @@ def property_details_view(request):
                 images_base64 = []
                 if prop.images:
                     for img_url in prop.images:
-                        img_b64 = fetch_s3_file_as_base64(img_url)
+                        img_b64 = fetch_s3_file_as_base64(img_url) #fetch_s3_presigned_url
                         if img_b64:
                             images_base64.append(img_b64)
 
@@ -1631,8 +1631,8 @@ def create_property_basic(request):
 
             return prepare_response(
                 message=constants.PROPERTY_ADDED,
-                content={"property_id": new_property.id},
-                status=201
+                content={"id": new_property.id},
+                status=status.HTTP_201_CREATED
             )
 
         except Exception as e:
@@ -1725,7 +1725,7 @@ def add_commercial_details(request):
             return prepare_response(
                 
                 message="Commercial details created successfully",
-                status=200
+                status=status.HTTP_201_CREATED
             )
 
 
@@ -1789,7 +1789,7 @@ def property_images_view(request):
                 file_name = img.file_name
                 img_type = img.image_type
 
-                base64_data = fetch_s3_file_as_base64(url)
+                base64_data = fetch_s3_presigned_url(url,file_name=file_name)
 
                 final_images.append({
                     "file_name": file_name,
@@ -1861,7 +1861,7 @@ def property_images_view(request):
             return prepare_response(
                 message="Images uploaded successfully",
                 content={"uploaded": uploaded_files},
-                status=200
+                status=201
             )
 
     
@@ -1893,7 +1893,7 @@ def property_images_view(request):
                     return prepare_response(message="Missing file_name or data", status=400)
 
              
-                img_obj, created = PropertyImages.objects.get_or_create(
+                img_obj, created = PropertyImages.objects.update_or_create(
                     property=property_obj,
                     file_name=file_name,
                     defaults={
@@ -1940,12 +1940,12 @@ def property_documents_view(request):
             property_id = request.GET.get("property_id")
 
             if not property_id:
-                return prepare_response("property_id is required", 400)
+                return prepare_response(message="property_id is required", status=400)
 
             try:
                 property_obj = PropertyDetails.objects.get(id=property_id)
             except PropertyDetails.DoesNotExist:
-                return prepare_response("Invalid property_id", 404)
+                return prepare_response(message="Invalid property_id", status=404)
 
             docs_qs = PropertyDocuments.objects.filter(property_id=property_id).order_by("-id")
             final_docs = []
@@ -1955,7 +1955,8 @@ def property_documents_view(request):
                 file_name = doc.file_name
                 doc_type = doc.document_type
 
-                base64_data = fetch_s3_file_as_base64(url)
+                # base64_data = fetch_s3_file_as_base64(url)
+                base64_data = fetch_s3_presigned_url(url,file_name=file_name)
 
                 final_docs.append({
                     "file_name": file_name,
@@ -2025,7 +2026,7 @@ def property_documents_view(request):
             return prepare_response(
                 message="Documents uploaded successfully",
                 content={"uploaded": uploaded_files},
-                status=200
+                status=201
             )
 
 
@@ -3058,8 +3059,9 @@ def pmc_owner_view_list(request):
 def property_details_list_view(request):
     if request.method == "GET":
         try:
-            property_id = request.GET.get("property_id")
+            user=request.user
 
+            property_id = request.GET.get("property_id")
             search = request.GET.get("search", "").strip()
             page = int(request.GET.get("page", 1))
             limit = int(request.GET.get("limit", 10))
@@ -3080,6 +3082,17 @@ def property_details_list_view(request):
                         message="Property Not Found",
                         status=status.HTTP_404_NOT_FOUND
                     )
+            if not property_id:
+                all_properties = request.GET.get("all", "").lower() == "true"
+
+                if not all_properties:
+                    if user.user_type == constants.OWNER:
+                        properties = properties.filter(owner=user)
+                    elif user.user_type == constants.TENANT:
+                        properties = properties.filter(tenant_details__user=user).distinct()
+                    elif user.user_type == constants.PROPERTY_MANAGER:
+                        properties = properties.filter(property_manager__user=user).distinct()
+
 
             if search:
                 properties = properties.filter(
@@ -3107,7 +3120,7 @@ def property_details_list_view(request):
                     tenant_user = tenant.user
                     tenant_data.append({
                         "tenant_name": tenant.full_name,
-                        "mobile_number": tenant.mobile_number,
+                        "contact_number": tenant.mobile_number,
                         "tenant_number": tenant.tenant_number,
                         "nationality": tenant.nationality,
                         "email": tenant_user.email if tenant_user else None,
@@ -3119,7 +3132,7 @@ def property_details_list_view(request):
 
                 owner_info = {
                     "owner_name": owner_details.full_name if owner_details else "N/A",
-                    "owner_mobile": owner_details.mobile_number if owner_details else "N/A",
+                    "contact_number": owner_details.mobile_number if owner_details else "N/A",
                     "trade_license": owner_details.trade_license_number if owner_details else "N/A",
                     "email": owner_user.email if owner_user else None,
                     "profile_image": owner_user.profile_image if owner_user else None,
@@ -3131,7 +3144,7 @@ def property_details_list_view(request):
                     "company_name": pmc.company_name if pmc else "N/A",
                     "company_code": pmc.company_code if pmc else "N/A",
                     "rera_license": pmc.rera_license if pmc else "N/A",
-                    "phone_number": pmc.phone_number if pmc else "N/A",
+                    "contact_number": pmc.phone_number if pmc else "N/A",
                     "email": pmc.user.email if pmc and pmc.user else None,
                     "profile_image": pmc.user.profile_image if pmc and pmc.user else None,
                 }
@@ -3155,6 +3168,19 @@ def property_details_list_view(request):
                     if prop.is_occupied
                     else constants.RENTAL_AVAILABLE
                 )
+                images_qs = PropertyImages.objects.filter(property=prop).order_by("-id")
+                images_data = []
+                for img in images_qs:
+                    url = img.image_path
+                    file_name = img.file_name
+                    img_type = img.image_type
+                    base64_data = fetch_s3_presigned_url(url, file_name=file_name)
+                    images_data.append({
+                                    "file_name": file_name,
+            "image_url": url,
+            "data": base64_data,
+            "type": img_type,
+            "id": img.id,})
 
                 data.append({
                     "id": prop.id,
@@ -3176,7 +3202,8 @@ def property_details_list_view(request):
                     "pmc_info": pmc_info,
 
               
-                    "commercial_info": commercial_info
+                    "commercial_info": commercial_info,
+                    "images": images_data
                 })
 
             if property_id:
@@ -3802,7 +3829,7 @@ def lease_property_view(request):
             )
 
             return prepare_response(
-                content={"lease_id": lease.id},
+                content={"id": lease.id},
                 message="Lease created successfully",
                 status=201
             )
@@ -4022,82 +4049,154 @@ def lease_commercials_view(request):
 
 
 
-
-
-
-def get_template(request):
-
-    if request.method != "GET":
-        return prepare_response(
-            message="Invalid request method. Only GET allowed.",
-            status=status.HTTP_405_METHOD_NOT_ALLOWED
-        )
-
+def lease_ejari_documents_view(request):
     try:
-        template_id = request.GET.get("template_id")
+        if request.method == "GET":
+            lease_id = request.GET.get("lease_id")
 
-        if not template_id:
+            if not lease_id:
+                return prepare_response(message="lease_id is required",status=400)
+
+            try:
+                lease_obj = LeasePropertyDetails.objects.get(id=lease_id)
+            except LeasePropertyDetails.DoesNotExist:
+                return prepare_response(message="Invalid lease_id", status=404)
+
+            docs_qs = LeaseEjariUpload.objects.filter(lease_id=lease_id).order_by("-id")
+            final_docs = []
+
+            for doc in docs_qs:
+                url = doc.file_path
+                file_name = doc.file_name
+                doc_type = doc.document_type
+
+                base64_data = fetch_s3_presigned_url(url,file_name=file_name)
+
+                final_docs.append({
+                    "file_name": file_name,
+                    "data": base64_data,
+                    "type": doc_type,
+                    "id": doc.id,
+                })
+
             return prepare_response(
-                message="template_id is required",
-                status=status.HTTP_400_BAD_REQUEST
+                message="Lease Ejari Documents fetched successfully",
+                content={
+                    "documents": final_docs,
+                    "lease_id": lease_id,
+                    "step_choice": lease_obj.step_status
+                },
+                status=200
             )
 
-        template_id = int(template_id)
-        template = Template.objects.filter(id=template_id, is_active=True).first()
-        if not template:
-            return prepare_response(message="Template not found", status=404)
-        TEMPLATE_FILE_MAP = {
-            1: "property_management/templates/lease_templates/lease_agreement.html",
-            2: "property_management/templates/lease_templates/rent_receipt.html",
-            3: "property_management/templates/lease_templates/commercial_lease.html",
-        }
+        if request.method == "POST":
+            body = json.loads(request.body)
+            lease_id = body.get("lease_id")
+            documents = body.get("documents", [])
 
-        if template_id not in TEMPLATE_FILE_MAP:
+            if not lease_id:
+                return prepare_response(message="lease_id is required", status=400)
+
+            if not isinstance(documents, list) or not documents:
+                return prepare_response(message="Documents must be a list", status=400)
+
+            try:
+                lease_obj = LeasePropertyDetails.objects.get(id=lease_id)
+            except LeasePropertyDetails.DoesNotExist:
+                return prepare_response(message="Lease not found", status=404)
+
+            uploaded_files = []
+
+            for doc in documents:
+                file_name = doc.get("file_name")
+                base64_data = doc.get("data")
+                doc_type = doc.get("type", "").upper()
+
+                if not file_name or not base64_data:
+                    return prepare_response(message="Missing file_name or data",status=400)
+
+                object_name = f"lease_documents/{lease_id}/{file_name}"
+
+                file_url = upload_file_to_s3_base64(base64_data, object_name)
+
+                LeaseEjariUpload.objects.create(
+                    lease=lease_obj,
+                    file_name=file_name,
+                    file_path=file_url,
+                    document_type=doc_type
+                )
+
+                uploaded_files.append({
+                    "file_name": file_name,
+                    "file_url": file_url,
+                    "type": doc_type,
+                })
+
+                lease_obj.step_status = "ATTACH_DOCUMENTS"
+                lease_obj.save()
+
             return prepare_response(
-                message="No template file mapped for this template ID",
-                status=status.HTTP_405_METHOD_NOT_ALLOWED
+                message="Lease Ejari Documents uploaded successfully",
+                content={"uploaded": uploaded_files},
+                status=200
             )
 
-        template_file_path = os.path.join(
-            settings.BASE_DIR,
-            TEMPLATE_FILE_MAP[template_id]
-        )
+        if request.method == "PUT":
+            body = json.loads(request.body)
+            lease_id = body.get("lease_id")
+            documents = body.get("documents", [])
 
-        try:
-            with open(template_file_path, "r", encoding="utf-8") as f:
-                html_content = f.read()
-        except FileNotFoundError:
+            if not lease_id:
+                return prepare_response(message="lease_id is required", status=400)
+
+            if not isinstance(documents, list):
+                return prepare_response(message="Documents must be a list", status=400)
+
+            try:
+                lease_obj = LeasePropertyDetails.objects.get(id=lease_id)
+            except LeasePropertyDetails.DoesNotExist:
+                return prepare_response(message="Lease not found",status= 404)
+
+            updated_files = []
+
+            for doc in documents:
+                file_name = doc.get("file_name")
+                base64_data = doc.get("data")
+                doc_type = doc.get("type", "").upper()
+
+                if not file_name or not base64_data:
+                    return prepare_response(message="Missing file_name or data",status=400)
+
+                doc_obj, created = LeaseEjariUpload.objects.get_or_create(
+                    lease=lease_obj,
+                    file_name=file_name,
+                    defaults={"document_type": doc_type}
+                )
+
+                object_name = f"lease_documents/{lease_id}/{file_name}"
+                file_url = upload_file_to_s3_base64(base64_data, object_name)
+
+                doc_obj.file_path = file_url
+                doc_obj.document_type = doc_type
+                doc_obj.save()
+
+                updated_files.append({
+                    "file_name": file_name,
+                    "file_url": file_url,
+                    "type": doc_type,
+                    "status": "created" if created else "updated",
+                })
+
             return prepare_response(
-                message="Template HTML file not found on server",
-                status=status.HTTP_404_NOT_FOUND
+                message="Lease Ejari Documents updated successfully",
+                content={"updated": updated_files},
+                status=200
             )
-        fields = TemplateFields.objects.filter(document_template=template)
 
-        field_list = []
-        for f in fields:
-            field_list.append({
-                "name_attribute": f.name_attribute,
-                "id_attribute": f.id_attribute,
-                "label_attribute": f.label_attribute,
-                "html_tag": f.html_tag,
-                "required": f.required,
-                "predefined_value": f.predefined_value
-            })
-
-        return prepare_response(
-            content={
-                "template_id": template.id,
-                "template_name": template.name,
-                "html": html_content,
-                "fields": field_list
-            },
-            message="Template fetched successfully",
-            status=status.HTTP_200_OK
-        )
+        return prepare_response(message="Method not allowed", status=405)
 
     except Exception as e:
         return prepare_response(message=str(e), status=500)
-
 
 
 
@@ -4181,3 +4280,63 @@ def generate_contract(request):
 
     except Exception as e:
         return prepare_response(message=str(e), status=500)
+
+
+
+def get_template_fields(request):
+    try:
+        template_id = request.GET.get("template_id")
+
+        if not template_id:
+            return prepare_response(
+                message="template_id is required",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        template = Template.objects.get(id=template_id)
+        fields = TemplateFields.objects.filter(document_template=template)
+
+        field_list = []
+        for field in fields:
+            field_list.append({
+                "id_attribute": field.id_attribute,
+                "name_attribute": field.name_attribute,
+                "label": field.label_attribute,
+                "html_tag": field.html_tag,
+                "required": field.required,
+                "min_value": field.min_value,
+                "max_value": field.max_value,
+                "min_length": field.min_length,
+                "max_length": field.max_length,
+                "pattern": field.pattern,
+                "predefined_value": field.predefined_value,
+            })
+
+        return prepare_response(
+            content={
+                "template_id": template.id,
+                "template_name": template.name,
+                "template_path": template.template_path,
+                "fields": field_list
+            },
+            message="Template fields fetched successfully",
+            status=status.HTTP_200_OK
+        )
+
+    except Template.DoesNotExist:
+        return prepare_response(
+            message="Invalid template_id",
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    except Exception as e:
+        return prepare_response(
+            message=str(e),
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+
+
+
+
