@@ -262,6 +262,10 @@ class Template(Base):
     name = models.CharField(max_length=100)
     template_path = models.CharField(max_length=1000)
     is_active = models.BooleanField(default=True)
+    is_predefined = models.BooleanField(default=False)
+    description = models.TextField(blank=True, null=True)
+    pdf_path = models.CharField(max_length=2000, blank=True, null=True)
+    
        
     def _str_(self):
         return self.name
@@ -303,6 +307,7 @@ class TemplateValues(Base):
         on_delete=models.CASCADE,
         related_name="lease"
     )
+    
  
 
     def _str_(self):

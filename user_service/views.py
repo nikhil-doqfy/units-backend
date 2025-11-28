@@ -409,10 +409,10 @@ def user_profile_view(request):
             )
 
         else:
-            return prepare_response("Invalid HTTP method", status=405)
+            return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     except Exception as e:
-        print("Error in user_profile_view:", e)
+    
         return prepare_response(
             message=f"Error: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
