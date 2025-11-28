@@ -210,7 +210,8 @@ console_handler.setFormatter(formatter)
 if not logger.handlers:
     logger.addHandler(console_handler)
 
-def upload_file_to_s3_base64(base64_data, object_name, bucket=None):
+def upload_file_to_s3_base64(file_data, object_name, bucket=None):
+
     if not bucket:
         bucket = S3_BUCKET_NAME
     try:
@@ -220,22 +221,32 @@ def upload_file_to_s3_base64(base64_data, object_name, bucket=None):
             aws_secret_access_key=AWS_SECRET_KEY,
             region_name=AWS_REGION,
         )
-        if "," in base64_data:
-            base64_data = base64_data.split(",")[1]
-        file_bytes = base64.b64decode(base64_data)
+
+  
+        if isinstance(file_data, str):
+            if "," in file_data:
+                file_data = file_data.split(",")[1]
+            file_bytes = base64.b64decode(file_data)
+        elif isinstance(file_data, (bytes, bytearray)):
+            file_bytes = file_data
+        else:
+            raise ValueError("Unsupported file_data type. Must be base64 string or bytes.")
+
         s3_client.put_object(
             Bucket=bucket,
             Key=object_name,
-            Body=file_bytes,  
+            Body=file_bytes,
         )
         logger.info(f" File '{object_name}' uploaded successfully to '{bucket}'")
         return f"https://{bucket}.s3.{AWS_REGION}.amazonaws.com/{object_name}"
+
     except ClientError as e:
-        logger.error(f" Failed to upload Base64 file '{object_name}': {str(e)}")
+        logger.error(f" Failed to upload file '{object_name}': {str(e)}")
         raise e
     except Exception as e:
         logger.error(f" Unexpected error uploading file '{object_name}': {str(e)}")
         raise e
+
 
 
 logger = logging.getLogger(__name__)
@@ -256,7 +267,7 @@ def fetch_s3_file_as_base64(file_url):
         logger.error(f" ClientError fetching from S3: {e}")
         return None
     except Exception as e:
-        logger.error(f" Unexpected error fetching from S3: {str(e)}")
+        logger.error(f" Unexpected error fetching from S3: {str(e)}") 
         return None
     
 
@@ -305,6 +316,14 @@ def fetch_s3_presigned_url(file_url, file_name=None, expiration=3600):
     except Exception as e:
         logger.error(f"Unexpected error generating presigned URL: {str(e)}")
         return None
+
+
+
+
+
+
+
+
 
 
 

@@ -268,17 +268,17 @@ def outlook_login(request):
 def logout(request):
     user = getattr(request, 'user', None)
     if not user:
-        return prepare_response(message=constants.AUTHENTICATION_FAILED, status=401)
+        return prepare_response(message=constants.AUTHENTICATION_FAILED, status=status.HTTP_401_UNAUTHORIZED)
     auth_header = request.headers.get("Authorization")
     if not auth_header:
-        return prepare_response(message=constants.AUTH_HEADER_MISSING, status=401)
+        return prepare_response(message=constants.AUTH_HEADER_MISSING, status=status.HTTP_401_UNAUTHORIZED)
     token = get_jwt_token(auth_header)
     if user.token != token:
-        return prepare_response(message=constants.INVALID_TOKEN, status=401)
+        return prepare_response(message=constants.INVALID_TOKEN, status=status.HTTP_401_UNAUTHORIZED)
     user.token = None
     user.save(update_fields=['token'])
 
-    return prepare_response(message=constants.LOGOUT_SUCCESSFULL, status=200)
+    return prepare_response(message=constants.LOGOUT_SUCCESSFULL, status=status.HTTP_200_OK)
 
 
 

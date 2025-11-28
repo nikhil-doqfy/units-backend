@@ -47,8 +47,8 @@ urlpatterns = [
     path("lease/property/view/", views.lease_property_view, name="lease_property_view"),
     path("lease/commercials/view/", views.lease_commercials_view, name="lease_commercials_view"),  
 
-    path("lease/ejari/documents/view/", views.lease_ejari_documents_view, name="lease_ejari_documents_view"),
-    
+    path("lease/ejari/documents/view/", views.lease_ejari_documents_view, name="lease_ejari_documents_view"), 
+    # path("get/pdf/template/", views.get_pdf_template, name="get_pdf_template"),
 
   
 ] 

@@ -25,6 +25,7 @@ import os
 from datetime import datetime
 import datetime
 import re
+import pdfkit
 
 
 @is_request_authenticated
@@ -76,6 +77,27 @@ def options(request):
                 "key": tenant.id,
             "value": tenant.full_name   }
             for tenant in tenants]
+        
+        elif option_type == "PMC_PROPERTIES":
+            pmc = PropertyManagerCompanyDetails.objects.filter(user=user).first()
+            if not pmc:
+                content["pmc_properties"] = []
+            else:
+                properties = PropertyDetails.objects.filter(property_manager=pmc)
+                content["pmc_properties"] = [
+                    {"key": prop.id, "value": prop.property_name} for prop in properties
+                ]
+
+        elif option_type == "PREDEFINED_TEMPLATES":
+            templates = Template.objects.filter(is_predefined=True, is_active=True)
+            content["predefined_templates"] = [
+                {
+            "key": template.id,
+            "value": template.name,
+            "description": template.description
+        }
+        for template in templates
+    ]
 
 
 
@@ -1487,11 +1509,11 @@ def create_property_basic(request):
             property_id = request.GET.get("property_id")
 
             if not property_id:
-                return prepare_response("Property ID required", status=400)
+                return prepare_response("Property ID required", status=status.HTTP_400_BAD_REQUEST)
 
             prop = PropertyDetails.objects.filter(id=property_id).first()
             if not prop:
-                return prepare_response("Property not found", status=404)
+                return prepare_response("Property not found", status=status.HTTP_404_NOT_FOUND)
             property_type_options = dict(constants.PROPERTY_TYPE_CHOICES)
             property_data = {
                                 
@@ -1523,10 +1545,10 @@ def create_property_basic(request):
                
             }
 
-            return prepare_response(content=content, status=200)
+            return prepare_response(content=content, status=status.HTTP_200_OK)
 
         except Exception as e:
-            return prepare_response({"error": str(e)}, status=500)
+            return prepare_response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
     elif request.method == "PUT":
@@ -1535,11 +1557,11 @@ def create_property_basic(request):
             property_id = data.get("property_id")
 
             if not property_id:
-                return prepare_response("Property ID required for update", status=400)
+                return prepare_response("Property ID required for update", status=status.HTTP_400_BAD_REQUEST)
 
             prop = PropertyDetails.objects.filter(id=property_id).first()
             if not prop:
-                return prepare_response("Property not found", status=404)
+                return prepare_response("Property not found", status=status.HTTP_404_NOT_FOUND)
 
         
             updatable_fields = [
@@ -1559,11 +1581,11 @@ def create_property_basic(request):
             return prepare_response(
                 message="Property updated successfully",
                 content={"property_id": prop.id},
-                status=200
+                status=status.HTTP_200_OK
             )
 
         except Exception as e:
-            return prepare_response({"error": str(e)}, status=500)
+            return prepare_response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
     elif request.method == "POST":
@@ -1597,7 +1619,7 @@ def create_property_basic(request):
             elif  user.user_type == "PROPERTY_MANAGER":
                 pmc_obj = PropertyManagerCompanyDetails.objects.filter(user=user).first()
                 if not pmc_obj:
-                    return prepare_response("Property Manager details not found", status=400)
+                    return prepare_response("Property Manager details not found", status=status.HTTP_400_BAD_REQUEST)
                 property_manager = pmc_obj
                 owner = None
    
@@ -1636,12 +1658,12 @@ def create_property_basic(request):
             )
 
         except Exception as e:
-            return prepare_response({"error": str(e)}, status=500)
+            return prepare_response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     else:
         return prepare_response(
             message=constants.INVALID_REQUEST_METHOD,
-            status=405
+           status= status.HTTP_405_METHOD_NOT_ALLOWED
         )
 
 
@@ -1660,11 +1682,11 @@ def add_commercial_details(request):
         if request.method == "GET":
             property_id = request.GET.get("property_id")
             if not property_id:
-                return prepare_response("Property ID required", status=400)
+                return prepare_response("Property ID required", status=status.HTTP_400_BAD_REQUEST)
 
             commercial_obj = PropertyCommercial.objects.filter(property_id=property_id).first()
             if not commercial_obj:
-                return prepare_response("Commercial details not found", status=404)
+                return prepare_response("Commercial details not found", status=status.HTTP_404_NOT_FOUND)
             property_obj = PropertyDetails.objects.filter(id=property_id).first()
 
          
@@ -1680,18 +1702,18 @@ def add_commercial_details(request):
                 "step_choice": property_obj.step_status if property_obj else None
             }
 
-            return prepare_response(content=data, message="Commercial details fetched", status=200)
+            return prepare_response(content=data, message="Commercial details fetched", status=status.HTTP_200_OK)
 
         if request.method in ["POST", "PUT"]:
             data = json.loads(request.body)
             property_id = data.get("property_id")
 
             if not property_id:
-                return prepare_response("Property ID required", status=400)
+                return prepare_response("Property ID required", status=status.HTTP_400_BAD_REQUEST)
 
             property_obj = PropertyDetails.objects.filter(id=property_id).first()
             if not property_obj:
-                return prepare_response("Property not found", status=404)
+                return prepare_response("Property not found", status=status.HTTP_404_NOT_FOUND)
             
 
             
@@ -1700,7 +1722,7 @@ def add_commercial_details(request):
                 if pmc_id:
                     pmc_obj = PropertyManagerCompanyDetails.objects.filter(id=pmc_id).first()
                     if not pmc_obj:
-                        return prepare_response("Invalid PMC ID", status=400)
+                        return prepare_response("Invalid PMC ID", status=status.HTTP_400_BAD_REQUEST)
                     property_obj.property_manager = pmc_obj
                     property_obj.save()
 
@@ -1732,7 +1754,7 @@ def add_commercial_details(request):
         if request.method == "PUT":
             commercial_obj = PropertyCommercial.objects.filter(property=property_obj).first()
             if not commercial_obj:
-                return prepare_response("Commercial details not found", status=404)
+                return prepare_response("Commercial details not found", status=status.HTTP_404_NOT_FOUND)
             decimal_fields = ["rent", "security_deposit", "booking_amount", "maintenance_charges", "commission_percent"]
             other_fields = ["cycle", "notice_period"]
             updatable_fields = [
@@ -1753,13 +1775,13 @@ def add_commercial_details(request):
 
             return prepare_response(
                 message="Commercial details updated successfully",
-                status=200
+                status=status.HTTP_200_OK
             )
 
-        return prepare_response(message="Invalid request method", status=405)
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     except Exception as e:
-        return prepare_response(f"Error: {str(e)}", status=500)
+        return prepare_response(f"Error: {str(e)}", status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 
@@ -1773,12 +1795,12 @@ def property_images_view(request):
             property_id = request.GET.get("property_id")
 
             if not property_id:
-                return prepare_response(message="property_id is required", status=400)
+                return prepare_response(message="property_id is required", status=status.HTTP_400_BAD_REQUEST)
 
             try:
                 property_obj = PropertyDetails.objects.get(id=property_id)
             except PropertyDetails.DoesNotExist:
-                return prepare_response(message="Invalid property_id", status=404)
+                return prepare_response(message="Invalid property_id", status=status.HTTP_404_NOT_FOUND)
 
             images_qs = PropertyImages.objects.filter(property_id=property_id).order_by("-id")
          
@@ -1805,7 +1827,7 @@ def property_images_view(request):
                     "property_id": property_id,
                     "step_choice": property_obj.step_status
                 },
-                status=200
+                status=status.HTTP_200_OK
             )
 
 
@@ -1815,10 +1837,10 @@ def property_images_view(request):
             images = body.get("images", [])
 
             if not property_id:
-                return prepare_response(message="Property ID is required", status=400)
+                return prepare_response(message="Property ID is required", status=status.HTTP_400_BAD_REQUEST)
 
             if not isinstance(images, list) or not images:
-                return prepare_response(message="Images must be a list", status=400)
+                return prepare_response(message="Images must be a list", status=status.HTTP_400_BAD_REQUEST)
 
             try:
                 property_obj = PropertyDetails.objects.get(id=property_id)
@@ -1833,7 +1855,7 @@ def property_images_view(request):
                 img_type = img.get("type", "INTERIOR").upper()
 
                 if not file_name or not base64_data:
-                    return prepare_response(message="Missing file_name or data", status=400)
+                    return prepare_response(message="Missing file_name or data", status=status.HTTP_400_BAD_REQUEST)
 
                 object_name = f"property_images/{property_id}/{file_name}"
 
@@ -1861,7 +1883,7 @@ def property_images_view(request):
             return prepare_response(
                 message="Images uploaded successfully",
                 content={"uploaded": uploaded_files},
-                status=201
+                status=status.HTTP_201_CREATED
             )
 
     
@@ -1872,15 +1894,15 @@ def property_images_view(request):
             images = body.get("images", [])
 
             if not property_id:
-                return prepare_response(message="Property ID is required", status=400)
+                return prepare_response(message="Property ID is required", status=status.HTTP_400_BAD_REQUEST)
 
             if not isinstance(images, list):
-                return prepare_response(message="Images must be a list", status=400)
+                return prepare_response(message="Images must be a list", status=status.HTTP_400_BAD_REQUEST)
 
             try:
                 property_obj = PropertyDetails.objects.get(id=property_id)
             except PropertyDetails.DoesNotExist:
-                return prepare_response(message="Property not found", status=404)
+                return prepare_response(message="Property not found", status=status.HTTP_404_NOT_FOUND)
 
             updated_files = []
 
@@ -1890,7 +1912,7 @@ def property_images_view(request):
                 img_type = img.get("type", "INTERIOR").upper()
 
                 if not file_name or not base64_data:
-                    return prepare_response(message="Missing file_name or data", status=400)
+                    return prepare_response(message="Missing file_name or data", status=status.HTTP_400_BAD_REQUEST)
 
              
                 img_obj, created = PropertyImages.objects.update_or_create(
@@ -1919,13 +1941,13 @@ def property_images_view(request):
             return prepare_response(
                 message="Images updated successfully",
                 content={"updated": updated_files},
-                status=200
+                status=status.HTTP_200_OK
             )
 
-        return prepare_response(message="Method not allowed", status=405)
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     except Exception as e:
-        return prepare_response(message=str(e), status=500)
+        return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 
@@ -1940,12 +1962,12 @@ def property_documents_view(request):
             property_id = request.GET.get("property_id")
 
             if not property_id:
-                return prepare_response(message="property_id is required", status=400)
+                return prepare_response(message="property_id is required", status=status.HTTP_400_BAD_REQUEST)
 
             try:
                 property_obj = PropertyDetails.objects.get(id=property_id)
             except PropertyDetails.DoesNotExist:
-                return prepare_response(message="Invalid property_id", status=404)
+                return prepare_response(message="Invalid property_id", status=status.HTTP_404_NOT_FOUND)
 
             docs_qs = PropertyDocuments.objects.filter(property_id=property_id).order_by("-id")
             final_docs = []
@@ -1973,7 +1995,7 @@ def property_documents_view(request):
                     "property_id": property_id,
                     "step_choice": property_obj.step_status
                 },
-                status=200
+                status=status.HTTP_200_OK
             )
 
 
@@ -1984,15 +2006,15 @@ def property_documents_view(request):
             documents = body.get("documents", [])
 
             if not property_id:
-                return prepare_response(message="Property ID is required", status=400)
+                return prepare_response(message="Property ID is required", status=status.HTTP_400_BAD_REQUEST)
 
             if not isinstance(documents, list) or not documents:
-                return prepare_response(message="Documents must be a list", status=400)
+                return prepare_response(message="Documents must be a list", status=status.HTTP_400_BAD_REQUEST)
 
             try:
                 property_obj = PropertyDetails.objects.get(id=property_id)
             except PropertyDetails.DoesNotExist:
-                return prepare_response(message="Property not found", status=404)
+                return prepare_response(message="Property not found", status=status.HTTP_404_NOT_FOUND)
 
             uploaded_files = []
 
@@ -2002,7 +2024,7 @@ def property_documents_view(request):
                 doc_type = doc.get("type", "RENTAL_DOCUMENT").upper()
 
                 if not file_name or not base64_data:
-                    return prepare_response(message="Missing file_name or data", status=400)
+                    return prepare_response(message="Missing file_name or data", status=status.HTTP_400_BAD_REQUEST)
 
                 object_name = f"property_documents/{property_id}/{file_name}"
 
@@ -2026,7 +2048,7 @@ def property_documents_view(request):
             return prepare_response(
                 message="Documents uploaded successfully",
                 content={"uploaded": uploaded_files},
-                status=201
+                status=status.HTTP_201_CREATED
             )
 
 
@@ -2037,15 +2059,15 @@ def property_documents_view(request):
             documents = body.get("documents", [])
 
             if not property_id:
-                return prepare_response("Property ID is required", 400)
+                return prepare_response(message="Property ID is required", status=status.HTTP_400_BAD_REQUEST)
 
             if not isinstance(documents, list):
-                return prepare_response("Documents must be a list", 400)
+                return prepare_response(message="Documents must be a list",status= 400)
 
             try:
                 property_obj = PropertyDetails.objects.get(id=property_id)
             except PropertyDetails.DoesNotExist:
-                return prepare_response("Property not found", 404)
+                return prepare_response(message="Property not found", status=status.HTTP_404_NOT_FOUND)
 
             updated_files = []
 
@@ -2055,7 +2077,7 @@ def property_documents_view(request):
                 doc_type = doc.get("type", "RENTAL_DOCUMENT").upper()
 
                 if not file_name or not base64_data:
-                    return prepare_response("Missing file_name or data", 400)
+                    return prepare_response(message="Missing file_name or data",status= 400)
 
                 doc_obj, created = PropertyDocuments.objects.get_or_create(
                     property=property_obj,
@@ -2080,13 +2102,13 @@ def property_documents_view(request):
             return prepare_response(
                 message="Documents updated successfully",
                 content={"updated": updated_files},
-                status=200
+                status=status.HTTP_200_OK
             )
 
-        return prepare_response("Method not allowed", 405)
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     except Exception as e:
-        return prepare_response(str(e), 500)
+        return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 
@@ -2235,7 +2257,7 @@ def tenant_list_view(request):
             )
 
         except Exception as e:
-            print("GET Error:", e)
+         
             return prepare_response(
                 message=constants.TENANT_DETAILS_NOT_FOUND,
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -2272,7 +2294,7 @@ def tenant_list_view(request):
             )
 
         except Exception as e:
-            print("DELETE Error:", e)
+  
             return prepare_response(
                 message=constants.ERROR_DELETING_SUCCESS,
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -3125,6 +3147,10 @@ def property_details_list_view(request):
                         "nationality": tenant.nationality,
                         "email": tenant_user.email if tenant_user else None,
                         "profile_image": tenant_user.profile_image if tenant_user else None,
+                        "emirate_id":tenant.emirate_id,
+                        "country":tenant_user.country if tenant_user else None, 
+                        "address": tenant.address
+
                     })
 
                 owner_details = OwnerDetails.objects.filter(user=prop.owner).first()
@@ -3136,6 +3162,10 @@ def property_details_list_view(request):
                     "trade_license": owner_details.trade_license_number if owner_details else "N/A",
                     "email": owner_user.email if owner_user else None,
                     "profile_image": owner_user.profile_image if owner_user else None,
+                    "emirate_id":owner_details.emirate_id,
+                    "uae_residence_visa":owner_details.uae_residence_visa,
+                    "trade_license_number":owner_details.trade_license_number,
+
                 }
 
 
@@ -3176,11 +3206,11 @@ def property_details_list_view(request):
                     img_type = img.image_type
                     base64_data = fetch_s3_presigned_url(url, file_name=file_name)
                     images_data.append({
-                                    "file_name": file_name,
-            "image_url": url,
-            "data": base64_data,
-            "type": img_type,
-            "id": img.id,})
+                                         "file_name": file_name,
+                                         "image_url": url,
+                                         "data": base64_data,
+                                          "type": img_type,
+                                              "id": img.id,})
 
                 data.append({
                     "id": prop.id,
@@ -3290,7 +3320,7 @@ def invite_owner_pmc(request):
             try:
                 send_ses_email(email, subject, body_text, body_html)
             except Exception as e:
-                print(f"SES Email Error: {e}")
+               
                 return prepare_response(
                     message=constants.INVITATION_CREATED_EMAIL_FAILED,
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -3307,7 +3337,7 @@ def invite_owner_pmc(request):
             )
 
         except Exception as e:
-            print(f"Error in invite_owner_pmc: {e}")
+          
             return prepare_response(
                 message=f"Error sending invitation: {str(e)}",
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -3375,7 +3405,7 @@ def invite_pmc_to_owner(request):
             try:
                 send_ses_email(email, subject, body_text, body_html)
             except Exception as e:
-                print(f"SES Email Error: {e}")
+               
                 return prepare_response(
                     message=constants.INVITATION_CREATED_EMAIL_FAILED,
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -3391,7 +3421,7 @@ def invite_pmc_to_owner(request):
             )
 
         except Exception as e:
-            print(f"Error in invite_pmc_to_owner_view: {e}")
+         
             return prepare_response(
                 message=f"Error sending invitation: {str(e)}",
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -3452,7 +3482,7 @@ def invite_tenant_by_pmc(request):
             try:
                 send_ses_email(email, subject, body_text, body_html)
             except Exception as e:
-                print(f"SES Email Error: {e}")
+           
                 return prepare_response(
                     message=constants.INVITATION_CREATED_EMAIL_FAILED,
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -3468,7 +3498,7 @@ def invite_tenant_by_pmc(request):
             )
 
         except Exception as e:
-            print(f"Error in invite_tenant_by_pmc: {e}")
+          
             return prepare_response(
                 message=f"Error sending invitation: {str(e)}",
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -3560,7 +3590,7 @@ def property_statistics(request):
         )
 
     except Exception as e:
-        print("Error in property_summary:", e)
+        
         return prepare_response(
             message=constants.SOMTHING_WENT_WRONG,
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -3649,7 +3679,7 @@ def tenant_my_property(request):
         )
 
     except Exception as e:
-        print("Tenant Dashboard Error:", e)
+        
         return prepare_response(
             message=constants.SOMTHING_WENT_WRONG,
             content={"error": str(e)},
@@ -3770,6 +3800,7 @@ def property_tenant_list_view(request):
 
 @is_request_authenticated
 def lease_property_view(request):
+    user = request.user
     try:
         if request.method == "POST":
             body = json.loads(request.body)
@@ -3781,7 +3812,7 @@ def lease_property_view(request):
             if not lease_property_id or not lease_tenant_id:
                 return prepare_response(
                     message="lease_property_id and lease_tenant_id  are required",
-                    status=400
+                    status=status.HTTP_400_BAD_REQUEST
                 )
             
             lease_property = PropertyDetails.objects.get(id=lease_property_id)
@@ -3790,14 +3821,14 @@ def lease_property_view(request):
 
            
             if not lease_property.owner:
-                return prepare_response(message="Property has no owner assigned", status=400)
+                return prepare_response(message="Property has no owner assigned", status=status.HTTP_400_BAD_REQUEST)
             owner = OwnerDetails.objects.get(user=lease_property.owner) 
 
          
             lease_start_date = safe_epoch_to_datetime(body.get("lease_start_date"))
             lease_end_date = safe_epoch_to_datetime(body.get("lease_end_date"))
             if not lease_start_date or not lease_end_date:
-                return prepare_response(message="Invalid lease start or end date", status=400)
+                return prepare_response(message="Invalid lease start or end date", status=status.HTTP_400_BAD_REQUEST)
 
             lease_grace_start_date = safe_epoch_to_datetime(body.get("lease_grace_start_date")) if body.get("lease_grace_start_date") else None
             lease_grace_end_date = safe_epoch_to_datetime(body.get("lease_grace_end_date")) if body.get("lease_grace_end_date") else None
@@ -3809,7 +3840,7 @@ def lease_property_view(request):
             if not created_by:
                 return prepare_response(
                     message="Logged-in user is not a property manager",
-                    status=400
+                    status=status.HTTP_400_BAD_REQUEST
                     )
              
 
@@ -3831,19 +3862,20 @@ def lease_property_view(request):
             return prepare_response(
                 content={"id": lease.id},
                 message="Lease created successfully",
-                status=201
+                status=status.HTTP_201_CREATED
             )
 
         elif request.method == "PUT":
             body = json.loads(request.body)
             lease_id = body.get("lease_id")
             if not lease_id:
-                return prepare_response(message="lease_id is required for update", status=400)
+                return prepare_response(message="lease_id is required for update", status=status.HTTP_400_BAD_REQUEST)
 
             lease = LeasePropertyDetails.objects.get(id=lease_id)
 
           
             lease_property_id = body.get("lease_property_id")
+            lease_tenant_id = body.get("lease_tenant_id")
             # lease_tenant_id = body.get("lease_tenant_id")
             # created_by_id = body.get("created_by_id")
 
@@ -3852,17 +3884,17 @@ def lease_property_view(request):
                 lease.lease_property = lease_property
 
                 if not lease_property.owner:
-                    return prepare_response(message="Property has no owner assigned", status=400)
+                    return prepare_response(message="Property has no owner assigned", status=status.HTTP_400_BAD_REQUEST)
                 lease.owner = OwnerDetails.objects.get(user=lease_property.owner)
 
-            # if lease_tenant_id:
-            #     lease.lease_tenant = TenantDetails.objects.get(id=lease_tenant_id)
+            if lease_tenant_id:
+                 lease.lease_tenant = TenantDetails.objects.get(id=lease_tenant_id)
                            
             created_by = PropertyManagerCompanyDetails.objects.filter(user=request.user).first()
             if not created_by:
                 return prepare_response(
                     message="Logged-in user is not a property manager",
-                    status=400
+                    status=status.HTTP_400_BAD_REQUEST
                     )
        
             lease_start_date = safe_epoch_to_datetime(body.get("lease_start_date"))
@@ -3875,6 +3907,7 @@ def lease_property_view(request):
             if lease_grace_start_date: lease.lease_grace_start_date = lease_grace_start_date
             if lease_grace_end_date: lease.lease_grace_end_date = lease_grace_end_date
 
+
             lease.lease_remarks = body.get("lease_remarks", lease.lease_remarks)
             lease.lease_status = body.get("lease_status", lease.lease_status)
             lease.save()
@@ -3882,19 +3915,22 @@ def lease_property_view(request):
             return prepare_response(
                 content={"lease_id": lease.id},
                 message="Lease updated successfully",
-                status=200
+                status=status.HTTP_200_OK
             )
 
         elif request.method == "GET":
+            
             lease_id = request.GET.get("lease_id")
-            if not lease_id:
-                return prepare_response(message="lease_id is required", status=400)
+            search = request.GET.get("search", "")
+            page = int(request.GET.get("page", 1))
+            limit = int(request.GET.get("limit", 10))
 
-            lease = LeasePropertyDetails.objects.get(id=lease_id)
-            lease_data = {
-                "lease_id": lease.id,
-                "lease_property_id": lease.lease_property.id,
-                "lease_tenant_id": lease.lease_tenant.id,
+            if  lease_id:
+                lease = LeasePropertyDetails.objects.get(id=lease_id)
+                lease_data={
+                    "id": lease.id,
+                "lease_property":{"key":lease.lease_property.id , "value":lease.lease_property.property_name} ,
+                "lease_tenant":{"key":lease.lease_tenant.id , "value":lease.lease_tenant.full_name} , 
                 "owner_id": lease.owner.id if lease.owner else None,
                 "owner_name": f"{lease.owner.full_name}" if lease.owner else None,
                 "created_by_id": lease.created_by.id if lease.created_by else None,
@@ -3904,26 +3940,73 @@ def lease_property_view(request):
                 "lease_grace_end_date": int(lease.lease_grace_end_date.timestamp() * 1000) if lease.lease_grace_end_date else None,
                 "lease_remarks": lease.lease_remarks,
                 # "lease_status": lease.lease_status,
-                "step_status":lease.step_status
-            }
+                "step_choice":lease.step_status
 
-            return prepare_response(content=lease_data , message="Lease fetched successfully", status=200)
+                }
+                return prepare_response(content=lease_data , message="Lease fetched successfully", status=status.HTTP_200_OK)
+            else:
+                pmc = user.property_manager_details.first()
+                if not pmc:
+                    return prepare_response(message="PMC not found for this user", status=400)
+                leases = LeasePropertyDetails.objects.filter(created_by=pmc)
+                if search:
+                    leases = leases.filter(
+                    Q(lease_property__property_name__icontains=search) |
+                     Q(lease_tenant__full_name__icontains=search)
+                                                            )
+                    
+                    
+                paginator = Paginator(leases.order_by("-id"), limit)
+                page_obj = paginator.get_page(page)
+                response_data = []
+                for lease in page_obj:
+                        
+                        template_value = TemplateValues.objects.filter(lease=lease).first()
+                        pdf_url = None
+                        if template_value and template_value.document_template and template_value.document_template.pdf_path:
+                            pdf_path = template_value.document_template.pdf_path
+                            pdf_url = fetch_s3_presigned_url(
+                                pdf_path,
+                                file_name=f"lease_{lease.id}.pdf"
+                            )
+
+                        response_data.append({
+                              "id": lease.id,
+                              "property_name": lease.lease_property.property_name,
+                              "tenant_name": lease.lease_tenant.full_name,
+                              "lease_status": lease.lease_status,
+                              "lease_start_date": int(lease.lease_start_date.timestamp()*1000),
+                              "lease_end_date": int(lease.lease_end_date.timestamp()*1000),
+                              "lease_pdf_url": pdf_url,
+                                             })
+                content = {
+                         "page": page,
+                        "total_pages": paginator.num_pages,
+                     "total_records": paginator.count,
+                      "data": response_data}
+                
+                return prepare_response(
+                        content=content,
+                        message="Lease list fetched successfully",
+                        status=200
+                    )
+
 
         else:
-            return prepare_response(message="Invalid request method", status=405)
+            return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     except PropertyDetails.DoesNotExist:
-        return prepare_response(message="Property not found", status=404)
+        return prepare_response(message="Property not found", status=status.HTTP_404_NOT_FOUND)
     except TenantDetails.DoesNotExist:
-        return prepare_response(message="Tenant not found", status=404)
+        return prepare_response(message="Tenant not found", status=status.HTTP_404_NOT_FOUND)
     except PropertyManagerCompanyDetails.DoesNotExist:
-        return prepare_response(message="Created By user not found", status=404)
+        return prepare_response(message="Created By user not found", status=status.HTTP_404_NOT_FOUND)
     except OwnerDetails.DoesNotExist:
-        return prepare_response(message="Owner not found", status=404)
+        return prepare_response(message="Owner not found", status=status.HTTP_404_NOT_FOUND)
     except LeasePropertyDetails.DoesNotExist:
-        return prepare_response(message="Lease not found", status=404)
+        return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
-        return prepare_response(message=str(e), status=400)
+        return prepare_response(message=str(e), status=status.HTTP_400_BAD_REQUEST)
 
 
 
@@ -3960,6 +4043,8 @@ def lease_commercials_view(request):
                 notice_period=body.get("notice_period"),
                 discount=safe_decimal(body.get("discount"))
             )
+            lease.step_status="LEASE_COMMERCIALS"
+            lease.save()
 
             return prepare_response(
                 message="LeaseCommercials created successfully",
@@ -3970,11 +4055,16 @@ def lease_commercials_view(request):
         elif request.method == "PUT":
         
             body = json.loads(request.body)
-            commercial_id = body.get("commercial_id")
-            if not commercial_id:
-                return prepare_response(message="commercial_id is required for update", status=status.HTTP_400_BAD_REQUEST)
-
-            commercial = LeaseCommercials.objects.get(id=commercial_id)
+            lease_id = body.get("lease_id")
+            if not lease_id:
+                return prepare_response(message="lease_id is required for update", status=status.HTTP_400_BAD_REQUEST)
+            try:
+                commercial = LeaseCommercials.objects.get(lease_id=lease_id)
+            except LeaseCommercials.DoesNotExist:
+                return prepare_response(
+                    message="No LeaseCommercials found for the given lease_id",
+                    status=status.HTTP_404_NOT_FOUND
+                                 )
 
          
             for field in ["annual_amount", "rent", "actual_annual_amount", "booking_amount",
@@ -3983,15 +4073,12 @@ def lease_commercials_view(request):
                 if field in body:
                     setattr(commercial, field, body[field])
 
-            lease_id = body.get("lease_id")
-            if lease_id:
-                commercial.lease = LeasePropertyDetails.objects.get(id=lease_id)
 
             commercial.save()
 
             return prepare_response(
                 message="LeaseCommercials updated successfully",
-                content={"commercial_id": commercial.id},
+                ccontent={"lease_id": lease_id},
                 status=status.HTTP_200_OK
             )
 
@@ -4004,7 +4091,7 @@ def lease_commercials_view(request):
                 commercial = LeaseCommercials.objects.get(id=commercial_id)
                 data = {
                     "commercial_id": commercial.id,
-                    "lease_id": commercial.lease.id,
+                    "id": commercial.lease.id,
                     "annual_amount": commercial.annual_amount,
                     "rent": commercial.rent,
                     "actual_annual_amount": commercial.actual_annual_amount,
@@ -4018,26 +4105,29 @@ def lease_commercials_view(request):
                 return prepare_response(content=data, message="LeaseCommercials fetched successfully", status=status.HTTP_200_OK)
 
             elif lease_id:
-                commercials = LeaseCommercials.objects.filter(lease_id=lease_id)
-                data = [{
-                    "commercial_id": c.id,
-                    "lease_id": c.lease.id,
-                    "annual_amount": c.annual_amount,
-                    "rent": c.rent,
-                    "actual_annual_amount": c.actual_annual_amount,
-                    "booking_amount": c.booking_amount,
-                    "security_deposit": c.security_deposit,
-                    "maintenance_charges": c.maintenance_charges,
-                    "commission_percentage": c.commission_percentage,
-                    "notice_period": c.notice_period,
-                    "discount": c.discount
-                } for c in commercials]
-                return prepare_response(content={"commercials": data}, message="LeaseCommercials list fetched successfully", status=status.HTTP_200_OK)
+                commercials = LeaseCommercials.objects.filter(lease_id=lease_id).first()
+                lease = commercials.lease
+                data = {
+                    "commercial_id": commercials.id,
+                    "id": commercials.lease.id,
+                    "annual_amount": commercials.annual_amount,
+                    "rent": commercials.rent,
+                    "actual_annual_amount": commercials.actual_annual_amount,
+                    "booking_amount": commercials.booking_amount,
+                    "security_deposit": commercials.security_deposit,
+                    "maintenance_charges": commercials.maintenance_charges,
+                    "commission_percentage": commercials.commission_percentage,
+                    "notice_period": commercials.notice_period,
+                    "discount": commercials.discount,
+                    "step_choice": lease.step_status
+
+                } 
+                return prepare_response(content= data, message="LeaseCommercials list fetched successfully", status=status.HTTP_200_OK)
             else:
                 return prepare_response(message="commercial_id or lease_id is required", status=status.HTTP_400_BAD_REQUEST)
 
         else:
-            return prepare_response(message="Invalid request method", status=status.HTTP_405_METHOD_NOT_ALLOWED)
+            return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     except LeasePropertyDetails.DoesNotExist:
         return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
@@ -4055,12 +4145,12 @@ def lease_ejari_documents_view(request):
             lease_id = request.GET.get("lease_id")
 
             if not lease_id:
-                return prepare_response(message="lease_id is required",status=400)
+                return prepare_response(message="lease_id is required",status=status.HTTP_400_BAD_REQUEST)
 
             try:
                 lease_obj = LeasePropertyDetails.objects.get(id=lease_id)
             except LeasePropertyDetails.DoesNotExist:
-                return prepare_response(message="Invalid lease_id", status=404)
+                return prepare_response(message="Invalid lease_id", status=status.HTTP_404_NOT_FOUND)
 
             docs_qs = LeaseEjariUpload.objects.filter(lease_id=lease_id).order_by("-id")
             final_docs = []
@@ -4086,7 +4176,7 @@ def lease_ejari_documents_view(request):
                     "lease_id": lease_id,
                     "step_choice": lease_obj.step_status
                 },
-                status=200
+                status=status.HTTP_200_OK
             )
 
         if request.method == "POST":
@@ -4095,15 +4185,15 @@ def lease_ejari_documents_view(request):
             documents = body.get("documents", [])
 
             if not lease_id:
-                return prepare_response(message="lease_id is required", status=400)
+                return prepare_response(message="lease_id is required", status=status.HTTP_400_BAD_REQUEST)
 
             if not isinstance(documents, list) or not documents:
-                return prepare_response(message="Documents must be a list", status=400)
+                return prepare_response(message="Documents must be a list", status=status.HTTP_400_BAD_REQUEST)
 
             try:
                 lease_obj = LeasePropertyDetails.objects.get(id=lease_id)
             except LeasePropertyDetails.DoesNotExist:
-                return prepare_response(message="Lease not found", status=404)
+                return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
 
             uploaded_files = []
 
@@ -4113,7 +4203,7 @@ def lease_ejari_documents_view(request):
                 doc_type = doc.get("type", "").upper()
 
                 if not file_name or not base64_data:
-                    return prepare_response(message="Missing file_name or data",status=400)
+                    return prepare_response(message="Missing file_name or data",status=status.HTTP_400_BAD_REQUEST)
 
                 object_name = f"lease_documents/{lease_id}/{file_name}"
 
@@ -4138,7 +4228,7 @@ def lease_ejari_documents_view(request):
             return prepare_response(
                 message="Lease Ejari Documents uploaded successfully",
                 content={"uploaded": uploaded_files},
-                status=200
+                status=status.HTTP_200_OK
             )
 
         if request.method == "PUT":
@@ -4147,15 +4237,15 @@ def lease_ejari_documents_view(request):
             documents = body.get("documents", [])
 
             if not lease_id:
-                return prepare_response(message="lease_id is required", status=400)
+                return prepare_response(message="lease_id is required", status=status.HTTP_400_BAD_REQUEST)
 
             if not isinstance(documents, list):
-                return prepare_response(message="Documents must be a list", status=400)
+                return prepare_response(message="Documents must be a list", status=status.HTTP_400_BAD_REQUEST)
 
             try:
                 lease_obj = LeasePropertyDetails.objects.get(id=lease_id)
             except LeasePropertyDetails.DoesNotExist:
-                return prepare_response(message="Lease not found",status= 404)
+                return prepare_response(message="Lease not found",status=status.HTTP_404_NOT_FOUND)
 
             updated_files = []
 
@@ -4165,7 +4255,7 @@ def lease_ejari_documents_view(request):
                 doc_type = doc.get("type", "").upper()
 
                 if not file_name or not base64_data:
-                    return prepare_response(message="Missing file_name or data",status=400)
+                    return prepare_response(message="Missing file_name or data",status=status.HTTP_400_BAD_REQUEST)
 
                 doc_obj, created = LeaseEjariUpload.objects.get_or_create(
                     lease=lease_obj,
@@ -4190,13 +4280,13 @@ def lease_ejari_documents_view(request):
             return prepare_response(
                 message="Lease Ejari Documents updated successfully",
                 content={"updated": updated_files},
-                status=200
+                status=status.HTTP_200_OK
             )
 
-        return prepare_response(message="Method not allowed", status=405)
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     except Exception as e:
-        return prepare_response(message=str(e), status=500)
+        return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 
@@ -4204,7 +4294,7 @@ def lease_ejari_documents_view(request):
 
 def generate_contract(request):
     if request.method != "POST":    
-        return prepare_response(message="Only POST allowed", status=405)
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     try:
         body = json.loads(request.body)
@@ -4232,7 +4322,7 @@ def generate_contract(request):
 
         if os.path.isdir(template_path):
             return prepare_response(
-                message=f"Template path is a folder, not a file: {template_path}",
+                message=f"Template path is a folder, not a file: {template_path}",  
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -4246,11 +4336,9 @@ def generate_contract(request):
             html_content = f.read()
 
         mapping = {}
-
         fields = TemplateFields.objects.filter(document_template=template)
         for field in fields:
             key = field.id_attribute or field.name_attribute  
-
             if key and key in values_dict:
                 mapping[key] = values_dict[key]
 
@@ -4259,27 +4347,53 @@ def generate_contract(request):
         timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
         filename = f"lease_{timestamp}.html"
 
-        save_dir = os.path.join(settings.BASE_DIR, r"property_management\templates\genrate_lease_temaplates")
+        save_dir = os.path.join(settings.MEDIA_ROOT, "generated_templates")
         os.makedirs(save_dir, exist_ok=True)
-
-
-        os.makedirs(save_dir, exist_ok=True)
-
         save_path = os.path.join(save_dir, filename)
 
         with open(save_path, "w", encoding="utf-8") as f:
             f.write(html_content)
 
-        file_url = f"/media/generated_templates/{filename}"
+        pdf_filename = f"lease_{timestamp}.pdf"
+        pdf_save_path = os.path.join(save_dir, pdf_filename)
+        config = pdfkit.configuration(wkhtmltopdf=r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe")
+        
+
+
+        pdfkit.from_file(save_path, pdf_save_path, configuration=config)
+        pdf_bytes = pdfkit.from_string(html_content, False, configuration=config)
+        pdf_filename = f"lease_{timestamp}.pdf"
+        s3_object_name = f"generated_templates/{pdf_filename}"
+        pdf_s3_url = upload_file_to_s3_base64(pdf_bytes, s3_object_name)
+
+     
+        # pdf_relative_path = os.path.relpath(pdf_save_path, settings.MEDIA_ROOT).replace(os.sep, '/')
+        # pdf_db_path = f"media/{pdf_relative_path}"
+
+       
+        relative_path = os.path.relpath(save_path, settings.MEDIA_ROOT).replace(os.sep, '/')
+        db_path = f"media/{relative_path}"
+
+        file_url = f"{settings.MEDIA_URL}generated_templates/{filename}"
+
+       
+        new_template = Template.objects.create(
+            name=f"User Lease Template {timestamp}",
+            template_path=db_path,
+            pdf_path=pdf_s3_url,
+            is_active=True,
+            is_predefined=False
+        )
 
         return prepare_response(
             message="Contract generated successfully",
-            content={"file_url": file_url},
+            content={"file_url": file_url, "pdf_url": pdf_s3_url},
             status=status.HTTP_200_OK
         )
 
     except Exception as e:
-        return prepare_response(message=str(e), status=500)
+        return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 
 
@@ -4289,7 +4403,7 @@ def get_template_fields(request):
 
         if not template_id:
             return prepare_response(
-                message="template_id is required",
+                message="template  id is required",
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -4339,4 +4453,45 @@ def get_template_fields(request):
 
 
 
+def get_pdf_template(request):
+
+    template_id = request.GET.get("template_id")
+    if not template_id:
+        return prepare_response(
+            message="template_id is required",
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    try:
+        template = Template.objects.get(id=template_id)
+        if not template.pdf_path:
+            return prepare_response(
+                message="PDF not available for this template",
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        presigned_url = fetch_s3_presigned_url(template.pdf_path, file_name=f"lease_{template_id}.pdf")
+        if not presigned_url:
+            return prepare_response(
+                message="Failed to generate presigned URL",
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        return prepare_response(
+            message="Presigned PDF URL fetched successfully",
+            content={"pdf_url": presigned_url},
+            status=status.HTTP_200_OK
+        )
+
+    except Template.DoesNotExist:
+        return prepare_response(
+            message="Template not found",
+            status=status.HTTP_404_NOT_FOUND
+        )
+    except Exception as e:
+        return prepare_response(
+            message=str(e),
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+    
 
