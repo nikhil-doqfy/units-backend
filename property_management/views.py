@@ -4504,7 +4504,7 @@ def get_pdf_template(request):
 
 
 
-# -----------------------------------------------------Export All CSV API-------------------------------------------------------- 
+# -----------------------------------------------------Export All CSV APIs-------------------------------------------------------- 
 
 
 @is_request_authenticated
@@ -4569,3 +4569,7 @@ def export_property_csv(request):
             message=f"Error exporting CSV: {str(e)}",
             status=500
         )
+
+
+
+

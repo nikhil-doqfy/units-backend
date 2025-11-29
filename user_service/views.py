@@ -753,7 +753,6 @@ def toggle_user_active(request):
                 message=constants.USER_ID_REQUIRED,
                 status=status.HTTP_400_BAD_REQUEST
             )
-        req_user_profile = UserProfile.objects.filter(user=request.user).first()
         user_profile = UserProfile.objects.filter(id=user_id).first()
         if not user_profile:
             return prepare_response(
