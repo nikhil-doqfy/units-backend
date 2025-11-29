@@ -746,7 +746,8 @@ def toggle_user_active(request):
         )
 
     try:
-        user_id = request.GET.get("user_id")
+        body = json.loads(request.body)
+        user_id = body.get("user_id")
         if not user_id:
             return prepare_response(
                 message=constants.USER_ID_REQUIRED,
