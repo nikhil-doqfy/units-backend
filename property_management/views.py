@@ -4376,7 +4376,7 @@ def generate_contract(request):
 
        
         relative_path = os.path.relpath(save_path, settings.MEDIA_ROOT).replace(os.sep, '/')
-        db_path = f"media/{relative_path}"
+        db_path = f"/media/{relative_path}"
 
         file_url = f"{settings.MEDIA_URL}generated_templates/{filename}"
 
@@ -4573,3 +4573,147 @@ def export_property_csv(request):
 
 
 
+@is_request_authenticated
+def export_staff_csv(request):
+    if request.method != "GET":
+        return prepare_response(
+            message="Invalid request method.",
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+    try:
+        search = request.GET.get("search", "")
+
+    
+        staff_qs = StaffDetails.objects.select_related("staff_role", "user") \
+            .prefetch_related("assigned_properties").all()
+
+  
+        if search:
+            staff_qs = staff_qs.filter(
+                Q(staff_name__icontains=search) |
+                Q(staff_id__icontains=search) |
+                Q(phone_number__icontains=search)
+            )
+
+
+        field_names = [
+            "Staff ID",
+            "Staff Name",
+            "Phone Number",
+            "Staff Role",
+            "User Email",
+            "Total Assigned Properties"
+        ]
+
+        export_data = []
+
+        for staff in staff_qs:
+            export_data.append({
+                "Staff ID": staff.staff_id,
+                "Staff Name": staff.staff_name,
+                "Phone Number": staff.phone_number,
+                "Staff Role": staff.staff_role.name if staff.staff_role else "N/A",
+                "User Email": staff.user.email if staff.user else "N/A",
+                "Total Assigned Properties": staff.assigned_properties.count()
+            })
+
+        return export_to_csv("staff_data_export", field_names, export_data)
+
+    except Exception as e:
+        return prepare_response(
+            message=f"Error exporting CSV: {str(e)}",
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+
+# /tenant/list/view
+# @is_request_authenticated
+def export_tenant_csv(request):
+    if request.method != "GET":
+        return prepare_response(
+            message="Invalid request method.",
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+    try:
+        search = request.GET.get("search", "")
+      
+        tenants_qs = TenantDetails.objects.select_related("property", "lease_property_details").all()
+        if search:
+            tenants_qs = tenants_qs.filter(full_name__icontains=search)
+
+    
+        field_names = [
+            "Tenant ID",
+            "Full Name",
+            "Tenant Number",
+            "Mobile Number",
+            "Property Assigned",
+            "Rental Agreement"
+        ]
+
+        export_data = []
+
+        for tenant in tenants_qs:
+            export_data.append({
+                "Tenant ID": tenant.id,
+                "Full Name": tenant.full_name,
+                "Tenant Number": tenant.tenant_number,
+                "Mobile Number": tenant.mobile_number,
+                "Property Assigned": tenant.property.property_name if tenant.property else "N/A",
+                "Rental Agreement": "N/A",
+            })
+
+        return export_to_csv("tenant_data_export", field_names, export_data)
+
+    except Exception as e:
+        return prepare_response(
+            message=f"Error exporting CSV: {str(e)}",
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+
+
+
+# /owner/details/list/view/
+@is_request_authenticated
+def export_owner_csv(request):
+    if request.method != "GET":
+        return prepare_response(
+            message="Invalid request method.",
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+    try:
+
+        owners_qs = OwnerDetails.objects.all().select_related("user")
+        field_names = [
+            "Owner Name",
+            "Code",
+            "Contact Number",
+            "Properties",
+            "Email Address"
+        ]
+        export_data = []
+        for owner in owners_qs:
+            user = owner.user
+            properties = PropertyDetails.objects.filter(owner=user).values_list("property_name", flat=True) if user else []
+            properties_str = ", ".join(properties)  
+
+            export_data.append({
+                "Owner Name": owner.full_name,
+                "Code": owner.owner_number,
+                "Contact Number": owner.mobile_number,
+                "Properties": f"{properties_str} ({len(properties)})" if properties else "None",
+                "Email Address": user.email if user else "N/A"
+            })
+        return export_to_csv("owners_data", field_names, export_data)
+
+    except Exception as e:
+        return prepare_response(
+            message=f"Error exporting CSV: {str(e)}",
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
