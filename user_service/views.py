@@ -665,25 +665,68 @@ def user_management_view(request):
  
     elif request.method == "PUT":
         try:
-            user_id = request.GET.get("id")
+            body = json.loads(request.body)
+            user_id = body.get("user_id")
             if not user_id:
                 return prepare_response(
                     message=constants.ID_REQUIRE_QUERY_PARAMS,
                     status=status.HTTP_400_BAD_REQUEST
                 )
-
-            body = json.loads(request.body)
             user = UserProfile.objects.filter(id=user_id, is_deleted=False).first()
             if not user:
                 return prepare_response(
                     message=constants.USER_NOT_FOUND,
                     status=status.HTTP_404_NOT_FOUND
                 )
+            first_name_db = user.first_name or ""
+            last_name_db = user.last_name or ""
 
-            if "email" in body:
-                user.email = body["email"]
-            
+            first_name = body.get("first_name")
+            last_name = body.get("last_name")
 
+            if first_name:
+                user.first_name = first_name
+            if last_name:
+                user.last_name = last_name
+
+            new_first = user.first_name or first_name_db
+            new_last = user.last_name or last_name_db
+            full_name = f"{new_first} {new_last}".strip()
+            if "profile_image" in body:
+                user.profile_image = body["profile_image"]
+
+
+  
+
+            phone_number = body.get("contact_number")
+            user_type = user.user_type.lower()
+            if user_type == "owner":
+                details = user.owner_details.first()
+                if details:
+                    details.full_name = full_name
+                    if phone_number:
+                        details.mobile_number = phone_number
+                    details.save()
+            elif user_type == "tenant":
+                details = user.tenant_details.first()
+                if details:
+                    details.full_name = full_name
+                    if phone_number:
+                        details.mobile_number = phone_number
+                    details.save()
+            elif user_type == "property_manager":
+                details = user.property_manager_details.first()
+                if details:
+                    details.full_name = full_name
+                    if phone_number:
+                        details.phone_number = phone_number
+                    details.save()
+            elif user_type == "staff":
+                details = user.staff_details.first()
+                if details:
+                    if phone_number:
+                        details.phone_number = phone_number
+                    details.save()
 
             user.save()
 
