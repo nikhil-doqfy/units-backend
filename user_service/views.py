@@ -508,11 +508,11 @@ def user_management_view(request):
                     details = getattr(user, "property_manager_details", None)
                     if details.exists():
                         phone_number = details.first().phone_number
-
+                role_key = user.user_type
+                role_value = " ".join([w.capitalize() for w in role_key.lower().split("_")])
                 data.append({
                     "id": user.id,
                     "email": user.email,
-                    "role": user.user_type,
                     "is_verified": user.is_verified,
                     "is_deleted": user.is_deleted,
                     "is_login_allowed": user.is_login_allowed,
@@ -520,11 +520,18 @@ def user_management_view(request):
                     "created_on": datetime_to_epoch_millis(user.created),
                     "last_login": datetime_to_epoch_millis(user.last_login) if user.last_login else None,
                     "is_active": user.is_active,
-                    "profile_image":user.profile_image,
                     "first_name":user.first_name,
                     "last_name":user.last_name,
                     "profile_image_type":user.profile_image_type,
                     "active_status": "Active" if user.is_active else "Inactive",
+                    "location":user.country,
+                    "password": user.hashed_password,
+                    "confirm_password":user.hashed_password,
+                     "role": {
+                          "key": role_key,
+                          "value": role_value
+                              },
+                    "profile_image":user.profile_image,
                     
                     
                 })
@@ -604,7 +611,9 @@ def user_management_view(request):
                 is_verified=False,
                 is_deleted=False,
                 is_login_allowed=False,
-                last_login=timezone.now()    
+                last_login=timezone.now(),
+                country=location
+                
             )
 
        
@@ -683,11 +692,15 @@ def user_management_view(request):
 
             first_name = body.get("first_name")
             last_name = body.get("last_name")
+            location = body.get("location")
 
             if first_name:
                 user.first_name = first_name
             if last_name:
                 user.last_name = last_name
+            if location:
+                user.country=location
+            
 
             new_first = user.first_name or first_name_db
             new_last = user.last_name or last_name_db
@@ -699,6 +712,7 @@ def user_management_view(request):
   
 
             phone_number = body.get("contact_number")
+            
             user_type = user.user_type.lower()
             if user_type == "owner":
                 details = user.owner_details.first()
