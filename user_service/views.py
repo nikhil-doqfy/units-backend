@@ -443,6 +443,9 @@ def user_management_view(request):
             users_qs = UserProfile.objects.filter(is_deleted=is_deleted)
             if user_type:
                 users_qs = users_qs.filter(user_type=user_type.upper())
+            user_id = request.GET.get("user_id")
+            if user_id:
+                users_qs = users_qs.filter(id=user_id)
 
             if start_epoch and end_epoch:
                 try:
