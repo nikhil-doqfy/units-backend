@@ -396,6 +396,63 @@ def reset_password(request):
 
 
 
+@is_request_authenticated
+def change_password(request):
+    if request.method != "POST":
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    try:
+        data = json.loads(request.body)
+
+        old_password = data.get("current_password")
+        new_password = data.get("new_password")
+        confirm_password = data.get("new_confirm_password")
+
+        if not all([old_password, new_password, confirm_password]):
+            return prepare_response(
+                message="Old Password, New Password and Confirm Password required",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if new_password != confirm_password:
+            return prepare_response(
+                message=constants.PASSWORDS_DO_NOT_MATCH,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+      
+        if not validate_password(new_password):
+            return prepare_response(
+                message=constants.WEAK_PASSWORD,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        user = request.user  
+
+
+        if not check_password(old_password, user.hashed_password):
+            return prepare_response(
+                message="current Password is incorrect",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+
+        user.hashed_password = make_password(new_password)
+        user.save(update_fields=["hashed_password"])
+
+        return prepare_response(
+            message="Password updated successfully",
+            status=status.HTTP_200_OK
+        )
+
+    except Exception as e:
+   
+        return prepare_response(
+            message=constants.INTERNAL_SERVER_ERROR,
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+
 
 def send_password_otp(request):
     if request.method != "POST":

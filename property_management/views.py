@@ -5,7 +5,7 @@ from property_management.models import OwnerDetails ,TenantDetails , LeaseProper
 from user_service.models import PropertyManagerCompanyDetails ,PropertyDetails ,UserProfile,StaffDetails  ,PropertyCommercial ,PropertyImages ,PropertyDocuments 
 from utilities.decorator import is_request_authenticated
 import json
-from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger,send_ses_email,safe_decimal ,safe_epoch_to_datetime ,replace_placeholders ,fetch_s3_presigned_url
+from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger,send_ses_email,safe_decimal ,safe_epoch_to_datetime ,replace_placeholders ,fetch_s3_presigned_url ,export_to_csv
 from utilities import status ,  constants
 from django.utils import timezone
 from utilities import config
@@ -3147,7 +3147,7 @@ def property_details_list_view(request):
                         "nationality": tenant.nationality,
                         "email": tenant_user.email if tenant_user else None,
                         "profile_image": tenant_user.profile_image if tenant_user else None,
-                        "emirate_id":tenant.emirate_id,
+                        # "emirate_id":tenant.emirate_id,
                         "country":tenant_user.country if tenant_user else None, 
                         "address": tenant.address
 
@@ -3162,9 +3162,13 @@ def property_details_list_view(request):
                     "trade_license": owner_details.trade_license_number if owner_details else "N/A",
                     "email": owner_user.email if owner_user else None,
                     "profile_image": owner_user.profile_image if owner_user else None,
-                    "emirate_id":owner_details.emirate_id,
-                    "uae_residence_visa":owner_details.uae_residence_visa,
-                    "trade_license_number":owner_details.trade_license_number,
+                    # "emirate_id":owner_details.emirate_id,
+                    # "uae_residence_visa":owner_details.uae_residence_visa,
+                    # "trade_license_number":owner_details.trade_license_number,
+                    "emirate_id": owner_details.emirate_id if owner_details else "N/A",
+                    "uae_residence_visa": owner_details.uae_residence_visa if owner_details else "N/A",
+                    "trade_license_number": owner_details.trade_license_number if owner_details else "N/A",
+                   
 
                 }
 
@@ -4495,3 +4499,73 @@ def get_pdf_template(request):
         )
     
 
+
+
+
+
+
+# -----------------------------------------------------Export All CSV API-------------------------------------------------------- 
+
+
+@is_request_authenticated
+def export_property_csv(request):
+    if request.method != "GET":
+        return prepare_response(
+            message="Invalid request method.",
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+    try:
+        user = request.user
+        property_id = request.GET.get("property_id")
+
+        properties = PropertyDetails.objects.select_related("owner").prefetch_related(
+            Prefetch("tenant_details", queryset=TenantDetails.objects.select_related("user"))
+        )
+
+  
+        if user.user_type == "OWNER":
+            properties = properties.filter(owner=user)
+        elif user.user_type == "TENANT":
+            properties = properties.filter(tenant_details__user=user).distinct()
+        elif user.user_type == "PROPERTY_MANAGER":
+            properties = properties.filter(property_manager__user=user).distinct()
+
+       
+        if property_id:
+            properties = properties.filter(id=property_id)
+
+        field_names = ["Property ID", "Property Name", "Tenant Name", "Owner Name", "Tenancy Status"]
+        export_data = []
+
+        for prop in properties:
+            owner_details = OwnerDetails.objects.filter(user=prop.owner).first()
+            owner_name = owner_details.full_name if owner_details else "N/A"
+
+            tenants = prop.tenant_details.all()
+            if tenants.exists():
+                for tenant in tenants:
+                    tenancy_status = "Occupied" if prop.is_occupied else "Vacant"
+                    export_data.append({
+                        "Property ID": prop.id,
+                        "Property Name": prop.property_name,
+                        "Tenant Name": tenant.full_name or "N/A",
+                        "Owner Name": owner_name,
+                        "Tenancy Status": tenancy_status
+                    })
+            else:  
+                export_data.append({
+                    "Property ID": prop.id,
+                    "Property Name": prop.property_name,
+                    "Tenant Name": "N/A",
+                    "Owner Name": owner_name,
+                    "Tenancy Status": "Vacant"
+                })
+
+        return export_to_csv("property_export", field_names, export_data)
+
+    except Exception as e:
+        return prepare_response(
+            message=f"Error exporting CSV: {str(e)}",
+            status=500
+        )
