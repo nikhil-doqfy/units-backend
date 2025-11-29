@@ -516,7 +516,7 @@ def user_management_view(request):
                     "is_verified": user.is_verified,
                     "is_deleted": user.is_deleted,
                     "is_login_allowed": user.is_login_allowed,
-                    "phone_number": phone_number,
+                    "contact_number": phone_number,
                     "created_on": datetime_to_epoch_millis(user.created),
                     "last_login": datetime_to_epoch_millis(user.last_login) if user.last_login else None,
                     "is_active": user.is_active,
@@ -569,7 +569,7 @@ def user_management_view(request):
             first_name = body.get("first_name")
             last_name = body.get("last_name")
             email = body.get("email")
-            phone_number = body.get("phone_number")
+            phone_number = body.get("contact_number")
             user_type = body.get("user_type")
             location = body.get("location")
             password = body.get("password")
@@ -687,12 +687,14 @@ def user_management_view(request):
                     message=constants.USER_NOT_FOUND,
                     status=status.HTTP_404_NOT_FOUND
                 )
-            first_name_db = user.first_name or ""
-            last_name_db = user.last_name or ""
-
+            
             first_name = body.get("first_name")
             last_name = body.get("last_name")
             location = body.get("location")
+            
+            first_name_db = user.first_name or ""
+            last_name_db = user.last_name or ""
+
 
             if first_name:
                 user.first_name = first_name
@@ -700,47 +702,58 @@ def user_management_view(request):
                 user.last_name = last_name
             if location:
                 user.country=location
-            
-
-            new_first = user.first_name or first_name_db
-            new_last = user.last_name or last_name_db
-            full_name = f"{new_first} {new_last}".strip()
             if "profile_image" in body:
                 user.profile_image = body["profile_image"]
-
-
-  
-
-            phone_number = body.get("contact_number")
             
+
+            full_name = f"{user.first_name or ''} {user.last_name or ''}".strip()
+            phone_number = body.get("contact_number")
             user_type = user.user_type.lower()
+
+
             if user_type == "owner":
-                details = user.owner_details.first()
-                if details:
-                    details.full_name = full_name
-                    if phone_number:
-                        details.mobile_number = phone_number
-                    details.save()
+                OwnerDetails.objects.update_or_create(
+        user=user,
+        defaults={
+            "full_name": full_name,
+            "mobile_number": phone_number or ""
+        }
+    )
+
+                    
             elif user_type == "tenant":
-                details = user.tenant_details.first()
-                if details:
-                    details.full_name = full_name
-                    if phone_number:
-                        details.mobile_number = phone_number
-                    details.save()
+                TenantDetails.objects.update_or_create(
+        user=user,
+        defaults={
+            "full_name": full_name,
+            "mobile_number": phone_number or ""
+        }
+    )
+
+
+
             elif user_type == "property_manager":
-                details = user.property_manager_details.first()
-                if details:
-                    details.full_name = full_name
-                    if phone_number:
-                        details.phone_number = phone_number
-                    details.save()
+                defaults_data = {
+        "phone_number": phone_number or "",
+       
+        "company_name": full_name or "",
+    }
+                details, created = PropertyManagerCompanyDetails.objects.update_or_create(
+        user=user,
+        defaults=defaults_data
+    )
+
+
             elif user_type == "staff":
-                details = user.staff_details.first()
-                if details:
-                    if phone_number:
-                        details.phone_number = phone_number
-                    details.save()
+                StaffDetails.objects.update_or_create(
+        user=user,
+        defaults={
+            "full_name": full_name,
+            "phone_number": phone_number or ""
+        }
+    )
+
+
 
             user.save()
 
@@ -844,3 +857,8 @@ def toggle_user_active(request):
             message=str(e),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+
+
+
