@@ -2709,7 +2709,7 @@ def staff_view(request):
 
                     data = {
                         "id": staff.id,
-                        "staff_name": staff.staff_name,
+                        "staff_name": staff.staff_name, 
                         "staff_id": staff.staff_id,
                         "phone_number": staff.phone_number,
                         "assign_property": staff.assign_property,

@@ -438,7 +438,12 @@ def user_management_view(request):
             start_epoch = request.GET.get("start_date")
             end_epoch = request.GET.get("end_date")
 
+            user_type = request.GET.get("user_type")
+
             users_qs = UserProfile.objects.filter(is_deleted=is_deleted)
+            if user_type:
+                users_qs = users_qs.filter(user_type=user_type.upper())
+
             if start_epoch and end_epoch:
                 try:
                     start_epoch = int(start_epoch)
@@ -590,6 +595,8 @@ def user_management_view(request):
                 email=email,
                 hashed_password=hashed_password,
                 user_type=user_type,
+                first_name=first_name,
+                last_name=last_name,
                 profile_image=profile_image,
                 is_verified=False,
                 is_deleted=False,
