@@ -8,8 +8,8 @@ urlpatterns = [
     path('logout/', views.logout, name='logout'),        
     path("password/otp/send/", views.send_password_otp, name="send_password_otp"),
     path("password/otp/verify/", views.verify_password_otp, name="verify_password_otp"),
-    path("password/reset/", views.reset_password, name="reset_password"),
-
+    path("password/reset/", views.reset_password, name="reset_password"), 
+    path("change/password", views.change_password, name="change_password"), 
     # path("uaepass/authorize", views.uaepass_authorize),
     # path("uaepass/callback", views.uaepass_callback),
     # path("uaepass/token", views.uaepass_token),

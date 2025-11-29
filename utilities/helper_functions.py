@@ -22,7 +22,8 @@ import logging
 from django.core.files.base import ContentFile
 from decimal import Decimal, InvalidOperation
 import mimetypes
-
+import csv
+from django.http import HttpResponse
 def prepare_response(content={}, message='', status=status.HTTP_200_OK, paginator=None, total_records=0,pagination=None):
     resp = {
         "content": content,
@@ -351,3 +352,23 @@ def replace_placeholders(template_html, mapping):
         return str(mapping.get(key, match.group(0))) 
 
     return re.sub(pattern, replacer, template_html)
+
+
+
+
+
+def export_to_csv(filename, field_names, data_list):
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="{filename}.csv"'
+
+    writer = csv.writer(response)
+    writer.writerow(field_names)
+
+
+    for obj in data_list:
+        row = [obj.get(field, "N/A") for field in field_names]
+        writer.writerow(row)
+
+    return response
+
+

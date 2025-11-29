@@ -516,6 +516,7 @@ def user_management_view(request):
                     "first_name":user.first_name,
                     "last_name":user.last_name,
                     "profile_image_type":user.profile_image_type,
+                    "active_status": "Active" if user.is_active else "Inactive",
                     
                     
                 })
@@ -731,4 +732,48 @@ def user_management_view(request):
         return prepare_response(
             message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+
+
+@is_request_authenticated
+def toggle_user_active(request):
+
+    if request.method != "PUT":
+        return prepare_response(
+            message=constants.INVALID_REQUEST_METHOD,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+    try:
+        user_id = request.GET.get("user_id")
+        if not user_id:
+            return prepare_response(
+                message=constants.USER_ID_REQUIRED,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        req_user_profile = UserProfile.objects.filter(user=request.user).first()
+        user_profile = UserProfile.objects.filter(id=user_id).first()
+        if not user_profile:
+            return prepare_response(
+                message=constants.USER_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+        user_profile.is_active = not user_profile.is_active
+        user_profile.save()
+        if user_profile.is_active:
+            return prepare_response(
+                message=constants.USER_ACTIVE,
+                status=status.HTTP_200_OK
+            )
+        else:
+            return prepare_response(
+                message=constants.USER_INACTIVE,
+                status=status.HTTP_200_OK
+            )
+
+    except Exception as e:
+        return prepare_response(
+            message=str(e),
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )

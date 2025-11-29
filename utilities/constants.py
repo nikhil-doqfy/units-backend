@@ -169,6 +169,12 @@ QUERY_PARAMETER="option_type query parameter is required"
 
 DROPDOWN_DATA_FETCHED_SUCEESS="Dropdown data fetched successfully"
 
+
+USER_ID_REQUIRED = "User ID is required in query parameters."
+USER_ACTIVE = "User has been activated successfully."
+USER_INACTIVE = "User has been deactivated successfully."
+
+
 choices=[("MYSELF", "Myself"), ("PMC", "PMC")]
 
 LEASE_STATUS_CHOICES = [
