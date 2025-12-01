@@ -2763,6 +2763,7 @@ def staff_view(request):
                         "email": staff.user.email if staff.user else None,
                         "country": staff.user.country if staff.user else None,
                         "profile_image_type": staff.user.profile_image_type if staff.user else None,
+                        "profile_image":staff.user.profile_image if staff.user else None,
 
 
                          "emirate_id": staff.emirate_id,
