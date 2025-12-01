@@ -5,7 +5,7 @@ from property_management.models import OwnerDetails ,TenantDetails , LeaseProper
 from user_service.models import PropertyManagerCompanyDetails ,PropertyDetails ,UserProfile,StaffDetails  ,PropertyCommercial ,PropertyImages ,PropertyDocuments 
 from utilities.decorator import is_request_authenticated
 import json
-from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger,send_ses_email,safe_decimal ,safe_epoch_to_datetime ,replace_placeholders ,fetch_s3_presigned_url ,export_to_csv
+from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger,send_ses_email,safe_decimal ,safe_epoch_to_datetime ,replace_placeholders ,fetch_s3_presigned_url ,export_to_csv ,datetime_to_epoch_millis
 from utilities import status ,  constants
 from django.utils import timezone
 from utilities import config
@@ -2706,27 +2706,84 @@ def staff_view(request):
                     staff = StaffDetails.objects.select_related("staff_role", "user").prefetch_related("assigned_properties").get(id=staff_id)
                     assigned_props = staff.assigned_properties.all()
                     total_assigned = assigned_props.count()
+                    assigned_properties_data = []
+                    for prop in assigned_props:
+                        owner_data = None
+                        if prop.owner:
+                            owner_data = {
+                        "id": prop.owner.id,
+                        "name": getattr(prop.owner, "full_name", None),
+                        
+                    }
+                        tenant_data = None
+                   
+                        tenant_obj = TenantDetails.objects.filter(property=prop).select_related("user").first()
+                        tenant_data = None
+                        if tenant_obj:
+                            tenant_data = {
+                                "id": tenant_obj.id,
+                                 "name": tenant_obj.full_name,
+                            }
+
+                        documents = []
+                        for doc in prop.property_docs_relationship.all():
+                            documents.append({
+                            "id": doc.id,
+                          "file_name": doc.file_name,
+                         "document_type": doc.document_type,
+                            "file_path": doc.file_path
+                             })
+                        
+                        images = []
+                        for img in prop.property_images.all():
+                            images.append({
+                        "id": img.id,
+                        "image_type": img.image_type,
+                             "file_name": img.file_name,
+                        "image_path": img.image_path
+                            })
+                        assigned_properties_data.append({
+                         "property_name": prop.property_name,
+                        "property_code": prop.property_code,
+                         "owner": owner_data,
+                         "tenant": tenant_data,
+                         "documents": documents,
+                         "images": images
+                            })
+
+                        
+ 
+
 
                     data = {
                         "id": staff.id,
                         "staff_name": staff.staff_name, 
                         "staff_id": staff.staff_id,
                         "phone_number": staff.phone_number,
+                        "email": staff.user.email if staff.user else None,
+                        "country": staff.user.country if staff.user else None,
+                        "profile_image_type": staff.user.profile_image_type if staff.user else None,
+                        "profile_image":staff.user.profile_image if staff.user else None,
+
+
+                         "emirate_id": staff.emirate_id,
+                        "city": staff.city,
+                        "locality": staff.locality,
+                        "postal_code": staff.postal_code,
+                        "address_line_1": staff.address_line_1,
+                        "address_line_2": staff.address_line_2,
+
                         "assign_property": staff.assign_property,
                         "staff_role": {
                             "id": staff.staff_role.id,
                             "name": staff.staff_role.name,
                         } if staff.staff_role else None,
-                        "user_email": staff.user.email if staff.user else None,
+                        
+
+
                         "total_assigned_properties": total_assigned,
-                        "assigned_properties": [
-                            {
-                                "id": prop.id,
-                                "property_name": prop.property_name,
-                                "property_code": prop.property_code
-                            }
-                            for prop in assigned_props
-                        ]
+                        "assigned_properties": assigned_properties_data
+
                     }
 
                     return prepare_response(
@@ -3949,6 +4006,9 @@ def lease_property_view(request):
                 }
                 return prepare_response(content=lease_data , message="Lease fetched successfully", status=status.HTTP_200_OK)
             else:
+
+                pagination_meta = None
+
                 pmc = user.property_manager_details.first()
                 if not pmc:
                     return prepare_response(message="PMC not found for this user", status=400)
@@ -3957,13 +4017,17 @@ def lease_property_view(request):
                     leases = leases.filter(
                     Q(lease_property__property_name__icontains=search) |
                      Q(lease_tenant__full_name__icontains=search)
-                                                            )
+                                          )
+                leases = leases.order_by("-id")
+                total_count = leases.count()
+                start = (page - 1) * limit
+                end = start + limit
+                leases = leases[start:end]
                     
                     
-                paginator = Paginator(leases.order_by("-id"), limit)
-                page_obj = paginator.get_page(page)
+
                 response_data = []
-                for lease in page_obj:
+                for lease in leases:
                         
                         template_value = TemplateValues.objects.filter(lease=lease).first()
                         pdf_url = None
@@ -3983,16 +4047,18 @@ def lease_property_view(request):
                               "lease_end_date": int(lease.lease_end_date.timestamp()*1000),
                               "lease_pdf_url": pdf_url,
                                              })
-                content = {
-                         "page": page,
-                        "total_pages": paginator.num_pages,
-                     "total_records": paginator.count,
-                      "data": response_data}
+                pagination_meta = {
+                         "current_page": page,
+                         "limit": limit,
+                         "total_records": total_count,
+                         "total_pages": (total_count + limit - 1) // limit,
+                     }
                 
                 return prepare_response(
-                        content=content,
+                        content=response_data,
                         message="Lease list fetched successfully",
-                        status=200
+                        status=200,
+                        pagination=pagination_meta,
                     )
 
 
@@ -4717,3 +4783,7 @@ def export_owner_csv(request):
             message=f"Error exporting CSV: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+
+

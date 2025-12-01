@@ -295,3 +295,9 @@ LEASE_STEP_STATUS = (
     ("NEGOTIATION", "Negotiation"),
     ("UPLOAD_EJARI", "Upload Ejari"),
 )
+
+DOCUMENTS_STATUS_CHOICES = (
+        ("PENDING", "Pending"),
+        ("APPROVED", "Approved"),
+        ("REJECTED", "Rejected"),
+    )
