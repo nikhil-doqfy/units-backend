@@ -4041,11 +4041,18 @@ def lease_property_view(request):
                         response_data.append({
                               "id": lease.id,
                               "property_name": lease.lease_property.property_name,
-                              "tenant_name": lease.lease_tenant.full_name,
+                              "Property_code":lease.lease_property.property_code,
+                            #   "name": lease.lease_tenant.full_name,
                               "lease_status": lease.lease_status,
                               "lease_start_date": int(lease.lease_start_date.timestamp()*1000),
                               "lease_end_date": int(lease.lease_end_date.timestamp()*1000),
                               "lease_pdf_url": pdf_url,
+
+                                "tenant": {
+                                "name": f"{lease.lease_tenant.user.first_name} {lease.lease_tenant.user.last_name}".strip(),
+                                "profile_image": lease.lease_tenant.user.profile_image,
+                                 "profile_image_type": lease.lease_tenant.user.profile_image_type,
+                                             }
                                              })
                 pagination_meta = {
                          "current_page": page,
