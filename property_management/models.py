@@ -190,9 +190,11 @@ class LeaseEjariUpload(models.Model):
      max_length=50,
     choices=constants.Ejari_DOCUMENT_CATEGORY_CHOICES 
     )
+
+
  
     def __str__(self):
-        return f"{self.document_type} - {self.file_name}"
+        return f"{self.document_type} - {self.file_name}"   
     
 
 
@@ -295,6 +297,9 @@ class TemplateFields(Base):
     pattern = models.CharField(max_length=20, null=True, blank=True)
     predefined_value = models.CharField(max_length=200, null=True, blank=True)
 
+    def __str__(self):
+        return f"{self.label_attribute} - {self.document_template.name}"
+
  
  
  
@@ -307,6 +312,9 @@ class TemplateValues(Base):
         on_delete=models.CASCADE,
         related_name="lease"
     )
+    def __str__(self):
+        return f"Template: {self.document_template.name} | Lease ID: {self.lease.id}"
+        
     
  
 
