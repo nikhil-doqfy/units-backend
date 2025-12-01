@@ -4,6 +4,6 @@ db.sqlite3
 environment_settings.py
 requirements.txt
 .vscode/
-
+media
 static
 .env
