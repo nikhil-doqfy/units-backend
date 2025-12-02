@@ -26,6 +26,8 @@ import csv
 from django.http import HttpResponse
 import platform
 import pdfkit
+import random
+import string
 def prepare_response(content={}, message='', status=status.HTTP_200_OK, paginator=None, total_records=0,pagination=None):
     resp = {
         "content": content,
@@ -322,6 +324,27 @@ def fetch_s3_presigned_url(file_url, file_name=None, expiration=3600):
 
 
 
+def get_extension_from_base64(base64_string):
+    try:
+        header = base64_string.split(",")[0]
+
+        if "pdf" in header:
+            return ".pdf"
+        elif "jpeg" in header or "jpg" in header:
+            return ".jpg"
+        elif "png" in header:
+            return ".png"
+        elif "msword" in header:
+            return ".doc"
+        elif "vnd.openxmlformats-officedocument.wordprocessingml.document" in header:
+            return ".docx"
+        elif "vnd.openxmlformats-officedocument.spreadsheetml.sheet" in header:
+            return ".xlsx"
+        else:
+            return None  
+    except:
+        return None
+
 
 
 
@@ -388,3 +411,20 @@ def get_pdfkit_config():
         path = "/usr/local/bin/wkhtmltopdf" 
 
     return pdfkit.configuration(wkhtmltopdf=path)
+
+
+def generate_property_code():
+    random_str = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    return f"PR-{random_str}"
+
+
+
+
+def generate_unique_code(prefix: str) -> str:
+    """
+    Generate a short unique code with a prefix.
+    Example: prefix='PR' -> 
+    """
+    random_part = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    return f"{prefix}-{random_part}"
+

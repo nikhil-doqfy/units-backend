@@ -46,7 +46,7 @@ def user_login(request):
         
         if not user.is_active:
             return prepare_response(
-                 message="User account is disabled",
+                 message=constants.USER_ACCOUNT_DISABLED,
             status=status.HTTP_403_FORBIDDEN)
 
 
@@ -110,13 +110,13 @@ def user_login(request):
                 status=status.HTTP_404_NOT_FOUND
             )
         if  user.user_type != user_type:
-            return prepare_response(message="User type does not match",
+            return prepare_response(message=constants.USER_TYPE_MISMATCH,
                 status=status.HTTP_400_BAD_REQUEST
                 )
 
         if not user.is_active:
             return prepare_response(
-                 message="User account is disabled",
+                 message=constants.USER_ACCOUNT_DISABLED,
             status=status.HTTP_403_FORBIDDEN)
 
         record = UserVerification.objects.filter(
@@ -299,7 +299,7 @@ def verify_password_otp(request):
 
         if not (email and otp ):
             return prepare_response(
-                message="Email & OTP  are required",
+                message=constants.EMAIL_OTP_REQUIRED,
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -335,7 +335,7 @@ def verify_password_otp(request):
         record.save()
 
         return prepare_response(
-            message="OTP verified successfully",
+            message=constants.OTP_VERIFIED_SUCCESS,
             content={"email": email},
             status=status.HTTP_200_OK
         )
@@ -409,7 +409,7 @@ def change_password(request):
 
         if not all([old_password, new_password, confirm_password]):
             return prepare_response(
-                message="Old Password, New Password and Confirm Password required",
+                message=constants.OLD_NEW_CONFIRM_PASSWORD_REQUIRED,
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -431,7 +431,7 @@ def change_password(request):
 
         if not check_password(old_password, user.hashed_password):
             return prepare_response(
-                message="current Password is incorrect",
+                message=constants.PASSWORD_MISMATCH,
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -440,7 +440,7 @@ def change_password(request):
         user.save(update_fields=["hashed_password"])
 
         return prepare_response(
-            message="Password updated successfully",
+            message=constants.PASSWORD_UPDATED,
             status=status.HTTP_200_OK
         )
 
@@ -468,7 +468,7 @@ def send_password_otp(request):
 
         if not email:
             return prepare_response(
-                message="Email is required",
+                message=constants.EMAIL_REQUIRED,
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -479,7 +479,7 @@ def send_password_otp(request):
                 user_obj = UserProfile.objects.get(email=email)
             except UserProfile.DoesNotExist:
                 return prepare_response(
-                    message="User does not exist",
+                    message=constants.USER_DOES_NOT_EXIST,
                     status=status.HTTP_404_NOT_FOUND
                 )
 
@@ -502,7 +502,7 @@ def send_password_otp(request):
            
             if UserProfile.objects.filter(email=email).exists():
                 return prepare_response(
-                    message="Email already registered",
+                    message=constants.EMAIL_ALREADY_REGISTERED,
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
@@ -522,7 +522,7 @@ def send_password_otp(request):
 
         else:
             return prepare_response(
-                message="Invalid purpose",
+                message=constants.INVALID_PURPOSE,
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -537,10 +537,10 @@ def send_password_otp(request):
         success = send_ses_email(email, subject, body_text, body_html)
 
         if success:
-            return prepare_response(message="OTP sent successfully")
+            return prepare_response(message=constants.OTP_SENT_SUCCESS)
         else:
             return prepare_response(
-                message="Failed to send OTP Email",
+                message=constants.OTP_SEND_FAILED,
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
