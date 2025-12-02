@@ -2,7 +2,7 @@ import json
 import uuid
 from django.contrib.auth.hashers import make_password
 from utilities import status, constants
-from utilities.helper_functions import prepare_response ,upload_file_to_s3_base64 ,datetime_to_epoch,epoch_to_datetime,datetime_to_epoch_millis,safe_epoch_to_datetime
+from utilities.helper_functions import prepare_response ,upload_file_to_s3_base64 ,datetime_to_epoch,epoch_to_datetime,datetime_to_epoch_millis,safe_epoch_to_datetime ,generate_unique_code ,get_extension_from_base64
 from user_service.models import UserProfile ,StaffDetails , PropertyManagerCompanyDetails , StaffRole  
 from property_management.models import OwnerDetails , TenantDetails
 from user_service.utils import request_otp_sent
@@ -59,20 +59,40 @@ def user_sign_up(request):
         is_login_allowed=True
     )
 
-
-    documents_json = {}
     folder_name = f"{user_type.lower()}_documents/{user.id}"
+    documents_json = {}
+    def upload_document(base64_data, file_prefix):
+        if not base64_data:
+            return None
+        extension = get_extension_from_base64(base64_data)
+        if not extension:
+            return None
+        filename = f"{file_prefix}{extension}"
+        object_name = f"{folder_name}/{filename}"
+        return upload_file_to_s3_base64(base64_data, object_name)
+    emirates_id_doc = upload_document(data.get("emirates_id_doc"), "emirates_id")
+    if data.get("emirates_id_doc") and not emirates_id_doc:
+        return prepare_response(
+            message=constants.EMIRATES_ID_INVALID,
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
-    def upload_if_exists(base64_doc, filename):
-        if base64_doc:
-            object_name = f"{folder_name}/{filename}"
-            return upload_file_to_s3_base64(base64_doc, object_name)
-        return None
+    uae_residence_visa_doc = upload_document(data.get("uae_residence_visa_doc"), "uae_residence_visa")
+    if data.get("uae_residence_visa_doc") and not uae_residence_visa_doc:
+        return prepare_response(
+            message=constants.UAE_VISA_INVALID,
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
+    dld_certificate_doc = upload_document(data.get("dld_certificate_doc"), "dld_certificate")
+    if data.get("dld_certificate_doc") and not dld_certificate_doc:
+        return prepare_response(
+            message=constants.DLD_CERT_INVALID,
+            status=status.HTTP_400_BAD_REQUEST
+        )
 
 
-    emirates_id_doc = upload_if_exists(data.get("emirates_id_doc"), "emirates_id.pdf")
-    uae_residence_visa_doc = upload_if_exists(data.get("uae_residence_visa_doc"), "uae_residence_visa.pdf")
-    dld_certificate_doc = upload_if_exists(data.get("dld_certificate_doc"), "dld_certificate.pdf")
+
  
 
     if emirates_id_doc:
@@ -85,19 +105,21 @@ def user_sign_up(request):
 
 
     if user_type == constants.OWNER:
+        owner_code = generate_unique_code("OWN")
         OwnerDetails.objects.create(
             user=user,
             full_name=f"{first_name} {last_name}",
             emirate_id=data.get("emirate_id"),
             uae_residence_visa=data.get("uae_residence_visa"),
             trade_license_number=data.get("trade_license_number"),
-            owner_number=unique_id,
+            owner_number=owner_code,
             mobile_number=data.get("mobile_number"),
             manage_through=data.get("manage_through"),
             owner_documents=documents_json
         )
 
     elif user_type == constants.PROPERTY_MANAGER:
+        company_code = generate_unique_code("comp")
         PropertyManagerCompanyDetails.objects.create(
             user=user,
             company_name=data.get("company_name"),
@@ -106,12 +128,14 @@ def user_sign_up(request):
             trade_license_number=data.get("trade_license_number"),
             phone_number=data.get("mobile_number"),
             emirate_id=data.get("emirate_id"),
-            
+            company_code=company_code,
             pmc_documents=documents_json
+            
 
         )
 
     elif user_type == constants.TENANT:
+        tenant_code = generate_unique_code("TEN")
         TenantDetails.objects.create(
             user=user,
             full_name=f"{first_name} {last_name}",
@@ -119,7 +143,7 @@ def user_sign_up(request):
             uae_residence_visa=data.get("uae_residence_visa"),
             trade_license_number=data.get("trade_license_number"),
             mobile_number=data.get("mobile_number"),
-            tenant_number=unique_id,
+            tenant_number=tenant_code,
             nationality="Dubai",
             manage_through=data.get("manage_through"),
             tenant_documents=documents_json
@@ -134,10 +158,6 @@ def user_sign_up(request):
         message=constants.USER_REGISTERED_SUCCESSFULLY,
         status=status.HTTP_201_CREATED
     )
-
-
-
-
 
 
 
@@ -403,7 +423,7 @@ def user_profile_view(request):
             user_data.update(related_info)
 
             return prepare_response(
-                message="User profile fetched successfully",
+                message=constants.USER_PROFILE_FETCHED,
                 status=status.HTTP_200_OK,
                 content=user_data
             )
@@ -579,13 +599,13 @@ def user_management_view(request):
         
             if not all([first_name, last_name, email, phone_number, user_type, location, password, confirm_password]):
                 return prepare_response(
-                    message="All fields (first_name, last_name, email, phone_number, role, location, password, confirm_password) are required.",
+                    message=constants.ALL_USER_FIELDS_REQUIRED,
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
             if password != confirm_password:
                 return prepare_response(
-                    message="Password and Confirm Password do not match.",
+                    message=constants.PASSWORD_MISMATCH,
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
@@ -650,7 +670,7 @@ def user_management_view(request):
                 )
 
             return prepare_response(
-                message="User created successfully.",
+                message=constants.USER_CREATED,
                 content={
                     "id": user.id,
                     "email": user.email,
@@ -789,14 +809,14 @@ def user_management_view(request):
                 user.is_deleted = True
                 user.save()
                 return prepare_response(
-                    message="User soft deleted successfully.",
+                    message=constants.USER_SOFT_DELETED,
                     content={"id": user.id, "is_deleted": user.is_deleted},
                     status=status.HTTP_200_OK
                 )
             else:
                 user.delete()
                 return prepare_response(
-                    message="User permanently deleted.",
+                    message=constants.USER_PERMANENTLY_DELETED,
                     content={"id": user_id},
                     status=status.HTTP_200_OK
                 )

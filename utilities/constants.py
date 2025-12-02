@@ -2,6 +2,9 @@ USER_NOT_ACTIVE = "User not active"
 PASSWORD_EXPIRED = "Password has expired.Please contact Admin"
 USER_NOT_ONBOARDED = "User not onboarded"
 INVALID_EMAIL = "Invalid email address"
+OTP_SEND_FAILED = "Failed to send OTP Email."
+OTP_SENT_SUCCESS = "OTP sent successfully."
+
 INCORRECT_OTP = "Incorrect OTP"
 OTP_SUCCESS = "OTP successfully verified"
 OTP_EXPIRED = "OTP has expired"
@@ -16,6 +19,7 @@ BAD_REQUEST = "Bad Request"
 PASSWORD_MISMATCH = "Password does not match"
 PASSWORD_CHANGE_SUCCESSFULL = "Password changed successfully"
 INVALID_REQUEST_METHOD = "Invalid request method"
+USER_CREATED = "User created successfully."
 INVALID_TOKEN = "Invalid Token"
 LOGOUT_SUCCESSFULL = "Logout Successfull"
 ONLY_EMAIL_OR_CONTACT_NUMBER_ALLOWED = "Only 'email' or 'contact number' is allowed"
@@ -106,7 +110,7 @@ PROPERTY_DELETED = "Property detail deleted successfully."
 PROPERTY_UPDATE_SUCCESS = "Property details updated successfully."
 PROPERTY_ADDED = "Property added successfully."
 TENANT_LIST_FETCHED_SUCCES="Tenant list fetched successfully"
-PROPERTY_ID_REQUIRED="Property ID is required in query params (e.g. ?id=5)"
+PROPERTY_ID_REQUIRED="Property  is required"
 DATA_NOT_FOUND='data not found'
 PROPERTY_MANAGER_LIST_FETCHED="property manager list fetch successfully"
 OWNER_LIST_FETCHED_SUCCESS="owner list fetch successfully"
@@ -173,6 +177,91 @@ DROPDOWN_DATA_FETCHED_SUCEESS="Dropdown data fetched successfully"
 USER_ID_REQUIRED = "User ID is required in query parameters."
 USER_ACTIVE = "User has been activated successfully."
 USER_INACTIVE = "User has been deactivated successfully."
+SOMETHING_WENT_WRONG = "Something went wrong. Please try again later."
+
+EMIRATES_ID_INVALID = "Invalid Emirates ID document. Allowed: pdf, jpg, png, doc, docx, xlsx."
+UAE_VISA_INVALID = "Invalid UAE Residence Visa document. Allowed: pdf, jpg, png, doc, docx, xlsx."
+DLD_CERT_INVALID = "Invalid DLD Certificate document. Allowed: pdf, jpg, png, doc, docx, xlsx."
+
+
+
+
+NOT_FOUND = "Not found."
+INVALID_LEASE_ID = "Invalid lease "
+LEASE_NOT_FOUND = "Lease not found."
+TENANT_NOT_FOUND = "Tenant not found."
+PROPERTY_NOT_FOUND = "Property not found."
+OWNER_NOT_FOUND = "Owner not found."
+PMC_NOT_FOUND = "PMC not found for this user."
+CREATED_BY_USER_NOT_FOUND = "Created By user not found."
+
+
+INVALID_TEMPLATE_ID = "Invalid template_id."
+TEMPLATE_ID_REQUIRED = "template_id is required."
+TEMPLATE_FIELDS_FETCHED = "Template fields fetched successfully."
+TEMPLATE_LEASE_VALUES_REQUIRED = "template_id, lease_id, and values are required."
+
+
+DOCUMENTS_MUST_BE_LIST = "Documents must be a list."
+LEASE_EJARI_DOCS_UPLOADED = "Lease Ejari Documents uploaded successfully."
+LEASE_EJARI_DOCS_UPDATED = "Lease Ejari Documents updated successfully."
+LEASE_EJARI_DOCS_FETCHED = "Lease Ejari Documents fetched successfully."
+
+
+LEASE_ID_REQUIRED = "lease_id is required."
+LEASE_LIST_FETCHED = "Lease list fetched successfully."
+LEASE_FETCHED = "Lease fetched successfully."
+LEASE_CREATED = "Lease created successfully."
+LEASE_UPDATED = "Lease updated successfully."
+LEASE_PROPERTY_TENANT_REQUIRED = "lease_property_id and lease_tenant_id are required."
+LOGGED_IN_USER_NOT_PM = "Logged-in user is not a property manager."
+PROPERTY_NO_OWNER_ASSIGNED = "Property has no owner assigned."
+
+
+COMMERCIAL_OR_LEASE_ID_REQUIRED = "commercial_id or lease_id is required."
+LEASE_COMMERCIALS_LIST_FETCHED = "LeaseCommercials list fetched successfully."
+LEASE_COMMERCIALS_FETCHED = "LeaseCommercials fetched successfully."
+LEASE_COMMERCIALS_UPDATED = "LeaseCommercials updated successfully."
+NO_LEASE_COMMERCIALS_FOR_LEASE = "No LeaseCommercials found for the given lease_id."
+LEASE_COMMERCIALS_CREATED = "LeaseCommercials created successfully."
+
+PROPERTIES_FETCHED = "Properties fetched successfully."
+CONTRACT_GENERATED_SUCCESS = "Contract generated successfully."
+MISSING_FILE_OR_DATA = "Missing file name or data."
+PROPERTY_NOT_FOUND = "Property not found."
+
+
+LEASE_COMMERCIALS_NOT_FOUND = "LeaseCommercials not found."
+ANNUAL_AMOUNT_RENT_REQUIRED = "annual_amount and rent are required."
+COMMERCIAL_DETAILS_UPDATED = "Commercial details updated successfully."
+INVALID_PROPERTY_ID = "Invalid property"
+COMMERCIAL_DETAILS_CREATED = "Commercial details created successfully."
+
+
+USER_PERMANENTLY_DELETED = "User permanently deleted."
+USER_SOFT_DELETED = "User soft deleted successfully."
+ALL_USER_FIELDS_REQUIRED = "All fields (first_name, last_name, email, phone_number, role, location, password, confirm_password) are required."
+USER_PROFILE_FETCHED = "User profile fetched successfully."
+USER_PROFILE_UPDATED = "Profile updated successfully."
+EMAIL_REQUIRED = "Email is required."
+INVALID_PURPOSE = "Invalid purpose."
+OTP_VERIFIED_SUCCESS = "OTP verified successfully."
+
+USER_ACCOUNT_DISABLED = "User account is disabled."
+USER_TYPE_MISMATCH = "User type does not match."
+EMAIL_OTP_REQUIRED = "Email & OTP are required."
+
+OLD_NEW_CONFIRM_PASSWORD_REQUIRED = "Current Password, New Password and Confirm Password are required."
+CURRENT_PASSWORD_INCORRECT = "Current password is incorrect."
+PASSWORD_UPDATED = "Password updated successfully."
+
+
+
+
+
+
+
+
 
 
 choices=[("MYSELF", "Myself"), ("PMC", "PMC")]
@@ -190,6 +279,7 @@ PROPERTY_TYPE_CHOICES = (
         ("Townhouse", "Townhouse"),
         ("Penthouse", "Penthouse"),
         ("Duplex", "Duplex"),
+        ("Skyscraper","Skyscraper"),
        
     )
 LAYOUT_CHOICES = [

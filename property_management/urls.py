@@ -12,6 +12,8 @@ urlpatterns = [
     path('owner/details/list/view/', views.owner_details_list_view, name='owner_details_list_view') ,
     path('tenant/list/view', views.tenant_list_view, name='tenant_list_view'),
     path('property/details/list/view/', views.property_details_list_view, name='property_details_list_view') ,
+    path('pmc/owner/view/list/', views.pmc_owner_view_list, name='pmc_owner_view_list') , 
+    path('staff/view/', views.staff_view, name='staff_view'), 
 
 
 
@@ -29,9 +31,9 @@ urlpatterns = [
     path('owner/properties/tenants/', views.owner_property_tenants_view, name='owner_tenants_list'),
     path('property/manager/details/', views.property_manager_details_view, name='property_manager_details_view'),
     path('property/manager/list/', views.property_manager_list, name='property_manager_list'), 
-    path('staff/view/', views.staff_view, name='staff_view') , 
+    
     path('pmc/dashboard/view', views.pmc_dashboard_view, name='pmc_dashboard_view') ,
-    path('pmc/owner/view/list/', views.pmc_owner_view_list, name='pmc_owner_view_list') ,   
+      
     path('invite/owner/pmc', views.invite_owner_pmc, name='invite_owner_pmc') , 
     path('invite/pmc/owner', views.invite_pmc_to_owner, name='invite_pmc_to_owner'),
     path('invite/tenant/pmc', views.invite_tenant_by_pmc, name='invite_tenant_by_pmc'),
