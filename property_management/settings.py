@@ -111,16 +111,18 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
  
 USE_TZ = True
- 
+CORS_ALLOW_ALL_ORIGINS=True
 
 CSRF_TRUSTED_ORIGINS = [
+    "https://units.doqfy.in",
     "https://units-api.doqfy.in",
     "https://34.14.170.254",
 ]
 
+
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:4200",
-    "https://units-api.doqfy.in",
+    "https://units.doqfy.in",
 ]
 
 CORS_ALLOW_CREDENTIALS = True

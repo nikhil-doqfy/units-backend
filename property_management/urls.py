@@ -64,6 +64,9 @@ urlpatterns = [
 
     path("export/owner/csv", views.export_owner_csv, name="export_owner_csv"), 
 
+
+    path("export/pmc/csv", views.export_pmc_csv, name="export_pmc_csv"), 
+
   
 ] 
 
