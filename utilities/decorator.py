@@ -13,33 +13,33 @@ def is_request_authenticated(view_func):
             if not auth_header:
                 return prepare_response(
                     message="Authorization header missing",
-                    status=401
+                    status=status.HTTP_401_UNAUTHORIZED
                 )
             token = get_jwt_token(auth_header)
             if isinstance(token, dict) and "message" in token:
                 return prepare_response(
                     message=token["message"],
-                    status=401
+                    status=status.HTTP_401_UNAUTHORIZED
                 )
             try:
                 decoded_token = decode_jwt_token(token)
             except ExpiredSignatureError:
                 return prepare_response(
                     message="Token expired. Please login again.",
-                    status=401
+                    status=status.HTTP_401_UNAUTHORIZED
                 )
             
 
             if isinstance(decoded_token, dict) and "error" in decoded_token:
                 return prepare_response(
                     message=decoded_token["error"],
-                    status=401
+                    status=status.HTTP_401_UNAUTHORIZED
                 )
             user_email = decoded_token.get("email")
             if not user_email:
                 return prepare_response(
                     message="Invalid token payload",
-                    status=401
+                    status=status.HTTP_401_UNAUTHORIZED
                 )
             user = UserProfile.objects.filter(email=user_email).first()
             if not user:
@@ -50,14 +50,14 @@ def is_request_authenticated(view_func):
             if user.token != token:
                 return prepare_response(
                     message="Token invalid or expired. Please login again.",
-                    status=401
+                    status=status.HTTP_401_UNAUTHORIZED
                 )
             request.user = user
         except Exception as e:
             print("Auth Error:", e)
             return prepare_response(
                 message="Authentication failed",
-                status=401
+                status=status.HTTP_401_UNAUTHORIZED
             )
         return view_func(request, *args, **kwargs)
     return wrapper

@@ -96,9 +96,16 @@ def options(request):
             "key": template.id,
             "value": template.name,
             "description": template.description
-        }
-        for template in templates
-    ]
+           }
+            for template in templates
+              ]
+            
+        elif option_type == "ALL_PMC":
+            pmcs = PropertyManagerCompanyDetails.objects.all()
+            content["all_pmc"] = [
+                {"key": pmc.id, "value": pmc.company_name}
+                for pmc in pmcs
+            ]
 
 
 
