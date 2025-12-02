@@ -1,3 +1,4 @@
+
 """
 Django settings for property_management project.
 
@@ -25,8 +26,15 @@ DEBUG = True
 
 ALLOWED_HOSTS = ["*"]
 
+CSRF_TRUSTED_ORIGINS = ["https://units-api.doqfy.in",  "https://34.14.170.254"]
 
 
+
+
+ 
+ 
+
+CORS_ALLOW_ALL_ORIGINS = True
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -51,7 +59,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-
+    
     
 ]
 
@@ -111,28 +119,16 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
  
 USE_TZ = True
-
-
-CSRF_TRUSTED_ORIGINS = [
-    "https://units.doqfy.in",
-    "https://units-api.doqfy.in",
-    "https://34.14.170.254",
-]
-
-
+ 
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:4200",
-    "https://units.doqfy.in",
+ "http://localhost:4200",
+ "https://34.14.170.254",
+"https://units-api.doqfy.in",
+
 ]
-
-CORS_ALLOW_HEADERS = ["*"]
-CORS_ALLOW_METHODS = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
-
-CORS_URLS_REGEX = r"^/media/.*$"
-
 
  
-
+CORS_ALLOW_CREDENTIALS = True
  
  
 STATIC_URL = '/static/'
