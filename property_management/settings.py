@@ -51,7 +51,7 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
+    # 'corsheaders.middleware.CorsMiddleware',
     
 ]
 
@@ -111,7 +111,7 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
  
 USE_TZ = True
-CORS_ALLOW_ALL_ORIGINS=True
+
 
 CSRF_TRUSTED_ORIGINS = [
     "https://units.doqfy.in",
