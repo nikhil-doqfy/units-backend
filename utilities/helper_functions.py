@@ -24,6 +24,8 @@ from decimal import Decimal, InvalidOperation
 import mimetypes
 import csv
 from django.http import HttpResponse
+import platform
+import pdfkit
 def prepare_response(content={}, message='', status=status.HTTP_200_OK, paginator=None, total_records=0,pagination=None):
     resp = {
         "content": content,
@@ -372,3 +374,17 @@ def export_to_csv(filename, field_names, data_list):
     return response
 
 
+
+
+def get_pdfkit_config():
+    system = platform.system()
+    print("Running on:", system)  
+
+    if system == "Windows":
+        path = r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe"
+    elif system == "Linux":
+        path = "/usr/bin/wkhtmltopdf"  
+    else:
+        path = "/usr/local/bin/wkhtmltopdf" 
+
+    return pdfkit.configuration(wkhtmltopdf=path)

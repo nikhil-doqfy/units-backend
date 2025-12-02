@@ -5,7 +5,7 @@ from property_management.models import OwnerDetails ,TenantDetails , LeaseProper
 from user_service.models import PropertyManagerCompanyDetails ,PropertyDetails ,UserProfile,StaffDetails  ,PropertyCommercial ,PropertyImages ,PropertyDocuments 
 from utilities.decorator import is_request_authenticated
 import json
-from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger,send_ses_email,safe_decimal ,safe_epoch_to_datetime ,replace_placeholders ,fetch_s3_presigned_url ,export_to_csv ,datetime_to_epoch_millis
+from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger,send_ses_email,safe_decimal ,safe_epoch_to_datetime ,replace_placeholders ,fetch_s3_presigned_url ,export_to_csv ,datetime_to_epoch_millis,get_pdfkit_config
 from utilities import status ,  constants
 from django.utils import timezone
 from utilities import config
@@ -26,6 +26,7 @@ from datetime import datetime
 import datetime
 import re
 import pdfkit
+import platform
 
 
 @is_request_authenticated
@@ -1355,7 +1356,7 @@ def property_details_view(request):
                 images_base64 = []
                 if prop.images:
                     for img_url in prop.images:
-                        img_b64 = fetch_s3_file_as_base64(img_url) #fetch_s3_presigned_url
+                        img_b64 = fetch_s3_file_as_base64(img_url) 
                         if img_b64:
                             images_base64.append(img_b64)
 
@@ -1845,7 +1846,7 @@ def property_images_view(request):
             try:
                 property_obj = PropertyDetails.objects.get(id=property_id)
             except PropertyDetails.DoesNotExist:
-                return prepare_response(message="Property not found",status= 404)
+                return prepare_response(message="Property not found",status=status.HTTP_404_NOT_FOUND)
 
             uploaded_files = []
 
@@ -2062,7 +2063,7 @@ def property_documents_view(request):
                 return prepare_response(message="Property ID is required", status=status.HTTP_400_BAD_REQUEST)
 
             if not isinstance(documents, list):
-                return prepare_response(message="Documents must be a list",status= 400)
+                return prepare_response(message="Documents must be a list",status= status.HTTP_400_BAD_REQUEST)
 
             try:
                 property_obj = PropertyDetails.objects.get(id=property_id)
@@ -2077,7 +2078,7 @@ def property_documents_view(request):
                 doc_type = doc.get("type", "RENTAL_DOCUMENT").upper()
 
                 if not file_name or not base64_data:
-                    return prepare_response(message="Missing file_name or data",status= 400)
+                    return prepare_response(message="Missing file_name or data",status= status.HTTP_400_BAD_REQUEST)
 
                 doc_obj, created = PropertyDocuments.objects.get_or_create(
                     property=property_obj,
@@ -2725,29 +2726,35 @@ def staff_view(request):
                                  "name": tenant_obj.full_name,
                             }
 
-                        documents = []
-                        for doc in prop.property_docs_relationship.all():
-                            documents.append({
-                            "id": doc.id,
-                          "file_name": doc.file_name,
-                         "document_type": doc.document_type,
-                            "file_path": doc.file_path
-                             })
+                        # documents = []
+                        # for doc in prop.property_docs_relationship.all():
+                        #     documents.append({
+                        #     "id": doc.id,
+                        #   "file_name": doc.file_name,
+                        #  "document_type": doc.document_type,
+                        #     "file_path": doc.file_path
+                        #      })
                         
                         images = []
                         for img in prop.property_images.all():
+                            presigned_url = None
+                            if img.image_path:
+                                presigned_url = fetch_s3_presigned_url(
+                                    img.image_path,
+                                    file_name=f"{img.file_name}")
+                                
                             images.append({
-                        "id": img.id,
-                        "image_type": img.image_type,
-                             "file_name": img.file_name,
-                        "image_path": img.image_path
-                            })
+                                     "id": img.id,
+                                     "image_type": img.image_type,
+                                     "file_name": img.file_name,
+                                    "image_path": presigned_url
+                                         })
                         assigned_properties_data.append({
                          "property_name": prop.property_name,
                         "property_code": prop.property_code,
                          "owner": owner_data,
                          "tenant": tenant_data,
-                         "documents": documents,
+                        #  "documents": documents,
                          "images": images
                             })
 
@@ -3219,9 +3226,7 @@ def property_details_list_view(request):
                     "trade_license": owner_details.trade_license_number if owner_details else "N/A",
                     "email": owner_user.email if owner_user else None,
                     "profile_image": owner_user.profile_image if owner_user else None,
-                    # "emirate_id":owner_details.emirate_id,
-                    # "uae_residence_visa":owner_details.uae_residence_visa,
-                    # "trade_license_number":owner_details.trade_license_number,
+
                     "emirate_id": owner_details.emirate_id if owner_details else "N/A",
                     "uae_residence_visa": owner_details.uae_residence_visa if owner_details else "N/A",
                     "trade_license_number": owner_details.trade_license_number if owner_details else "N/A",
@@ -4011,7 +4016,7 @@ def lease_property_view(request):
 
                 pmc = user.property_manager_details.first()
                 if not pmc:
-                    return prepare_response(message="PMC not found for this user", status=400)
+                    return prepare_response(message="PMC not found for this user", status=status.HTTP_400_BAD_REQUEST)
                 leases = LeasePropertyDetails.objects.filter(created_by=pmc)
                 if search:
                     leases = leases.filter(
@@ -4064,7 +4069,7 @@ def lease_property_view(request):
                 return prepare_response(
                         content=response_data,
                         message="Lease list fetched successfully",
-                        status=200,
+                        status=status.HTTP_200_OK,
                         pagination=pagination_meta,
                     )
 
@@ -4433,7 +4438,7 @@ def generate_contract(request):
 
         pdf_filename = f"lease_{timestamp}.pdf"
         pdf_save_path = os.path.join(save_dir, pdf_filename)
-        config = pdfkit.configuration(wkhtmltopdf=r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe")
+        config = get_pdfkit_config()
         
 
 
@@ -4477,6 +4482,7 @@ def generate_contract(request):
 def get_template_fields(request):
     try:
         template_id = request.GET.get("template_id")
+        
 
         if not template_id:
             return prepare_response(
@@ -4640,7 +4646,7 @@ def export_property_csv(request):
     except Exception as e:
         return prepare_response(
             message=f"Error exporting CSV: {str(e)}",
-            status=500
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
 
@@ -4759,9 +4765,7 @@ def export_owner_csv(request):
             message="Invalid request method.",
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
-
     try:
-
         owners_qs = OwnerDetails.objects.all().select_related("user")
         field_names = [
             "Owner Name",
