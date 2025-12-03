@@ -14,8 +14,9 @@ urlpatterns = [
     path('property/details/list/view/', views.property_details_list_view, name='property_details_list_view') ,
     path('pmc/owner/view/list/', views.pmc_owner_view_list, name='pmc_owner_view_list') , 
     path('staff/view/', views.staff_view, name='staff_view'), 
-
     path("lease/property/view/", views.lease_property_view, name="lease_property_view"),
+    path('property/commercial/details', views.add_commercial_details, name='add_commercial_details'),
+    path("get/template/fields/", views.get_template_fields, name="get_template_fields"),
 
 
 
@@ -44,13 +45,13 @@ urlpatterns = [
     path('tenant/property', views.tenant_my_property, name='tenant_my_property'),
     path('tenant/owner/property/', views.property_tenant_list_view, name='property_tenant_list_view'),
     path('create/property/basic', views.create_property_basic, name='create_property_basic'),
-    path('property/commercial/details', views.add_commercial_details, name='add_commercial_details'),
+    
     path('property/documents/view', views.property_documents_view, name='property_documents_view'),
     path('options/', views.options, name='options'),  
     path('property/images/', views.property_images_view, name='property_images_view'),
     path("save/template", views.generate_contract, name="save_generated_template"), 
 
-    path("get/template/fields/", views.get_template_fields, name="get_template_fields"), 
+     
     
 
     
