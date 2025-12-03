@@ -291,6 +291,25 @@ def owner_details_list_view(request):
                         status=status.HTTP_404_NOT_FOUND
                     )
                 user = owner.user
+                properties = PropertyDetails.objects.filter(owner=user)
+                property_with_tenant_data = []
+                for property_obj in properties:
+                    tenant = TenantDetails.objects.filter(property=property_obj).first()
+                    lease = LeasePropertyDetails.objects.filter(
+                        lease_property=property_obj
+                    ).first()
+
+                    property_with_tenant_data.append({
+                        "property_code": property_obj.property_code or "N/A",
+                        "property_name": property_obj.property_name or "N/A",
+                        "tenant_name": tenant.full_name if tenant else "N/A",
+                        "tenancy_status": property_obj.rental_status or "N/A",
+                        "agreement": {
+                         "lease_id": lease.id,
+                         } if lease else None
+                        })
+
+
                 properties = PropertyDetails.objects.filter(owner=owner.user).values(
                     "id",
                     "property_name",  
@@ -312,10 +331,12 @@ def owner_details_list_view(request):
                     "manage_through_pmc": owner.manage_through_pmc,
                     "created_at": owner.created_at.strftime("%Y-%m-%d %H:%M:%S")
                                     if hasattr(owner, "created_at") else None,
-                    "properties": list(properties),
+                    
                     "property_count": len(properties),
                     "email": user.email if user else None,
                     "profile_image": user.profile_image if user else None,
+                    "properties": property_with_tenant_data,
+                    "property_count": len(property_with_tenant_data),
                 }
                 return prepare_response(
                     content=owner_data,
@@ -344,17 +365,9 @@ def owner_details_list_view(request):
                     "id": owner.id,
                     "user_id": owner.user.id if owner.user else None,
                     "full_name": owner.full_name,
-                    "emirate_id": owner.emirate_id,
-                    "uae_residence_visa": owner.uae_residence_visa,
-                    "trade_license_number": owner.trade_license_number,
                     "owner_number": owner.owner_number,
                     "mobile_number": owner.mobile_number,
-                    "manage_manually": owner.manage_manually,
-                    "manage_through_pmc": owner.manage_through_pmc,
-                    "created_at": owner.created_at.strftime("%Y-%m-%d %H:%M:%S") if hasattr(owner, "created_at") else None,
-                    "properties": list(properties),
                     "property_count": len(properties),
-                    
                     "email": user.email if user else None,
                     "profile_image": user.profile_image if user else None,
                 })
@@ -367,7 +380,7 @@ def owner_details_list_view(request):
 
             
             return prepare_response(
-                content={"total": len(owners_data), "owners": owners_data},
+                content= owners_data,
                 pagination=pagination_meta,
                 message=constants.OWNER_DETAILS_FETCHED_SUCCESS,
                 status=status.HTTP_200_OK
@@ -1709,7 +1722,12 @@ def add_commercial_details(request):
                 "cycle": commercial_obj.cycle,
                 "notice_period": commercial_obj.notice_period,
                 "commission_percent": commercial_obj.commission_percent,
-                "step_choice": property_obj.step_status if property_obj else None
+                              "pmc": {
+                        "key": str(property_obj.property_manager.id),
+                        "value": property_obj.property_manager.company_name
+                        } if property_obj.property_manager else None   
+                       ,
+                "step_choice": property_obj.step_status if property_obj else None 
             }
 
             return prepare_response(content=data, message="Commercial details fetched", status=status.HTTP_200_OK)
@@ -1748,6 +1766,8 @@ def add_commercial_details(request):
                          "commission_percent": safe_decimal(data.get("commission_percent")),
                          "cycle": data.get("cycle"),
                         "notice_period": data.get("notice_period"),
+                        
+
                        
                        
                 }
@@ -4029,9 +4049,18 @@ def lease_property_view(request):
                 pagination_meta = None
 
                 pmc = user.property_manager_details.first()
-                if not pmc:
+
+                if user.user_type == "OWNER":
+                    owner = OwnerDetails.objects.filter(user=user).first()
+                    if not owner:
+                        return prepare_response(message="Owner not found", status=status.HTTP_400_BAD_REQUEST)
+                    leases = LeasePropertyDetails.objects.filter(owner=owner)
+
+                else:
                     return prepare_response(message="PMC not found for this user", status=status.HTTP_400_BAD_REQUEST)
                 leases = LeasePropertyDetails.objects.filter(created_by=pmc)
+
+
                 if search:
                     leases = leases.filter(
                     Q(lease_property__property_name__icontains=search) |
@@ -4910,6 +4939,70 @@ def export_pmc_csv(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
+
+
+# /lease/export/csv/
+@is_request_authenticated
+def export_lease_tenecy_csv(request):
+    if request.method != "GET":
+        return prepare_response(
+            message=constants.INVALID_REQUEST_METHOD,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+    try:
+        user = request.user
+        search = request.GET.get("search", "").strip()
+
+
+        if user.user_type == "OWNER":
+            owner = OwnerDetails.objects.filter(user=user).first()
+            if not owner:
+                return prepare_response(message="Owner not found", status=status.HTTP_400_BAD_REQUEST)
+            leases = LeasePropertyDetails.objects.filter(owner=owner)
+
+        else: 
+            pmc = user.property_manager_details.first()
+            if not pmc:
+                return prepare_response(message="PMC not found for this user", status=status.HTTP_400_BAD_REQUEST)
+            leases = LeasePropertyDetails.objects.filter(created_by=pmc)
+
+        
+        if search:
+            leases = leases.filter(
+                Q(lease_property__property_name__icontains=search) |
+                Q(lease_tenant__full_name__icontains=search)
+            )
+
+        field_names = [
+            "Property Code",
+            "Property Name",
+            "Tenant Name",
+            "Lease Status",
+            "Lease Start Date",
+            "Lease End Date"
+        ]
+
+        export_data = []
+        for l in leases:
+            tenant_name = f"{l.lease_tenant.user.first_name} {l.lease_tenant.user.last_name}".strip()
+
+            export_data.append({
+                "Property Code": l.lease_property.property_code,
+                "Property Name": l.lease_property.property_name,
+                "Tenant Name": tenant_name,
+                "Lease Status": l.lease_status,
+                "Lease Start Date": l.lease_start_date.strftime("%d-%m-%Y"),
+                "Lease End Date": l.lease_end_date.strftime("%d-%m-%Y"),
+            })
+
+        return export_to_csv("lease_data", field_names, export_data)
+
+    except Exception as e:
+        return prepare_response(
+            message=f"Error exporting CSV: {str(e)}",
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
 
