@@ -144,13 +144,14 @@ class LeasePropertyDetails(models.Model):
     lease_grace_start_date = models.DateTimeField(null=True, blank=True)
     lease_grace_end_date = models.DateTimeField(null=True, blank=True)
     lease_remarks = models.TextField(null=True, blank=True)
-    step_status = models.CharField(max_length=50,
-                                   choices=constants.LEASE_STEP_STATUS, default="LEASE_DETAILS")
+    step_status = models.CharField(max_length=50,                               
+    choices=constants.LEASE_STEP_STATUS, default="LEASE_DETAILS")
     lease_status = models.CharField(
         max_length=20,
         choices=constants.LEASE_STATUS_CHOICES,
         default="DRAFT"
         )
+    pdf_path = models.CharField(max_length=2000, blank=True, null=True)
 
     def __str__(self):
         return f"Lease ID: {self.id} | Property: {self.lease_property_id} | Tenant: {self.lease_tenant_id}"
@@ -266,7 +267,7 @@ class Template(Base):
     is_active = models.BooleanField(default=True)
     is_predefined = models.BooleanField(default=False)
     description = models.TextField(blank=True, null=True)
-    pdf_path = models.CharField(max_length=2000, blank=True, null=True)
+  
     
        
     def _str_(self):

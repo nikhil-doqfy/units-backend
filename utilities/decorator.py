@@ -12,7 +12,7 @@ def is_request_authenticated(view_func):
             auth_header = request.headers.get("Authorization")
             if not auth_header:
                 return prepare_response(
-                    message="Authorization header missing",
+                    message=constants.AUTH_HEADER_MISSING,
                     status=status.HTTP_401_UNAUTHORIZED
                 )
             token = get_jwt_token(auth_header)
@@ -25,7 +25,7 @@ def is_request_authenticated(view_func):
                 decoded_token = decode_jwt_token(token)
             except ExpiredSignatureError:
                 return prepare_response(
-                    message="Token expired. Please login again.",
+                    message=constants.TOKEN_EXPIRED,
                     status=status.HTTP_401_UNAUTHORIZED
                 )
             
@@ -38,25 +38,25 @@ def is_request_authenticated(view_func):
             user_email = decoded_token.get("email")
             if not user_email:
                 return prepare_response(
-                    message="Invalid token payload",
+                    message=constants.INVALID_TOKEN_PAYLOAD,
                     status=status.HTTP_401_UNAUTHORIZED
                 )
             user = UserProfile.objects.filter(email=user_email).first()
             if not user:
                 return prepare_response(
-                    message="User not found",
-                    status=404
+                    message=constants.AUTH_USER_NOT_FOUND,
+                    status=status.HTTP_404_NOT_FOUND
                 )
             if user.token != token:
                 return prepare_response(
-                    message="Token invalid or expired. Please login again.",
+                    message=constants.TOKEN_INVALID_OR_EXPIRED,
                     status=status.HTTP_401_UNAUTHORIZED
                 )
             request.user = user
         except Exception as e:
             print("Auth Error:", e)
             return prepare_response(
-                message="Authentication failed",
+                message=constants.AUTHENTICATION_FAILED,
                 status=status.HTTP_401_UNAUTHORIZED
             )
         return view_func(request, *args, **kwargs)
