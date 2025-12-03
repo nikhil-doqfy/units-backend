@@ -15,6 +15,8 @@ urlpatterns = [
     path('pmc/owner/view/list/', views.pmc_owner_view_list, name='pmc_owner_view_list') , 
     path('staff/view/', views.staff_view, name='staff_view'), 
 
+    path("lease/property/view/", views.lease_property_view, name="lease_property_view"),
+
 
 
 
@@ -51,7 +53,7 @@ urlpatterns = [
     path("get/template/fields/", views.get_template_fields, name="get_template_fields"), 
     
 
-    path("lease/property/view/", views.lease_property_view, name="lease_property_view"),
+    
     path("lease/commercials/view/", views.lease_commercials_view, name="lease_commercials_view"),  
 
     path("lease/ejari/documents/view/", views.lease_ejari_documents_view, name="lease_ejari_documents_view"), 
@@ -65,7 +67,8 @@ urlpatterns = [
     path("export/owner/csv", views.export_owner_csv, name="export_owner_csv"), 
 
 
-    path("export/pmc/csv", views.export_pmc_csv, name="export_pmc_csv"), 
+    path("export/pmc/csv", views.export_pmc_csv, name="export_pmc_csv"),  
+    path("export/lease/tenecy/csv", views.export_lease_tenecy_csv, name="export_lease_tenecy_csv"),
 
   
 ] 
