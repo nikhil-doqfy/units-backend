@@ -298,15 +298,34 @@ def owner_details_list_view(request):
                     lease = LeasePropertyDetails.objects.filter(
                         lease_property=property_obj
                     ).first()
+                    images_qs = PropertyImages.objects.filter(property=property_obj)
+                    images_list = []
+                    
 
+                    for img in images_qs:
+                        presigned_url = fetch_s3_presigned_url(
+                            img.image_path,
+                           file_name=img.file_name
+                            )
+                        images_list.append({
+                                "image_url": presigned_url,
+                                "image_type": img.image_type,
+                              "file_name": img.file_name
+                                         })
+                    tenant_profile_image = None
+                    if tenant and tenant.user and tenant.user.profile_image:
+                        tenant_profile_image = tenant.user.profile_image
+     
                     property_with_tenant_data.append({
-                        "property_code": property_obj.property_code or "N/A",
-                        "property_name": property_obj.property_name or "N/A",
-                        "tenant_name": tenant.full_name if tenant else "N/A",
-                        "tenancy_status": property_obj.rental_status or "N/A",
-                        "agreement": {
-                         "lease_id": lease.id,
-                         } if lease else None
+                        "property_code": property_obj.property_code if property_obj.property_code else None,
+                         "property_name": property_obj.property_name if property_obj.property_name else None,
+                        "tenant_name": tenant.full_name if tenant else None,
+                        "tenancy_status": property_obj.rental_status if property_obj.rental_status else None,
+                         "agreement": {
+                          "lease_id": lease.id,
+                                         } if lease else None,
+                        "images": images_list if images_list else None,
+                         "tenant_profile_image": tenant_profile_image if tenant_profile_image else None
                         })
 
 
@@ -1723,7 +1742,7 @@ def add_commercial_details(request):
                 "notice_period": commercial_obj.notice_period,
                 "commission_percent": commercial_obj.commission_percent,
                               "pmc": {
-                        "key": str(property_obj.property_manager.id),
+                        "key": property_obj.property_manager.id,
                         "value": property_obj.property_manager.company_name
                         } if property_obj.property_manager else None   
                        ,
@@ -3874,7 +3893,7 @@ def property_tenant_list_view(request):
                     "cycle": commercial.cycle if commercial else None,
                     "notice_period": commercial.notice_period if commercial else None,
                     "commission_percent": commercial.commission_percent if commercial else None,
-                } if commercial else None
+                } if commercial else None 
             })
 
         content = {
@@ -4057,8 +4076,12 @@ def lease_property_view(request):
                     leases = LeasePropertyDetails.objects.filter(owner=owner)
 
                 else:
-                    return prepare_response(message="PMC not found for this user", status=status.HTTP_400_BAD_REQUEST)
-                leases = LeasePropertyDetails.objects.filter(created_by=pmc)
+                    pmc = user.property_manager_details.first()
+                    if not pmc:
+                        return prepare_response(message="PMC not found for this user", status=status.HTTP_400_BAD_REQUEST)
+                    leases = LeasePropertyDetails.objects.filter(created_by=pmc)
+
+   
 
 
                 if search:
