@@ -9,6 +9,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('user/', include(user_service_urls)),
     path('auth/', include(auth_service_urls)), 
+    
     path('owner/details/list/view/', views.owner_details_list_view, name='owner_details_list_view') ,
     path('tenant/list/view', views.tenant_list_view, name='tenant_list_view'),
     path('property/details/list/view/', views.property_details_list_view, name='property_details_list_view') ,
@@ -16,11 +17,25 @@ urlpatterns = [
     path('staff/view/', views.staff_view, name='staff_view'), 
     path("lease/property/view/", views.lease_property_view, name="lease_property_view"),
     path('property/commercial/details', views.add_commercial_details, name='add_commercial_details'),
-    path("get/template/fields/", views.get_template_fields, name="get_template_fields"),
-
-
-
-
+    path("get/template/fields/", views.get_template_fields, name="get_template_fields"), 
+    path("get/lease/pdf", views.get_lease_pdf, name="get_lease_pdf"),
+    path('create/property/basic', views.create_property_basic, name='create_property_basic'),
+    path('options/', views.options, name='options'),  
+    path('property/images/', views.property_images_view, name='property_images_view'),
+    path("save/template", views.generate_contract, name="save_generated_template"), 
+    path("lease/commercials/view/", views.lease_commercials_view, name="lease_commercials_view"),  
+    path("lease/ejari/documents/view/", views.lease_ejari_documents_view, name="lease_ejari_documents_view"), 
+    path('invite/owner/pmc', views.invite_owner_pmc, name='invite_owner_pmc') , 
+    path('invite/pmc/owner', views.invite_pmc_to_owner, name='invite_pmc_to_owner'),
+    path('invite/tenant/pmc', views.invite_tenant_by_pmc, name='invite_tenant_by_pmc'),
+# -----------------------------------------------------Export CSV APIs-------------------------------------------------------- 
+    path("export/property/csv", views.export_property_csv, name="export_property_csv"),  
+    path("export/staff/csv", views.export_staff_csv, name="export_staff_csv"),  
+    path("export/tenant/csv", views.export_tenant_csv, name="export_tenant_csv"), 
+    path("export/owner/csv", views.export_owner_csv, name="export_owner_csv"), 
+    path("export/pmc/csv", views.export_pmc_csv, name="export_pmc_csv"),  
+    path("export/lease/tenecy/csv", views.export_lease_tenecy_csv, name="export_lease_tenecy_csv"),
+# -------------------------------------------------------------------------------------------------------------------------------------------------------
 
     path('owner/details/', views.owner_details_view, name='owner_details_view'),
     path('choose/manage/option/', views.choose_manage_option, name='choose_manage_option'),
@@ -34,42 +49,15 @@ urlpatterns = [
     path('owner/properties/tenants/', views.owner_property_tenants_view, name='owner_tenants_list'),
     path('property/manager/details/', views.property_manager_details_view, name='property_manager_details_view'),
     path('property/manager/list/', views.property_manager_list, name='property_manager_list'), 
-    
-    path('pmc/dashboard/view', views.pmc_dashboard_view, name='pmc_dashboard_view') ,
-      
-    path('invite/owner/pmc', views.invite_owner_pmc, name='invite_owner_pmc') , 
-    path('invite/pmc/owner', views.invite_pmc_to_owner, name='invite_pmc_to_owner'),
-    path('invite/tenant/pmc', views.invite_tenant_by_pmc, name='invite_tenant_by_pmc'),
+    path('pmc/dashboard/view', views.pmc_dashboard_view, name='pmc_dashboard_view'),
     path('assign/property/by/owner', views.assign_property_by_owner, name='assign_property_by_owner'),
     path('property/statistics', views.property_statistics, name='dashboard_statistics'),
     path('tenant/property', views.tenant_my_property, name='tenant_my_property'),
     path('tenant/owner/property/', views.property_tenant_list_view, name='property_tenant_list_view'),
-    path('create/property/basic', views.create_property_basic, name='create_property_basic'),
-    
     path('property/documents/view', views.property_documents_view, name='property_documents_view'),
-    path('options/', views.options, name='options'),  
-    path('property/images/', views.property_images_view, name='property_images_view'),
-    path("save/template", views.generate_contract, name="save_generated_template"), 
 
-     
-    
-
-    
-    path("lease/commercials/view/", views.lease_commercials_view, name="lease_commercials_view"),  
-
-    path("lease/ejari/documents/view/", views.lease_ejari_documents_view, name="lease_ejari_documents_view"), 
     # path("get/pdf/template/", views.get_pdf_template, name="get_pdf_template"), 
 
-
-    path("export/property/csv", views.export_property_csv, name="export_property_csv"),  
-    path("export/staff/csv", views.export_staff_csv, name="export_staff_csv"),  
-    path("export/tenant/csv", views.export_tenant_csv, name="export_tenant_csv"), 
-
-    path("export/owner/csv", views.export_owner_csv, name="export_owner_csv"), 
-
-
-    path("export/pmc/csv", views.export_pmc_csv, name="export_pmc_csv"),  
-    path("export/lease/tenecy/csv", views.export_lease_tenecy_csv, name="export_lease_tenecy_csv"),
 
   
 ] 

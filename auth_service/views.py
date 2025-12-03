@@ -31,11 +31,7 @@ def user_login(request):
             message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_400_BAD_REQUEST
         )
-    
-    
-        
 
-   
     if email and password:
         user = UserProfile.objects.filter(email=email).first()
         if not user:
@@ -106,7 +102,7 @@ def user_login(request):
             user = UserProfile.objects.get(email=email)
         except UserProfile.DoesNotExist:
             return prepare_response(
-                message=constants.USER_NOT_FOUND,
+                message=constants.AUTH_USER_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
             )
         if  user.user_type != user_type:

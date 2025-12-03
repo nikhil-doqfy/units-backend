@@ -74,7 +74,7 @@ OTP_EXPIRED = "OTP expired."
 OTP_VERIFIED_SUCCESS = "OTP verified successfully."
 OTP_SEND_SUCCESS = "OTP sent successfully."
 OTP_SEND_FAILED = "Failed to send OTP email."
-USER_NOT_FOUND = "User with this email does not exist."
+# USER_NOT_FOUND = "User with this email does not exist."
 EMAIL_OTP_PASSWORD_REQUIRED = "Email, otp, password, and confirm_password are required."
 PASSWORD_MISMATCH = "Password and confirm password do not match."
 WEAK_PASSWORD = "Weak password. Must contain upper, lower, number, and special char."
@@ -144,6 +144,7 @@ USER_UPDATED_SUCCESS="User updated successfully"
 USER_FETCHED_SUCCESS="User list fetched successfully"
 USER_SOFT_DELETED="user soft deleted successfully"
 OTP_NOT_VERIFIED="otp not vrified or alredy verified "
+# EMAIL_ALREADY_REGISTERED = "This email is already registered."
 
 ACCESS_DENIED_OWNER = "Access denied. Only owners can send invitations."
 EMAIL_REQUIRED = "Email field is required."
@@ -206,8 +207,8 @@ DOCUMENTS_MUST_BE_LIST = "Documents must be a list."
 LEASE_EJARI_DOCS_UPLOADED = "Lease Ejari Documents uploaded successfully."
 LEASE_EJARI_DOCS_UPDATED = "Lease Ejari Documents updated successfully."
 LEASE_EJARI_DOCS_FETCHED = "Lease Ejari Documents fetched successfully."
-
-
+COMMERCIAL_DETAILS_NOT_FOUND = "Commercial details not found."
+COMMERCIAL_DETAILS_FETCHED = "Commercial details fetched."
 LEASE_ID_REQUIRED = "lease_id is required."
 LEASE_LIST_FETCHED = "Lease list fetched successfully."
 LEASE_FETCHED = "Lease fetched successfully."
@@ -216,6 +217,16 @@ LEASE_UPDATED = "Lease updated successfully."
 LEASE_PROPERTY_TENANT_REQUIRED = "lease_property_id and lease_tenant_id are required."
 LOGGED_IN_USER_NOT_PM = "Logged-in user is not a property manager."
 PROPERTY_NO_OWNER_ASSIGNED = "Property has no owner assigned."
+LEASE_DOCUMENTS_UPLOADED_SUCCESS = "Lease documents uploaded successfully."
+
+INVALID_LEASE_DATE = "Invalid lease start or end date."
+PMC_NOT_FOUND = "PMC not found for this user."
+
+PDF_URL_FETCHED_SUCCESSFULLY = "PDF URL fetched successfully."
+
+FAILED_TO_GENERATE_PRESIGNED_URL = "Failed to generate presigned URL."
+
+PDF_NOT_AVAILABLE_FOR_LEASE = "PDF not available for this lease."
 
 
 COMMERCIAL_OR_LEASE_ID_REQUIRED = "commercial_id or lease_id is required."
@@ -229,15 +240,11 @@ PROPERTIES_FETCHED = "Properties fetched successfully."
 CONTRACT_GENERATED_SUCCESS = "Contract generated successfully."
 MISSING_FILE_OR_DATA = "Missing file name or data."
 PROPERTY_NOT_FOUND = "Property not found."
-
-
 LEASE_COMMERCIALS_NOT_FOUND = "LeaseCommercials not found."
 ANNUAL_AMOUNT_RENT_REQUIRED = "annual_amount and rent are required."
 COMMERCIAL_DETAILS_UPDATED = "Commercial details updated successfully."
 INVALID_PROPERTY_ID = "Invalid property"
 COMMERCIAL_DETAILS_CREATED = "Commercial details created successfully."
-
-
 USER_PERMANENTLY_DELETED = "User permanently deleted."
 USER_SOFT_DELETED = "User soft deleted successfully."
 ALL_USER_FIELDS_REQUIRED = "All fields (first_name, last_name, email, phone_number, role, location, password, confirm_password) are required."
@@ -255,12 +262,13 @@ OLD_NEW_CONFIRM_PASSWORD_REQUIRED = "Current Password, New Password and Confirm 
 CURRENT_PASSWORD_INCORRECT = "Current password is incorrect."
 PASSWORD_UPDATED = "Password updated successfully."
 
-
-
-
-
-
-
+TOKEN_EXPIRED = "Your session has expired. Please login again."
+INVALID_TOKEN_PAYLOAD = "Invalid login information. Please login again."
+TOKEN_INVALID_OR_EXPIRED = "Session invalid or expired. Please login again."
+AUTHENTICATION_FAILED = "Login failed. Please check your credentials."
+AUTH_HEADER_MISSING = "Authorization information is missing. Please login."
+AUTH_USER_NOT_FOUND = "User does not exist. Please login or sign up."
+TENANT_DETAILS_NOT_FOUND = "Tenant details not found."
 
 
 
