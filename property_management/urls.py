@@ -30,6 +30,13 @@ urlpatterns = [
     path('invite/owner/pmc', views.invite_owner_pmc, name='invite_owner_pmc') , 
     path('invite/pmc/owner', views.invite_pmc_to_owner, name='invite_pmc_to_owner'),
     path('invite/tenant/pmc', views.invite_tenant_by_pmc, name='invite_tenant_by_pmc'),
+    path('property/statistics', views.property_statistics, name='dashboard_statistics'),
+    path('property/documents/view', views.property_documents_view, name='property_documents_view'), 
+    path('pmc/approval/list', views.pmc_approval_list, name='pmc_approval_list'),
+
+
+
+    
 # -----------------------------------------------------Export CSV APIs-------------------------------------------------------- 
     path("export/property/csv", views.export_property_csv, name="export_property_csv"),  
     path("export/staff/csv", views.export_staff_csv, name="export_staff_csv"),  
@@ -53,10 +60,10 @@ urlpatterns = [
     path('property/manager/list/', views.property_manager_list, name='property_manager_list'), 
     path('pmc/dashboard/view', views.pmc_dashboard_view, name='pmc_dashboard_view'),
     path('assign/property/by/owner', views.assign_property_by_owner, name='assign_property_by_owner'),
-    path('property/statistics', views.property_statistics, name='dashboard_statistics'),
+    
     path('tenant/property', views.tenant_my_property, name='tenant_my_property'),
     path('tenant/owner/property/', views.property_tenant_list_view, name='property_tenant_list_view'),
-    path('property/documents/view', views.property_documents_view, name='property_documents_view'),
+    
 
     # path("get/pdf/template/", views.get_pdf_template, name="get_pdf_template"), 
 

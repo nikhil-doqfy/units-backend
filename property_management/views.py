@@ -28,7 +28,9 @@ import re
 import pdfkit
 import platform
 from django.http import FileResponse, Http404
-from property_management.utils import get_property_images
+from property_management.utils import get_property_images , get_tenant_data
+import math
+
 
 
 @is_request_authenticated
@@ -2868,7 +2870,7 @@ def staff_view(request):
                     )
 
             staff_qs = StaffDetails.objects.select_related("staff_role", "user").prefetch_related("assigned_properties").all()
-            role_id = request.GET.get("role_id")
+            role_id = request.GET.get("staff_role")
             if role_id:
                 staff_qs = staff_qs.filter(staff_role__id=role_id)
 
@@ -5079,3 +5081,117 @@ def export_lease_tenecy_csv(request):
 
 
 
+@is_request_authenticated
+def pmc_approval_list(request):
+    user = request.user
+
+    pmc = PropertyManagerCompanyDetails.objects.filter(user=user).first()
+    if not pmc:
+        return prepare_response(
+            message=constants.PMC_NOT_FOUND,
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    if request.method == "GET":
+        tenant_id = request.GET.get("tenant_id")
+
+        if tenant_id:
+            tenant_data = get_tenant_data(tenant_id)
+            if tenant_data:
+                return prepare_response(
+                    content=tenant_data,
+                    message=constants.TENANT_DETAIL_FETCHED,
+                    status=status.HTTP_200_OK
+                )
+            return prepare_response(
+                message=constants.TENANT_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+        
+
+        filter_status = request.GET.get("status", "PENDING")
+        page = int(request.GET.get("page", 1))
+        limit = int(request.GET.get("limit", 10))
+
+
+        leases_qs = LeasePropertyDetails.objects.filter(
+            created_by=pmc,
+            approval_status=filter_status
+        ).select_related("lease_tenant__user", "lease_tenant")
+
+        total_count = leases_qs.count()
+        start = (page - 1) * limit
+        end = start + limit
+        leases = leases_qs[start:end]
+
+        tenant_list = []
+
+        for lease in leases:
+            tenant = lease.lease_tenant
+            tenant_user = tenant.user
+
+            tenant_list.append({
+                "id":tenant.id,
+                "tenant_name": f"{tenant_user.first_name} {tenant_user.last_name}".strip(),
+                "emirates_id": tenant.emirate_id,
+                "email": tenant_user.email,
+                "mobile_number": tenant.mobile_number,
+                "approval_status": lease.approval_status,
+                "lease_id": lease.id,
+            })
+        
+        pagination_meta = {
+            "current_page": page,
+            "limit": limit,
+            "total_records": total_count,
+            "total_pages": math.ceil(total_count / limit) if limit else 1,
+        }
+
+        return prepare_response(
+            content=tenant_list,
+            message=constants.APPROVALS_FETCHED,
+            status=status.HTTP_200_OK,
+            pagination=pagination_meta
+        )
+
+    elif request.method == "PUT":
+        body = json.loads(request.body)
+        lease_id = body.get("lease_id")
+        new_status = body.get("approval_status")  
+
+        if not lease_id or not new_status:
+            return prepare_response(
+                message=constants.LEASE_AND_STATUS_REQUIRED,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if new_status not in ["APPROVED", "REJECTED"]:
+            return prepare_response(
+                message=constants.INVALID_STATUS,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        lease = LeasePropertyDetails.objects.filter(
+            id=lease_id,
+            created_by=pmc
+        ).first()
+
+        if not lease:
+            return prepare_response(
+                message=constants.INVALID_LEASE,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        lease.approval_status = new_status
+        lease.save()
+
+        return prepare_response(
+            message=f"Lease status updated to {new_status}",
+            status=status.HTTP_200_OK
+        )
+
+    else:
+        return prepare_response(
+            message=constants.INVALID_REQUEST_METHOD,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
