@@ -15,22 +15,22 @@ from django.utils.timezone import make_aware
 import random
 import time
 
+
+
 def user_sign_up(request):
     if request.method != "POST":
         return prepare_response(
             message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
-
     data = json.loads(request.body)
-
     email = data.get("email")
     password = data.get("password")
     confirm_password = data.get("confirm_password")
     user_type = data.get("user_type")
     first_name = data.get("first_name")
     last_name = data.get("last_name")
-    unique_id = f"{random.randint(1000,9999)}_{int(time.time()*1000)}"
+
     if not all([email, password, confirm_password, user_type]):
         return prepare_response(
             message=constants.FIELD_REQUIRED,
@@ -49,7 +49,6 @@ def user_sign_up(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-
     user = UserProfile.objects.create(
         email=email,
         hashed_password=make_password(password),
@@ -61,15 +60,17 @@ def user_sign_up(request):
 
     folder_name = f"{user_type.lower()}_documents/{user.id}"
     documents_json = {}
+
     def upload_document(base64_data, file_prefix):
         if not base64_data:
             return None
         extension = get_extension_from_base64(base64_data)
         if not extension:
-            return None
+            extension = ".pdf" 
         filename = f"{file_prefix}{extension}"
         object_name = f"{folder_name}/{filename}"
         return upload_file_to_s3_base64(base64_data, object_name)
+
     emirates_id_doc = upload_document(data.get("emirates_id_doc"), "emirates_id")
     if data.get("emirates_id_doc") and not emirates_id_doc:
         return prepare_response(
@@ -83,7 +84,7 @@ def user_sign_up(request):
             message=constants.UAE_VISA_INVALID,
             status=status.HTTP_400_BAD_REQUEST
         )
-    
+
     dld_certificate_doc = upload_document(data.get("dld_certificate_doc"), "dld_certificate")
     if data.get("dld_certificate_doc") and not dld_certificate_doc:
         return prepare_response(
@@ -91,18 +92,12 @@ def user_sign_up(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-
-
- 
-
     if emirates_id_doc:
         documents_json["emirates_id_doc"] = emirates_id_doc
     if uae_residence_visa_doc:
         documents_json["uae_residence_visa_doc"] = uae_residence_visa_doc
     if dld_certificate_doc:
         documents_json["dld_certificate_doc"] = dld_certificate_doc
-    
-
 
     if user_type == constants.OWNER:
         owner_code = generate_unique_code("OWN")
@@ -123,15 +118,13 @@ def user_sign_up(request):
         PropertyManagerCompanyDetails.objects.create(
             user=user,
             company_name=data.get("company_name"),
-            uae_residence_visa =data.get("uae_residence_visa"),
+            uae_residence_visa=data.get("uae_residence_visa"),
             company_emirate_id=data.get("company_emirate_id"),
             trade_license_number=data.get("trade_license_number"),
             phone_number=data.get("mobile_number"),
             emirate_id=data.get("emirate_id"),
             company_code=company_code,
             pmc_documents=documents_json
-            
-
         )
 
     elif user_type == constants.TENANT:
@@ -158,6 +151,7 @@ def user_sign_up(request):
         message=constants.USER_REGISTERED_SUCCESSFULLY,
         status=status.HTTP_201_CREATED
     )
+
 
 
 
