@@ -23,17 +23,12 @@ SECRET_KEY = 'django-insecure--w_9ca8o1wlh-l3foy8=g*x%9ay90j@2#3&pntlrv$wausuo8&
 
 DEBUG = True
 
-ALLOWED_HOSTS = ["*"]
-
-CSRF_TRUSTED_ORIGINS = ["https://units-api.doqfy.in",  "https://34.14.170.254"]
-
+ALLOWED_HOSTS = ['*']
+CSRF_TRUSTED_ORIGINS = ["https://*.doqfy.in"] 
 
 
 
- 
- 
 
-CORS_ALLOW_ALL_ORIGINS = True
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -121,8 +116,7 @@ USE_TZ = True
  
 CORS_ALLOWED_ORIGINS = [
  "http://localhost:4200",
- "https://34.14.170.254",
-"https://units-api.doqfy.in",
+"https://units.doqfy.in",
 
 ]
 
