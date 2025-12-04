@@ -20,7 +20,7 @@ from django.template.loader import render_to_string
 from datetime import timedelta
 from django.contrib.auth.hashers import make_password
 from django.core.paginator import Paginator, EmptyPage
-from django.conf import settings
+from property_management import settings
 import os
 from datetime import datetime
 import datetime
@@ -33,13 +33,9 @@ from property_management.utils import get_property_images
 
 @is_request_authenticated
 def serve_media(request, path):
-
     file_path = os.path.join(settings.MEDIA_ROOT, path)
-
-    if os.path.exists(file_path):
-        return FileResponse(open(file_path, 'rb'))
-    else:
-        raise Http404("File not found or unable to access requested media file")
+    response = FileResponse(open(file_path, 'rb'))
+    return response
 
 
 @is_request_authenticated
@@ -2811,10 +2807,6 @@ def staff_view(request):
                          "images": images
                             })
 
-                        
- 
-
-
                     data = {
                         "id": staff.id,
                         "staff_name": staff.staff_name, 
@@ -2824,8 +2816,6 @@ def staff_view(request):
                         "country": staff.user.country if staff.user else None,
                         "profile_image_type": staff.user.profile_image_type if staff.user else None,
                         "profile_image":staff.user.profile_image if staff.user else None,
-
-
                          "emirate_id": staff.emirate_id,
                         "city": staff.city,
                         "locality": staff.locality,
@@ -3128,14 +3118,11 @@ def pmc_owner_view_list(request):
                                 "property_code": property_obj.property_code or None,
                                 "property_name": property_obj.property_name or None,
         
-                                 "tenancy_status": property_obj.rental_status or None,
-                                  "dimension": property_obj.bedrooms or None,
-        
-                                         "tennat":{
-                                              "name":tenant_name,
-                                             "profile_image":tenant_profile_image,
-            
-
+                            "tenancy_status": property_obj.rental_status or None,
+                            "dimension": property_obj.bedrooms or None,
+                            "tennat":{
+                             "name":tenant_name,
+                              "profile_image":tenant_profile_image,
                                              },
                                "property_images": images_list,
                                  })                      
