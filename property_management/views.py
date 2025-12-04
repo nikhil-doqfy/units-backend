@@ -27,6 +27,19 @@ import datetime
 import re
 import pdfkit
 import platform
+from django.http import FileResponse, Http404
+from property_management.utils import get_property_images
+
+
+@is_request_authenticated
+def serve_media(request, path):
+
+    file_path = os.path.join(settings.MEDIA_ROOT, path)
+
+    if os.path.exists(file_path):
+        return FileResponse(open(file_path, 'rb'))
+    else:
+        raise Http404("File not found or unable to access requested media file")
 
 
 @is_request_authenticated
@@ -107,9 +120,6 @@ def options(request):
                 for pmc in pmcs
             ]
 
-
-
-
         else:
             content[option_type] = [] 
 
@@ -120,32 +130,8 @@ def options(request):
     )
 
 
-
-def get_property_images(property_id):
-    """
-    Returns all images for a given property ID
-    """
-    images_qs = PropertyImages.objects.filter(property_id=property_id)
-    images_list = []
-
-    for img in images_qs:
-        presigned_url = fetch_s3_presigned_url(
-            img.image_path,
-            file_name=img.file_name
-        )
-        images_list.append({
-            "image_url": presigned_url,
-            "image_type": img.image_type,
-            "file_name": img.file_name
-        })
-    return images_list
-
-
-
 @is_request_authenticated
 def owner_details_view(request):
-
-
     try:
         current_user = request.user
 
@@ -1413,13 +1399,14 @@ def property_details_view(request):
                                 "user_type": prop.owner.user_type,
                             }
 
-                
-                images_base64 = []
-                if prop.images:
-                    for img_url in prop.images:
-                        img_b64 = fetch_s3_file_as_base64(img_url) 
-                        if img_b64:
-                            images_base64.append(img_b64)
+                images_base64 = get_property_images(prop.id)
+
+                # images_base64 = []
+                # if prop.images:
+                #     for img_url in prop.images:
+                #         img_b64 = fetch_s3_file_as_base64(img_url) 
+                #         if img_b64:
+                #             images_base64.append(img_b64)
 
                 data.append({
                     "id": prop.id,
@@ -3138,20 +3125,20 @@ def pmc_owner_view_list(request):
                 
                                     ]
                     properties_assigned.append({
-        "property_code": property_obj.property_code or None,
-        "property_name": property_obj.property_name or None,
+                                "property_code": property_obj.property_code or None,
+                                "property_name": property_obj.property_name or None,
         
-        "tenancy_status": property_obj.rental_status or None,
-        "dimension": property_obj.bedrooms or None,
+                                 "tenancy_status": property_obj.rental_status or None,
+                                  "dimension": property_obj.bedrooms or None,
         
-        "tennat":{
-            "name":tenant_name,
-            "profile_image":tenant_profile_image,
+                                         "tennat":{
+                                              "name":tenant_name,
+                                             "profile_image":tenant_profile_image,
             
 
-                },
-                "property_images": images_list,
-                 })                      
+                                             },
+                               "property_images": images_list,
+                                 })                      
                 
 
                   
@@ -3184,7 +3171,7 @@ def pmc_owner_view_list(request):
                 }
 
                 return prepare_response(
-                    content=data,
+                    content=[data],
                     message="PMC Full Details",
                     status=status.HTTP_200_OK
                 )
@@ -3260,7 +3247,7 @@ def pmc_owner_view_list(request):
 def property_details_list_view(request):
     if request.method == "GET":
         try:
-            user=request.user
+            user=request.user 
 
             property_id = request.GET.get("property_id")
             search = request.GET.get("search", "").strip()
@@ -4573,8 +4560,6 @@ def generate_contract(request):
         db_path = f"/media/{relative_path}"
 
         file_url = f"{settings.MEDIA_URL}generated_templates/{filename}"
-
-       
         new_template = Template.objects.create(
             name=f"User Lease Template {timestamp}",
             template_path=db_path,
@@ -4584,13 +4569,11 @@ def generate_contract(request):
         )
         lease.pdf_path = pdf_s3_url
         lease.save()
-
         return prepare_response(
             message=constants.CONTRACT_GENERATED_SUCCESS,
             content={"file_url": file_url, "pdf_url": pdf_s3_url},
             status=status.HTTP_200_OK
         )
-
     except Exception as e:
         return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -4599,8 +4582,6 @@ def generate_contract(request):
 def get_template_fields(request):
     try:
         template_id = request.GET.get("template_id")
-        
-
         if not template_id:
             return prepare_response(
                 message=constants.TEMPLATE_ID_REQUIRED,
@@ -4648,6 +4629,8 @@ def get_template_fields(request):
             message=str(e),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
 
 @is_request_authenticated
 def get_lease_pdf(request):
