@@ -5,10 +5,6 @@ from django.utils import timezone
 from django.conf import settings 
 
 
-
-
-
-
 class UserProfile(Base):
     USER_TYPE_CHOICES = (
        (constants.OWNER, "Owner"),

@@ -2,7 +2,7 @@
 from django.shortcuts import get_object_or_404
 from django.db import IntegrityError, transaction
 from property_management.models import OwnerDetails ,TenantDetails , LeasePropertyDetails ,LeaseCommercials,LeaseEjariUpload,OwnerPMCInvitation,PMCOwnerInvitation , PMCTenantInvitation ,Template, TemplateFields ,TemplateValues 
-from user_service.models import PropertyManagerCompanyDetails ,PropertyDetails ,UserProfile,StaffDetails  ,PropertyCommercial ,PropertyImages ,PropertyDocuments 
+from user_service.models import PropertyManagerCompanyDetails ,PropertyDetails ,UserProfile,StaffDetails  ,PropertyCommercial ,PropertyImages ,PropertyDocuments , StaffRole
 from utilities.decorator import is_request_authenticated
 import json
 from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger,send_ses_email,safe_decimal ,safe_epoch_to_datetime ,replace_placeholders ,fetch_s3_presigned_url ,export_to_csv ,datetime_to_epoch_millis,get_pdfkit_config,generate_property_code 
@@ -114,6 +114,26 @@ def options(request):
             content["all_pmc"] = [
                 {"key": pmc.id, "value": pmc.company_name}
                 for pmc in pmcs
+            ]
+        
+        elif option_type == "LEASE_STATUS":
+            lease_status_choices = [
+                {"key": "DRAFT", "value": "Draft"},
+               {"key": "ACTIVE", "value": "Active"},
+                {"key": "INACTIVE", "value": "In Active"},
+                {"key": "EXPIRED", "value": "Expired"},
+                                     ]
+            content["lease_status"] = lease_status_choices
+        elif option_type == "RENTAL_STATUS":
+            content["rental_status"] = [
+                {"key": constants.RENTAL_AVAILABLE, "value": "Available"},
+                {"key": constants.RENTAL_NOT_AVAILABLE, "value": "Not Available"},
+                ]
+        elif option_type == "STAFF_ROLE":
+            roles = StaffRole.objects.all()
+            content["staff_role"] = [
+                {"key": role.id, "value": role.name}
+                for role in roles
             ]
 
         else:
@@ -2848,6 +2868,10 @@ def staff_view(request):
                     )
 
             staff_qs = StaffDetails.objects.select_related("staff_role", "user").prefetch_related("assigned_properties").all()
+            role_id = request.GET.get("role_id")
+            if role_id:
+                staff_qs = staff_qs.filter(staff_role__id=role_id)
+
 
             if search:
                 staff_qs = staff_qs.filter(
@@ -3275,6 +3299,13 @@ def property_details_list_view(request):
                     Q(owner__owner_details__full_name__icontains=search) |
                     Q(tenant_details__full_name__icontains=search)
                 ).distinct()
+
+            rental_status = request.GET.get("rental_status")
+            if rental_status:
+                if rental_status == constants.RENTAL_AVAILABLE:
+                    properties = properties.filter(is_occupied=False)
+                elif rental_status == constants.RENTAL_NOT_AVAILABLE:
+                    properties = properties.filter(is_occupied=True)
 
             if not property_id:
                 paginator = Paginator(properties, limit)
@@ -4125,6 +4156,10 @@ def lease_property_view(request):
                     Q(lease_property__property_name__icontains=search) |
                      Q(lease_tenant__full_name__icontains=search)
                                           )
+                lease_status = request.GET.get("lease_status", "").strip()
+                if lease_status:
+                    leases = leases.filter(lease_status=lease_status.upper())
+
                 leases = leases.order_by("-id")
                 total_count = leases.count()
                 start = (page - 1) * limit
