@@ -160,3 +160,38 @@ def get_tenant_data(tenant_id):
 
     return tenant_data
 
+
+
+
+def get_lease_ejari_documents(lease_id):
+    """
+    Fetch all Ejari documents for a given lease_id.
+    Returns documents list or None if lease doesn't exist.
+    """
+
+    if not lease_id:
+        return None
+
+    lease_obj = LeasePropertyDetails.objects.filter(id=lease_id).first()
+    if not lease_obj:
+        return None
+
+    docs_qs = LeaseEjariUpload.objects.filter(lease_id=lease_id).order_by("-id")
+    final_docs = []
+
+    for doc in docs_qs:
+        url = doc.file_path
+        file_name = doc.file_name
+        doc_type = doc.document_type
+        base64_data = fetch_s3_presigned_url(url, file_name=file_name)
+
+        final_docs.append({
+            "file_name": file_name,
+            "data": base64_data,
+            "type": doc_type,
+            "id": doc.id,
+        })
+
+    return final_docs
+
+

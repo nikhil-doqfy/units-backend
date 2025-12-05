@@ -5,7 +5,7 @@ from property_management.models import OwnerDetails ,TenantDetails , LeaseProper
 from user_service.models import PropertyManagerCompanyDetails ,PropertyDetails ,UserProfile,StaffDetails  ,PropertyCommercial ,PropertyImages ,PropertyDocuments , StaffRole
 from utilities.decorator import is_request_authenticated
 import json
-from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger,send_ses_email,safe_decimal ,safe_epoch_to_datetime ,replace_placeholders ,fetch_s3_presigned_url ,export_to_csv ,datetime_to_epoch_millis,get_pdfkit_config,generate_property_code 
+from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger,send_ses_email,safe_decimal ,safe_epoch_to_datetime ,replace_placeholders ,fetch_s3_presigned_url ,export_to_csv ,datetime_to_epoch_millis,get_pdfkit_config,generate_property_code
 from utilities import status ,  constants
 from django.utils import timezone
 from utilities import config
@@ -28,9 +28,8 @@ import re
 import pdfkit
 import platform
 from django.http import FileResponse, Http404
-from property_management.utils import get_property_images , get_tenant_data
+from property_management.utils import get_property_images , get_tenant_data ,get_lease_ejari_documents
 import math
-
 
 
 @is_request_authenticated
@@ -712,10 +711,6 @@ def all_owner_details(request):
             message=f"Internal Server Error: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
-
-
-
 
 
 @is_request_authenticated
@@ -1733,13 +1728,6 @@ def create_property_basic(request):
         )
 
 
-
-
-
-
-
-
-
 @is_request_authenticated
 def add_commercial_details(request):
     user = request.user
@@ -1857,13 +1845,8 @@ def add_commercial_details(request):
         return prepare_response(f"Error: {str(e)}", status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-
-
-
 def property_images_view(request):
     try:
-
-
         if request.method == "GET":
             property_id = request.GET.get("property_id")
 
@@ -1894,7 +1877,7 @@ def property_images_view(request):
                 })
 
             return prepare_response(
-                message="Fetched successfully",
+                message=constants.DATA_FETCHED_SUCCESSFULLY,
                 content={
                     "images": final_images,
                     "property_id": property_id,
@@ -2061,7 +2044,7 @@ def property_documents_view(request):
             
 
             return prepare_response(
-                message="Fetched successfully",
+                message=constants.DATA_FETCHED_SUCCESSFULLY,
                 content={
                     "documents": final_docs,
                     "property_id": property_id,
@@ -2081,7 +2064,7 @@ def property_documents_view(request):
                 return prepare_response(message=constants.PROPERTY_ID_REQUIRED , status=status.HTTP_400_BAD_REQUEST)
 
             if not isinstance(documents, list) or not documents:
-                return prepare_response(message="Documents must be a list", status=status.HTTP_400_BAD_REQUEST)
+                return prepare_response(message=constants.DOCUMENTS_MUST_BE_LIST, status=status.HTTP_400_BAD_REQUEST)
 
             try:
                 property_obj = PropertyDetails.objects.get(id=property_id)
@@ -2118,14 +2101,14 @@ def property_documents_view(request):
                 property_obj.save()
 
             return prepare_response(
-                message="Documents uploaded successfully",
+                message=constants.DOCUMENTS_UPLOAD_SUCCESS,
                 content={"uploaded": uploaded_files},
                 status=status.HTTP_201_CREATED
             )
 
 
     
-        if request.method == "PUT":
+        if request.method == "PUT": 
             body = json.loads(request.body)
             property_id = body.get("property_id")
             documents = body.get("documents", [])
@@ -2134,7 +2117,7 @@ def property_documents_view(request):
                 return prepare_response(message=constants.PROPERTY_ID_REQUIRED , status=status.HTTP_400_BAD_REQUEST)
 
             if not isinstance(documents, list):
-                return prepare_response(message="Documents must be a list",status= status.HTTP_400_BAD_REQUEST)
+                return prepare_response(message=constants.DOCUMENTS_MUST_BE_LIST,status= status.HTTP_400_BAD_REQUEST)
 
             try:
                 property_obj = PropertyDetails.objects.get(id=property_id)
@@ -2172,7 +2155,7 @@ def property_documents_view(request):
                 })
 
             return prepare_response(
-                message="Documents updated successfully",
+                message=constants.DOCUMENTS_UPLOAD_SUCCESS,
                 content={"updated": updated_files},
                 status=status.HTTP_200_OK
             )
@@ -2228,7 +2211,7 @@ def owner_property_tenants_view(request):
      
         if not properties_qs.exists():
             return prepare_response(
-                message="No properties found for this owner.",
+                message=constants.NO_PROPERTY_FOUND_OWNER,
                 content={"data": [], "page": page, "total_pages": 0, "total_records": 0},
                 status=status.HTTP_404_NOT_FOUND
             )
@@ -2865,7 +2848,7 @@ def staff_view(request):
                     )
                 except StaffDetails.DoesNotExist:
                     return prepare_response(
-                        message="Staff not found",
+                        message=constants.STAFF_DETAILS_NOT_FOUND,
                         status=status.HTTP_404_NOT_FOUND
                     )
 
@@ -2922,12 +2905,12 @@ def staff_view(request):
         elif request.method == "PUT":
             staff_id = request.GET.get("id")
             if not staff_id:
-                return prepare_response(message="Staff ID is required in query params", status=status.HTTP_400_BAD_REQUEST)
+                return prepare_response(message=constants.STAFF_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
 
             try:
                 staff = StaffDetails.objects.get(id=staff_id)
             except StaffDetails.DoesNotExist:
-                return prepare_response(message="Staff not found", status=status.HTTP_404_NOT_FOUND)
+                return prepare_response(message=constants.STAFF_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
 
             body = json.loads(request.body)
 
@@ -2949,7 +2932,7 @@ def staff_view(request):
         elif request.method == "DELETE":
             staff_id = request.GET.get("id")
             if not staff_id:
-                return prepare_response(message="Staff ID is required in query params", status=status.HTTP_400_BAD_REQUEST)
+                return prepare_response(message=constants.STAFF_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
 
             try:
                 staff = StaffDetails.objects.get(id=staff_id)
@@ -2960,7 +2943,7 @@ def staff_view(request):
                 )
             except StaffDetails.DoesNotExist:
                 return prepare_response(
-                    message="Staff not found",
+                    message=constants.STAFF_NOT_FOUND,
                     status=status.HTTP_404_NOT_FOUND
                 )
 
@@ -3065,21 +3048,21 @@ def pmc_owner_view_list(request):
 
             if not property_id or not pmc_id:
                 return prepare_response(
-                    message="property_id & pmc_id required",
+                    message=constants.REQUIRED_PMC_PROPERTY,
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
             property_obj = PropertyDetails.objects.filter(id=property_id, owner=user).first()
             if not property_obj:
                 return prepare_response(
-                    message="You are not owner of this property!",
+                    message=constants.YOU_NOT_OWNER_OF_PROPERTY,
                     status=status.HTTP_403_FORBIDDEN
                 )
 
             pmc_obj = PropertyManagerCompanyDetails.objects.filter(id=pmc_id).first()
             if not pmc_obj:
                 return prepare_response(
-                    message="PMC not found",
+                    message=constants.PMC_NOT_FOUND,
                     status=status.HTTP_404_NOT_FOUND
                 )
 
@@ -3087,7 +3070,7 @@ def pmc_owner_view_list(request):
             property_obj.save()
 
             return prepare_response(
-                message="Property assigned successfully!",
+                message=constants.PROPERTY_ASSIGNED_SUCCESS,
                 status=status.HTTP_200_OK
             )
 
@@ -3104,7 +3087,7 @@ def pmc_owner_view_list(request):
 
                 if not pmc_obj:
                     return prepare_response(
-                        message="PMC not found or not linked to your properties",
+                        message=constants.PMC_LINKED_NOT,
                         status=status.HTTP_404_NOT_FOUND
                     )
 
@@ -3185,7 +3168,7 @@ def pmc_owner_view_list(request):
 
                 return prepare_response(
                     content=[data],
-                    message="PMC Full Details",
+                    message=constants.DATA_FETCHED_SUCCESSFULLY,
                     status=status.HTTP_200_OK
                 )
 
@@ -3280,7 +3263,7 @@ def property_details_list_view(request):
                 properties = properties.filter(id=property_id)
                 if not properties.exists():
                     return prepare_response(
-                        message="Property Not Found",
+                        message=constants.PROPERTY_NOT_FOUND,
                         status=status.HTTP_404_NOT_FOUND
                     )
             if not property_id:
@@ -3918,7 +3901,7 @@ def property_tenant_list_view(request):
 
         if not properties_qs.exists():
             return prepare_response(
-                message="No properties found.",
+                message=constants.PROPERTY_NOT_FOUND,
                 content={"data": [], "page": page, "total_pages": 0, "total_records": 0},
                 status=status.HTTP_404_NOT_FOUND
             )
@@ -3971,7 +3954,7 @@ def property_tenant_list_view(request):
         }
 
         return prepare_response(
-            message="Properties fetched successfully.",
+            message=constants.DATA_FETCHED_SUCCESSFULLY,
             content=content,
             status=status.HTTP_200_OK
         )
@@ -4016,7 +3999,7 @@ def lease_property_view(request):
             lease_start_date = safe_epoch_to_datetime(body.get("lease_start_date"))
             lease_end_date = safe_epoch_to_datetime(body.get("lease_end_date"))
             if not lease_start_date or not lease_end_date:
-                return prepare_response(message="Invalid lease start or end date", status=status.HTTP_400_BAD_REQUEST)
+                return prepare_response(message=constants.INVALID_LEASE_DATE, status=status.HTTP_400_BAD_REQUEST)
 
             lease_grace_start_date = safe_epoch_to_datetime(body.get("lease_grace_start_date")) if body.get("lease_grace_start_date") else None
             lease_grace_end_date = safe_epoch_to_datetime(body.get("lease_grace_end_date")) if body.get("lease_grace_end_date") else None
@@ -4397,7 +4380,7 @@ def lease_ejari_documents_view(request):
                 return prepare_response(message=constants.LEASE_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
 
             if not isinstance(documents, list) or not documents:
-                return prepare_response(message="Documents must be a list", status=status.HTTP_400_BAD_REQUEST)
+                return prepare_response(message=constants.DOCUMENTS_MUST_BE_LIST, status=status.HTTP_400_BAD_REQUEST)
 
             try:
                 lease_obj = LeasePropertyDetails.objects.get(id=lease_id)
@@ -4449,7 +4432,7 @@ def lease_ejari_documents_view(request):
                 return prepare_response(message=constants.LEASE_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
 
             if not isinstance(documents, list):
-                return prepare_response(message="Documents must be a list", status=status.HTTP_400_BAD_REQUEST)
+                return prepare_response(message=constants.DOCUMENTS_MUST_BE_LIST, status=status.HTTP_400_BAD_REQUEST)
 
             try:
                 lease_obj = LeasePropertyDetails.objects.get(id=lease_id)
@@ -5094,12 +5077,14 @@ def pmc_approval_list(request):
 
     if request.method == "GET":
         tenant_id = request.GET.get("tenant_id")
+        lease_id = request.GET.get("lease_id")
 
         if tenant_id:
             tenant_data = get_tenant_data(tenant_id)
+            docs=get_lease_ejari_documents(lease_id)
             if tenant_data:
                 return prepare_response(
-                    content=tenant_data,
+                    content={"tenant_details": tenant_data,"lease_documents": docs if docs else []},
                     message=constants.TENANT_DETAIL_FETCHED,
                     status=status.HTTP_200_OK
                 )
@@ -5138,6 +5123,7 @@ def pmc_approval_list(request):
                 "mobile_number": tenant.mobile_number,
                 "approval_status": lease.approval_status,
                 "lease_id": lease.id,
+                "date_request":None
             })
         
         pagination_meta = {

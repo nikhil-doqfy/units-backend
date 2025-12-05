@@ -35,8 +35,6 @@ urlpatterns = [
     path('pmc/approval/list', views.pmc_approval_list, name='pmc_approval_list'),
 
 
-
-    
 # -----------------------------------------------------Export CSV APIs-------------------------------------------------------- 
     path("export/property/csv", views.export_property_csv, name="export_property_csv"),  
     path("export/staff/csv", views.export_staff_csv, name="export_staff_csv"),  

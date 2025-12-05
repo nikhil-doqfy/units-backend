@@ -173,7 +173,7 @@ IMAGE_UPLOADED_SUCCESS="Images uploaded successfully"
 QUERY_PARAMETER="option_type query parameter is required"
 
 DROPDOWN_DATA_FETCHED_SUCEESS="Dropdown data fetched successfully"
-
+STAFF_ID_REQUIRED="Staff ID is required in query params"
 
 USER_ID_REQUIRED = "User ID is required in query parameters."
 USER_ACTIVE = "User has been activated successfully."
@@ -183,9 +183,11 @@ SOMETHING_WENT_WRONG = "Something went wrong. Please try again later."
 EMIRATES_ID_INVALID = "Invalid Emirates ID document. Allowed: pdf, jpg, png, doc, docx, xlsx."
 UAE_VISA_INVALID = "Invalid UAE Residence Visa document. Allowed: pdf, jpg, png, doc, docx, xlsx."
 DLD_CERT_INVALID = "Invalid DLD Certificate document. Allowed: pdf, jpg, png, doc, docx, xlsx."
-
-
-
+NO_PROPERTY_FOUND_OWNER="No properties found for this owner."
+STAFF_NOT_FOUND="Staff not found"
+REQUIRED_PMC_PROPERTY="property_id & pmc_id required"
+YOU_NOT_OWNER_OF_PROPERTY="You are not owner of this property!"
+PMC_LINKED_NOT="PMC not found or not linked to your properties"
 
 NOT_FOUND = "Not found."
 INVALID_LEASE_ID = "Invalid lease "
@@ -270,12 +272,12 @@ AUTH_HEADER_MISSING = "Authorization information is missing. Please login."
 AUTH_USER_NOT_FOUND = "User does not exist. Please login or sign up."
 TENANT_DETAILS_NOT_FOUND = "Tenant details not found."
 
-APPROVALS_FETCHED = "Approvals fetched successfully"
+APPROVALS_FETCHED = "List fetched successfully"
 LEASE_AND_STATUS_REQUIRED = "lease_id & status required"
 INVALID_STATUS = "Invalid status"
 INVALID_LEASE = "Invalid lease"
 INVALID_METHOD = "Invalid method"
-
+DATA_FETCHED_SUCCESSFULLY="Data Fetched successfully"
 
 TENANT_DETAIL_FETCHED="teanant data fetched"
 
