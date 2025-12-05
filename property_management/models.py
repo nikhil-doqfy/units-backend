@@ -152,6 +152,12 @@ class LeasePropertyDetails(models.Model):
         default="DRAFT"
         )
     pdf_path = models.CharField(max_length=2000, blank=True, null=True)
+    
+    approval_status = models.CharField(
+    max_length=20,
+    choices=constants.APPROVAL_STATUS_CHOICES,
+    default="PENDING"
+)
 
     def __str__(self):
         return f"Lease ID: {self.id} | Property: {self.lease_property_id} | Tenant: {self.lease_tenant_id}"

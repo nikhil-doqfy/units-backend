@@ -143,7 +143,7 @@ def get_tenant_data(tenant_id):
         "city": tenant.city,
         "state": tenant.state,
         "postal_code": tenant.postal_code,
-        "emirates_id": tenant.emirates_id,
+        "emirates_id": tenant.emirate_id,
         "uae_residence_visa": tenant.uae_residence_visa,
         "trade_license_number": tenant.trade_license_number,
         "passport_self": tenant.passport_self,

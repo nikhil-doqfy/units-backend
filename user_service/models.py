@@ -118,7 +118,6 @@ class PropertyDetails(Base):
         choices=constants.PROPERTY_TYPE_CHOICES,
         default="Apartment"
     )
-
     land_area = models.CharField(max_length=50, default="1048")
     apartment_no = models.CharField(max_length=50, default="48")
     bedrooms = models.CharField(max_length=50, default="Select bedroom")

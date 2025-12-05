@@ -270,6 +270,14 @@ AUTH_HEADER_MISSING = "Authorization information is missing. Please login."
 AUTH_USER_NOT_FOUND = "User does not exist. Please login or sign up."
 TENANT_DETAILS_NOT_FOUND = "Tenant details not found."
 
+APPROVALS_FETCHED = "Approvals fetched successfully"
+LEASE_AND_STATUS_REQUIRED = "lease_id & status required"
+INVALID_STATUS = "Invalid status"
+INVALID_LEASE = "Invalid lease"
+INVALID_METHOD = "Invalid method"
+
+
+TENANT_DETAIL_FETCHED="teanant data fetched"
 
 
 choices=[("MYSELF", "Myself"), ("PMC", "PMC")]
@@ -350,7 +358,7 @@ NUMBER = "number"
 DATE = "date"
 TEXT = "text"
 RADIO = "radio"
-CHOICE = "choice"
+CHOICE = "choice" 
 CHECKBOX = "checkbox"
 
 STEP_CHOICES = (
@@ -399,3 +407,9 @@ DOCUMENTS_STATUS_CHOICES = (
         ("APPROVED", "Approved"),
         ("REJECTED", "Rejected"),
     )
+
+APPROVAL_STATUS_CHOICES = (
+    ("PENDING", "Pending"),
+    ("APPROVED", "Approved"),
+    ("REJECTED", "Rejected"),
+)
