@@ -91,6 +91,8 @@ def user_sign_up(request):
             message=constants.DLD_CERT_INVALID,
             status=status.HTTP_400_BAD_REQUEST
         )
+    
+    
 
     if emirates_id_doc:
         documents_json["emirates_id_doc"] = emirates_id_doc

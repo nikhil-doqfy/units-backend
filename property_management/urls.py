@@ -12,10 +12,10 @@ urlpatterns = [
     path('auth/', include(auth_service_urls)), 
     re_path(r"^media/(?P<path>.*)$", views.serve_media),    
     
-    path('owner/details/list/view/', views.owner_details_list_view, name='owner_details_list_view') ,
+    path('owner/details/list/view/', views.owner_details_list_view, name='owner_details_list_view'),
     path('tenant/list/view', views.tenant_list_view, name='tenant_list_view'),
-    path('property/details/list/view/', views.property_details_list_view, name='property_details_list_view') ,
-    path('pmc/owner/view/list/', views.pmc_owner_view_list, name='pmc_owner_view_list') , 
+    path('property/details/list/view/', views.property_details_list_view, name='property_details_list_view'),
+    path('pmc/owner/view/list/', views.pmc_owner_view_list, name='pmc_owner_view_list'), 
     path('staff/view/', views.staff_view, name='staff_view'), 
     path("lease/property/view/", views.lease_property_view, name="lease_property_view"),
     path('property/commercial/details', views.add_commercial_details, name='add_commercial_details'),
@@ -33,8 +33,8 @@ urlpatterns = [
     path('property/statistics', views.property_statistics, name='dashboard_statistics'),
     path('property/documents/view', views.property_documents_view, name='property_documents_view'), 
     path('pmc/approval/list', views.pmc_approval_list, name='pmc_approval_list'),
-
-
+    path('assign/property/by/owner', views.assign_property_by_owner, name='assign_property_by_owner'),
+    path('tenant/details/', views.tenant_details_view, name='tenant_details_view'),
 # -----------------------------------------------------Export CSV APIs-------------------------------------------------------- 
     path("export/property/csv", views.export_property_csv, name="export_property_csv"),  
     path("export/staff/csv", views.export_staff_csv, name="export_staff_csv"),  
@@ -52,12 +52,12 @@ urlpatterns = [
     path("update/tenant/documents", views.update_tenant_documents,name="update_tenant_documents"),
     path('upload/pmc/documents', views.upload_pmc_documents, name='upload_pmc_documents'),
     path('property/details/', views.property_details_view, name='property_details_view'), 
-    path('tenant/details/', views.tenant_details_view, name='tenant_details_view'),
+    
     path('owner/properties/tenants/', views.owner_property_tenants_view, name='owner_tenants_list'),
     path('property/manager/details/', views.property_manager_details_view, name='property_manager_details_view'),
     path('property/manager/list/', views.property_manager_list, name='property_manager_list'), 
     path('pmc/dashboard/view', views.pmc_dashboard_view, name='pmc_dashboard_view'),
-    path('assign/property/by/owner', views.assign_property_by_owner, name='assign_property_by_owner'),
+    
     
     path('tenant/property', views.tenant_my_property, name='tenant_my_property'),
     path('tenant/owner/property/', views.property_tenant_list_view, name='property_tenant_list_view'),

@@ -5,7 +5,7 @@ from property_management.models import OwnerDetails ,TenantDetails , LeaseProper
 from user_service.models import PropertyManagerCompanyDetails ,PropertyDetails ,UserProfile,StaffDetails  ,PropertyCommercial ,PropertyImages ,PropertyDocuments , StaffRole
 from utilities.decorator import is_request_authenticated
 import json
-from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger,send_ses_email,safe_decimal ,safe_epoch_to_datetime ,replace_placeholders ,fetch_s3_presigned_url ,export_to_csv ,datetime_to_epoch_millis,get_pdfkit_config,generate_property_code
+from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger,send_ses_email,safe_decimal ,safe_epoch_to_datetime ,replace_placeholders ,fetch_s3_presigned_url ,export_to_csv ,datetime_to_epoch_millis,get_pdfkit_config,generate_property_code ,fetch_s3_presigned_url_for_download
 from utilities import status ,  constants
 from django.utils import timezone
 from utilities import config
@@ -298,6 +298,7 @@ def owner_details_list_view(request):
             owners_qs = OwnerDetails.objects.all().select_related("user")
             page = int(request.GET.get("page", 1))
             limit = int(request.GET.get("limit", 10))
+            rental_status_filter = request.GET.get("rental_status")
 
             if search:
                 owners_qs = owners_qs.filter(
@@ -315,6 +316,13 @@ def owner_details_list_view(request):
                     )
                 user = owner.user
                 properties = PropertyDetails.objects.filter(owner=user)
+
+                if rental_status_filter in [constants.RENTAL_AVAILABLE, constants.RENTAL_NOT_AVAILABLE]:
+                    if rental_status_filter == constants.RENTAL_AVAILABLE:
+                        properties = properties.filter(is_occupied=False)
+                    elif rental_status_filter == constants.RENTAL_NOT_AVAILABLE:
+                        properties = properties.filter(is_occupied=True)
+
                 property_with_tenant_data = []
                 for property_obj in properties:
                     tenant = TenantDetails.objects.filter(property=property_obj).first()
@@ -342,7 +350,12 @@ def owner_details_list_view(request):
                     property_with_tenant_data.append({
                         "property_code": property_obj.property_code if property_obj.property_code else None,
                          "property_name": property_obj.property_name if property_obj.property_name else None,
-                        "tenancy_status": property_obj.rental_status if property_obj.rental_status else None,
+
+                        "tenancy_status": (constants.RENTAL_NOT_AVAILABLE 
+                                             if property_obj.is_occupied 
+                                            else constants.RENTAL_AVAILABLE
+                                            ),
+
                          "agreement": {
                           "lease_id": lease.id,
                                          } if lease else None,
@@ -406,7 +419,11 @@ def owner_details_list_view(request):
                     property_list.append({
                         "property_code": property_obj.property_code,
                         "property_name": property_obj.property_name,
-                        "rental_status": property_obj.rental_status,
+
+                        "rental_status": (constants.RENTAL_NOT_AVAILABLE 
+                                             if property_obj.is_occupied 
+                                            else constants.RENTAL_AVAILABLE
+                                            ),
                        "images": images_list if images_list else None  
                                      })
  
@@ -1007,16 +1024,12 @@ def update_tenant_documents(request):
     )
 
 
-
-
-
 @is_request_authenticated
 def tenant_details_view(request):
     user = request.user
     tenant_id = request.GET.get("tenant_id")
 
     def get_tenant():
-        """Helper to fetch tenant by query param or current user"""
         if tenant_id:
             return TenantDetails.objects.select_related("property", "user").filter(id=tenant_id).first()
         return TenantDetails.objects.select_related("property", "user").filter(user=user).first()
@@ -1209,10 +1222,6 @@ def tenant_details_view(request):
             message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
-
-
-
-
 
 
 @is_request_authenticated
@@ -1743,7 +1752,6 @@ def add_commercial_details(request):
                 return prepare_response(message=constants.COMMERCIAL_DETAILS_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
             property_obj = PropertyDetails.objects.filter(id=property_id).first()
 
-         
             data = {
                 "property_id":property_id,
                 "rent": commercial_obj.rent,
@@ -2223,6 +2231,7 @@ def owner_property_tenants_view(request):
         response_data = []
         for prop in page_obj:
             tenant = TenantDetails.objects.filter(property=prop).first()
+            
 
             response_data.append({
                 "property_id": prop.id,
@@ -2283,13 +2292,29 @@ def tenant_list_view(request):
 
             tenant_list = []
             for tenant in tenants:
+                    # -------------------------------
+                lease_id = None
+                lease_obj = LeasePropertyDetails.objects.filter(
+                    lease_tenant=tenant
+                    ).order_by('-id').first()
+                if lease_obj:
+                    lease_id = lease_obj.id
+                     # -------------------------------
+                   
+                tenant_profile_url = None
+                if tenant.user and tenant.user.profile_image:
+                    tenant_profile_url = tenant.user.profile_image
+
                 tenant_list.append({
                     "id": tenant.id,
                     "full_name": tenant.full_name,
                     "tenant_number": tenant.tenant_number,
                     "mobile_number": tenant.mobile_number,
                     "property_assigned": tenant.property.property_name if tenant.property else None,
-                    "rental_agreement":"None"
+                    "rental_agreement":"None",
+                    "profile_image": tenant_profile_url,
+                    "lease_id": lease_id,
+                    
                     # "rental_agreement": (
                     #     tenant.lease_property_details.lease_file
                     #     if tenant.lease_property_details else None
@@ -2769,7 +2794,7 @@ def staff_view(request):
                         "id": prop.owner.id,
                         "name": getattr(prop.owner, "full_name", None),
                         
-                    }
+                     }
                         tenant_data = None
                    
                         tenant_obj = TenantDetails.objects.filter(property=prop).select_related("user").first()
@@ -2839,7 +2864,7 @@ def staff_view(request):
                         "total_assigned_properties": total_assigned,
                         "assigned_properties": assigned_properties_data
 
-                    }
+                     }
 
                     return prepare_response(
                         content=data,
@@ -4167,6 +4192,7 @@ def lease_property_view(request):
                                 "name": f"{lease.lease_tenant.user.first_name} {lease.lease_tenant.user.last_name}".strip(),
                                 "profile_image": lease.lease_tenant.user.profile_image,
                                  "profile_image_type": lease.lease_tenant.user.profile_image_type,
+                                 "contact_number":lease.lease_tenant.mobile_number,
                                              }
                                              })
                 pagination_meta = {
@@ -4642,6 +4668,8 @@ def get_template_fields(request):
 @is_request_authenticated
 def get_lease_pdf(request):
     lease_id = request.GET.get("lease_id")
+    file_type = request.GET.get("type", "view") 
+
     if not lease_id:
         return prepare_response(
             message=constants.LEASE_ID_REQUIRED,
@@ -4657,10 +4685,19 @@ def get_lease_pdf(request):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        presigned_url = fetch_s3_presigned_url(
-            lease.pdf_path,
-            file_name=f"lease_{lease_id}.pdf"
-        )
+       
+        if file_type.lower() == "download":
+            presigned_url = fetch_s3_presigned_url_for_download(
+                lease.pdf_path,
+                file_name=f"lease_{lease_id}.pdf"
+            )
+        else:
+         
+            presigned_url = fetch_s3_presigned_url(
+                lease.pdf_path,
+                file_name=f"lease_{lease_id}.pdf"
+            )
+
         if not presigned_url:
             return prepare_response(
                 message=constants.FAILED_TO_GENERATE_PRESIGNED_URL,
@@ -4668,7 +4705,7 @@ def get_lease_pdf(request):
             )
 
         return prepare_response(
-            message=constants.PDF_URL_FETCHED_SUCCESSFULLY ,
+            message=constants.PDF_URL_FETCHED_SUCCESSFULLY,
             content={"pdf_url": presigned_url},
             status=status.HTTP_200_OK
         )
@@ -4683,6 +4720,7 @@ def get_lease_pdf(request):
             message=str(e),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
 
 # -----------------------------------------------------Export All CSV APIs-------------------------------------------------------- 
 
@@ -4912,6 +4950,42 @@ def export_owner_csv(request):
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
     try:
+        owner_id = request.GET.get("owner_id")
+
+        # single owners details export
+        if owner_id:
+            field_names = [
+                "Owner Name",
+                "Code",
+                "Property Name",
+                "Tenant Name",
+            ]
+
+            export_data = []
+            owner = OwnerDetails.objects.filter(id=owner_id).select_related("user").first()
+
+            if not owner:
+                return prepare_response(
+                    message=constants.OWNER_NOT_FOUND,
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            
+            user = owner.user
+            properties = PropertyDetails.objects.filter(owner=user)
+
+            for property_obj in properties:
+                tenant = TenantDetails.objects.filter(property=property_obj).first()
+
+                export_data.append({
+                    "Owner Name": owner.full_name,
+                    "Code": owner.owner_number,
+                    "Property Name": property_obj.property_name if property_obj else "N/A",
+                    "Tenant Name": tenant.full_name if tenant else "Vacant",
+                })
+
+            return export_to_csv("single_owner_details", field_names, export_data)
+
+        # All Owners Export
         owners_qs = OwnerDetails.objects.all().select_related("user")
         field_names = [
             "Owner Name",
@@ -4924,7 +4998,7 @@ def export_owner_csv(request):
         for owner in owners_qs:
             user = owner.user
             properties = PropertyDetails.objects.filter(owner=user).values_list("property_name", flat=True) if user else []
-            properties_str = ", ".join(properties)  
+            properties_str = ", ".join(properties)
 
             export_data.append({
                 "Owner Name": owner.full_name,
@@ -4933,6 +5007,7 @@ def export_owner_csv(request):
                 "Properties": f"{properties_str} ({len(properties)})" if properties else "None",
                 "Email Address": user.email if user else "N/A"
             })
+
         return export_to_csv("owners_data", field_names, export_data)
 
     except Exception as e:
