@@ -157,6 +157,61 @@ def get_tenant_data(tenant_id):
         "tenant_documents": documents,
         "profile_image": tenant_user.profile_image if tenant_user else None,
     }
-
     return tenant_data
 
+
+
+
+def get_lease_ejari_documents(lease_id):
+    """
+    Fetch all Ejari documents for a given lease_id.
+    Returns documents list or None if lease doesn't exist.
+    """
+
+    if not lease_id:
+        return None
+
+    lease_obj = LeasePropertyDetails.objects.filter(id=lease_id).first()
+    if not lease_obj:
+        return None
+
+    docs_qs = LeaseEjariUpload.objects.filter(lease_id=lease_id).order_by("-id")
+    final_docs = []
+
+    for doc in docs_qs:
+        url = doc.file_path
+        file_name = doc.file_name
+        doc_type = doc.document_type
+        base64_data = fetch_s3_presigned_url(url, file_name=file_name)
+
+        final_docs.append({
+            "file_name": file_name,
+            "data": base64_data,
+            "type": doc_type,
+            "id": doc.id,
+        })
+
+    return final_docs
+
+
+def get_owner_documents(owner_id):
+    owner = OwnerDetails.objects.filter(id=owner_id).first()
+    if not owner:
+        return None
+    return owner.owner_documents or {}
+
+
+def get_tenant_documents(tenant_id):
+    tenant = TenantDetails.objects.filter(id=tenant_id).first()
+    if not tenant:
+        return None
+    return tenant.tenant_documents or {}
+
+
+
+
+def get_pmc_documents(pmc_id):
+    pmc = PropertyManagerCompanyDetails.objects.filter(id=pmc_id).first()
+    if not pmc:
+        return None
+    return pmc.pmc_documents or {}

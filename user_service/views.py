@@ -91,6 +91,8 @@ def user_sign_up(request):
             message=constants.DLD_CERT_INVALID,
             status=status.HTTP_400_BAD_REQUEST
         )
+    
+    
 
     if emirates_id_doc:
         documents_json["emirates_id_doc"] = emirates_id_doc
@@ -359,7 +361,7 @@ def user_profile_view(request):
                     model.objects.create(user=current_user, **related_data)
 
             return prepare_response(
-                message="Profile updated successfully.",
+                message=constants.PROFILE_UPDATED_SUCCESS,
                 status=status.HTTP_200_OK
             )
 

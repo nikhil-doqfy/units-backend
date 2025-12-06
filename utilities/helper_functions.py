@@ -324,6 +324,56 @@ def fetch_s3_presigned_url(file_url, file_name=None, expiration=3600):
 
 
 
+
+def fetch_s3_presigned_url_for_download(file_url, file_name=None, expiration=3600):
+    """
+    Returns a pre-signed URL that forces file download from S3.
+    """
+    try:
+        bucket_name = config.S3_BUCKET_NAME
+        key = file_url.split(".amazonaws.com/")[1]
+
+        if file_name:
+            content_type, _ = mimetypes.guess_type(file_name)
+        else:
+            content_type = "application/octet-stream"
+
+        s3_client = boto3.client(
+            "s3",
+            aws_access_key_id=config.AWS_ACCESS_KEY,
+            aws_secret_access_key=config.AWS_SECRET_KEY,
+            region_name=config.AWS_REGION,
+        )
+
+        presigned_url = s3_client.generate_presigned_url(
+            "get_object",
+            Params={
+                "Bucket": bucket_name,
+                "Key": key,
+                "ResponseContentDisposition": f'attachment; filename="{file_name or "file"}"',
+                "ResponseContentType": content_type or "application/octet-stream"
+            },
+            ExpiresIn=expiration
+        )
+        return presigned_url
+
+    except ClientError as e:
+        logger.error(f"ClientError generating download presigned URL: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error generating download presigned URL: {str(e)}")
+        return None
+
+
+
+
+
+
+
+
+
+
+
 def get_extension_from_base64(base64_string):
     try:
         header = base64_string.split(",")[0]
