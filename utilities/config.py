@@ -1,8 +1,8 @@
 import os
-# from dotenv import load_dotenv
+from dotenv import load_dotenv
 from django.conf import settings
 
-# load_dotenv()
+load_dotenv()
 
 HOST = os.getenv("HOST", "http://localhost:8000")
 DEFAULT_HOST = os.getenv("DEFAULT_HOST", "http://localhost:8000")
@@ -27,3 +27,5 @@ AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY")
 AWS_REGION = os.getenv("AWS_REGION", "ap-south-1")
 AWS_PRESIGNED_EXPIRATION = int(os.getenv("AWS_PRESIGNED_EXPIRATION", 3600))
 S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
+
+# WKHTMLTOPDF_CMD = r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe"

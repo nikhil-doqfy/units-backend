@@ -281,7 +281,6 @@ DATA_FETCHED_SUCCESSFULLY="Data Fetched successfully"
 
 TENANT_DETAIL_FETCHED="teanant data fetched"
 
-
 choices=[("MYSELF", "Myself"), ("PMC", "PMC")]
 
 LEASE_STATUS_CHOICES = [
@@ -371,7 +370,8 @@ STEP_CHOICES = (
         
     )
 
-DOCUMENT_TYPE_CHOICES = (("FLOOR_PLAN_DOCUMENT", "Floor Plan Document"),
+DOCUMENT_TYPE_CHOICES = (
+        ("FLOOR_PLAN_DOCUMENT", "Floor Plan Document"),
         ("TENANT_DOCUMENT", "Tenant Document"),
         ("EJARI_CERTIFICATE", "Ejari Certificate"),
         ("PMC_DOCUMENT", "Pmc Document"),

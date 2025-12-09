@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     'auth_service',
     'user_service',
     'property_management',
+    'django_extensions',
 
 ]
 
@@ -155,4 +156,6 @@ EMAIL_PORT = 587
 
 
 
- 
+#   pip install django-extensions pydot graphviz
+
+# pip install django-extensions pydot graphviz

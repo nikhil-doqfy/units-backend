@@ -3,40 +3,111 @@
 <head>
     <meta charset="UTF-8">
     <title>Lease Agreement</title>
+
+    <style>
+        body {
+            font-family: 'Times New Roman', serif;
+            margin: 0;
+            padding: 0;
+            background: #f5f5f5;
+        }
+        .container {
+            width: 85%;
+            margin: 40px auto;
+            background: #ffffff;
+            border: 2px solid #000;
+            padding: 50px 60px;
+            line-height: 1.7;
+            font-size: 18px;
+            box-shadow: 0px 0px 10px #bfbfbf;
+        }
+        h1 {
+            text-align: center !important;
+            text-decoration: underline;
+            font-size: 32px;
+            margin-bottom: 30px;
+        }
+        h3 {
+            margin-top: 30px;
+            text-decoration: underline;
+            font-size: 22px;
+        }
+        p, li {
+            margin: 12px 0;
+        }
+        ul {
+            margin-left: 30px;
+        }
+        .signature-section {
+            margin-top: 50px;
+        }
+        .signature-line {
+            margin-top: 25px;
+            margin-bottom: 45px;
+        }
+        .signature-label {
+            font-weight: bold;
+            display: block;
+            margin-bottom: 3px;
+        }
+        .footer {
+            text-align: center;
+            font-size: 14px;
+            margin-top: 60px;
+            border-top: 1px solid black;
+            padding-top: 10px;
+        }
+    </style>
+
 </head>
 <body>
 
-    <h1 style="text-align:center;">LEASE AGREEMENT</h1>
+    <div class="container">
+        <h1 style="text-align:center;">LEASE AGREEMENT</h1>
 
-    <p>
-        This lease agreement is made on <strong>${agreement_date}</strong> 
-        between <strong>${landlord_name}</strong> 
-        (Landlord) and <strong>${tenant_name}</strong> (Tenant).
-    </p>
+        <p>
+            This lease agreement is made on <strong>${agreement_date}</strong> 
+            between <strong>${landlord_name}</strong> 
+            (Landlord) and <strong>${tenant_name}</strong> (Tenant).
+        </p>
 
-    <p>
-        The property located at <strong>${property_address}</strong> 
-        will be rented for a monthly rent of 
-        <strong>${monthly_rent}</strong> INR, starting from 
-        <strong>${start_date}</strong> to <strong>${end_date}</strong>.
-    </p>
+        <p>
+            The property located at <strong>${property_address}</strong> 
+            will be rented for a monthly rent of 
+            <strong>${monthly_rent}</strong> INR, starting from 
+            <strong>${start_date}</strong> to <strong>${end_date}</strong>.
+        </p>
 
-    <p>
-        Tenant’s mobile number is <strong>${tenant_mobile}</strong> and 
-        email is <strong>${tenant_email}</strong>.
-    </p>
+        <p>
+            Tenant’s mobile number is <strong>${tenant_mobile}</strong> and 
+            email is <strong>${tenant_email}</strong>.
+        </p>
 
-    <h3>Terms & Conditions:</h3>
-    <ul>
-        <li>Security Deposit: <strong>${security_deposit}</strong> INR</li>
-        <li>Late Fee After Due Date: <strong>${late_fee}</strong> INR</li>
-        <li>Maintenance Charges: <strong>${maintenance_charges}</strong> INR</li>
-    </ul>
+        <h3>Terms & Conditions:</h3>
+        <ul>
+            <li>Security Deposit: <strong>${security_deposit}</strong> INR</li>
+            <li>Late Fee After Due Date: <strong>${late_fee}</strong> INR</li>
+            <li>Maintenance Charges: <strong>${maintenance_charges}</strong> INR</li>
+        </ul>
 
-    <br>
-    <h3>Signatures</h3>
-    <p>Landlord: __________________________</p>
-    <p>Tenant: _____________________________</p>
+        <div class="signature-section">
+            <h3>Signatures</h3>
+
+            <div class="signature-line">
+                <span class="signature-label">Landlord:</span>
+                __________________________
+            </div>
+
+            <div class="signature-line">
+                <span class="signature-label">Tenant:</span>
+                _____________________________
+            </div>
+        </div>
+
+        <div class="footer">
+            This is a legal document and must be signed by both parties.
+        </div>
+    </div>
 
 </body>
 </html>
