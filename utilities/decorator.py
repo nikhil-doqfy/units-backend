@@ -4,6 +4,7 @@ from utilities import constants, status
 from utilities.helper_functions import prepare_response
 from utilities.jwt_token import get_jwt_token, decode_jwt_token  
 from jwt import ExpiredSignatureError
+from django.contrib.auth.models import User
 
 def is_request_authenticated(view_func):
     @wraps(view_func)
@@ -15,12 +16,15 @@ def is_request_authenticated(view_func):
                     message=constants.AUTH_HEADER_MISSING,
                     status=status.HTTP_401_UNAUTHORIZED
                 )
+
             token = get_jwt_token(auth_header)
             if isinstance(token, dict) and "message" in token:
                 return prepare_response(
                     message=token["message"],
                     status=status.HTTP_401_UNAUTHORIZED
                 )
+
+            # Decode Token
             try:
                 decoded_token = decode_jwt_token(token)
             except ExpiredSignatureError:
@@ -28,39 +32,46 @@ def is_request_authenticated(view_func):
                     message=constants.TOKEN_EXPIRED,
                     status=status.HTTP_401_UNAUTHORIZED
                 )
-            
 
             if isinstance(decoded_token, dict) and "error" in decoded_token:
                 return prepare_response(
                     message=decoded_token["error"],
                     status=status.HTTP_401_UNAUTHORIZED
                 )
+
+            # Extract email from token payload
             user_email = decoded_token.get("email")
             if not user_email:
                 return prepare_response(
                     message=constants.INVALID_TOKEN_PAYLOAD,
                     status=status.HTTP_401_UNAUTHORIZED
                 )
-            user = UserProfile.objects.filter(email=user_email).first()
+
+            # Fetch UserProfile (not User)
+            user = UserProfile.objects.filter(user__email=user_email).first()
             if not user:
                 return prepare_response(
                     message=constants.AUTH_USER_NOT_FOUND,
                     status=status.HTTP_404_NOT_FOUND
                 )
+
+            # Token validation
             if user.token != token:
                 return prepare_response(
                     message=constants.TOKEN_INVALID_OR_EXPIRED,
                     status=status.HTTP_401_UNAUTHORIZED
                 )
-            request.user = user
+
+
+            request.user = user # <-- this is UserProfile object
+           
+
         except Exception as e:
             print("Auth Error:", e)
             return prepare_response(
                 message=constants.AUTHENTICATION_FAILED,
                 status=status.HTTP_401_UNAUTHORIZED
             )
+
         return view_func(request, *args, **kwargs)
     return wrapper
-
-
-

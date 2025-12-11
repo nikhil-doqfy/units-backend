@@ -131,10 +131,12 @@ TENANT_ID_REQUIRE="tenant_id is required for deletion"
 PERMISSSION_DENIED="Permission denied. You cannot delete this tenant."
 USER_ID_FULL_NAME_REQUIRED="user_id and full_name are required"
 OWNER = "OWNER"
-PROPERTY_MANAGER = "PROPERTY_MANAGER"
+COMPANY_USER = "COMPANY_USER"
 TENANT = "TENANT"
 STAFF = "STAFF"
 AVAILABLE="AVAILABLE"
+COMPANY="Company"
+
 NOT_AVAILABLE="NOT_AVAILABLE" 
 PROPERTY_MANAGER_DETAILS_DELETE_SUCCESS="PMC deleted successfully."
 PROFILE_UPDATED_SUCCESS="Profile updated successfully."
@@ -415,3 +417,8 @@ APPROVAL_STATUS_CHOICES = (
     ("APPROVED", "Approved"),
     ("REJECTED", "Rejected"),
 )
+
+EMIRATES_ID = "emirates_id"
+UAE_RESIDENCE_VISA = "uae_residence_visa"
+DLD_CERTIFICATE = "dld_certificate"
+
