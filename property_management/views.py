@@ -108,7 +108,7 @@ def property_table_view(request):
         full_data, error = get_full_property_data(property_id)
         if error:
             return prepare_response(message=error, status=404)
-        return prepare_response(content=full_data, message="Property details fetched successfully", status=200)
+        return prepare_response(content=full_data, message="Property details fetched successfully", status=status.HTTP_200_OK)
 
 
     if user.user_role == constants.OWNER:
@@ -152,13 +152,13 @@ def property_table_view(request):
         return prepare_response(
             content=properties_data,
             message="Tenant properties fetched successfully",
-            status=200
+            status=status.HTTP_200_OK
         )
 
     else:
         return prepare_response(
             message="Unauthorized user role",
-            status=403
+            status=status.HTTP_403_FORBIDDEN
         )
 
     if search:
@@ -202,7 +202,7 @@ def property_table_view(request):
         content=data,
         message="Properties fetched successfully",
         pagination=pagination_meta,
-        status=200
+        status=status.HTTP_200_OK
     )
 
 
@@ -459,7 +459,7 @@ def property_images(request):
                     "property_id": property_id,
                     "step_choice": property_obj.step_status
                 },
-                status=200
+                status=status.HTTP_200_OK
             )
         if request.method == "POST":
             body = json.loads(request.body)
@@ -508,7 +508,7 @@ def property_images(request):
             return prepare_response(
                 message=constants.IMAGE_UPLOADED_SUCCESS,
                 content={"uploaded": uploaded_files},
-                status=201
+                status=status.HTTP_201_CREATED
             )
         
         if request.method == "PUT":
@@ -556,7 +556,7 @@ def property_images(request):
             return prepare_response(
                 message=constants.IMAGE_UPLOADED_SUCCESS,
                 content={"updated": updated_files},
-                status=200
+                status=status.HTTP_200_OK
             )
 
     except Exception as e:
@@ -598,7 +598,7 @@ def property_documents(request):
                     "property_id": property_id,
                     "step_choice": property_obj.step_status
                 },
-                status=200
+                status=status.HTTP_200_OK
             )
 
    
@@ -657,7 +657,7 @@ def property_documents(request):
             return prepare_response(
                 message=constants.DOCUMENTS_UPLOAD_SUCCESS,
                 content={"uploaded": uploaded_files},
-                status=201
+                status=status.HTTP_201_CREATED
             )
 
         if request.method == "PUT":
@@ -725,10 +725,10 @@ def property_documents(request):
             return prepare_response(
                 message=constants.DOCUMENTS_UPLOAD_SUCCESS,
                 content={"updated": updated_files},
-                status=200
+                status=status.HTTP_200_OK
             )
 
-        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=405)
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     except Exception as e:
         return prepare_response(message=str(e), status=500)
@@ -784,7 +784,7 @@ def tenant_table_view(request):
                 "tenant", "lease_property", "lease_property__owner", "lease_property__company"
             )
         else:
-            return prepare_response(message="Unauthorized user role", status=403)
+            return prepare_response(message="Unauthorized user role", status=status.HTTP_403_FORBIDDEN)
 
         if search:
             lease_qs = lease_qs.filter(
@@ -833,7 +833,7 @@ def tenant_table_view(request):
             content=response_content,
             message="Tenant data fetched successfully",
             pagination=pagination_meta,
-            status=200
+            status=status.HTTP_200_OK
         )
 
     except Exception as e:
@@ -909,7 +909,7 @@ def company_owners_view(request):
                 content=data,
                 message=f"Tenant details for owner {owner.user.email if owner.user else owner.id}",
                 pagination=pagination_meta,
-                status=200
+                status=status.HTTP_200_OK
             )
 
         owners_qs = UserProfile.objects.filter(
@@ -962,7 +962,7 @@ def company_owners_view(request):
             content=data,
             message="Owners fetched successfully",
             pagination=pagination_meta,
-            status=200
+            status=status.HTTP_200_OK
         )
 
     except Exception as e:
@@ -1045,7 +1045,7 @@ def owner_pmc_view(request):
                 content=data,
                 message="PMC list fetched successfully",
                 pagination=pagination_meta,
-                status=200
+                status=status.HTTP_200_OK
             )
 
       
@@ -1105,11 +1105,11 @@ def owner_pmc_view(request):
                 content=data,
                 message=f"Properties handled by company user {company_user.user.email if company_user.user else company_user.id}",
                 pagination=pagination_meta,
-                status=200
+                status=status.HTTP_200_OK
             )
 
         else:
-            return prepare_response(message="Unauthorized access or missing parameters", status=403)
+            return prepare_response(message="Unauthorized access or missing parameters", status=status.HTTP_403_FORBIDDEN)
 
     except Exception as e:
         return prepare_response(
@@ -1123,7 +1123,7 @@ def owner_pmc_view(request):
 @is_request_authenticated
 def send_invitation(request):
     if request.method != "POST":
-        return prepare_response(message="Invalid request", status=405)
+        return prepare_response(message="Invalid request", status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     try:
         user_profile = request.user  
@@ -1140,10 +1140,10 @@ def send_invitation(request):
 
       
         if invite_type == "OWNER_TO_PMC" and user_profile.user_role != constants.OWNER:
-            return prepare_response(message="Only owners can invite PMC", status=403)
+            return prepare_response(message="Only owners can invite PMC", status=status.HTTP_403_FORBIDDEN)
 
         if invite_type in ["PMC_TO_OWNER", "PMC_TO_TENANT"] and user_profile.user_role != constants.COMPANY_USER:
-            return prepare_response(message="Only PMC can send this invitation", status=403)
+            return prepare_response(message="Only PMC can send this invitation", status=status.HTTP_403_FORBIDDEN)
 
         
         template_map = {
@@ -1173,7 +1173,7 @@ def send_invitation(request):
                 "invitation_type": invitation.invitation_type
             },
             message="Invitation sent successfully",
-            status=201
+            status=status.HTTP_201_CREATED
         )
 
     except Exception as e:
@@ -1237,8 +1237,6 @@ def lease_details_view(request):
             owner_obj = None
             if owner_id:
                 owner_obj = UserProfile.objects.filter(id=owner_id, user_role="OWNER").first()
-
-            # ---------------- Epoch Conversion ----------------
             lease_start_date = safe_epoch_to_datetime(body.get("lease_start_date"))
             lease_end_date = safe_epoch_to_datetime(body.get("lease_end_date"))
 
@@ -1276,7 +1274,7 @@ def lease_details_view(request):
             return prepare_response(
                 message="Lease created successfully",
                 content={"lease_id": lease.id},
-                status=201,
+                status=status.HTTP_201_CREATED,
             )
 
         except Exception as e:
@@ -1339,13 +1337,13 @@ def lease_details_view(request):
             return prepare_response(
                 message="Lease updated successfully",
                 content={"lease_id": lease.id},
-                status=200
+                status=status.HTTP_200_OK
             )
 
         except Exception as e:
             return prepare_response(message=str(e), status=500)
     else:
-        return prepare_response(message="Invalid request method", status=405)
+        return prepare_response(message="Invalid request method", status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
 
 

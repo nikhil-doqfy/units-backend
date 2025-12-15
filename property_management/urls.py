@@ -59,31 +59,7 @@ urlpatterns = [
 #     path("export/owner/csv", views.export_owner_csv, name="export_owner_csv"), 
 #     path("export/pmc/csv", views.export_pmc_csv, name="export_pmc_csv"),  
 #     path("export/lease/tenecy/csv", views.export_lease_tenecy_csv, name="export_lease_tenecy_csv"),
-# # -------------------------------------------------------------------------------------------------------------------------------------------------------
-
-#     path('owner/details/', views.owner_details_view, name='owner_details_view'),
-#     path('choose/manage/option/', views.choose_manage_option, name='choose_manage_option'),
-#     path('upload/owner/documents/', views.upload_owner_documents, name='upload_owner_documents'),
-#     path("get/owner/documents/", views.get_owner_documents, name="get_owner_documents"),     
-#     path("upload/tenant/documents", views.upload_tenant_documents,name="upload_tenant_documents"), 
-#     path("update/tenant/documents", views.update_tenant_documents,name="update_tenant_documents"),
-#     path('upload/pmc/documents', views.upload_pmc_documents, name='upload_pmc_documents'),
-#     path('property/details/', views.property_details_view, name='property_details_view'), 
-    
-#     path('owner/properties/tenants/', views.owner_property_tenants_view, name='owner_tenants_list'),
-#     path('property/manager/details/', views.property_manager_details_view, name='property_manager_details_view'),
-#     path('property/manager/list/', views.property_manager_list, name='property_manager_list'), 
-#     path('pmc/dashboard/view', views.pmc_dashboard_view, name='pmc_dashboard_view'),
-    
-    
-#     path('tenant/property', views.tenant_my_property, name='tenant_my_property'),
-#     path('tenant/owner/property/', views.property_tenant_list_view, name='property_tenant_list_view'),
-    
-
-    # path("get/pdf/template/", views.get_pdf_template, name="get_pdf_template"), 
-
-
-  
+# # -------------------------------------------------------------------------------------------------------------------------------------------------------  
 ] 
 
 if settings.DEBUG:
