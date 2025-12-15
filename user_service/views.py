@@ -18,18 +18,13 @@ from django.contrib.auth.models import User
 
 
 
-
-
-
 def user_sign_up(request):
     if request.method != "POST":
         return prepare_response(
             message="Invalid request method",
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
-
     data = json.loads(request.body)
-
     email = data.get("email")
     password = data.get("password")
     confirm_password = data.get("confirm_password")
@@ -42,19 +37,16 @@ def user_sign_up(request):
             message="All fields are required",
             status=status.HTTP_400_BAD_REQUEST
         )
-
     if password != confirm_password:
         return prepare_response(
             message="Password mismatch",
             status=status.HTTP_400_BAD_REQUEST
         )
-
     if User.objects.filter(username=email).exists():
         return prepare_response(
             message="Email already registered",
             status=status.HTTP_400_BAD_REQUEST
         )
-
     user = User.objects.create_user(
         username=email,
         email=email,
@@ -63,7 +55,6 @@ def user_sign_up(request):
         last_name=last_name
     )
     user.save()
-
     profile = UserProfile.objects.create(
         user=user,
         user_role=user_role,
@@ -159,7 +150,6 @@ def user_sign_up(request):
 @is_request_authenticated
 def userprofile_view(request):
     user_profile = request.user  
-
     if request.method == "GET":
         try:
             user = user_profile.user

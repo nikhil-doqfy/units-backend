@@ -19,7 +19,7 @@ def get_full_property_data(property_unit_id):
     - Tenant Details (from LeasePropertyDetails if exists)
     """
     try:
-        # Fetch property unit
+     
         prop = PropertyUnitDetails.objects.filter(id=property_unit_id).first()
         if not prop:
             return None, "PropertyUnitDetails not found"
@@ -247,8 +247,6 @@ def create_and_send_invitation(invited_by_profile, email, invitation_type, templ
         invited_by=invited_by_profile
     ).exists():
         return None, "Invitation already sent to this email"
-
-
     token = str(uuid.uuid4())
 
     invitation = UserInvitation.objects.create(
@@ -259,8 +257,6 @@ def create_and_send_invitation(invited_by_profile, email, invitation_type, templ
         token=token,
         status=constants.PENDING
     )
-
-    # Prepare email
     invite_link = f"https://frontend.com/invite/accept?token={token}"
     subject = "Invitation to Join Property Management Portal"
 
@@ -280,6 +276,8 @@ def create_and_send_invitation(invited_by_profile, email, invitation_type, templ
         return None, "Invitation created but email sending failed"
 
     return invitation, None
+
+
 
 
 def serialize_lease(lease):
@@ -320,3 +318,49 @@ def serialize_lease(lease):
 
 
 
+
+def get_property_images(property_id, single=False):
+    """
+    get single or list of property images 
+    """
+    try:
+        property_obj = PropertyUnitDetails.objects.get(id=property_id)
+    except PropertyUnitDetails.DoesNotExist:
+        return {
+            "error": True,
+            "message": "Invalid property id"
+        }
+
+    images_qs = PropertyImages.objects.filter(
+        property=property_obj
+    ).order_by("-id")
+
+    if not images_qs.exists():
+        return {
+            "error": False,
+            "property": property_obj,
+            "images": []  
+        }
+
+    final_images = []
+
+ 
+    if single:
+        images_qs = images_qs[:1]  
+
+    for img in images_qs:
+        final_images.append({
+            "id": img.id,
+            "file_name": img.file_name,
+            "type": img.image_type,
+            "data": fetch_s3_presigned_url(
+                img.image_path,
+                file_name=img.file_name
+            )
+        })
+
+    return {
+        "error": False,
+        "property": property_obj,
+        "images": final_images 
+    }

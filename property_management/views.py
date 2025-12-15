@@ -1347,3 +1347,66 @@ def lease_details_view(request):
 
 
 
+
+@is_request_authenticated
+def lease_tenancy(request):
+    try:
+        if request.method != "GET":
+            return prepare_response(
+                message="Method not allowed",
+                status=status.HTTP_405_METHOD_NOT_ALLOWED
+            )
+
+        current_user = request.user
+
+        leases_qs = LeasePropertyDetails.objects.select_related(
+            "lease_property",
+            "tenant",
+            "tenant__user"
+        )
+
+        if current_user.user_role == constants.OWNER:
+            leases_qs = leases_qs.filter(
+                owner=current_user
+            )
+
+        elif current_user.user_role == constants.COMPANY_USER:
+            leases_qs = leases_qs.filter(
+                lease_property__assigned_staff__staff=current_user
+            ).distinct()
+
+        else:
+            return prepare_response(
+                message="Unauthorized role",
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        table_data = []
+
+        for lease in leases_qs.order_by("-created"):
+            tenant_profile = lease.tenant
+
+            table_data.append({
+                "property_code": lease.lease_property.property_code,
+                "tenant_name": tenant_profile.user.get_full_name(),
+                "tenant_profile_image": tenant_profile.profile_image,
+                "tenant_contact_number": tenant_profile.contact_number,
+                "lease_status": lease.lease_status,
+                "agreement_start_date": lease.lease_start_date,
+                "agreement_end_date": lease.lease_end_date,
+            })
+
+        return prepare_response(
+            message=constants.DATA_FETCHED_SUCCESSFULLY,
+            content={
+                "count": len(table_data),
+                "results": table_data
+            },
+            status=status.HTTP_200_OK
+        )
+
+    except Exception as e:
+        return prepare_response(
+            message=str(e),
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
