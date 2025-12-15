@@ -12,19 +12,21 @@ class Base(models.Model):
 
     class Meta:
         abstract = True
-
+    
 class LeasePropertyDetails(Base):
     lease_property = models.ForeignKey(
         "user_service.PropertyUnitDetails", 
         on_delete=models.CASCADE,
-        related_name="lease_details"
+        related_name="lease_details",null=True, blank=True
     )
 
     tenant = models.ForeignKey(
         "user_service.UserProfile",  
         limit_choices_to={'user_role': constants.TENANT},
         on_delete=models.CASCADE,
-        related_name="tenant_leases"
+        related_name="tenant_leases",
+        null=True,
+        blank=True
     )
 
     owner = models.ForeignKey(
@@ -36,8 +38,8 @@ class LeasePropertyDetails(Base):
         blank=True
     )
 
-    lease_start_date = models.DateTimeField()
-    lease_end_date = models.DateTimeField()
+    lease_start_date = models.DateTimeField( null=True, blank=True)
+    lease_end_date = models.DateTimeField( null=True, blank=True)
     lease_grace_start_date = models.DateTimeField(null=True, blank=True)
     lease_grace_end_date = models.DateTimeField(null=True, blank=True)
     lease_remarks = models.TextField(null=True, blank=True)
@@ -58,9 +60,9 @@ class LeasePropertyDetails(Base):
     )
     pdf_path = models.CharField(max_length=2000, null=True, blank=True)
     
-    annual_amount = models.FloatField()
+    annual_amount = models.FloatField( null=True, blank=True)
     actual_annual_amount = models.FloatField(null=True, blank=True)
-    rent = models.FloatField()
+    rent = models.FloatField( null=True, blank=True)
     booking_amount = models.FloatField(null=True, blank=True)
     security_deposit = models.FloatField(null=True, blank=True)
     maintenance_charges = models.FloatField(null=True, blank=True)
@@ -84,16 +86,15 @@ class LeaseDocumentsMapping(Base):
         (constants.CHEQUE_DOCUMENT, "Cheque Document"),
        
     )
-
     lease = models.ForeignKey(
         LeasePropertyDetails,
         on_delete=models.CASCADE,
-        related_name="lease_documents"
+        related_name="lease_documents", null=True, blank=True
     )
     document = models.ForeignKey(
          "user_service.Documents", 
         on_delete=models.CASCADE,
-        related_name="lease_document_mappings"
+        related_name="lease_document_mappings", null=True, blank=True
     )
     document_choice = models.CharField(
         max_length=50,
@@ -112,17 +113,17 @@ class UserInvitation(Base):
         ("PMC_TO_OWNER", "Property Manager inviting Owner"),
         ("PMC_TO_TENANT", "Property Manager inviting Tenant"),
     )
-    email = models.EmailField()
+    email = models.EmailField( null=True, blank=True)
     invited_by = models.ForeignKey(
         "user_service.UserProfile", 
         on_delete=models.CASCADE,
-        related_name="sent_invitations"
+        related_name="sent_invitations", null=True, blank=True
     )
     invitation_type = models.CharField(
         max_length=30,
         choices=INVITATION_TYPE_CHOICES
     )
-    token = models.CharField(max_length=255, unique=True)
+    token = models.CharField(max_length=255, null=True, blank=True)
     status = models.CharField(
         max_length=20,
         choices=constants.INVITATION_STATUS_CHOICES,
@@ -134,8 +135,8 @@ class UserInvitation(Base):
 
 
 class Template(Base):
-    name = models.CharField(max_length=100)
-    template_path = models.CharField(max_length=1000)
+    name = models.CharField(max_length=100, null=True, blank=True)
+    template_path = models.CharField(max_length=1000, null=True, blank=True)
     is_active = models.BooleanField(default=True)
     is_predefined = models.BooleanField(default=False)
     description = models.TextField(blank=True, null=True)
@@ -153,9 +154,9 @@ class TemplateFields(Base):
         (constants.CHOICE, "Choice"),
         (constants.CHECKBOX, "Check Box"),
     )
-    document_template = models.ForeignKey(Template, on_delete=models.CASCADE)
-    name_attribute = models.CharField(max_length=150)
-    id_attribute = models.CharField(max_length=150)
+    document_template = models.ForeignKey(Template, on_delete=models.CASCADE, null=True, blank=True)
+    name_attribute = models.CharField(max_length=150, null=True, blank=True)
+    id_attribute = models.CharField(max_length=150, null=True, blank=True)
     value_attribute = models.CharField(max_length=150, null=True, blank=True)
     class_attribute = models.CharField(max_length=150, null=True, blank=True)
     label_attribute = models.CharField(max_length=150)
@@ -173,12 +174,12 @@ class TemplateFields(Base):
 
 
 class TemplateValues(Base):
-    document_template = models.ForeignKey(Template, on_delete=models.CASCADE)
+    document_template = models.ForeignKey(Template, on_delete=models.CASCADE, null=True, blank=True)
     value = models.JSONField(default=dict, blank=True)
     lease = models.ForeignKey(
         "property_management.LeasePropertyDetails", 
         on_delete=models.CASCADE,
-        related_name="lease"
+        related_name="lease", null=True, blank=True
     )
 
     def __str__(self):

@@ -15,7 +15,7 @@ from django.utils.timezone import make_aware
 import random
 import time
 from django.contrib.auth.models import User
-
+from django.db import transaction
 
 
 def user_sign_up(request):
@@ -24,126 +24,119 @@ def user_sign_up(request):
             message="Invalid request method",
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
-    data = json.loads(request.body)
-    email = data.get("email")
-    password = data.get("password")
-    confirm_password = data.get("confirm_password")
-    user_role = data.get("user_role")
-    first_name = data.get("first_name")
-    last_name = data.get("last_name")
 
-    if not all([email, password, confirm_password, user_role]):
-        return prepare_response(
-            message="All fields are required",
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    if password != confirm_password:
-        return prepare_response(
-            message="Password mismatch",
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    if User.objects.filter(username=email).exists():
-        return prepare_response(
-            message="Email already registered",
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    user = User.objects.create_user(
-        username=email,
-        email=email,
-        password=password,
-        first_name=first_name,
-        last_name=last_name
-    )
-    user.save()
-    profile = UserProfile.objects.create(
-        user=user,
-        user_role=user_role,
-        created_by=user,
-      
-        time_zone=data.get("time_zone"),
-        utc=data.get("utc"),
-        
-        locality=data.get("locality"),
-        pin_code=data.get("pin_code"),
-        address=data.get("address"),
-        additional_address=data.get("additional_address"),
-        emirate_id=data.get("emirate_id"),
-        uae_residence_visa=data.get("uae_residence_visa"),
-        contact_number=data.get("contact_number"),
-        trade_license_number=data.get("trade_license_number"),
-        
-        manage_through=data.get("manage_through") or constants.choices[0][0]
-    )
+    try:
+        data = json.loads(request.body)
 
-    folder_name = f"{user_role.lower()}_documents/{profile.id}"
+        with transaction.atomic():  
 
-    def upload_document(base64_data, file_prefix):
-        if not base64_data:
-            return None
+            email = data.get("email")
+            password = data.get("password")
+            confirm_password = data.get("confirm_password")
+            user_role = data.get("user_role")
+            first_name = data.get("first_name")
+            last_name = data.get("last_name")
 
-        extension = get_extension_from_base64(base64_data) or ".png"
-        filename = f"{file_prefix}{extension}"
-        object_name = f"{folder_name}/{filename}"
+            if not all([email, password, confirm_password, user_role]):
+                raise ValueError("All fields are required")
 
-        uploaded_url = upload_file_to_s3_base64(base64_data, object_name)
-        if not uploaded_url:
-            return None
+            if password != confirm_password:
+                raise ValueError("Password mismatch")
 
-        doc = Documents.objects.create(
-            file_name=filename,
-            file_path=uploaded_url,
-            created_by=user
-        )
-        return doc
+            if User.objects.filter(username=email).exists():
+                raise ValueError("Email already registered")
 
-    emirates_doc = upload_document(
-        data.get("emirates_id_doc"),
-        "emirates_id",
+            user = User.objects.create_user(
+                username=email,
+                email=email,
+                password=password,
+                first_name=first_name,
+                last_name=last_name
+            )
+
+            profile = UserProfile.objects.create(
+                user=user,
+                user_role=user_role,
+                created_by=user,
+                time_zone=data.get("time_zone"),
+                utc=data.get("utc"),
+                locality=data.get("locality"),
+                pin_code=data.get("pin_code"),
+                address=data.get("address"),
+                additional_address=data.get("additional_address"),
+                emirate_id=data.get("emirate_id"),
+                uae_residence_visa=data.get("uae_residence_visa"),
+                contact_number=data.get("contact_number"),
+                trade_license_number=data.get("trade_license_number"),
+                manage_through=data.get("manage_through") or constants.choices[0][0]
+            )
+
+            folder_name = f"{user_role.lower()}_documents/{profile.id}"
+
+            def upload_document(base64_data, file_prefix):
+                if not base64_data:
+                    return None
+
+                extension = get_extension_from_base64(base64_data) or ".png"
+                filename = f"{file_prefix}{extension}"
+                object_name = f"{folder_name}/{filename}"
+
+                uploaded_url = upload_file_to_s3_base64(base64_data, object_name)
+                if not uploaded_url:
+                    raise ValueError("Document upload failed")
+
+                return Documents.objects.create(
+                    file_name=filename,
+                    file_path=uploaded_url,
+                    created_by=user
+                )
+
+            emirates_doc = upload_document(data.get("emirates_id_doc"), "emirates_id")
+            visa_doc = upload_document(data.get("uae_residence_visa_doc"), "uae_residence_visa")
+            dld_doc = upload_document(data.get("dld_certificate_doc"), "dld_certificate")
+
+            def create_mappings(mapping_model, profile, docs, attr_name):
+                for doc in docs:
+                    if doc:
+                        mapping_model.objects.create(
+                            **{attr_name: profile, "document": doc, "created_by": user}
+                        )
+
+            if user_role == constants.OWNER:
+                create_mappings(OwnerDocumentsMapping, profile, [emirates_doc, visa_doc, dld_doc], "owner")
+
+            if user_role == constants.TENANT:
+                create_mappings(TenantDocumentsMapping, profile, [emirates_doc, visa_doc], "tenant")
+
+            if user_role == constants.COMPANY_USER:
+                create_mappings(CompanyUserDocumentsMapping, profile, [emirates_doc, visa_doc], "company_user")
+
+                Company.objects.create(
+                    company_user=profile,
+                    company_code=data.get("company_code"),
+                    company_name=data.get("company_name"),
+                    company_address=data.get("company_address"),
+                    created_by=user
+                )
+
     
-    )
-    visa_doc = upload_document(
-        data.get("uae_residence_visa_doc"),
-        "uae_residence_visa",
-        
-    )
-    dld_doc = upload_document(
-        data.get("dld_certificate_doc"),
-        "dld_certificate",
-    
-    )
-
-    def create_mappings(mapping_model, profile, user, docs, attr_name):
-        for doc in docs:
-            if doc:
-                mapping_model.objects.create(**{attr_name: profile, "document": doc, "created_by": user})
-
-    if user_role == constants.OWNER:
-        create_mappings(OwnerDocumentsMapping, profile, user, [emirates_doc, visa_doc, dld_doc], "owner")
-
-    if user_role == constants.TENANT:
-        create_mappings(TenantDocumentsMapping, profile, user, [emirates_doc, visa_doc], "tenant")
-
-    if user_role == constants.COMPANY_USER:
-        create_mappings(CompanyUserDocumentsMapping, profile, user, [emirates_doc, visa_doc], "company_user")
-
-        Company.objects.create(
-            company_user=profile,
-            company_code=data.get("company_code"),
-            company_name=data.get("company_name"),
-            company_address=data.get("company_address"),
-            created_by=user
+        return prepare_response(
+            message="Signup successful",
+            content={
+                "user_id": user.id,
+                "profile_id": profile.id,
+                "email": email,
+                "role": user_role
+            },
+            status=status.HTTP_201_CREATED
         )
 
-    return prepare_response(
-        message="Signup successful",
-        content={
-            "user_id": user.id,
-            "profile_id": profile.id,
-            "email": email,
-            "role": user_role
-        },
-        status=status.HTTP_201_CREATED
-    )
+    except Exception as e:
+        return prepare_response(
+            message=str(e),
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
 
 
 
@@ -261,11 +254,6 @@ def userprofile_view(request):
             message="Invalid request method",
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
-
-
-
-
-
 
 
 

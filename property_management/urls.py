@@ -22,15 +22,10 @@ urlpatterns = [
     path('property/images', views.property_images, name='property_images'),
     path('property/documents', views.property_documents, name='property_images'),
 
-    
-    
-
-
-
 
     # path('property/commercial/details', views.add_commercial_details, name='add_commercial_details'),
 
-#     path('tenant/list/view', views.tenant_list_view, name='tenant_list_view'),
+
 
 #      
 #     path('staff/view/', views.staff_view, name='staff_view'), 

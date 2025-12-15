@@ -24,24 +24,20 @@ def get_full_property_data(property_unit_id):
         prop = PropertyUnitDetails.objects.filter(id=property_unit_id).first()
         if not prop:
             return None, "PropertyUnitDetails not found"
-
-        # ---------------- Parent Property ----------------
         parent_property = None
         if prop.property:
             parent_property = {
                 "id": prop.property.id,
                 "property_name": prop.property.property_name,
-                "property_code": prop.property.Property_code
+                "property_code": prop.property.Property_code,
+                "property_address":prop.property.address,
             }
 
-        # ---------------- Property Type ----------------
         property_type_options = dict(constants.PROPERTY_TYPE_CHOICES)
         property_type_data = {
             "key": prop.property_type_options,
             "value": property_type_options.get(prop.property_type_options)
         }
-
-        # ---------------- PropertyUnitDetails ----------------
         property_unit_data = {
             "id": prop.id,
             "property_unit_name": prop.property_unit_name,
@@ -64,6 +60,7 @@ def get_full_property_data(property_unit_id):
             "owner_id": prop.owner.id if prop.owner else None,
             "company_id": prop.company.id if prop.company else None,
             "is_occupied": prop.is_occupied,
+            "status": "Not Available" if prop.is_occupied else "Available",
             "commercial_details": {
                 "rent": prop.rent,
                 "security_deposit": prop.security_deposit,
@@ -74,8 +71,6 @@ def get_full_property_data(property_unit_id):
                 "commission_percent": prop.commission_percent,
             }
         }
-
-        # ---------------- Images ----------------
         images_qs = prop.property_images.all().order_by("-id")
         images = [
             {
@@ -87,7 +82,6 @@ def get_full_property_data(property_unit_id):
             for img in images_qs
         ]
 
-        # ---------------- Documents ----------------
         docs_qs = prop.property_documents.select_related('document').order_by("-id")
         documents = [
             {
@@ -98,11 +92,12 @@ def get_full_property_data(property_unit_id):
             }
             for mapping in docs_qs
         ]
-
-        # ---------------- Owner Details ----------------
         owner_data = None
         if prop.owner:
             owner_user = prop.owner.user
+            city = prop.owner.city
+            state = city.state if city else None
+            country = state.country if state else None
             owner_data = {
                 "id": prop.owner.id,
                 "email": owner_user.email,
@@ -110,18 +105,19 @@ def get_full_property_data(property_unit_id):
                 "last_name": owner_user.last_name,
                 "address": prop.owner.address,
                 "additional_address": prop.owner.additional_address,
-                "city": prop.owner.city,
-                "state": prop.owner.state,
-                "country": prop.owner.country,
+                 "city": city.name if city else None,
+              "state": state.name if state else None,
+            "country": country.name if country else None,
                 "pin_code": prop.owner.pin_code,
                 "contact_number": prop.owner.contact_number,
             }
-
-        # ---------------- Tenant Details (if lease exists) ----------------
         tenant_data = None
-        lease = prop.lease_details.first()  # Assuming only one lease or pick the first
+        lease = prop.lease_details.first()  
         if lease and lease.tenant:
             tenant_user = lease.tenant.user
+            city = lease.tenant.city
+            state = city.state if city else None
+            country = state.country if state else None
             tenant_data = {
                 "id": lease.tenant.id,
                 "email": tenant_user.email,
@@ -129,9 +125,9 @@ def get_full_property_data(property_unit_id):
                 "last_name": tenant_user.last_name,
                 "address": lease.tenant.address,
                 "additional_address": lease.tenant.additional_address,
-                "city": lease.tenant.city,
-                "state": lease.tenant.state,
-                "country": lease.tenant.country,
+               "city": city.name if city else None,
+                      "state": state.name if state else None,
+        "country": country.name if country else None,
                 "pin_code": lease.tenant.pin_code,
                 "contact_number": lease.tenant.contact_number,
             }
@@ -169,7 +165,6 @@ def get_full_user_data(user_profile_id):
         if not user_profile:
             return None, "UserProfile not found"
 
-        # ---------------- Basic User Info ----------------
         user = user_profile.user
         user_data = {
             "id": user_profile.id,
@@ -367,9 +362,6 @@ def get_property_images(property_id, single=False):
     }
 
 
-
-
-
 def get_lease_status(lease_obj):
     """
     Args:
@@ -384,8 +376,8 @@ def get_lease_status(lease_obj):
     lease_end = lease_obj.lease_end_date
 
     if lease_end < now:
-        return "expired"
+        return "Expired"
     elif now + timedelta(days=30) >= lease_end: 
-        return "about_to_expire"
+        return "About to Expire"
     else:
-        return "ongoing"
+        return "Ongoing"
