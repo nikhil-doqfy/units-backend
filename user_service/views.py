@@ -270,34 +270,6 @@ def userprofile_view(request):
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # @is_request_authenticated
 # def user_profile_view(request):
 #     try:

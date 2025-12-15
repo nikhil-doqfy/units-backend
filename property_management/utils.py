@@ -6,7 +6,8 @@ from django.contrib.auth.models import User
 import uuid
 import re
 from django.template.loader import render_to_string
-
+from datetime import datetime, timedelta
+from django.utils import timezone
 
 def get_full_property_data(property_unit_id):
     """
@@ -364,3 +365,27 @@ def get_property_images(property_id, single=False):
         "property": property_obj,
         "images": final_images 
     }
+
+
+
+
+
+def get_lease_status(lease_obj):
+    """
+    Args:
+        lease_obj: LeasePropertyDetails instance
+    Returns:
+        str: 'ongoing', 'about_to_expire', 'expired' or None if lease_obj is None
+    """
+    if not lease_obj:
+        return None
+    
+    now = timezone.now()
+    lease_end = lease_obj.lease_end_date
+
+    if lease_end < now:
+        return "expired"
+    elif now + timedelta(days=30) >= lease_end: 
+        return "about_to_expire"
+    else:
+        return "ongoing"

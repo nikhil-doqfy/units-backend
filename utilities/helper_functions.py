@@ -365,15 +365,6 @@ def fetch_s3_presigned_url_for_download(file_url, file_name=None, expiration=360
         return None
 
 
-
-
-
-
-
-
-
-
-
 def get_extension_from_base64(base64_string):
     try:
         header = base64_string.split(",")[0]
@@ -394,14 +385,6 @@ def get_extension_from_base64(base64_string):
             return None  
     except:
         return None
-
-
-
-
-
-
-
-
 
 
 
@@ -443,7 +426,6 @@ def export_to_csv(filename, field_names, data_list):
     for obj in data_list:
         row = [obj.get(field, "N/A") for field in field_names]
         writer.writerow(row)
-
     return response
 
 

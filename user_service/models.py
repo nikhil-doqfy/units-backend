@@ -5,9 +5,6 @@ from django.utils import timezone
 from django.conf import settings
 from django.contrib.auth.models import User
 
-
-
-
 class UserProfile(Base):
     user = models.OneToOneField(
         User, on_delete=models.CASCADE, related_name="profile"
