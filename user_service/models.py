@@ -136,8 +136,7 @@ class PropertyUnitDetails(Base):
     no_of_floors = models.IntegerField(default=1,null=True, blank=True)
 
     property = models.ForeignKey(
-        Property, on_delete=models.CASCADE, related_name="units",blank=True,
-        null=True
+        Property, on_delete=models.CASCADE, related_name="units",null=True, blank=True
     )
 
     owner = models.ForeignKey(
@@ -168,7 +167,6 @@ null=True, blank=True
         choices=constants.STEP_CHOICES,
         default="BASIC_DETAILS"
     )
-# ---------------------commercilas details----------------------------------
     rent = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True
     )
