@@ -27,20 +27,19 @@ class UserProfile(Base):
         related_name="users"
     )
     
-    time_zone = models.CharField(max_length=50, blank=True, null=True)
-    utc = models.CharField(max_length=10, blank=True, null=True)
+    time_zone = models.CharField(max_length=50, null=True, blank=True)
+    utc = models.CharField(max_length=10, null=True, blank=True)
    
-    locality = models.CharField(max_length=255, blank=True, null=True)
-    pin_code = models.CharField(max_length=20, blank=True, null=True)
-    address = models.CharField(max_length=255, blank=True, null=True)
-    additional_address = models.CharField(max_length=255, blank=True, null=True)
-    emirate_id = models.CharField(max_length=255, blank=True, null=True)
-    uae_residence_visa = models.CharField(max_length=100, blank=True, null=True)
-    contact_number = models.CharField(max_length=20, blank=True, null=True)
-    trade_license_number = models.CharField(max_length=255, blank=True, null=True)
+    locality = models.CharField(max_length=255, null=True, blank=True)
+    pin_code = models.CharField(max_length=20, null=True, blank=True)
+    address = models.CharField(max_length=255, null=True, blank=True)
+    additional_address = models.CharField(max_length=255, null=True, blank=True)
+    emirate_id = models.CharField(max_length=255, null=True, blank=True)
+    uae_residence_visa = models.CharField(max_length=100, null=True, blank=True)
+    contact_number = models.CharField(max_length=20, null=True, blank=True)
+    trade_license_number = models.CharField(max_length=255, null=True, blank=True)
     
-    manage_through = models.CharField(max_length=20, choices=constants.choices,blank=True,
-        null=True)
+    manage_through = models.CharField(max_length=20, choices=constants.choices,null=True, blank=True)
     def __str__(self):
         return f"{self.id}-{self.user.email}-{self.user_role}"
 
@@ -48,29 +47,29 @@ class UserProfile(Base):
 class Company(Base):
     company_user = models.ForeignKey(
         UserProfile, on_delete=models.CASCADE, related_name="company_user")
-    company_code = models.CharField(max_length=255, blank=True, null=True)
-    company_name = models.CharField(max_length=255, blank=True, null=True)
-    company_address = models.CharField(max_length=255, blank=True, null=True)
+    company_code = models.CharField(max_length=255, null=True, blank=True)
+    company_name = models.CharField(max_length=255, null=True, blank=True)
+    company_address = models.CharField(max_length=255, null=True, blank=True)
 
     def __str__(self):
         return f"{self.company_name}"
 
 
 class Permission(Base):
-    codename = models.CharField(max_length=100,blank=True, null=True)
-    name = models.CharField(max_length=255, blank=True, null=True)
+    codename = models.CharField(max_length=100,null=True, blank=True)
+    name = models.CharField(max_length=255, null=True, blank=True)
 
     def __str__(self):
         return self.name
 
 
 class Role(Base):
-    name = models.CharField(max_length=255,blank=True, null=True)
+    name = models.CharField(max_length=255,null=True, blank=True)
     permissions = models.ManyToManyField(
         Permission
     )
     company = models.ForeignKey(
-        Company, on_delete=models.CASCADE, related_name="staff_roles",blank=True, null=True
+        Company, on_delete=models.CASCADE, related_name="staff_roles",null=True, blank=True
     )
 
     def __str__(self):
@@ -83,22 +82,22 @@ class PMStaffCompanyMapping(Base):
         limit_choices_to={'user_role': constants.STAFF},
         on_delete=models.CASCADE,
         related_name="staff_company_mapping",
-        blank=True, null=True
+        null=True, blank=True
     )
     company = models.ForeignKey(
         Company,
         on_delete=models.CASCADE,
-        related_name="company_staff_mapping",blank=True, null=True
+        related_name="company_staff_mapping",null=True, blank=True
     )
     roles = models.ManyToManyField(Role, blank=True)
 
 
 class Property(Base):
-    property_name = models.CharField(max_length=255,blank=True, null=True)
-    total_floors = models.IntegerField(blank=True, null=True)
-    total_units = models.IntegerField(blank=True, null=True)
-    address = models.TextField(blank=True, null=True)
-    additional_address = models.TextField(blank=True, null=True)
+    property_name = models.CharField(max_length=255,null=True, blank=True)
+    total_floors = models.IntegerField(null=True, blank=True)
+    total_units = models.IntegerField(null=True, blank=True)
+    address = models.TextField(null=True, blank=True)
+    additional_address = models.TextField(null=True, blank=True)
     Property_code = models.CharField(
         max_length=255,  null=True, blank=True
     )
@@ -112,12 +111,12 @@ class PropertyUnitDetails(Base):
         (constants.AVAILABLE, "Available"),
         (constants.NOT_AVAILABLE, "Not Available"),
     ]
-    property_unit_name = models.CharField(max_length=255, blank=True, null=True)
-    land_dm_no = models.CharField(max_length=255, blank=True, null=True)
-    area_of_property = models.FloatField(blank=True, null=True)
-    no_of_parking = models.IntegerField(blank=True, null=True)
-    makani_no = models.CharField(max_length=255, blank=True, null=True)
-    dewa_no = models.CharField(max_length=255, blank=True, null=True)
+    property_unit_name = models.CharField(max_length=255, null=True, blank=True)
+    land_dm_no = models.CharField(max_length=255, null=True, blank=True)
+    area_of_property = models.FloatField(null=True, blank=True)
+    no_of_parking = models.IntegerField(null=True, blank=True)
+    makani_no = models.CharField(max_length=255, null=True, blank=True)
+    dewa_no = models.CharField(max_length=255, null=True, blank=True)
 
     property_type = models.CharField(max_length=50, default="Apartment")
     property_type_options = models.CharField(
@@ -133,8 +132,8 @@ class PropertyUnitDetails(Base):
     balcony = models.CharField(max_length=50, default="1")
     plot_no = models.CharField(max_length=50, default="128")
     area_unit = models.CharField(max_length=20, default="Sq-ft")
-    land_area_unit = models.CharField(max_length=20, blank=True, null=True)
-    no_of_floors = models.IntegerField(default=1,blank=True, null=True)
+    land_area_unit = models.CharField(max_length=20, null=True, blank=True)
+    no_of_floors = models.IntegerField(default=1,null=True, blank=True)
 
     property = models.ForeignKey(
         Property, on_delete=models.CASCADE, related_name="units",blank=True,
@@ -146,13 +145,11 @@ class PropertyUnitDetails(Base):
         on_delete=models.SET_NULL,
         limit_choices_to={'user_role': constants.OWNER},
         related_name="owner_properties",
-        blank=True,
-        null=True
+null=True, blank=True
     )
 
     company = models.ForeignKey(
-        Company, on_delete=models.CASCADE, related_name="properties",blank=True,
-        null=True
+        Company, on_delete=models.CASCADE, related_name="properties",null=True, blank=True
     )
 
     assigned_staff = models.ManyToManyField(
@@ -163,7 +160,7 @@ class PropertyUnitDetails(Base):
 
     is_occupied = models.BooleanField(default=False)
     property_code = models.CharField(
-        max_length=255, blank=True, null=True
+        max_length=255, null=True, blank=True
     )
 
     step_status = models.CharField(
@@ -173,21 +170,21 @@ class PropertyUnitDetails(Base):
     )
 # ---------------------commercilas details----------------------------------
     rent = models.DecimalField(
-        max_digits=10, decimal_places=2, blank=True, null=True
+        max_digits=10, decimal_places=2, null=True, blank=True
     )
     security_deposit = models.DecimalField(
-        max_digits=10, decimal_places=2, blank=True, null=True
+        max_digits=10, decimal_places=2, null=True, blank=True
     )
     booking_amount = models.DecimalField(
-        max_digits=10, decimal_places=2, blank=True, null=True
+        max_digits=10, decimal_places=2, null=True, blank=True
     )
     maintenance_charges = models.DecimalField(
-        max_digits=10, decimal_places=2, blank=True, null=True
+        max_digits=10, decimal_places=2, null=True, blank=True
     )
-    cycle = models.CharField(max_length=50, blank=True, null=True)
-    notice_period = models.CharField(max_length=50, blank=True, null=True)
+    cycle = models.CharField(max_length=50, null=True, blank=True)
+    notice_period = models.CharField(max_length=50, null=True, blank=True)
     commission_percent = models.DecimalField(
-        max_digits=5, decimal_places=2, blank=True, null=True
+        max_digits=5, decimal_places=2, null=True, blank=True
     )
 
     def __str__(self):
@@ -198,15 +195,15 @@ class PropertyImages(Base):
     property = models.ForeignKey(
         PropertyUnitDetails,
         on_delete=models.CASCADE,
-        related_name="property_images",blank=True, null=True
+        related_name="property_images",null=True, blank=True
     )
-    image_path = models.TextField(blank=True, null=True)
+    image_path = models.TextField(null=True, blank=True)
     image_type = models.CharField(
         max_length=20,
         choices=constants.IMAGE_TYPE_CHOICES,
-        default="INTERIOR",blank=True, null=True
+        default="INTERIOR",null=True, blank=True
     )
-    file_name = models.CharField(max_length=255,blank=True, null=True)
+    file_name = models.CharField(max_length=255,null=True, blank=True)
 
     def __str__(self):
         return f"Image for {self.property.property_unit_name}"
@@ -226,7 +223,7 @@ class UserVerification(models.Model):
     verification_type = models.CharField(
         max_length=50,
         choices=VERIFICATION_TYPE_CHOICES,
-        default=constants.EMAIL_VERIFICATION,blank=True, null=True
+        default=constants.EMAIL_VERIFICATION,null=True, blank=True
     )
     otp = models.IntegerField(null=True, blank=True)
     created = models.DateTimeField(auto_now_add=True)
@@ -243,8 +240,8 @@ class UserVerification(models.Model):
 
 
 class Documents(Base):
-    file_name = models.CharField(max_length=200,blank=True, null=True)
-    file_path = models.CharField(max_length=500,blank=True, null=True)
+    file_name = models.CharField(max_length=200,null=True, blank=True)
+    file_path = models.CharField(max_length=500,null=True, blank=True)
 
 
     def __str__(self):
@@ -261,12 +258,12 @@ class PropertyDocumentsMapping(Base):
     property = models.ForeignKey(
         PropertyUnitDetails,
         on_delete=models.CASCADE,
-        related_name="property_documents",blank=True, null=True
+        related_name="property_documents",null=True, blank=True
     )
     document = models.ForeignKey(
         Documents,
         on_delete=models.CASCADE,
-        related_name="property_document_mappings",blank=True, null=True
+        related_name="property_document_mappings",null=True, blank=True
     )
     document_choice = models.CharField(
         max_length=50,
@@ -290,12 +287,12 @@ class OwnerDocumentsMapping(Base):
         UserProfile,
         limit_choices_to={'user_role': constants.OWNER},
         on_delete=models.CASCADE,
-        related_name="owner_documents",blank=True, null=True
+        related_name="owner_documents",null=True, blank=True
     )
     document = models.ForeignKey(
         Documents,
         on_delete=models.CASCADE,
-        related_name="owner_document_mappings",blank=True, null=True
+        related_name="owner_document_mappings",null=True, blank=True
     )
 
     document_choice = models.CharField(
@@ -318,12 +315,12 @@ class TenantDocumentsMapping(Base):
         UserProfile,
         limit_choices_to={'user_role': constants.TENANT},
         on_delete=models.CASCADE,
-        related_name="tenant_documents",blank=True, null=True
+        related_name="tenant_documents",null=True, blank=True
     )
     document = models.ForeignKey(
         Documents,
         on_delete=models.CASCADE,
-        related_name="tenant_document_mappings",blank=True, null=True
+        related_name="tenant_document_mappings",null=True, blank=True
     )
     document_choice = models.CharField(
         max_length=50,
@@ -345,12 +342,12 @@ class CompanyUserDocumentsMapping(Base):
         UserProfile,
         limit_choices_to={'user_role': constants.COMPANY_USER},
         on_delete=models.CASCADE,
-        related_name="company_user_documents",blank=True, null=True
+        related_name="company_user_documents",null=True, blank=True
     )
     document = models.ForeignKey(
         Documents,
         on_delete=models.CASCADE,
-        related_name="company_user_document_mappings",blank=True, null=True
+        related_name="company_user_document_mappings",null=True, blank=True
     )
     document_choice = models.CharField(
         max_length=50,
@@ -370,12 +367,12 @@ class StaffDocumentsMapping(Base):
         UserProfile,
         limit_choices_to={'user_role': constants.STAFF},
         on_delete=models.CASCADE,
-        related_name="staff_documents",blank=True, null=True
+        related_name="staff_documents",null=True, blank=True
     )
     document = models.ForeignKey(
         Documents,
         on_delete=models.CASCADE,
-        related_name="staff_document_mappings",blank=True, null=True
+        related_name="staff_document_mappings",null=True, blank=True
     )
     document_choice = models.CharField(
         max_length=50,
@@ -417,8 +414,8 @@ class StaffDocumentsMapping(Base):
 
 
 class Country(models.Model):
-    name = models.CharField(max_length=100,blank=True, null=True)
-    code = models.CharField(max_length=10,  blank=True, null=True)
+    name = models.CharField(max_length=100,null=True, blank=True)
+    code = models.CharField(max_length=10,  null=True, blank=True)
 
     def __str__(self):
         return self.name
@@ -430,8 +427,8 @@ class State(models.Model):
         on_delete=models.CASCADE,
         related_name="states"
     )
-    name = models.CharField(max_length=100,blank=True, null=True)
-    code = models.CharField(max_length=10,  blank=True, null=True)
+    name = models.CharField(max_length=100,null=True, blank=True)
+    code = models.CharField(max_length=10,  null=True, blank=True)
     def __str__(self):
         return f"{self.name} ({self.country.name})"
     
@@ -440,10 +437,10 @@ class City(models.Model):
     state = models.ForeignKey(
         State,
         on_delete=models.CASCADE,
-        related_name="cities",blank=True, null=True
+        related_name="cities",null=True, blank=True
     )
-    code = models.CharField(max_length=10,  blank=True, null=True)
-    name = models.CharField(max_length=100,blank=True, null=True)
+    code = models.CharField(max_length=10,  null=True, blank=True)
+    name = models.CharField(max_length=100,null=True, blank=True)
     def __str__(self):
         return f"{self.name} ({self.state.name}, {self.state.country.name})"
 
