@@ -10,7 +10,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('user/', include(user_service_urls)),
     path('auth/', include(auth_service_urls)), 
-    path('chaining/', include('smart_selects.urls')),
+
     
     re_path(r"^media/(?P<path>.*)$", views.serve_media), 
     path('options', views.options, name='options'),   
