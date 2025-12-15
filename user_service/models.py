@@ -69,7 +69,7 @@ class Permission(Base):
 class Role(Base):
     name = models.CharField(max_length=255)
     permissions = models.ManyToManyField(
-        Permission, blank=True, related_name="roles"
+        Permission, related_name="roles"
     )
     company = models.ForeignKey(
         Company, on_delete=models.CASCADE, related_name="staff_roles"
