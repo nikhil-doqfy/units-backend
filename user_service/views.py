@@ -3,7 +3,7 @@ import uuid
 from django.contrib.auth.hashers import make_password
 from utilities import status, constants
 from utilities.helper_functions import prepare_response ,upload_file_to_s3_base64 ,datetime_to_epoch,epoch_to_datetime,datetime_to_epoch_millis,safe_epoch_to_datetime ,generate_unique_code ,get_extension_from_base64
-from user_service.models import UserProfile,Documents,OwnerDocumentsMapping,StaffDocumentsMapping,CompanyUserDocumentsMapping,TenantDocumentsMapping
+from user_service.models import UserProfile,Documents,OwnerDocumentsMapping,StaffDocumentsMapping,CompanyUserDocumentsMapping,TenantDocumentsMapping , Company,Country, State, City
 # from property_management.models import OwnerDetails , TenantDetails
 from user_service.utils import request_otp_sent
 from django.db import transaction
@@ -15,6 +15,9 @@ from django.utils.timezone import make_aware
 import random
 import time
 from django.contrib.auth.models import User
+
+
+
 
 
 
@@ -30,7 +33,7 @@ def user_sign_up(request):
     email = data.get("email")
     password = data.get("password")
     confirm_password = data.get("confirm_password")
-    user_role = data.get("user_role") 
+    user_role = data.get("user_role")
     first_name = data.get("first_name")
     last_name = data.get("last_name")
 
@@ -52,9 +55,6 @@ def user_sign_up(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # ---------------------------------------------------------
-    # 1) Create Django User
-    # ---------------------------------------------------------
     user = User.objects.create_user(
         username=email,
         email=email,
@@ -63,17 +63,15 @@ def user_sign_up(request):
         last_name=last_name
     )
     user.save()
-    # ---------------------------------------------------------
-    # 2) Create UserProfile
-    # ---------------------------------------------------------
+
     profile = UserProfile.objects.create(
         user=user,
         user_role=user_role,
         created_by=user,
-        country=data.get("country"),
+      
         time_zone=data.get("time_zone"),
         utc=data.get("utc"),
-        city=data.get("city"),
+        
         locality=data.get("locality"),
         pin_code=data.get("pin_code"),
         address=data.get("address"),
@@ -82,16 +80,13 @@ def user_sign_up(request):
         uae_residence_visa=data.get("uae_residence_visa"),
         contact_number=data.get("contact_number"),
         trade_license_number=data.get("trade_license_number"),
-        state=data.get("state"),
+        
         manage_through=data.get("manage_through") or constants.choices[0][0]
     )
 
-    # ---------------------------------------------------------
-    # Document Upload Helpers
-    # ---------------------------------------------------------
     folder_name = f"{user_role.lower()}_documents/{profile.id}"
 
-    def upload_document(base64_data, file_prefix, doc_type):
+    def upload_document(base64_data, file_prefix):
         if not base64_data:
             return None
 
@@ -106,59 +101,51 @@ def user_sign_up(request):
         doc = Documents.objects.create(
             file_name=filename,
             file_path=uploaded_url,
-            document_choice=doc_type
+            created_by=user
         )
-
         return doc
 
-    # ---------------------------------------------------------
-    # 3) Upload Documents & Create Mappings
-    # ---------------------------------------------------------
-
     emirates_doc = upload_document(
-        data.get("emirates_id_doc"), 
-        "emirates_id", 
-        constants.EMIRATES_ID
+        data.get("emirates_id_doc"),
+        "emirates_id",
+    
     )
     visa_doc = upload_document(
         data.get("uae_residence_visa_doc"),
         "uae_residence_visa",
-        constants.UAE_RESIDENCE_VISA
+        
     )
     dld_doc = upload_document(
         data.get("dld_certificate_doc"),
         "dld_certificate",
-        constants.DLD_CERTIFICATE
+    
     )
 
-    # ------------------------ Owner Docs ----------------------
+    def create_mappings(mapping_model, profile, user, docs, attr_name):
+        for doc in docs:
+            if doc:
+                mapping_model.objects.create(**{attr_name: profile, "document": doc, "created_by": user})
+
     if user_role == constants.OWNER:
-        if emirates_doc:
-            OwnerDocumentsMapping.objects.create(owner=profile, document=emirates_doc)
-        if visa_doc:
-            OwnerDocumentsMapping.objects.create(owner=profile, document=visa_doc)
-        if dld_doc:
-            OwnerDocumentsMapping.objects.create(owner=profile, document=dld_doc)
+        create_mappings(OwnerDocumentsMapping, profile, user, [emirates_doc, visa_doc, dld_doc], "owner")
 
-    # ------------------------ Tenant Docs ----------------------
     if user_role == constants.TENANT:
-        if emirates_doc:
-            TenantDocumentsMapping.objects.create(tenant=profile, document=emirates_doc)
-        if visa_doc:
-            TenantDocumentsMapping.objects.create(tenant=profile, document=visa_doc)
+        create_mappings(TenantDocumentsMapping, profile, user, [emirates_doc, visa_doc], "tenant")
 
-    # --------------------- Company User Docs --------------------
     if user_role == constants.COMPANY_USER:
-        if emirates_doc:
-            CompanyUserDocumentsMapping.objects.create(company_user=profile, document=emirates_doc)
-        if visa_doc:
-            CompanyUserDocumentsMapping.objects.create(company_user=profile, document=visa_doc)
+        create_mappings(CompanyUserDocumentsMapping, profile, user, [emirates_doc, visa_doc], "company_user")
 
-
+        Company.objects.create(
+            company_user=profile,
+            company_code=data.get("company_code"),
+            company_name=data.get("company_name"),
+            company_address=data.get("company_address"),
+            created_by=user
+        )
 
     return prepare_response(
         message="Signup successful",
-        data={
+        content={
             "user_id": user.id,
             "profile_id": profile.id,
             "email": email,
@@ -169,7 +156,121 @@ def user_sign_up(request):
 
 
 
+@is_request_authenticated
+def userprofile_view(request):
+    user_profile = request.user  
 
+    if request.method == "GET":
+        try:
+            user = user_profile.user
+            city = user_profile.city
+            state = city.state if city else None
+            country = state.country if state else None
+
+            data = {
+                "id": user_profile.id,
+                "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "user_role": user_profile.user_role,
+                "profile_image": user_profile.profile_image,
+
+
+                "city": {
+                    "key": city.id if city else None,
+                    "value": city.name if city else None,
+                },
+                "state": {
+                    "key": state.id if state else None,
+                    "value": state.name if state else None,
+                },
+                "country": {
+                    "key": country.id if country else None,
+                    "value": country.name if country else None,
+                },
+
+
+                "locality": user_profile.locality,
+                "pin_code": user_profile.pin_code,
+                "address": user_profile.address,
+                "additional_address": user_profile.additional_address,
+                "contact_number": user_profile.contact_number,
+                "emirate_id": user_profile.emirate_id,
+                "uae_residence_visa": user_profile.uae_residence_visa,
+                "trade_license_number": user_profile.trade_license_number,
+                "time_zone": user_profile.time_zone,
+                "utc": user_profile.utc,
+                "manage_through": user_profile.manage_through,
+            }
+
+            return prepare_response(
+                content=data,
+                message="User profile fetched successfully",
+                status=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            return prepare_response(message=str(e), status=500)
+
+    elif request.method == "PUT":
+        try:
+            body = json.loads(request.body)
+            user = user_profile.user
+
+            restricted_fields = ["email", "user_role", "password"]
+            for field in restricted_fields:
+                body.pop(field, None)
+
+            if "first_name" in body:
+                user.first_name = body.get("first_name")
+            if "last_name" in body:
+                user.last_name = body.get("last_name")
+            user.save()
+
+            updatable_fields = [
+                "profile_image",
+                "city",
+                "locality",
+                "pin_code",
+                "address",
+                "additional_address",
+                "contact_number",
+                "emirate_id",
+                "uae_residence_visa",
+                "trade_license_number",
+                "time_zone",
+                "utc",
+                "manage_through",
+            ]
+
+            for field in updatable_fields:
+                if field in body:
+               
+                    if field in ["country", "state", "city"]:
+                        model_class = {"country": Country, "state": State, "city": City}[field]
+                        try:
+                            obj = model_class.objects.get(id=body[field])
+                            setattr(user_profile, field, obj)
+                        except model_class.DoesNotExist:
+                            setattr(user_profile, field, None)
+                    else:
+                        setattr(user_profile, field, body[field])
+
+            user_profile.save()
+
+            return prepare_response(
+                message="User profile updated successfully",
+                status=status.HTTP_200_OK
+            )
+
+        except Exception as e:
+            return prepare_response(message=str(e), status=500)
+
+    else:
+        return prepare_response(
+            message="Invalid request method",
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
 
 
 

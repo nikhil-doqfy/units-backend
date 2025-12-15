@@ -2,7 +2,7 @@ from django.db import models
 from django.utils import timezone
 from django.contrib.auth.models import User
 from utilities import constants
-# from user_service.models import UserProfile, PropertyUnitDetails, Company, Role  # Adjust imports if needed
+
 
 class Base(models.Model):
     created = models.DateTimeField(auto_now_add=True)
@@ -12,7 +12,6 @@ class Base(models.Model):
 
     class Meta:
         abstract = True
-
 
 class LeasePropertyDetails(Base):
     lease_property = models.ForeignKey(
@@ -58,6 +57,7 @@ class LeasePropertyDetails(Base):
         default="PENDING"
     )
     pdf_path = models.CharField(max_length=2000, null=True, blank=True)
+    
     annual_amount = models.FloatField()
     actual_annual_amount = models.FloatField(null=True, blank=True)
     rent = models.FloatField()
@@ -70,6 +70,40 @@ class LeasePropertyDetails(Base):
 
     def __str__(self):
         return f"Lease {self.id} | Property {self.lease_property_id} | Tenant {self.tenant_id}"
+    
+
+
+
+class LeaseDocumentsMapping(Base):
+    """
+    Mapping of documents related to a LeasePropertyDetails instance.
+    """
+    LEASE_DOCUMENT_CHOICES = (
+        
+        (constants.EJARI_CERTIFICATE, "Ejari Certificate"),
+        (constants.CHEQUE_DOCUMENT, "Cheque Document"),
+       
+    )
+
+    lease = models.ForeignKey(
+        LeasePropertyDetails,
+        on_delete=models.CASCADE,
+        related_name="lease_documents"
+    )
+    document = models.ForeignKey(
+         "user_service.Documents", 
+        on_delete=models.CASCADE,
+        related_name="lease_document_mappings"
+    )
+    document_choice = models.CharField(
+        max_length=50,
+        choices=LEASE_DOCUMENT_CHOICES
+    )
+
+    def __str__(self):
+        return f"Lease {self.lease.id} -> Document {self.document.file_name}"
+
+
 
 
 class UserInvitation(Base):
@@ -149,3 +183,5 @@ class TemplateValues(Base):
 
     def __str__(self):
         return f"Template: {self.document_template.name} | Lease ID: {self.lease.id}"
+    
+

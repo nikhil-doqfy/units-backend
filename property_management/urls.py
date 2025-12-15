@@ -10,14 +10,26 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('user/', include(user_service_urls)),
     path('auth/', include(auth_service_urls)), 
-    re_path(r"^media/(?P<path>.*)$", views.serve_media),    
+    path('chaining/', include('smart_selects.urls')),
     
-    path('owner/details/list/view/', views.owner_details_list_view, name='owner_details_list_view'),
-    path('pmc/owner/view/list/', views.pmc_owner_view_list, name='pmc_owner_view_list'),
-    path('property/details/list/view/', views.property_details_list_view, name='property_details_list_view'),
-    path('create/property/basic', views.create_property_basic, name='create_property_basic'),
-    path('property/commercial/details', views.add_commercial_details, name='add_commercial_details'),
+    re_path(r"^media/(?P<path>.*)$", views.serve_media), 
+    path('options', views.options, name='options'),   
+    path('invitation', views.send_invitation, name='send_invitation'),
+
+    path('property/details', views.property_table_view, name='property_table_view'),
+    path('save/property', views.save_property, name='save_property'),
+    path('tenant/table', views.tenant_table_view, name='create_property_basic'), 
+    path('property/images', views.property_images, name='property_images'),
+    path('property/documents', views.property_documents, name='property_images'),
+
     
+    
+
+
+
+
+    # path('property/commercial/details', views.add_commercial_details, name='add_commercial_details'),
+
 #     path('tenant/list/view', views.tenant_list_view, name='tenant_list_view'),
 
 #      

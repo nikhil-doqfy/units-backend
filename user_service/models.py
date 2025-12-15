@@ -6,26 +6,33 @@ from django.conf import settings
 from django.contrib.auth.models import User
 
 
+
+
 class UserProfile(Base):
     user = models.OneToOneField(
         User, on_delete=models.CASCADE, related_name="profile"
     )
-
     USER_ROLE_CHOICES = (
         (constants.OWNER, "Owner"),
         (constants.COMPANY_USER, "COMPANY USER"),
         (constants.TENANT, "Tenant"),
         (constants.STAFF, "Staff"),
     )
-
     user_role = models.CharField(max_length=50, choices=USER_ROLE_CHOICES)
     otp = models.CharField(max_length=20, null=True, blank=True)
     profile_image = models.TextField(null=True, blank=True)
     token = models.TextField(null=True, blank=True)
-    country = models.CharField(max_length=100, blank=True, null=True)
+    city = models.ForeignKey(
+        "City",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="users"
+    )
+    
     time_zone = models.CharField(max_length=50, blank=True, null=True)
     utc = models.CharField(max_length=10, blank=True, null=True)
-    city = models.CharField(max_length=255, blank=True, null=True)
+   
     locality = models.CharField(max_length=255, blank=True, null=True)
     pin_code = models.CharField(max_length=20, blank=True, null=True)
     address = models.CharField(max_length=255, blank=True, null=True)
@@ -34,9 +41,8 @@ class UserProfile(Base):
     uae_residence_visa = models.CharField(max_length=100, blank=True, null=True)
     contact_number = models.CharField(max_length=20, blank=True, null=True)
     trade_license_number = models.CharField(max_length=255, blank=True, null=True)
-    state = models.CharField(max_length=100, blank=True, null=True)
+    
     manage_through = models.CharField(max_length=20, choices=constants.choices)
-
     def __str__(self):
         return f"{self.id}-{self.user.email}-{self.user_role}"
 
@@ -103,12 +109,10 @@ class Property(Base):
 
 
 class PropertyUnitDetails(Base):
-
     RENTAL_STATUS_CHOICES = [
         (constants.AVAILABLE, "Available"),
         (constants.NOT_AVAILABLE, "Not Available"),
     ]
-
     property_unit_name = models.CharField(max_length=255, blank=True, null=True)
     land_dm_no = models.CharField(max_length=255, blank=True, null=True)
     area_of_property = models.FloatField(blank=True, null=True)
@@ -134,7 +138,8 @@ class PropertyUnitDetails(Base):
     no_of_floors = models.IntegerField(default=1)
 
     property = models.ForeignKey(
-        Property, on_delete=models.CASCADE, related_name="units"
+        Property, on_delete=models.CASCADE, related_name="units",blank=True,
+        null=True
     )
 
     owner = models.ForeignKey(
@@ -147,7 +152,8 @@ class PropertyUnitDetails(Base):
     )
 
     company = models.ForeignKey(
-        Company, on_delete=models.CASCADE, related_name="properties"
+        Company, on_delete=models.CASCADE, related_name="properties",blank=True,
+        null=True
     )
 
     assigned_staff = models.ManyToManyField(
@@ -166,7 +172,7 @@ class PropertyUnitDetails(Base):
         choices=constants.STEP_CHOICES,
         default="BASIC_DETAILS"
     )
-
+# ---------------------commercilas details----------------------------------
     rent = models.DecimalField(
         max_digits=10, decimal_places=2, blank=True, null=True
     )
@@ -204,21 +210,19 @@ class PropertyImages(Base):
     file_name = models.CharField(max_length=255)
 
     def __str__(self):
-        return f"Image for {self.property.property_name}"
+        return f"Image for {self.property.property_unit_name}"
 
 
-class UserVerification(Base):
-
+class UserVerification(models.Model):
     VERIFICATION_TYPE_CHOICES = (
         (constants.MOBILE_VERIFICATION, "Mobile Verification"),
         (constants.EMAIL_VERIFICATION, "Email Verification"),
     )
-
     PURPOSE_CHOICES = (
-        ("login", "Login"),
-        ("signup", "Signup"),
+        (constants.LOGIN, "login"),
+        (constants.SIGNUP, "signup"),
+         (constants.RESET_PASSWORD, "Reset Password"),
     )
-
     email = models.CharField(max_length=100, null=True, blank=True)
     verification_type = models.CharField(
         max_length=50,
@@ -226,6 +230,7 @@ class UserVerification(Base):
         default=constants.EMAIL_VERIFICATION
     )
     otp = models.IntegerField(null=True, blank=True)
+    created = models.DateTimeField(auto_now_add=True)
     verified_time = models.DateTimeField(null=True, blank=True)
     is_verified = models.BooleanField(default=False)
     purpose = models.CharField(
@@ -241,16 +246,19 @@ class UserVerification(Base):
 class Documents(Base):
     file_name = models.CharField(max_length=200)
     file_path = models.CharField(max_length=500)
-    document_choice = models.CharField(
-        max_length=50,
-        choices=constants.DOCUMENT_TYPE_CHOICES
-    )
+
 
     def __str__(self):
-        return f"{self.document_choice} - {self.file_name}"
+        return f"{self.file_path} - {self.file_name}"
 
 
 class PropertyDocumentsMapping(Base):
+    PROPERTY_DOCUMENT_CHOICES = (
+    (constants.FLOOR_PLAN, "Floor Plan"),
+    (constants.EJARI_CERTIFICATE, "Ejari Certificate"),
+    (constants.PMC_DOCUMENT, "PMC Document"),
+    (constants.CHEQUE_DOCUMENT, "Cheque Document"),
+)
     property = models.ForeignKey(
         PropertyUnitDetails,
         on_delete=models.CASCADE,
@@ -261,12 +269,24 @@ class PropertyDocumentsMapping(Base):
         on_delete=models.CASCADE,
         related_name="property_document_mappings"
     )
+    document_choice = models.CharField(
+        max_length=50,
+        choices=PROPERTY_DOCUMENT_CHOICES
+    )
 
     def __str__(self):
         return f"{self.property} -> {self.document}"
 
 
 class OwnerDocumentsMapping(Base):
+
+    OWNER_DOCUMENT_CHOICES = (
+           (constants.EMIRATES_ID, "Emirates ID"),
+    (constants.UAE_RESIDENCE_VISA, "UAE Residence Visa"),
+    (constants.DLD_CERTIFICATE ,"DLD Certificate"),
+   
+) 
+
     owner = models.ForeignKey(
         UserProfile,
         limit_choices_to={'user_role': constants.OWNER},
@@ -279,11 +299,22 @@ class OwnerDocumentsMapping(Base):
         related_name="owner_document_mappings"
     )
 
+    document_choice = models.CharField(
+        max_length=50,
+        choices= OWNER_DOCUMENT_CHOICES
+    )
+
     def __str__(self):
         return f"{self.owner} -> {self.document}"
 
 
 class TenantDocumentsMapping(Base):
+    TENANT_DOCUMENT_CHOICES = (
+    (constants.EMIRATES_ID, "Emirates ID"),
+    (constants.UAE_RESIDENCE_VISA, "UAE Residence Visa"),
+    (constants.DLD_CERTIFICATE ,"DLD Certificate"),
+   
+) 
     tenant = models.ForeignKey(
         UserProfile,
         limit_choices_to={'user_role': constants.TENANT},
@@ -295,12 +326,22 @@ class TenantDocumentsMapping(Base):
         on_delete=models.CASCADE,
         related_name="tenant_document_mappings"
     )
+    document_choice = models.CharField(
+        max_length=50,
+        choices= TENANT_DOCUMENT_CHOICES
+    )
 
     def __str__(self):
         return f"{self.tenant} -> {self.document}"
 
 
 class CompanyUserDocumentsMapping(Base):
+    COMPANY_DOCUMENT_CHOICES = (  
+    (constants.EMIRATES_ID, "Emirates ID"),
+    (constants.UAE_RESIDENCE_VISA, "UAE Residence Visa"),
+    (constants.DLD_CERTIFICATE ,"DLD Certificate"),
+   
+) 
     company_user = models.ForeignKey(
         UserProfile,
         limit_choices_to={'user_role': constants.COMPANY_USER},
@@ -312,11 +353,20 @@ class CompanyUserDocumentsMapping(Base):
         on_delete=models.CASCADE,
         related_name="company_user_document_mappings"
     )
+    document_choice = models.CharField(
+        max_length=50,
+        choices= COMPANY_DOCUMENT_CHOICES
+    )
     def __str__(self):
         return f"{self.company_user} -> {self.document}"
 
 
 class StaffDocumentsMapping(Base):
+    STAFF_DOCUMENT_CHOICES = (  
+    (constants.EMIRATES_ID, "Emirates ID"),
+    (constants.UAE_RESIDENCE_VISA, "UAE Residence Visa"),
+    (constants.DLD_CERTIFICATE ,"DLD Certificate"),
+   ) 
     staff = models.ForeignKey(
         UserProfile,
         limit_choices_to={'user_role': constants.STAFF},
@@ -328,6 +378,10 @@ class StaffDocumentsMapping(Base):
         on_delete=models.CASCADE,
         related_name="staff_document_mappings"
     )
+    document_choice = models.CharField(
+        max_length=50,
+        choices=STAFF_DOCUMENT_CHOICES
+    )
 
     def __str__(self):
         return f"{self.staff} -> {self.document}"
@@ -335,24 +389,62 @@ class StaffDocumentsMapping(Base):
 
 
 
-class OwnerTenantCompanyMapping(Base):
-    tenant = models.ForeignKey(
-        "UserProfile",
-        limit_choices_to={'user_role': constants.TENANT},
-        on_delete=models.SET_NULL,
-        null=True, blank=True,
-        related_name="tenant_mappings"
+
+
+
+
+# class OwnerTenantCompanyMapping(Base):
+#     tenant = models.ForeignKey(
+#         "UserProfile",
+#         limit_choices_to={'user_role': constants.TENANT},
+#         on_delete=models.SET_NULL,
+#         null=True, blank=True,
+#         related_name="tenant_mappings"
+#     )
+#     owner = models.ForeignKey(
+#         "UserProfile",
+#         limit_choices_to={'user_role': constants.OWNER},
+#         on_delete=models.SET_NULL,
+#         null=True, blank=True,
+#         related_name="owner_mappings"
+#     )
+#     company = models.ForeignKey(
+#         "Company",
+#         on_delete=models.SET_NULL,
+#         null=True, blank=True,
+#         related_name="company_mappings"
+#     )
+
+
+
+class Country(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    code = models.CharField(max_length=10, unique=True, blank=True, null=True)
+
+    def __str__(self):
+        return self.name
+
+
+class State(models.Model):
+    country = models.ForeignKey(
+        Country,
+        on_delete=models.CASCADE,
+        related_name="states"
     )
-    owner = models.ForeignKey(
-        "UserProfile",
-        limit_choices_to={'user_role': constants.OWNER},
-        on_delete=models.SET_NULL,
-        null=True, blank=True,
-        related_name="owner_mappings"
+    name = models.CharField(max_length=100)
+    code = models.CharField(max_length=10, unique=True, blank=True, null=True)
+    def __str__(self):
+        return f"{self.name} ({self.country.name})"
+    
+
+class City(models.Model):
+    state = models.ForeignKey(
+        State,
+        on_delete=models.CASCADE,
+        related_name="cities"
     )
-    company = models.ForeignKey(
-        "Company",
-        on_delete=models.SET_NULL,
-        null=True, blank=True,
-        related_name="company_mappings"
-    )
+    code = models.CharField(max_length=10, unique=True, blank=True, null=True)
+    name = models.CharField(max_length=100)
+    def __str__(self):
+        return f"{self.name} ({self.state.name}, {self.state.country.name})"
+

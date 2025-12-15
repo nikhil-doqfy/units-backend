@@ -136,7 +136,7 @@ TENANT = "TENANT"
 STAFF = "STAFF"
 AVAILABLE="AVAILABLE"
 COMPANY="Company"
-
+RESET_PASSWORD="reset_password"
 NOT_AVAILABLE="NOT_AVAILABLE" 
 PROPERTY_MANAGER_DETAILS_DELETE_SUCCESS="PMC deleted successfully."
 PROFILE_UPDATED_SUCCESS="Profile updated successfully."
@@ -373,7 +373,7 @@ STEP_CHOICES = (
         
     )
 
-DOCUMENT_TYPE_CHOICES = (("FLOOR_PLAN_DOCUMENT", "Floor Plan Document"),
+PROPERTY_DOCUMENT = (("FLOOR_PLAN_DOCUMENT", "Floor Plan Document"),
         ("TENANT_DOCUMENT", "Tenant Document"),
         ("EJARI_CERTIFICATE", "Ejari Certificate"),
         ("PMC_DOCUMENT", "Pmc Document"),
@@ -422,3 +422,12 @@ EMIRATES_ID = "emirates_id"
 UAE_RESIDENCE_VISA = "uae_residence_visa"
 DLD_CERTIFICATE = "dld_certificate"
 
+
+
+# Property document constants
+FLOOR_PLAN = "FLOOR_PLAN"
+EJARI_CERTIFICATE = "EJARI_CERTIFICATE"
+PMC_DOCUMENT = "PMC_DOCUMENT"
+CHEQUE_DOCUMENT = "CHEQUE_DOCUMENT"
+LOGIN="login"
+SIGNUP="signup"

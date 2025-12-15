@@ -3,11 +3,11 @@ from user_service.models import (
     UserProfile, Company, Permission, Role, PMStaffCompanyMapping,
     Property, PropertyUnitDetails, PropertyImages, UserVerification,
     Documents, PropertyDocumentsMapping, OwnerDocumentsMapping,
-    TenantDocumentsMapping, CompanyUserDocumentsMapping, StaffDocumentsMapping
+    TenantDocumentsMapping, CompanyUserDocumentsMapping, StaffDocumentsMapping,Country, State, City
 )
 from property_management.models import (
     LeasePropertyDetails, UserInvitation, Template, TemplateFields,
-    TemplateValues
+    TemplateValues,LeaseDocumentsMapping
 )
 
 # -------------------- User Service Admin --------------------
@@ -49,7 +49,7 @@ class UserVerificationAdmin(admin.ModelAdmin):
 
 @admin.register(Documents)
 class DocumentsAdmin(admin.ModelAdmin):
-    list_display = ["id", "file_name", "document_choice"]
+    list_display = ["id", "file_name"]
 
 @admin.register(PropertyDocumentsMapping)
 class PropertyDocumentsMappingAdmin(admin.ModelAdmin):
@@ -91,3 +91,27 @@ class TemplateFieldsAdmin(admin.ModelAdmin):
 @admin.register(TemplateValues)
 class TemplateValuesAdmin(admin.ModelAdmin):
     list_display = ["id", "document_template", "lease"]
+
+
+@admin.register(LeaseDocumentsMapping)
+class LeaseDocumentsMappingAdmin(admin.ModelAdmin):
+    list_display = ("id", "lease", "document", "document_choice")
+
+
+
+@admin.register(Country)
+class CountryAdmin(admin.ModelAdmin):
+    list_display = ["id", "name", "code"]
+    search_fields = ["name", "code"] 
+
+@admin.register(State)
+class StateAdmin(admin.ModelAdmin):
+    list_display = ["id", "name", "country", "code"]
+    list_filter = ["country"]          
+    search_fields = ["name", "code"]   #
+
+@admin.register(City)
+class CityAdmin(admin.ModelAdmin):
+    list_display = ["id", "name", "state", "code"]
+    list_filter = ["state"]          
+    search_fields = ["name", "code"]  

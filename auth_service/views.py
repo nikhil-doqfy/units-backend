@@ -33,7 +33,11 @@ def send_otp(request):
             )
 
         if purpose is None:
-        
+            purpose_text = "login"
+        else:
+            purpose_text = purpose.lower()
+
+        if purpose_text == "login":
             try:
                 user_obj = UserProfile.objects.get(user__email=email)
             except UserProfile.DoesNotExist:
@@ -42,49 +46,39 @@ def send_otp(request):
                     status=status.HTTP_404_NOT_FOUND
                 )
 
-            otp = request_otp_sent()
-
-            UserVerification.objects.update_or_create(
-                email=email,
-                defaults={
-                    "otp": otp,
-                    "user": user_obj,
-                    "is_verified": False,
-                    "created": timezone.now(),
-                    "purpose": "login"
-                }
-            )
-
-            purpose_text = "login"
-
-        elif purpose == "signup":
-        
+        elif purpose_text == "signup":
             if UserProfile.objects.filter(user__email=email).exists():
                 return prepare_response(
                     message=constants.EMAIL_ALREADY_REGISTERED,
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            otp = request_otp_sent()
-
-            UserVerification.objects.update_or_create(
-                email=email,
-                defaults={
-                    "otp": otp,
-                    "user": None,
-                    "is_verified": False,
-                    "created": timezone.now(),
-                    "purpose": "signup"
-                }
-            )
-
-            purpose_text = "signup"
+        elif purpose_text in ["forget_password", "reset_password"]:
+            try:
+                user_obj = UserProfile.objects.get(user__email=email)
+            except UserProfile.DoesNotExist:
+                return prepare_response(
+                    message=constants.USER_DOES_NOT_EXIST,
+                    status=status.HTTP_404_NOT_FOUND
+                )
 
         else:
             return prepare_response(
                 message=constants.INVALID_PURPOSE,
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+        otp = request_otp_sent()
+
+        UserVerification.objects.update_or_create(
+            email=email,
+            defaults={
+                "otp": otp,
+                "is_verified": False,
+                "created": timezone.now(),
+                "purpose": purpose_text
+            }
+        )
 
         body_html = render_to_string(
             "email_templates/send_password_otp.html",
@@ -113,6 +107,7 @@ def send_otp(request):
 
 
 
+
 def verify_otp(request):
     if request.method != "POST":
         return prepare_response(
@@ -132,7 +127,6 @@ def verify_otp(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Fetch the latest unverified OTP record
         record = UserVerification.objects.filter(
             email=email,
             is_verified=False
@@ -150,7 +144,7 @@ def verify_otp(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Check OTP expiry
+  
         expiry_time = record.created + timezone.timedelta(minutes=constants.OTP_EXPIRY_MINUTES)
         if timezone.now() > expiry_time:
             return prepare_response(
@@ -321,8 +315,8 @@ def change_password(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        user_profile = request.user                    # UserProfile
-        user = user_profile.user                       # Built-in Django User
+        user_profile = request.user             
+        user = user_profile.user                    
 
   
         if not user.check_password(old_password):
@@ -350,6 +344,8 @@ def change_password(request):
 
 
 
+
+
 def user_login(request):
     if request.method != "POST":
         return prepare_response(
@@ -369,9 +365,6 @@ def user_login(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # -------------------------
-    # 1️⃣ LOGIN USING PASSWORD
-    # -------------------------
     if email and password:
         profile = UserProfile.objects.select_related("user").filter(user__email=email).first()
         if not profile:
@@ -380,7 +373,6 @@ def user_login(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # User model (built-in)
         user = profile.user
 
         if not user.is_active:
@@ -395,14 +387,12 @@ def user_login(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # User Role Check
         if profile.user_role != user_role:
             return prepare_response(
                 message=f"This user does not belong to {user_role.title()}",
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # company name (only for company staff or company user)
         company_name = None
         if profile.user_role in [constants.COMPANY_USER, constants.STAFF]:
             company_instance = Company.objects.filter(company_user=profile).first()
@@ -410,9 +400,13 @@ def user_login(request):
                 company_name = company_instance.company_name
 
         token = create_jwt_token(profile)
+
+      
         profile.token = token
-        profile.last_login = timezone.now()
-        profile.save(update_fields=["token", "last_login"])
+        profile.save(update_fields=["token"])
+
+        user.last_login = timezone.now()
+        user.save(update_fields=["last_login"])
 
         return prepare_response(
             content={
@@ -430,9 +424,7 @@ def user_login(request):
             status=status.HTTP_200_OK
         )
 
-    # -------------------------
-    # 2️⃣ LOGIN USING OTP
-    # -------------------------
+
     elif email and otp:
         profile = UserProfile.objects.select_related("user").filter(user__email=email).first()
         if not profile:
@@ -473,17 +465,19 @@ def user_login(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-
         record.is_verified = False
         record.verified_time = timezone.now()
         record.save(update_fields=["is_verified", "verified_time"])
 
         token = create_jwt_token(profile)
-        profile.token = token
-        profile.last_login = timezone.now()
-        profile.save(update_fields=["token", "last_login"])
 
-       
+  
+        profile.token = token
+        profile.save(update_fields=["token"])
+
+        user.last_login = timezone.now()
+        user.save(update_fields=["last_login"])
+
         company_name = None
         if profile.user_role in [constants.COMPANY_USER, constants.STAFF]:
             company_instance = Company.objects.filter(company_user=profile).first()
@@ -511,6 +505,7 @@ def user_login(request):
             message=constants.FIELD_REQUIRED,
             status=status.HTTP_400_BAD_REQUEST
         )
+
 
 
 
