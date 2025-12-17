@@ -257,6 +257,185 @@ def userprofile_view(request):
 
 
 
+@is_request_authenticated
+def user_management(request):
+    user = request.user  # UserProfile
+
+    try:
+       
+        if request.method == "POST":
+            body = json.loads(request.body)
+
+            first_name = body.get("first_name")
+            last_name = body.get("last_name")
+            email = body.get("email")
+            password = body.get("password")
+            phone = body.get("phone")
+            role = body.get("role")
+
+            if not all([first_name, last_name, email, password, role]):
+                return prepare_response(
+                    message="Required fields missing",
+                    status=400
+                )
+
+            if role not in [constants.OWNER, constants.TENANT]:
+                return prepare_response(
+                    message="Invalid role",
+                    status=400
+                )
+
+            if User.objects.filter(email=email).exists():
+                return prepare_response(
+                    message="User already exists",
+                    status=400
+                )
+
+            django_user = User.objects.create_user(
+                username=email,
+                email=email,
+                password=password,
+                first_name=first_name,
+                last_name=last_name
+            )
+            profile = UserProfile.objects.create(
+                user=django_user,
+                user_role=role,
+                contact_number=phone,
+                address=body.get("address"),
+                locality=body.get("locality"),
+                pin_code=body.get("pin_code"),
+                created_by=user.user
+            )
+
+            return prepare_response(
+                message="User created successfully",
+                content={
+                    "user_id": profile.id,
+                    "email": django_user.email,
+                    "role": profile.user_role
+                },
+                status=201
+            )
+
+        # ---- GET: Fetch users with filters and pagination ----
+        elif request.method == "GET":
+            # ---- Query params ----
+            is_active_param = request.GET.get("is_active", "true").lower()
+            is_active = is_active_param == "true"
+
+            role = request.GET.get("role")
+            search = request.GET.get("search", "").strip()
+            page = int(request.GET.get("page", 1))
+            limit = int(request.GET.get("limit", 10))
+            start_epoch = request.GET.get("start_date")
+            end_epoch = request.GET.get("end_date")
+            user_id = request.GET.get("user_id")
+
+            # ---- Base queryset ----
+            users_qs = UserProfile.objects.select_related("user").filter(
+                     is_active=is_active,
+                  created_by=user.user  # only users created by this company user
+                    )
+
+            # ---- Filters ----
+            if role:
+                users_qs = users_qs.filter(user_role=role)
+
+            if user_id:
+                users_qs = users_qs.filter(id=user_id)
+
+            if start_epoch and end_epoch:
+                s = safe_epoch_to_datetime(int(start_epoch))
+                e = safe_epoch_to_datetime(int(end_epoch))
+                users_qs = users_qs.filter(created__range=(s, e))
+
+            if search:
+                users_qs = users_qs.filter(
+                    Q(user__email__icontains=search) |
+                    Q(user__first_name__icontains=search) |
+                    Q(user__last_name__icontains=search) |
+                    Q(contact_number__icontains=search)
+                )
+
+            users_qs = users_qs.order_by("-created")
+
+            # ---- Pagination ----
+            total_count = users_qs.count()
+            paginator = Paginator(users_qs, limit)
+
+            try:
+                page_obj = paginator.page(page)
+            except EmptyPage:
+                page_obj = paginator.page(paginator.num_pages)
+
+            # ---- Response data ----
+            data = []
+            for profile in page_obj:
+                role_key = profile.user_role
+                role_value = role_key.replace("_", " ").title()
+                data.append({
+                    "id": profile.id,
+                    "email": profile.user.email,
+                    "first_name": profile.user.first_name,
+                    "last_name": profile.user.last_name,
+                    "contact_number": profile.contact_number,
+                    "address": profile.address,
+                    "locality": profile.locality,
+                    "pin_code": profile.pin_code,
+                    "profile_image": profile.profile_image,
+                    "is_active": profile.is_active,
+                    "created_on": datetime_to_epoch_millis(profile.created),
+                    "role": {
+                        "key": role_key,
+                        "value": role_value
+                    }
+                })
+
+            pagination_meta = {
+                "current_page": page_obj.number,
+                "limit": limit,
+                "total_records": paginator.count,
+                "total_pages": paginator.num_pages
+            }
+
+            return prepare_response(
+                message=constants.USER_FETCHED_SUCCESS,
+                content={
+                    "user_count": total_count,
+                    "data": data
+                },
+                pagination=pagination_meta,
+                status=200
+            )
+
+        # ---- PUT / DELETE placeholders ----
+        elif request.method == "PUT":
+            return prepare_response(
+                message="Update user API will be added later",
+                status=501
+            )
+
+        elif request.method == "DELETE":
+            return prepare_response(
+                message="Delete user API will be added later",
+                status=501
+            )
+
+        else:
+            return prepare_response(
+                message="Invalid request method",
+                status=405
+            )
+
+    except Exception as e:
+        return prepare_response(
+            message=f"Error: {str(e)}",
+            status=500
+        )
+
+
+
 
 # @is_request_authenticated
 # def user_profile_view(request):

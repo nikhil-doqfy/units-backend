@@ -141,15 +141,10 @@ class PropertyUnitDetails(Base):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-       
     )
-    
-
-
     property = models.ForeignKey(
         Property, on_delete=models.CASCADE, related_name="units",null=True, blank=True
     )
-
     owner = models.ForeignKey(
         UserProfile,
         on_delete=models.SET_NULL,
@@ -161,18 +156,15 @@ null=True, blank=True
     company = models.ForeignKey(
         Company, on_delete=models.CASCADE, related_name="properties",null=True, blank=True
     )
-
     assigned_staff = models.ManyToManyField(
         "PMStaffCompanyMapping",
         related_name="assigned_properties",
         blank=True
     )
-
     is_occupied = models.BooleanField(default=False)
     property_code = models.CharField(
         max_length=255, null=True, blank=True
     )
-
     step_status = models.CharField(
         max_length=50,
         choices=constants.STEP_CHOICES,
@@ -452,4 +444,13 @@ class City(models.Model):
     name = models.CharField(max_length=100,null=True, blank=True)
     def __str__(self):
         return f"{self.name} ({self.state.name}, {self.state.country.name})"
+
+
+
+
+
+
+
+
+
 

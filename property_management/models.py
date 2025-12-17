@@ -81,11 +81,8 @@ class LeaseDocumentsMapping(Base):
     Mapping of documents related to a LeasePropertyDetails instance.
     """
     LEASE_DOCUMENT_CHOICES = (
-        
         (constants.EJARI_CERTIFICATE, "Ejari Certificate"),
-        (constants.CHEQUE_DOCUMENT, "Cheque Document"),
-       
-    )
+        (constants.CHEQUE_DOCUMENT, "Cheque Document"),)
     lease = models.ForeignKey(
         LeasePropertyDetails,
         on_delete=models.CASCADE,
@@ -144,7 +141,6 @@ class UserInvitation(Base):
 class Template(Base):
     name = models.CharField(max_length=100, null=True, blank=True)
     template_path = models.CharField(max_length=1000, null=True, blank=True)
-    is_active = models.BooleanField(default=True)
     is_predefined = models.BooleanField(default=False)
     description = models.TextField(blank=True, null=True)
 
@@ -159,8 +155,7 @@ class TemplateFields(Base):
         (constants.TEXT, "Text"),
         (constants.RADIO, "Radio"),
         (constants.CHOICE, "Choice"),
-        (constants.CHECKBOX, "Check Box"),
-    )
+        (constants.CHECKBOX, "Check Box"),)
     document_template = models.ForeignKey(Template, on_delete=models.CASCADE, null=True, blank=True)
     name_attribute = models.CharField(max_length=150, null=True, blank=True)
     id_attribute = models.CharField(max_length=150, null=True, blank=True)

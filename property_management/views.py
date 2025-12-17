@@ -2,7 +2,7 @@
 from django.shortcuts import get_object_or_404
 from django.db import IntegrityError, transaction
 from user_service.models import UserProfile,Documents,OwnerDocumentsMapping,StaffDocumentsMapping,CompanyUserDocumentsMapping,TenantDocumentsMapping,PropertyUnitDetails,Property,Company,PMStaffCompanyMapping,PropertyImages ,PropertyDocumentsMapping,Country, State, City
-from property_management.models import LeasePropertyDetails 
+from property_management.models import LeasePropertyDetails,TemplateFields, TemplateValues,Template
 from utilities.decorator import is_request_authenticated
 import json
 from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger,send_ses_email,safe_decimal ,safe_epoch_to_datetime ,replace_placeholders ,fetch_s3_presigned_url ,export_to_csv ,datetime_to_epoch_millis,get_pdfkit_config,generate_property_code ,fetch_s3_presigned_url_for_download
@@ -88,8 +88,24 @@ def options(request):
             content["property_type"] = [
                 {"key": key, "value": value }
                 for key, value in constants.PROPERTY_TYPE_CHOICES]
-
+            
+        elif option_type == "PROPERTY_UNIT":
+            if user.user_role == constants.OWNER:
+                units = PropertyUnitDetails.objects.filter(owner=user)
+            elif user.user_role == constants.COMPANY_USER:
+                units = PropertyUnitDetails.objects.filter(company=user.company)
+            else:
+                units = PropertyUnitDetails.objects.none()
+            content["property_unit"] = [
+        {"key": u.id, "value": u.property_unit_name or "Unnamed Unit"} for u in units
+    ]
+        elif option_type == "TENANTS":
+            tenants = UserProfile.objects.filter(user_role=constants.TENANT)
+            content["tenants"] = [{"key": t.id, "value": t.user.get_full_name() or t.user.email} for t in tenants]
         
+        elif option_type == "PREDEFINED_TEMPLATES":
+            templates = Template.objects.filter( is_predefined=True,is_active=True)
+            content["predefined_templates"] = [{"key": t.id,"value": t.name,"description": t.description}for t in templates]
         else:
             content[option_type] = []
             
@@ -274,7 +290,7 @@ def save_property(request):
                 "area_unit": prop.area_unit,
                 "property_code": prop.property_code,
                 "property_type": property_type_data,
-                
+
                 "land_area": prop.land_area,
                 "makani_no": prop.makani_no,
                 "dewa_no": prop.dewa_no,
@@ -1322,7 +1338,7 @@ def lease_details_view(request):
 
             property_id = body.get("property_id")
             tenant_id = body.get("tenant_id")
-            owner_id = body.get("owner_id")
+            
 
             if not property_id or not tenant_id:
                 return prepare_response(
@@ -1335,10 +1351,10 @@ def lease_details_view(request):
 
             if not property_obj or not tenant_obj:
                 return prepare_response(message="Invalid property or tenant", status=400)
-
-            owner_obj = None
-            if owner_id:
-                owner_obj = UserProfile.objects.filter(id=owner_id, user_role="OWNER").first()
+            owner_obj = property_obj.owner
+            if not owner_obj:
+                return prepare_response(message="This property has no owner", status=400)
+            
             lease_start_date = safe_epoch_to_datetime(body.get("lease_start_date"))
             lease_end_date = safe_epoch_to_datetime(body.get("lease_end_date"))
             if not lease_start_date or not lease_end_date:
@@ -1346,25 +1362,16 @@ def lease_details_view(request):
             lease_grace_start_date = safe_epoch_to_datetime(body.get("lease_grace_start_date")) if body.get("lease_grace_start_date") else None
             lease_grace_end_date = safe_epoch_to_datetime(body.get("lease_grace_end_date")) if body.get("lease_grace_end_date") else None
             lease = LeasePropertyDetails.objects.create(
-                created_by=user_profile,
-                lease_property=property_obj,
-                tenant=tenant_obj,
-                owner=owner_obj,
-                lease_start_date=lease_start_date,
-                lease_end_date=lease_end_date,
-                lease_grace_start_date=lease_grace_start_date,
-                lease_grace_end_date=lease_grace_end_date,
-                lease_remarks=body.get("lease_remarks"),
-                step_status="LEASE_DETAILS",
-                annual_amount=body.get("annual_amount", 0),
-                actual_annual_amount=body.get("actual_annual_amount"),
-                rent=body.get("rent", 0),
-                booking_amount=body.get("booking_amount"),
-                security_deposit=body.get("security_deposit"),
-                maintenance_charges=body.get("maintenance_charges"),
-                commission_percentage=body.get("commission_percentage"),
-                notice_period=body.get("notice_period"),
-                discount=body.get("discount"),
+             created_by=user_profile.user,
+            lease_property=property_obj,
+            tenant=tenant_obj,
+            owner=owner_obj,
+            lease_start_date=lease_start_date,
+            lease_end_date=lease_end_date,
+            lease_grace_start_date=lease_grace_start_date,
+            lease_grace_end_date=lease_grace_end_date,
+            lease_remarks=body.get("lease_remarks"),
+            step_status="LEASE_DETAILS",  
             )
 
             return prepare_response(
@@ -1377,6 +1384,7 @@ def lease_details_view(request):
             return prepare_response(message=str(e), status=500)
 
     elif request.method == "PUT":
+        print("===========>")
         try:
             body = json.loads(request.body)
             lease_id = body.get("lease_id")
@@ -1412,21 +1420,28 @@ def lease_details_view(request):
                 "booking_amount", "security_deposit", "maintenance_charges",
                 "commission_percentage", "notice_period", "discount"
             ]
+            commercial_updated = False
             for field in commercial_fields:
                 if field in body:
                     setattr(lease, field, body[field])
+                    commercial_updated = True
+            if commercial_updated and lease.step_status == "LEASE_DETAILS":
+                lease.step_status = "LEASE_COMMERCIALS"
+
             if "tenant_id" in body:
                 tenant_obj = UserProfile.objects.filter(
-                    id=body["tenant_id"], user_role="TENANT"
-                ).first()
-                if tenant_obj:
-                    lease.tenant = tenant_obj
-
-            if "owner_id" in body:
-                owner_obj = UserProfile.objects.filter(
-                    id=body["owner_id"], user_role="OWNER"
-                ).first()
-                lease.owner = owner_obj
+                    id=body["tenant_id"], user_role="TENANT").first()
+                if not tenant_obj:
+                    return prepare_response(message="Invalid tenant_id", status=400)
+                lease.tenant = tenant_obj
+            
+            if "property_id" in body:
+                property_obj = PropertyUnitDetails.objects.filter(id=body["property_id"]).first()
+                if not property_obj:
+                    return prepare_response(message="Invalid property_id", status=400)
+                    
+                lease.lease_property = property_obj
+                lease.owner = property_obj.owner
 
             lease.save()
 
@@ -1440,8 +1455,6 @@ def lease_details_view(request):
             return prepare_response(message=str(e), status=500)
     else:
         return prepare_response(message="Invalid request method", status=status.HTTP_405_METHOD_NOT_ALLOWED)
-
-
 
 
 @is_request_authenticated
@@ -1915,3 +1928,307 @@ def export_company_owners_csv(request):
             message=f"Error exporting CSV: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+
+@is_request_authenticated
+def dashboard_statistics(request):
+    if request.method != "GET":
+        return prepare_response(
+            message=constants.INVALID_REQUEST_METHOD,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+    user = request.user  
+    now = timezone.now()
+    renewal_window = now + timedelta(days=30)
+
+    if user.user_role == constants.OWNER:
+        properties = PropertyUnitDetails.objects.filter(owner=user)
+
+    elif user.user_role == constants.COMPANY_USER:
+        company = Company.objects.filter(company_user=user).first()
+        if not company:
+            return prepare_response(
+                message="Company not found for user",
+                status=status.HTTP_404_NOT_FOUND
+            )
+        properties = PropertyUnitDetails.objects.filter(company=company)
+
+    else:
+        properties = PropertyUnitDetails.objects.none()
+
+    total_properties = properties.count()
+    rented_count = properties.filter(is_occupied=True).count()
+    vacant_count = properties.filter(is_occupied=False).count()
+
+
+    lease_queryset = LeasePropertyDetails.objects.filter(
+        lease_property__in=properties
+    )
+
+    active_count = lease_queryset.filter(
+        lease_start_date__lte=now,
+        lease_end_date__gte=now
+    ).count()
+
+    upcoming_renewals_count = lease_queryset.filter(
+        lease_end_date__gt=now,
+        lease_end_date__lte=renewal_window
+    ).count()
+
+    negotiations_count = lease_queryset.filter(
+        lease_end_date__lt=now
+    ).count()
+
+
+    content = {
+        "properties": {
+            "total": total_properties,
+            "rented": rented_count,
+            "vacant": vacant_count
+        },
+        "tenants": {
+            "active": active_count,
+            "upcoming_renewals": upcoming_renewals_count,
+            "negotiations": negotiations_count
+        }
+    }
+
+    return prepare_response(
+        content=content,
+        message="Dashboard statistics fetched successfully",
+        status=status.HTTP_200_OK
+    )
+
+
+
+@is_request_authenticated
+def most_revenue_generating_properties(request):
+    if request.method != "GET":
+        return prepare_response(
+            message=constants.INVALID_REQUEST_METHOD,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+    try:
+        user = request.user
+        if user.user_role == constants.OWNER:
+            units = PropertyUnitDetails.objects.filter(owner=user)
+
+        elif user.user_role == constants.COMPANY_USER:
+            units = PropertyUnitDetails.objects.filter(company=user.company)
+
+        else:
+            return prepare_response(
+                message=constants.UNAUTHORIZED,
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        property_stats = (
+            units
+            .values("property_id", "property__property_name")
+            .annotate(
+                total_units=Count("id"),
+                occupied_units=Count(
+                    "id",
+                    filter=Q(is_occupied=True)
+                )
+            )
+        )
+
+        result = []
+        index = 1
+
+        for item in property_stats:
+            total = item["total_units"]
+            occupied = item["occupied_units"]
+
+            occupancy_rate = round((occupied / total) * 100, 2) if total > 0 else 0
+
+            result.append({
+                "rank": index,
+                "property_id": item["property_id"],
+                "name": item["property__property_name"],
+                "occupancy_rate": occupancy_rate,
+                "figures": f"{occupancy_rate}%",
+                "total_units": total,
+                "occupied_units": occupied
+            })
+
+            index += 1
+
+        result = sorted(result, key=lambda x: x["occupancy_rate"], reverse=True)
+
+        return prepare_response(
+            content=result,
+            message="Most revenue generating properties fetched successfully",
+            status=status.HTTP_200_OK
+        )
+
+    except Exception as e:
+        return prepare_response(
+            message={"error": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+
+
+@is_request_authenticated
+def generate_contract(request):
+    if request.method != "POST":
+        return prepare_response(
+            message=constants.INVALID_REQUEST_METHOD,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+    try:
+        body = json.loads(request.body)
+
+        template_id = body.get("template_id")
+        lease_id = body.get("lease_id")
+        values_dict = body.get("values")
+
+        if not template_id or not lease_id or not values_dict:
+            return prepare_response(
+                message=constants.TEMPLATE_LEASE_VALUES_REQUIRED,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        template = Template.objects.filter(id=template_id, is_active=True).first()
+        if not template:
+            return prepare_response(
+                message=constants.INVALID_TEMPLATE_ID,
+                status=status.HTTP_404_NOT_FOUND
+            )
+        lease = LeasePropertyDetails.objects.filter(id=lease_id).first()
+        if not lease:
+            return prepare_response(
+                message="Invalid lease_id",
+                status=status.HTTP_404_NOT_FOUND
+            )
+        TemplateValues.objects.create(
+            document_template=template,
+            lease=lease,
+            value=values_dict,
+            created_by=request.user.user 
+        )
+
+        template_path = template.template_path
+
+        if not template_path or not os.path.exists(template_path):
+            return prepare_response(
+                message=f"Template not found: {template_path}",
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if os.path.isdir(template_path):
+            return prepare_response(
+                message="Template path must be a file",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        with open(template_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+        mapping = {}
+        fields = TemplateFields.objects.filter(document_template=template, is_active=True)
+
+        for field in fields:
+            key = field.id_attribute or field.name_attribute
+            if key and key in values_dict:
+                mapping[key] = values_dict[key]
+
+        html_content = replace_placeholders(html_content, mapping)
+        timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        filename = f"lease_{timestamp}.html"
+
+        save_dir = os.path.join(settings.MEDIA_ROOT, "generated_templates")
+        os.makedirs(save_dir, exist_ok=True)
+
+        save_path = os.path.join(save_dir, filename)
+
+        with open(save_path, "w", encoding="utf-8") as f:
+            f.write(html_content)
+        pdf_filename = f"lease_{timestamp}.pdf"
+        config = get_pdfkit_config()
+
+        pdf_bytes = pdfkit.from_string(
+            html_content,
+            False,
+            configuration=config
+        )
+
+        s3_object_name = f"generated_templates/{pdf_filename}"
+        pdf_s3_url = upload_file_to_s3_base64(pdf_bytes, s3_object_name)
+
+        lease.pdf_path = pdf_s3_url
+        lease.save(update_fields=["pdf_path"])
+
+        return prepare_response(
+            message=constants.CONTRACT_GENERATED_SUCCESS,
+            content={
+                "file_name": filename,
+                "pdf_url": pdf_s3_url
+            },
+            status=status.HTTP_200_OK
+        )
+
+    except Exception as e:
+        return prepare_response(
+            message=str(e),
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+
+
+def get_template_fields(request):
+    try:
+        template_id = request.GET.get("template_id")
+        if not template_id:
+            return prepare_response(
+                message=constants.TEMPLATE_ID_REQUIRED,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        template = Template.objects.get(id=template_id)
+        fields = TemplateFields.objects.filter(document_template=template)
+
+        field_list = []
+        for field in fields:
+            field_list.append({
+                "id_attribute": field.id_attribute,
+                "name_attribute": field.name_attribute,
+                "label": field.label_attribute,
+                "html_tag": field.html_tag,
+                "required": field.required,
+                "min_value": field.min_value,
+                "max_value": field.max_value,
+                "min_length": field.min_length,
+                "max_length": field.max_length,
+                "pattern": field.pattern,
+                "predefined_value": field.predefined_value,
+            })
+
+        return prepare_response(
+            content={
+                "template_id": template.id,
+                "template_name": template.name,
+                "template_path": template.template_path,
+                "fields": field_list
+            },
+            message=constants.TEMPLATE_FIELDS_FETCHED,
+            status=status.HTTP_200_OK
+        )
+
+    except Template.DoesNotExist:
+        return prepare_response(
+            message=constants.INVALID_TEMPLATE_ID,
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    except Exception as e:
+        return prepare_response(
+            message=str(e),
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+

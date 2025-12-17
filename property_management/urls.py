@@ -15,12 +15,22 @@ urlpatterns = [
     re_path(r"^media/(?P<path>.*)$", views.serve_media), 
     path('options', views.options, name='options'),   
     path('invitation', views.send_invitation, name='send_invitation'),
-
     path('property/details', views.property_table_view, name='property_table_view'),
     path('save/property', views.save_property, name='save_property'),
     path('tenant/table', views.tenant_table_view, name='create_property_basic'), 
     path('property/images', views.property_images, name='property_images'),
-    path('property/documents', views.property_documents, name='property_images'),
+    path('property/documents', views.property_documents, name='property_images'), 
+    path('statistics', views.dashboard_statistics, name='dashboard_statistics'),
+    path('most/revenue', views.most_revenue_generating_properties, name='most_revenue_generating_properties'),
+    path('save/lease', views.lease_details_view, name='lease_details_view'),
+
+    path('generate/contract', views.generate_contract, name='generate_contract'),
+
+    
+
+    
+
+    
 
 
     # path('property/commercial/details', views.add_commercial_details, name='add_commercial_details'),
