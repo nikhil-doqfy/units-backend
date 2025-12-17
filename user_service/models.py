@@ -103,7 +103,7 @@ class Property(Base):
     )
 
     def __str__(self):
-        return self.property_name
+        return self.property_name or f"Property #{self.id}"
 
 
 class PropertyUnitDetails(Base):
@@ -188,8 +188,6 @@ null=True, blank=True
         max_digits=5, decimal_places=2, null=True, blank=True
     )
 
-    def __str__(self):
-        return self.property_unit_name if self.property_unit_name else "Unit Details"
 
 
 class PropertyImages(Base):
