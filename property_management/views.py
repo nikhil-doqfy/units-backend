@@ -75,8 +75,24 @@ def options(request):
             else:
                 cities = City.objects.filter(state_id=state_id)
                 content["city"] = [{"key": c.id, "value": c.name} for c in cities]
+        elif option_type == "PARENT_PROPERTY":
+            properties = Property.objects.all()
+            content["property"] = [
+                          {
+                             "key": p.id,
+                             "value": p.property_name
+                          }
+                         for p in properties
+                                  ]
+        elif option_type == "PROPERTY_TYPE":
+            content["property_type"] = [
+                {"key": key, "value": value }
+                for key, value in constants.PROPERTY_TYPE_CHOICES]
+
+        
         else:
             content[option_type] = []
+            
     return prepare_response(
         content=content,
         message=constants.DROPDOWN_DATA_FETCHED_SUCEESS,
@@ -92,6 +108,32 @@ def property_table_view(request):
     page = int(request.GET.get("page", 1))
     limit = int(request.GET.get("limit", 10))
     property_id = request.GET.get("property_id")
+    my_property = request.GET.get("MY_PROPERTY", "").lower() == "true"
+
+    if my_property and user.user_role == constants.TENANT:
+
+        lease_property_id = (
+        LeasePropertyDetails.objects
+        .filter(tenant=user)
+        .values_list("lease_property_id", flat=True)
+        .first()
+    )
+        if not lease_property_id:
+            return prepare_response(
+            message="No property assigned to this tenant",
+            status=status.HTTP_404_NOT_FOUND
+        )
+        full_data, error = get_full_property_data(lease_property_id)
+        if error:
+            return prepare_response(message=error, status=404)
+        return prepare_response(
+        content=full_data,
+        message="Property details fetched successfully",
+        status=status.HTTP_200_OK
+    )
+
+
+
     if property_id:
         full_data, error = get_full_property_data(property_id)
         if error:
@@ -113,6 +155,7 @@ def property_table_view(request):
     )
 
     elif user.user_role == constants.TENANT:
+   
         properties_qs = PropertyUnitDetails.objects.filter(lease_details__tenant=user)
     else:
         return prepare_response(message="Unauthorized user role", status=status.HTTP_403_FORBIDDEN)
@@ -170,7 +213,7 @@ def property_table_view(request):
         "total_records": paginator.count,
         "total_pages": paginator.num_pages
     }
-    print("==================>",data)
+   
     return prepare_response(
         content=data,
         message="Properties fetched successfully",
@@ -205,6 +248,19 @@ def save_property(request):
                 "key": prop.property_type_options,
                 "value": property_type_options.get(prop.property_type_options)
             }
+            parent_property = prop.property
+
+
+            property_data = None
+            if parent_property:
+                property_data = {"id": parent_property.id,
+        "property_name": parent_property.property_name,
+        "property_code": parent_property.Property_code,
+        "address": parent_property.address,
+        "additional_address": parent_property.additional_address,
+    
+    }
+   
 
             content = {
                 "id": prop.id,
@@ -218,6 +274,7 @@ def save_property(request):
                 "area_unit": prop.area_unit,
                 "property_code": prop.property_code,
                 "property_type": property_type_data,
+                
                 "land_area": prop.land_area,
                 "makani_no": prop.makani_no,
                 "dewa_no": prop.dewa_no,
@@ -234,7 +291,8 @@ def save_property(request):
                     "notice_period": prop.notice_period,
                     "commission_percent": prop.commission_percent,
                 },
-                "owner_id": prop.owner.id if prop.owner else None
+                "owner_id": prop.owner.id if prop.owner else None,
+                 "property": property_data
             }
 
             return prepare_response(content=content, status=status.HTTP_200_OK)
@@ -253,8 +311,23 @@ def save_property(request):
                     message=constants.PROPERTY_ID_REQUIRED,
                     status=status.HTTP_400_BAD_REQUEST
                 )
+            
 
             prop = PropertyUnitDetails.objects.filter(id=property_id).first()
+            property_fields = [
+                                "property_name",
+                                "address",
+                                 "additional_address",
+                              ]
+
+            parent_property = prop.property
+            if parent_property:
+                for field in property_fields:
+                    if field in data:
+                        value = data.get(field)
+                        if value is not None:
+                            setattr(parent_property, field, value)
+                parent_property.save()
             if not prop:
                 return prepare_response(
                     message=constants.PROPERTY_NOT_FOUND,
@@ -282,9 +355,12 @@ def save_property(request):
                 "rent", "security_deposit", "booking_amount",
                 "maintenance_charges", "cycle", "notice_period", "commission_percent"
             ]
+
             for field in commercial_fields:
                 if field in data:
                     setattr(prop, field, data[field])
+                    if prop.step_status == constants.BASIC_DETAILS:
+                        prop.step_status = constants.COMMERCIALS_DETAILS
 
             
             if current_user.user_role == constants.COMPANY_USER:
@@ -337,6 +413,14 @@ def save_property(request):
             land_area_unit = data.get("land_area_unit")
             apartment_floor_no = data.get("apartment_floor_no")
             no_of_floors = data.get("no_of_floors")
+            parent_property_id = data.get("parent_property_id")
+
+            address = data.get("address")
+            additional_address = data.get("additional_address")
+            locality = data.get("locality")
+            postal_code = data.get("postal_code")
+            city_id = data.get("city_id")
+
             property_code = generate_property_code()
             if user_profile.user_role == constants.OWNER:
                 owner = user_profile
@@ -354,11 +438,28 @@ def save_property(request):
                     message=constants.UNAUTHORIZED_TO_CREATE_PROPERTY,
                     status=status.HTTP_403_FORBIDDEN
                 )
-            parent_property = Property.objects.create(
+            if parent_property_id:
+                parent_property = Property.objects.filter(id=parent_property_id).first()
+                if not parent_property:
+                    return prepare_response(
+                    message="Invalid parent property id",
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            else:
+                parent_property = Property.objects.create(
                 property_name=property_unit_name,
                 Property_code=property_code,
-                created_by=user_profile.user  
+                additional_address=additional_address,
+                address=address,
+                created_by=user_profile.user
             )
+                
+            city = None
+            if city_id:
+                city = City.objects.filter(id=city_id).first()
+
+           
+       
             new_property_unit = PropertyUnitDetails.objects.create(
                 created_by=user_profile.user,
                 property_unit_name=property_unit_name,
@@ -381,7 +482,10 @@ def save_property(request):
                 owner=owner,
                 company=company,
                 property=parent_property,
-                step_status="BASIC_DETAILS"
+                step_status="BASIC_DETAILS",
+                locality=locality,
+                postal_code=postal_code,
+                city=city,
             )
             return prepare_response(
                 message=constants.PROPERTY_ADDED,
@@ -1114,12 +1218,16 @@ def send_invitation(request):
     try:
         user_profile = request.user  
         data = json.loads(request.body)
-
         email = data.get("email")
         invite_type = data.get("invitation_type") 
+        property_unit_id = data.get("property_unit_id")
 
         if not email:
             return prepare_response(message="Email is required", status=400)
+        
+        if not property_unit_id:
+            return prepare_response(message="Property unit id is required", status=400)
+        
 
         if invite_type not in ["OWNER_TO_PMC", "PMC_TO_OWNER", "PMC_TO_TENANT"]:
             return prepare_response(message="Invalid invitation type", status=400)
@@ -1130,6 +1238,14 @@ def send_invitation(request):
 
         if invite_type in ["PMC_TO_OWNER", "PMC_TO_TENANT"] and user_profile.user_role != constants.COMPANY_USER:
             return prepare_response(message="Only PMC can send this invitation", status=status.HTTP_403_FORBIDDEN)
+        property_unit_qs = PropertyUnitDetails.objects.filter(id=property_unit_id)
+        if not property_unit_qs.exists():
+            return prepare_response(
+        message="Invalid property unit id",
+        status=404
+    )
+        property_unit = property_unit_qs.first()
+
 
         
         template_map = {
@@ -1145,7 +1261,8 @@ def send_invitation(request):
             invited_by_profile=user_profile,
             email=email,
             invitation_type=invite_type,
-            template_name=template_name
+            template_name=template_name,
+            property_unit=property_unit
         )
 
         if error:

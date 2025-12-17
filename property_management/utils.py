@@ -230,7 +230,7 @@ def get_full_user_data(user_profile_id):
 
 
 
-def create_and_send_invitation(invited_by_profile, email, invitation_type, template_name):
+def create_and_send_invitation(invited_by_profile, email, invitation_type, template_name, property_unit=None):
     """
     invited_by_profile → UserProfile instance
     email → email to send invitation
@@ -240,30 +240,53 @@ def create_and_send_invitation(invited_by_profile, email, invitation_type, templ
     if UserInvitation.objects.filter(
         email=email,
         invitation_type=invitation_type,
-        invited_by=invited_by_profile
+        invited_by=invited_by_profile,
+        property_unit=property_unit
     ).exists():
         return None, "Invitation already sent to this email"
+
     token = str(uuid.uuid4())
 
     invitation = UserInvitation.objects.create(
         email=email,
         invited_by=invited_by_profile,
-        created_by=invited_by_profile.user, 
+        created_by=invited_by_profile.user,
         invitation_type=invitation_type,
         token=token,
-        status=constants.PENDING
+        status=constants.PENDING,
+        property_unit=property_unit
     )
-    invite_link = f"https://frontend.com/invite/accept?token={token}"
+    user_exists = User.objects.filter(email=email).exists()
+    if user_exists:
+        base_url = "https://units.doqfy.in/auth/login"
+    else:
+        base_url = "https://units.doqfy.in/auth/new-user"
+
+    invite_link = base_url 
     subject = "Invitation to Join Property Management Portal"
 
+    property_context = {}
+    if property_unit:
+        property_context = {
+            "property_name": getattr(property_unit.property, "property_name", ""),
+            "property_unit_name": getattr(property_unit, "property_unit_name", ""),
+            "apartment_no": getattr(property_unit, "apartment_no", ""),
+            "address": getattr(property_unit.property, "address", "") if property_unit.property else "",
+        }
+
     body_text = (
-        f"You are invited by {invited_by_profile.user.email}. "
+        f"You are invited by {invited_by_profile.user.email}\n"
+        f"Property: {property_context.get('property_name', '')}\n"
+        f"Unit: {property_context.get('property_unit_name', '')}\n"
+        f"Apartment No: {property_context.get('apartment_no', '')}\n"
+        f"Address: {property_context.get('address', '')}\n\n"
         f"Use this link: {invite_link}"
     )
 
     body_html = render_to_string(template_name, {
         "inviter_email": invited_by_profile.user.email,
         "invite_link": invite_link,
+        "property": property_context,
     })
 
     try:
@@ -272,6 +295,7 @@ def create_and_send_invitation(invited_by_profile, email, invitation_type, templ
         return None, "Invitation created but email sending failed"
 
     return invitation, None
+
 
 
 

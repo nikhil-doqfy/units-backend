@@ -2,107 +2,62 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <title>Invitation Email</title>
+    <title>Property Management Invitation</title>
     <style>
-      body {
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        background-color: #f5f6fa;
-        margin: 0;
-        padding: 0;
-      }
-
-      .email-container {
-        background-color: #ffffff;
-        max-width: 600px;
-        margin: 30px auto;
-        border-radius: 8px;
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-        overflow: hidden;
-      }
-
-    
-      .header {
-        text-align: center;
-        padding: 30px 20px;
-        background: linear-gradient(90deg, #6a11cb 0%, #2575fc 100%);
-        color: white;
-      }
-
-      
-      .logo-text {
-        font-size: 36px;
-        font-weight: 700;
-        letter-spacing: 2px;
-        margin: 0;
-        background: linear-gradient(90deg, #ffffff, #d4e0ff);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-      }
-
-      .tagline {
-        font-size: 14px;
-        margin-top: 5px;
-        color: #f0f0f0;
-        letter-spacing: 1px;
-      }
-
-      .content {
-        padding: 25px;
-        color: #333;
-      }
-
-      h2 {
-        color: #222;
-      }
-
-      p {
-        line-height: 1.6;
-      }
-
-      .button {
-        display: inline-block;
-        margin-top: 15px;
-        padding: 10px 20px;
-        background-color: #2575fc;
-        color: white;
-        text-decoration: none;
-        border-radius: 6px;
-        font-weight: 500;
-      }
-
-      .footer {
-        background-color: #f1f1f1;
-        text-align: center;
-        padding: 15px;
-        font-size: 13px;
-        color: #666;
-      }
-
-      .footer a {
-        color: #2575fc;
-        text-decoration: none;
-      }
+      body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f5f6fa; margin:0; padding:0;}
+      .email-container { background-color:#fff; max-width:600px; margin:30px auto; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,0.1); overflow:hidden;}
+      .header { text-align:center; padding:25px 20px; background: linear-gradient(90deg,#6a11cb 0%,#2575fc 100%); color:white;}
+      .header img { width:150px; margin-bottom:10px;}
+      .tagline { font-size:14px; color:#f0f0f0; margin:0;}
+      .content { padding:25px; color:#333;}
+      h2 { margin-top:0; color:#222;}
+      p { line-height:1.6;}
+      .property-box { background-color:#f8f9fc; border:1px solid #e0e4f0; border-radius:6px; padding:15px; margin:20px 0;}
+      .property-box p { margin:6px 0; font-size:14px;}
+      .button { display:inline-block; margin-top:20px; padding:12px 22px; background-color:#2575fc; color:white; text-decoration:none; border-radius:6px; font-weight:500;}
+      .footer { background-color:#f1f1f1; text-align:center; padding:15px; font-size:13px; color:#666;}
+      .footer a { color:#2575fc; text-decoration:none;}
+      .arabic { direction:rtl; text-align:right; margin-top:15px;}
     </style>
   </head>
   <body>
     <div class="email-container">
-    
       <div class="header">
-        <h1 class="logo-text">DOQFY</h1>
+        <img src="https://xscaleglobal.com/wp-content/uploads/2024/06/Untitled-1-1.png" alt="Doqfy Logo"/>
         <div class="tagline">Smart Contract & Document Management</div>
       </div>
-
       <div class="content">
-        <h2>You're Invited!</h2>
-        <p>Hello,</p>
-        <p><strong>{{ inviter_email }}</strong> has invited you to join the Property Management Portal.</p>
-        <p>Click below to accept the invitation:</p>
-        <a href="{{ invite_link }}" class="button">Accept Invitation</a>
-        <p>If the button doesn’t work, copy this link:</p>
-        <p><a href="{{ invite_link }}">{{ invite_link }}</a></p>
-        <p>Thank you,<br />The Doqfy Team</p>
-      </div>
+        <h2>Property Management Invitation | دعوة لإدارة العقار</h2>
 
+        <p>Hello,</p>
+        <p>I am <strong>{{ inviter_email }}</strong>, and I would like to invite you to manage the following property as a <strong>Property Management Company (PMC)</strong>.</p>
+
+        <div class="property-box">
+          <p><strong>Property Name:</strong> {{ property.property_name }}</p>
+          <p><strong>Unit Name:</strong> {{ property.property_unit_name }}</p>
+          <p><strong>Apartment No:</strong> {{ property.apartment_no }}</p>
+          <p><strong>Address:</strong> {{ property.address }}</p>
+        </div>
+
+        <p>By accepting this invitation, you will be able to manage this property and perform all related property management activities on the platform.</p>
+
+        <div class="arabic">
+          <p>أنا <strong>{{ inviter_email }}</strong>، وأود دعوتكم لإدارة العقار التالي بصفتكم <strong>شركة إدارة ممتلكات</strong>.</p>
+          <p><strong>اسم العقار:</strong> {{ property.property_name }}</p>
+          <p><strong>اسم الوحدة:</strong> {{ property.property_unit_name }}</p>
+          <p><strong>شقة رقم:</strong> {{ property.apartment_no }}</p>
+          <p><strong>العنوان:</strong> {{ property.address }}</p>
+          <p>بعد قبول هذه الدعوة، ستتمكنون من إدارة هذا العقار وتنفيذ جميع العمليات المتعلقة بإدارة الممتلكات عبر المنصة.</p>
+        </div>
+
+        <a href="{{ invite_link }}" class="button">Accept Invitation</a>
+        <p style="margin-top:15px;font-size:13px;">If the button doesn’t work, copy this link:</p>
+        <p class="arabic" style="font-size:13px;">إذا لم يعمل الزر، يرجى نسخ الرابط أدناه ولصقه في المتصفح:</p>
+        <p style="word-break:break-all;"><a href="{{ invite_link }}">{{ invite_link }}</a></p>
+
+        <p>Thank you,<br/><strong>The Doqfy Team</strong></p>
+        <p class="arabic">شكرًا لكم،<br/><strong>فريق دوكفي</strong></p>
+      </div>
       <div class="footer">
         <p>© 2025 Doqfy Internet Pvt. Ltd. All Rights Reserved.</p>
         <p>Need help? <a href="mailto:admin@doqfy.in">admin@doqfy.in</a></p>

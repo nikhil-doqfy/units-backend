@@ -124,6 +124,13 @@ class UserInvitation(Base):
         choices=INVITATION_TYPE_CHOICES
     )
     token = models.CharField(max_length=255, null=True, blank=True)
+    property_unit = models.ForeignKey(
+        "user_service.PropertyUnitDetails",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="unit_invitations"
+    )
     status = models.CharField(
         max_length=20,
         choices=constants.INVITATION_STATUS_CHOICES,

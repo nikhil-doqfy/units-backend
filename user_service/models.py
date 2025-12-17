@@ -134,6 +134,17 @@ class PropertyUnitDetails(Base):
     area_unit = models.CharField(max_length=20, default="Sq-ft")
     land_area_unit = models.CharField(max_length=20, null=True, blank=True)
     no_of_floors = models.IntegerField(default=1,null=True, blank=True)
+    locality = models.CharField(max_length=20, null=True, blank=True)
+    postal_code = models.CharField(max_length=20, null=True, blank=True)
+    city = models.ForeignKey(
+        "City",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+       
+    )
+    
+
 
     property = models.ForeignKey(
         Property, on_delete=models.CASCADE, related_name="units",null=True, blank=True
