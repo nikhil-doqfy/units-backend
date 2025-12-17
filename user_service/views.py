@@ -259,7 +259,7 @@ def userprofile_view(request):
 
 @is_request_authenticated
 def user_management(request):
-    user = request.user  # UserProfile
+    user = request.user  
 
     try:
        

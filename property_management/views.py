@@ -31,8 +31,6 @@ from django.http import FileResponse, Http404
 from property_management.utils import get_full_property_data,get_full_user_data,create_and_send_invitation,serialize_lease, get_property_images,get_lease_status
 import math
 
-
-
 @is_request_authenticated
 def serve_media(request, path):
     file_path = os.path.join(settings.MEDIA_ROOT, path)
@@ -106,6 +104,12 @@ def options(request):
         elif option_type == "PREDEFINED_TEMPLATES":
             templates = Template.objects.filter( is_predefined=True,is_active=True)
             content["predefined_templates"] = [{"key": t.id,"value": t.name,"description": t.description}for t in templates]
+        
+        elif option_type == "RENTAL_STATUS":
+            content["rental_status"] = [
+                {"key": constants.RENTAL_AVAILABLE, "value": "Available"},
+                {"key": constants.RENTAL_NOT_AVAILABLE, "value": "Not Available"},
+                ]
         else:
             content[option_type] = []
             
@@ -276,8 +280,6 @@ def save_property(request):
         "additional_address": parent_property.additional_address,
     
     }
-   
-
             content = {
                 "id": prop.id,
                 "property_unit_name": prop.property_unit_name,
@@ -290,7 +292,6 @@ def save_property(request):
                 "area_unit": prop.area_unit,
                 "property_code": prop.property_code,
                 "property_type": property_type_data,
-
                 "land_area": prop.land_area,
                 "makani_no": prop.makani_no,
                 "dewa_no": prop.dewa_no,
@@ -312,7 +313,6 @@ def save_property(request):
             }
 
             return prepare_response(content=content, status=status.HTTP_200_OK)
-
         except Exception as e:
             return prepare_response(
                 message={"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -330,26 +330,22 @@ def save_property(request):
             
 
             prop = PropertyUnitDetails.objects.filter(id=property_id).first()
-            property_fields = [
-                                "property_name",
-                                "address",
-                                 "additional_address",
-                              ]
-
-            parent_property = prop.property
-            if parent_property:
-                for field in property_fields:
-                    if field in data:
-                        value = data.get(field)
-                        if value is not None:
-                            setattr(parent_property, field, value)
-                parent_property.save()
             if not prop:
-                return prepare_response(
-                    message=constants.PROPERTY_NOT_FOUND,
-                    status=status.HTTP_404_NOT_FOUND
-                )
-
+                 return prepare_response(
+                message=constants.PROPERTY_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+            parent_property = prop.property
+            updated = False
+            if parent_property:
+                parent_fields = ["property_name", "address", "additional_address"]
+                for field in parent_fields:
+                    if field in data and data[field] is not None:
+                        setattr(parent_property, field, data[field])
+                        updated = True
+                if updated:
+                    parent_property.save()
+                        
             basic_fields = [
             "property_unit_name", "land_dm_no", "area_of_property",
             "no_of_parking", "makani_no", "dewa_no",
@@ -430,13 +426,11 @@ def save_property(request):
             apartment_floor_no = data.get("apartment_floor_no")
             no_of_floors = data.get("no_of_floors")
             parent_property_id = data.get("parent_property_id")
-
             address = data.get("address")
             additional_address = data.get("additional_address")
             locality = data.get("locality")
             postal_code = data.get("postal_code")
             city_id = data.get("city_id")
-
             property_code = generate_property_code()
             if user_profile.user_role == constants.OWNER:
                 owner = user_profile
@@ -469,13 +463,9 @@ def save_property(request):
                 address=address,
                 created_by=user_profile.user
             )
-                
             city = None
             if city_id:
                 city = City.objects.filter(id=city_id).first()
-
-           
-       
             new_property_unit = PropertyUnitDetails.objects.create(
                 created_by=user_profile.user,
                 property_unit_name=property_unit_name,
@@ -513,14 +503,11 @@ def save_property(request):
                 message={"error": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
-
     else:
         return prepare_response(
             message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
-
 
 
 @is_request_authenticated
@@ -654,7 +641,6 @@ def property_images(request):
                 content={"updated": updated_files},
                 status=status.HTTP_200_OK
             )
-
     except Exception as e:
         return prepare_response(message=str(e), status=500)
 
