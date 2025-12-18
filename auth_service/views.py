@@ -343,9 +343,6 @@ def change_password(request):
 
 
 
-
-
-
 def user_login(request):
     if request.method != "POST":
         return prepare_response(

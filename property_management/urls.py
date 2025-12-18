@@ -20,11 +20,21 @@ urlpatterns = [
     path('tenant/table', views.tenant_table_view, name='create_property_basic'), 
     path('property/images', views.property_images, name='property_images'),
     path('property/documents', views.property_documents, name='property_images'), 
-    path('statistics', views.dashboard_statistics, name='dashboard_statistics'),
-    path('most/revenue', views.most_revenue_generating_properties, name='most_revenue_generating_properties'),
+    path('statistics', views.dashboard_overview, name='dashboard_statistics'),
+    # path('most/revenue', views.most_revenue_generating_properties, name='most_revenue_generating_properties'),
     path('save/lease', views.lease_details_view, name='lease_details_view'),
-
     path('generate/contract', views.generate_contract, name='generate_contract'),
+    path('export/property', views.export_property_table_csv, name='export_property_table_csv'),
+    path('owner/compnay/csv', views.export_owner_pmc_csv, name='export_owner_pmc_csv'),
+
+
+   
+
+    
+    
+    
+
+
 
     
 

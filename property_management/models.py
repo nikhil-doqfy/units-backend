@@ -74,8 +74,6 @@ class LeasePropertyDetails(Base):
         return f"Lease {self.id} | Property {self.lease_property_id} | Tenant {self.tenant_id}"
     
 
-
-
 class LeaseDocumentsMapping(Base):
     """
     Mapping of documents related to a LeasePropertyDetails instance.

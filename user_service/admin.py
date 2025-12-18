@@ -1,6 +1,6 @@
 from django.contrib import admin
 from user_service.models import (
-    UserProfile, Company, Permission, Role, PMStaffCompanyMapping,
+    UserProfile, Company, Permission, Role, 
     Property, PropertyUnitDetails, PropertyImages, UserVerification,
     Documents, PropertyDocumentsMapping, OwnerDocumentsMapping,
     TenantDocumentsMapping, CompanyUserDocumentsMapping, StaffDocumentsMapping,Country, State, City
@@ -27,9 +27,9 @@ class PermissionAdmin(admin.ModelAdmin):
 class RoleAdmin(admin.ModelAdmin):
     list_display = ["id", "name", "company"]
 
-@admin.register(PMStaffCompanyMapping)
-class PMStaffCompanyMappingAdmin(admin.ModelAdmin):
-    list_display = ["id", "user_profile", "company"]
+# @admin.register(PMStaffCompanyMapping)
+# class PMStaffCompanyMappingAdmin(admin.ModelAdmin):
+#     list_display = ["id", "user_profile", "company"]
 
 @admin.register(Property)
 class PropertyAdmin(admin.ModelAdmin):

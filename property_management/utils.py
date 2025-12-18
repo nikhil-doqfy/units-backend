@@ -1,4 +1,4 @@
-from user_service.models import UserProfile,Documents,OwnerDocumentsMapping,StaffDocumentsMapping,CompanyUserDocumentsMapping,TenantDocumentsMapping,PropertyUnitDetails,Property,Company,PMStaffCompanyMapping,PropertyImages ,PropertyDocumentsMapping
+from user_service.models import UserProfile,Documents,OwnerDocumentsMapping,StaffDocumentsMapping,CompanyUserDocumentsMapping,TenantDocumentsMapping,PropertyUnitDetails,Property,Company,PropertyImages ,PropertyDocumentsMapping
 from property_management.models import LeasePropertyDetails,UserInvitation
 from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger,send_ses_email,safe_decimal ,safe_epoch_to_datetime ,replace_placeholders ,fetch_s3_presigned_url ,export_to_csv ,datetime_to_epoch_millis,get_pdfkit_config,generate_property_code ,fetch_s3_presigned_url_for_download
 from utilities import status ,  constants
@@ -9,37 +9,62 @@ from django.template.loader import render_to_string
 from datetime import datetime, timedelta
 from django.utils import timezone
 
+
+def get_location_kv(city):
+    if not city:
+        return None, None, None
+
+    state = city.state
+    country = state.country if state else None
+    city_kv = {
+        "key": city.id,
+        "value": city.name
+    } if city else None
+
+    state_kv = {
+        "key": state.id,
+        "value": state.name
+    } if state else None
+
+    country_kv = {
+        "key": country.id,
+        "value": country.name
+    } if country else None
+
+    return city_kv, state_kv, country_kv
+
+
+
+
 def get_full_property_data(property_unit_id):
-    """
-    Returns complete property data including:
-    - PropertyUnitDetails
-    - Parent Property
-    - Property Images
-    - Property Documents
-    - Owner Details
-    - Tenant Details (from LeasePropertyDetails if exists)
-    """
     try:
-     
         prop = PropertyUnitDetails.objects.filter(id=property_unit_id).first()
         if not prop:
             return None, "PropertyUnitDetails not found"
+
         parent_property = None
         if prop.property:
+            property_type_options = dict(constants.PROPERTY_TYPE_CHOICES)
+            city_kv, state_kv, country_kv = get_location_kv(prop.property.city)
             parent_property = {
                 "id": prop.property.id,
                 "property_name": prop.property.property_name,
                 "property_code": prop.property.Property_code,
-                "property_address":prop.property.address,
+                "property_type": {
+                    "key": prop.property.property_type_options,
+                    "value": property_type_options.get(prop.property.property_type_options)
+                },
+                "additional_address": prop.property.additional_address,
+                "locality": prop.property.locality,
+                "postal_code": prop.property.postal_code,
+                "city": city_kv,
+                 "state": state_kv,
+                 "country": country_kv,
+
             }
 
-        property_type_options = dict(constants.PROPERTY_TYPE_CHOICES)
-        property_type_data = {
-            "key": prop.property_type_options,
-            "value": property_type_options.get(prop.property_type_options)
-        }
         property_unit_data = {
-            "id": prop.id,
+            "property_unit_id": prop.id,
             "property_unit_name": prop.property_unit_name,
             "land_dm_no": prop.land_dm_no,
             "area_of_property": prop.area_of_property,
@@ -55,12 +80,13 @@ def get_full_property_data(property_unit_id):
             "makani_no": prop.makani_no,
             "dewa_no": prop.dewa_no,
             "property_code": prop.property_code,
-            "property_type": property_type_data,
             "step_status": prop.step_status,
             "owner_id": prop.owner.id if prop.owner else None,
             "company_id": prop.company.id if prop.company else None,
             "is_occupied": prop.is_occupied,
+            "dimension":prop.dimension,
             "status": "Not Available" if prop.is_occupied else "Available",
+            "address":prop.address,
             "commercial_details": {
                 "rent": prop.rent,
                 "security_deposit": prop.security_deposit,
@@ -71,7 +97,7 @@ def get_full_property_data(property_unit_id):
                 "commission_percent": prop.commission_percent,
             }
         }
-        images_qs = prop.property_images.all().order_by("-id")
+
         images = [
             {
                 "id": img.id,
@@ -79,60 +105,73 @@ def get_full_property_data(property_unit_id):
                 "url": fetch_s3_presigned_url(img.image_path, file_name=img.file_name),
                 "type": img.image_type
             }
-            for img in images_qs
+            for img in prop.property_images.all().order_by("-id")
         ]
+        document_type_choices = dict(constants.PROPERTY_DOCUMENT_CHOICES)
+        # type_list = [{"key": key, "value": value} for key, value in document_type_choices.items()]
+        documents_list = [
+    {
+        "id": mapping.id,
+        "file_name": mapping.document.file_name,
+        "url": fetch_s3_presigned_url(
+            mapping.document.file_path,
+            file_name=mapping.document.file_name
+        ),
+        "type": mapping.document_choice
+    }
+         for mapping in prop.property_documents.select_related("document").order_by("-id")]
+        
+        documents =  documents_list
 
-        docs_qs = prop.property_documents.select_related('document').order_by("-id")
-        documents = [
-            {
-                "id": mapping.id,
-                "file_name": mapping.document.file_name,
-                "url": fetch_s3_presigned_url(mapping.document.file_path, file_name=mapping.document.file_name),
-                "type": mapping.document_choice
-            }
-            for mapping in docs_qs
-        ]
         owner_data = None
         if prop.owner:
-            owner_user = prop.owner.user
             city = prop.owner.city
+            city_kv, state_kv, country_kv = get_location_kv(city)
             state = city.state if city else None
             country = state.country if state else None
             owner_data = {
                 "id": prop.owner.id,
-                "email": owner_user.email,
-                "first_name": owner_user.first_name,
-                "last_name": owner_user.last_name,
+                "email": prop.owner.user.email,
+                "first_name": prop.owner.user.first_name,
+                "last_name": prop.owner.user.last_name,
                 "address": prop.owner.address,
                 "additional_address": prop.owner.additional_address,
-                 "city": city.name if city else None,
-              "state": state.name if state else None,
-            "country": country.name if country else None,
-                "pin_code": prop.owner.pin_code,
+                 "city":city_kv,
+                 "state":state_kv,
+                 "country":country_kv,
+                "postal_code": prop.owner.pin_code,
                 "contact_number": prop.owner.contact_number,
-            }
-        tenant_data = None
-        lease = prop.lease_details.first()  
-        if lease and lease.tenant:
-            tenant_user = lease.tenant.user
-            city = lease.tenant.city
-            state = city.state if city else None
-            country = state.country if state else None
-            tenant_data = {
-                "id": lease.tenant.id,
-                "email": tenant_user.email,
-                "first_name": tenant_user.first_name,
-                "last_name": tenant_user.last_name,
-                "address": lease.tenant.address,
-                "additional_address": lease.tenant.additional_address,
-               "city": city.name if city else None,
-                      "state": state.name if state else None,
-        "country": country.name if country else None,
-                "pin_code": lease.tenant.pin_code,
-                "contact_number": lease.tenant.contact_number,
+                 "locality":prop.owner.locality,
+                "uae_residence_visa":prop.owner.uae_residence_visa,
+                "emirate_id":prop.owner.emirate_id,
+                "trade_license_number":prop.owner.trade_license_number,
+                "owner_code":prop.owner.user_code,
             }
 
-      
+        tenant_data = None
+        lease = prop.lease_details.first()
+        if lease and lease.tenant:
+            city = lease.tenant.city
+            city_kv, state_kv, country_kv = get_location_kv(city)
+        
+            tenant_data = {
+                "id": lease.tenant.id,
+                "email": lease.tenant.user.email,
+                "first_name": lease.tenant.user.first_name,
+                "last_name": lease.tenant.user.last_name,
+                "address": lease.tenant.address,
+                "additional_address": lease.tenant.additional_address,
+                "city":city_kv,
+                 "state":state_kv,
+                 "country":country_kv,
+                "postal_code": lease.tenant.pin_code,
+                "contact_number": lease.tenant.contact_number,
+                "locality":lease.tenant.locality,
+                "uae_residence_visa":lease.tenant.uae_residence_visa,
+                "emirate_id":lease.tenant.emirate_id,
+                "tenant_code":lease.tenant.user_code,
+            }
+
         final_data = {
             "property_unit": property_unit_data,
             "parent_property": parent_property,
@@ -150,6 +189,14 @@ def get_full_property_data(property_unit_id):
 
 
 
+#   locality = models.CharField(max_length=255, null=True, blank=True)
+#     pin_code = models.CharField(max_length=20, null=True, blank=True)
+#     address = models.CharField(max_length=255, null=True, blank=True)
+#     additional_address = models.CharField(max_length=255, null=True, blank=True)
+#     emirate_id = models.CharField(max_length=255, null=True, blank=True)
+#     uae_residence_visa = models.CharField(max_length=100, null=True, blank=True)
+#     contact_number = models.CharField(max_length=20, null=True, blank=True)
+#     trade_license_number = models.CharField(max_length=255, null=True, blank=True)
 
 
 def get_full_user_data(user_profile_id):
