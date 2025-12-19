@@ -1,35 +1,43 @@
-
-from django.shortcuts import get_object_or_404
-from django.db import IntegrityError, transaction
-from user_service.models import UserProfile,Documents,OwnerDocumentsMapping,StaffDocumentsMapping,CompanyUserDocumentsMapping,TenantDocumentsMapping,PropertyUnitDetails,Property,Company,PropertyImages ,PropertyDocumentsMapping,Country, State, City,Role
+import os
+import datetime
+import pdfkit
+import json
+import datetime
+from user_service.models import UserProfile, Documents, PropertyUnitDetails,\
+    Property, Company, PropertyImages ,PropertyDocumentsMapping, Country, State, City, Role
 from property_management.models import LeasePropertyDetails,TemplateFields, TemplateValues,Template
 from utilities.decorator import is_request_authenticated
-import json
-from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger,send_ses_email,safe_decimal ,safe_epoch_to_datetime ,replace_placeholders ,fetch_s3_presigned_url ,export_to_csv ,datetime_to_epoch_millis,get_pdfkit_config,generate_property_code ,fetch_s3_presigned_url_for_download
-from utilities import status ,  constants
+from utilities.helper_functions import (
+    upload_file_to_s3_base64, 
+    prepare_response, 
+    safe_epoch_to_datetime ,
+    replace_placeholders,
+    fetch_s3_presigned_url,
+    export_to_csv,
+    datetime_to_epoch_millis,
+    get_pdfkit_config,
+    generate_property_code,
+)
+from utilities import status, constants
 from django.utils import timezone
-from utilities import config
 from django.core.paginator import Paginator
 from django.db.models import Q
-import datetime
-from django.forms.models import model_to_dict 
 from django.db.models import Count
-import uuid
 from django.db.models import Prefetch
-from django.template.loader import render_to_string
-from datetime import timedelta
-from django.contrib.auth.hashers import make_password
+from datetime import timedelta, datetime
 from django.core.paginator import Paginator, EmptyPage
 from property_management import settings
-import os
-from datetime import datetime
-import datetime
-import re
-import pdfkit
-import platform
-from django.http import FileResponse, Http404
-from property_management.utils import get_full_property_data,get_full_user_data,create_and_send_invitation,serialize_lease, get_property_images,get_lease_status
-import math
+from django.http import FileResponse
+from property_management.utils import (
+    get_full_property_data,
+    create_and_send_invitation,
+    serialize_lease, 
+    get_property_images,
+    get_lease_status
+)
+from django.db.models import Count, Q
+from django.utils import timezone
+
 
 @is_request_authenticated
 def serve_media(request, path):
@@ -126,8 +134,6 @@ def options(request):
         {"key": constants.TENANT_DOCUMENT, "value": "Tenant Document"},
              ]
         elif option_type == "ROLE":
-
-            print('------------------>')
             company = Company.objects.filter(company_user=user,is_active=True).first()
             if not company:
                 content["role"] = []
@@ -135,12 +141,17 @@ def options(request):
             else:
                 roles = Role.objects.filter(company=company,is_active=True)
                 content["role"] = [{"key": r.id, "value": r.name}for r in roles]
-              
- 
-    
-            
-            
-        
+                
+        # ---------- Fetched rental accoubt lease ----------
+        elif option_type == "RENTAL_ACCOUNT_LEASE":
+            leases = LeasePropertyDetails.objects.filter(lease_status=constants.ACTIVE)
+            content["lease_data"] = [
+                {
+                    "key": lease.id,
+                    "value": lease.lease_number
+                }
+                for lease in leases
+            ]          
         else:
             content[option_type] = []
             
@@ -2205,12 +2216,6 @@ def export_company_owners_csv(request):
             message=f"Error exporting CSV: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
-
-
-from django.db.models import Count, Q
-from django.utils import timezone
-from datetime import timedelta
 
 @is_request_authenticated
 def dashboard_overview(request):

@@ -4,12 +4,16 @@ from django.conf.urls.static import static
 from property_management import settings
 from user_service import urls as user_service_urls  
 from auth_service import urls as auth_service_urls
+from payment import urls as payment_urls
 from . import views
 from django.urls import re_path
+
+
 urlpatterns = [ 
     path('admin/', admin.site.urls),
     path('user/', include(user_service_urls)),
     path('auth/', include(auth_service_urls)), 
+    path('payment/', include(payment_urls)), 
 
     
     re_path(r"^media/(?P<path>.*)$", views.serve_media), 

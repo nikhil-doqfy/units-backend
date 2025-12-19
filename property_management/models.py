@@ -1,8 +1,8 @@
 from django.db import models
-from django.utils import timezone
+from django.forms.models import model_to_dict
 from django.contrib.auth.models import User
 from utilities import constants
-
+from utilities.helper_functions import datetime_to_epoch
 
 class Base(models.Model):
     created = models.DateTimeField(auto_now_add=True)
@@ -14,6 +14,7 @@ class Base(models.Model):
         abstract = True
     
 class LeasePropertyDetails(Base):
+    lease_number = models.CharField(max_length=50, unique=True, null=True, blank=True)
     lease_property = models.ForeignKey(
         "user_service.PropertyUnitDetails", 
         on_delete=models.CASCADE,
@@ -71,16 +72,42 @@ class LeasePropertyDetails(Base):
     discount = models.FloatField(null=True, blank=True)
 
     def __str__(self):
-        return f"Lease {self.id} | Property {self.lease_property_id} | Tenant {self.tenant_id}"
+        return "{}-{}".format(self.lease_number, self.lease_status)
     
+    def _get_lease_details_info(self):
+        data =  model_to_dict(self, fields=(
+            "id", 
+            "lease_number",
+            "lease_remarks", 
+            "annual_amount",
+            "actual_annual_amount",
+            "rent",
+            "booking_amount",
+            "security_deposit",
+            "maintenance_charges",
+            "commission_percentage",
+            "notice_period",
+            "discount"
+        )) 
+        data["created"] = datetime_to_epoch(self.created)
+        data["lease_status"] = {"key": self.lease_status, "value": self.get_lease_status_display()}
+        data["approval_status"] = {"key": self.approval_status, "value": self.get_approval_status_display()}
+        data["step_status"] = {"key": self.step_status, "value": self.get_step_status_display()}
+        data["lease_start_date"] = datetime_to_epoch(self.lease_start_date)
+        data["lease_end_date"] = datetime_to_epoch(self.lease_end_date)
+        data["lease_grace_start_date"] = datetime_to_epoch(self.lease_grace_start_date)
+        data["lease_grace_end_date"] = datetime_to_epoch(self.lease_grace_end_date)
+        data["lease_property"] = model_to_dict(self.lease_property, fields=["id", "property_unit_name"])
+        data["tenant"] = {"id": self.tenant.id, "first_name": self.tenant.user.first_name} if self.tenant else None
+        data["owner"] = {"id": self.owner.id, "first_name": self.owner.user.first_name} if self.owner else None
+        return data
+
 
 class LeaseDocumentsMapping(Base):
-    """
-    Mapping of documents related to a LeasePropertyDetails instance.
-    """
     LEASE_DOCUMENT_CHOICES = (
         (constants.EJARI_CERTIFICATE, "Ejari Certificate"),
-        (constants.CHEQUE_DOCUMENT, "Cheque Document"),)
+        (constants.CHEQUE_DOCUMENT, "Cheque Document")
+    )
     lease = models.ForeignKey(
         LeasePropertyDetails,
         on_delete=models.CASCADE,
