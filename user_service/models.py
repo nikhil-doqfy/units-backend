@@ -70,7 +70,7 @@ class Role(Base):
 class CompanyStaff(Base):
     staff = models.ForeignKey(UserProfile, on_delete=models.CASCADE,related_name="staff_companies")
     company = models.ForeignKey("Company",on_delete=models.CASCADE,related_name="company_staff" )
-    roles = models.ManyToManyField("Role", blank=True)
+    roles = models.ManyToManyField(Role, blank=True)
     permissions = models.ManyToManyField(Permission, blank=True)
     
         
