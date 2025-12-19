@@ -1,4 +1,4 @@
-from user_service.models import UserProfile,Documents,OwnerDocumentsMapping,StaffDocumentsMapping,CompanyUserDocumentsMapping,TenantDocumentsMapping,PropertyUnitDetails,Property,Company,PropertyImages ,PropertyDocumentsMapping,CompanyStaff
+from user_service.models import UserProfile,Documents,OwnerDocumentsMapping,StaffDocumentsMapping,CompanyUserDocumentsMapping,TenantDocumentsMapping,PropertyUnitDetails,Property,Company,PropertyImages ,PropertyDocumentsMapping
 from property_management.models import LeasePropertyDetails,UserInvitation
 from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger,send_ses_email,safe_decimal ,safe_epoch_to_datetime ,replace_placeholders ,fetch_s3_presigned_url ,export_to_csv ,datetime_to_epoch_millis,get_pdfkit_config,generate_property_code ,fetch_s3_presigned_url_for_download
 from utilities import status ,  constants
@@ -444,29 +444,29 @@ def get_lease_status(lease_obj):
 
 
 
-def get_staff_details(company_staff: CompanyStaff, include_password=False):
+# def get_staff_details(company_staff: CompanyStaff, include_password=False):
  
-    staff_profile = company_staff.staff
-    django_user = staff_profile.user
-    total_properties = company_staff.assigned_properties.count()
-    occupied_properties = company_staff.assigned_properties.filter(is_occupied=True).count()
-    tenancy_ratio = f"{occupied_properties}/{total_properties}" if total_properties else "0/0"
-    data = {
-        "staff_id": company_staff.id,
-        "staff_name": django_user.first_name,
-        "email": django_user.email,
-        "contact": staff_profile.contact_number,
-        "emirate_id": staff_profile.emirate_id,
-        "city": staff_profile.city.name if staff_profile.city else None,
-        "locality": staff_profile.locality,
-        "address": staff_profile.address,
-        "additional_address": staff_profile.additional_address,
-        "postal_code": staff_profile.pin_code,
-        "property_count": total_properties,
-        "tenancy_ratio": tenancy_ratio,
-        "roles": [role.name for role in company_staff.roles.all()],
-    }
+#     staff_profile = company_staff.staff
+#     django_user = staff_profile.user
+#     total_properties = company_staff.assigned_properties.count()
+#     occupied_properties = company_staff.assigned_properties.filter(is_occupied=True).count()
+#     tenancy_ratio = f"{occupied_properties}/{total_properties}" if total_properties else "0/0"
+#     data = {
+#         "staff_id": company_staff.id,
+#         "staff_name": django_user.first_name,
+#         "email": django_user.email,
+#         "contact": staff_profile.contact_number,
+#         "emirate_id": staff_profile.emirate_id,
+#         "city": staff_profile.city.name if staff_profile.city else None,
+#         "locality": staff_profile.locality,
+#         "address": staff_profile.address,
+#         "additional_address": staff_profile.additional_address,
+#         "postal_code": staff_profile.pin_code,
+#         "property_count": total_properties,
+#         "tenancy_ratio": tenancy_ratio,
+#         "roles": [role.name for role in company_staff.roles.all()],
+#     }
 
-    if include_password:
-        data["password_hash"] = django_user.password
-    return data
+#     if include_password:
+#         data["password_hash"] = django_user.password
+#     return data

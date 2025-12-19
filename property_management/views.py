@@ -195,7 +195,7 @@ def property_table_view(request):
       
         if not companies_qs.exists():
             return prepare_response(
-            message="Company not found for this user",
+            message=constants.COMPANY_NOT_FOUND,
             status=status.HTTP_400_BAD_REQUEST
         )
         properties_qs = PropertyUnitDetails.objects.filter(
@@ -1163,14 +1163,14 @@ def tenant_table_view(request):
         elif user.user_role == constants.COMPANY_USER:
             company = Company.objects.filter(company_user=user).first()
             if not company:
-                return prepare_response(message="Company not found", status=status.HTTP_400_BAD_REQUEST)
+                return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_400_BAD_REQUEST)
             lease_qs = LeasePropertyDetails.objects.filter(
                 lease_property__company=company
             ).select_related(
                 "tenant", "lease_property", "lease_property__owner", "lease_property__company"
             )
         else:
-            return prepare_response(message="Unauthorized user role", status=status.HTTP_403_FORBIDDEN)
+            return prepare_response(message=constants.UNAUTHORIZED_ROLE, status=status.HTTP_403_FORBIDDEN)
 
         if search:
             lease_qs = lease_qs.filter(
@@ -1217,7 +1217,7 @@ def tenant_table_view(request):
 
         return prepare_response(
             content=response_content,
-            message="Tenant data fetched successfully",
+            message=constants.TENANT_DETAIL_FETCHED,
             pagination=pagination_meta,
             status=status.HTTP_200_OK
         )
@@ -1244,7 +1244,7 @@ def company_owners_view(request):
     try:
         company = Company.objects.filter(company_user=user).first()
         if not company:
-            return prepare_response(message="Company not found", status=status.HTTP_400_BAD_REQUEST)
+            return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_400_BAD_REQUEST)
         if owner_id:
             owner = UserProfile.objects.filter(id=owner_id, user_role="OWNER").first()
             if not owner:
@@ -1595,14 +1595,14 @@ def lease_details_view(request):
 
             if not lease_id:
                 return prepare_response(
-                    message="lease_id is required",
+                    message=constants.LEASE_ID_REQUIRED,
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
             lease = LeasePropertyDetails.objects.filter(id=lease_id).first()
             if not lease:
                 return prepare_response(
-                    message="Lease not found",
+                    message=constants.LEASE_NOT_FOUND,
                     status=status.HTTP_404_NOT_FOUND,
                 )
 
@@ -1637,7 +1637,7 @@ def lease_details_view(request):
                 return prepare_response(message="Invalid property or tenant", status=status.HTTP_400_BAD_REQUEST)
             owner_obj = property_obj.owner
             if not owner_obj:
-                return prepare_response(message="This property has no owner", status=status.HTTP_400_BAD_REQUEST)
+                return prepare_response(message=constants.THIS_OWNER_HAS_NO_PROPERTY, status=status.HTTP_400_BAD_REQUEST)
             
             lease_start_date = safe_epoch_to_datetime(body.get("lease_start_date"))
             lease_end_date = safe_epoch_to_datetime(body.get("lease_end_date"))
@@ -1668,17 +1668,17 @@ def lease_details_view(request):
             return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     elif request.method == "PUT":
-        print("===========>")
+      
         try:
             body = json.loads(request.body)
             lease_id = body.get("lease_id")
 
             if not lease_id:
-                return prepare_response(message="lease_id is required", status=status.HTTP_400_BAD_REQUEST)
+                return prepare_response(message=constants.LEASE_ID_REQUIRED , status=status.HTTP_400_BAD_REQUEST)
 
             lease = LeasePropertyDetails.objects.filter(id=lease_id).first()
             if not lease:
-                return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
+                return prepare_response(message=constants.LEASE_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
 
             basic_fields = [
                 "lease_remarks",
@@ -1722,7 +1722,7 @@ def lease_details_view(request):
             if "property_id" in body:
                 property_obj = PropertyUnitDetails.objects.filter(id=body["property_id"]).first()
                 if not property_obj:
-                    return prepare_response(message="Invalid property_id", status=status.HTTP_400_BAD_REQUEST)
+                    return prepare_response(message="Invalid property", status=status.HTTP_400_BAD_REQUEST)
                     
                 lease.lease_property = property_obj
                 lease.owner = property_obj.owner
@@ -1730,7 +1730,7 @@ def lease_details_view(request):
             lease.save()
 
             return prepare_response(
-                message="Lease updated successfully",
+                message=constants.LEASE_UPDATED,
                 content={"lease_id": lease.id},
                 status=status.HTTP_200_OK
             )
@@ -1973,7 +1973,7 @@ def export_property_table_csv(request):
         elif user.user_role == constants.COMPANY_USER:
             company = Company.objects.filter(company_user=user).first()
             if not company:
-                return prepare_response(message="Company not found", status=status.HTTP_400_BAD_REQUEST)
+                return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_400_BAD_REQUEST)
             properties_qs = PropertyUnitDetails.objects.filter(company=company)
 
         elif user.user_role == constants.TENANT:
@@ -2094,7 +2094,7 @@ def export_company_owners_csv(request):
         owner_id = request.GET.get("owner_id")
         company = Company.objects.filter(company_user=user).first()
         if not company:
-            return prepare_response(message="Company not found", status=status.HTTP_400_BAD_REQUEST)
+            return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_400_BAD_REQUEST)
 
         export_data = []
         if owner_id:
@@ -2412,7 +2412,7 @@ def generate_contract(request):
         lease = LeasePropertyDetails.objects.filter(id=lease_id).first()
         if not lease:
             return prepare_response(
-                message="Invalid lease_id",
+                message=constants.INVALID_LAESE_ID,
                 status=status.HTTP_404_NOT_FOUND
             )
         TemplateValues.objects.create(

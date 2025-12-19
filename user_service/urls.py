@@ -7,8 +7,6 @@ urlpatterns = [
     path("profile", views.userprofile_view, name='userprofile_view'), 
     path("management", views.user_management, name='user_management'),
     path('add_role', views.create_role, name='create_role'), 
-    path('staff_view', views.staff_view, name='staff_view'),
+    # path('staff_view', views.staff_view, name='staff_view'),
     path('role_table', views.role_table_view, name='role_table_view'),
-
-    
 ]
