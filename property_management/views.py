@@ -1335,7 +1335,12 @@ def company_owners_view(request):
                 "email": owner.user.email if owner.user else "",
                 "contact_number": owner.contact_number,
                 "property_count": owner.property_count,
-                "properties": [{"id": prop.id, "name": prop.property_unit_name} for prop in properties]
+                "owner_code":owner.user_code,
+                "properties": [{"id": prop.id, "name": prop.property_unit_name,"image": (
+            get_property_images(prop.id, single=True).get("images")[0]
+            if get_property_images(prop.id, single=True).get("images")
+            else None
+        )} for prop in properties]
             })
 
         pagination_meta = {
@@ -1376,16 +1381,12 @@ def owner_pmc_view(request):
 
                 properties = PropertyUnitDetails.objects.filter(owner=user)
                 pmc_ids = properties.values_list('company__company_user', flat=True).distinct()
-                pmc_qs = UserProfile.objects.filter(id__in=pmc_ids, user_role="COMPANY_USER").prefetch_related(
-                    Prefetch(
-                        'company_user',
-                        queryset=Company.objects.all()
-                    ),
-                    Prefetch(
-                        'assigned_properties',
-                        queryset=PropertyUnitDetails.objects.filter(owner=user)
-                    )
-                )
+                pmc_qs = UserProfile.objects.filter(
+                      id__in=pmc_ids,
+                     user_role="COMPANY_USER"
+                     ).prefetch_related(
+                 'company_user'  
+                        )
 
                 if search:
                     pmc_qs = pmc_qs.filter(

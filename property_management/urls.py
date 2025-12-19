@@ -21,6 +21,9 @@ urlpatterns = [
     path('property/images', views.property_images, name='property_images'),
     path('property/documents', views.property_documents, name='property_images'), 
     path('statistics', views.dashboard_overview, name='dashboard_statistics'),
+    path('company/owners', views.company_owners_view, name='company_owners_view'),
+    path('owner/pmc', views.owner_pmc_view, name='owner_pmc_view'),
+    
     # path('most/revenue', views.most_revenue_generating_properties, name='most_revenue_generating_properties'),
     path('save/lease', views.lease_details_view, name='lease_details_view'),
     path('generate/contract', views.generate_contract, name='generate_contract'),
@@ -29,26 +32,7 @@ urlpatterns = [
     
     
 
-   
-
-    
-    
-    
-
-
-
-    
-
-    
-
-    
-
-
-    # path('property/commercial/details', views.add_commercial_details, name='add_commercial_details'),
-
-
-
-#      
+    # path('property/commercial/details', views.add_commercial_details, name='add_commercial_details'),    
 #     path('staff/view/', views.staff_view, name='staff_view'), 
 #     path("lease/property/view/", views.lease_property_view, name="lease_property_view"),
 #     
