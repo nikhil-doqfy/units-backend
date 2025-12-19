@@ -1,4 +1,4 @@
-from user_service.models import UserProfile,Documents,OwnerDocumentsMapping,StaffDocumentsMapping,CompanyUserDocumentsMapping,TenantDocumentsMapping,PropertyUnitDetails,Property,Company,PropertyImages ,PropertyDocumentsMapping
+from user_service.models import UserProfile,Documents,OwnerDocumentsMapping,StaffDocumentsMapping,CompanyUserDocumentsMapping,TenantDocumentsMapping,PropertyUnitDetails,Property,Company,PropertyImages ,PropertyDocumentsMapping,CompanyStaff
 from property_management.models import LeasePropertyDetails,UserInvitation
 from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger,send_ses_email,safe_decimal ,safe_epoch_to_datetime ,replace_placeholders ,fetch_s3_presigned_url ,export_to_csv ,datetime_to_epoch_millis,get_pdfkit_config,generate_property_code ,fetch_s3_presigned_url_for_download
 from utilities import status ,  constants
@@ -291,9 +291,7 @@ def create_and_send_invitation(invited_by_profile, email, invitation_type, templ
         property_unit=property_unit
     ).exists():
         return None, "Invitation already sent to this email"
-
     token = str(uuid.uuid4())
-
     invitation = UserInvitation.objects.create(
         email=email,
         invited_by=invited_by_profile,
@@ -308,10 +306,8 @@ def create_and_send_invitation(invited_by_profile, email, invitation_type, templ
         base_url = "https://units.doqfy.in/auth/login"
     else:
         base_url = "https://units.doqfy.in/auth/new-user"
-
     invite_link = base_url 
     subject = "Invitation to Join Property Management Portal"
-
     property_context = {}
     if property_unit:
         property_context = {
@@ -320,7 +316,6 @@ def create_and_send_invitation(invited_by_profile, email, invitation_type, templ
             "apartment_no": getattr(property_unit, "apartment_no", ""),
             "address": getattr(property_unit.property, "address", "") if property_unit.property else "",
         }
-
     body_text = (
         f"You are invited by {invited_by_profile.user.email}\n"
         f"Property: {property_context.get('property_name', '')}\n"
@@ -329,18 +324,15 @@ def create_and_send_invitation(invited_by_profile, email, invitation_type, templ
         f"Address: {property_context.get('address', '')}\n\n"
         f"Use this link: {invite_link}"
     )
-
     body_html = render_to_string(template_name, {
         "inviter_email": invited_by_profile.user.email,
         "invite_link": invite_link,
         "property": property_context,
     })
-
     try:
         send_ses_email(email, subject, body_text, body_html)
     except Exception:
         return None, "Invitation created but email sending failed"
-
     return invitation, None
 
 
@@ -365,10 +357,8 @@ def serialize_lease(lease):
         "lease_end_date": datetime_to_epoch_millis(lease.lease_end_date),
         "lease_grace_start_date": datetime_to_epoch_millis(lease.lease_grace_start_date),
         "lease_grace_end_date": datetime_to_epoch_millis(lease.lease_grace_end_date),
-
         "lease_remarks": lease.lease_remarks,
         "step_status": lease.step_status,
-
         "commercial_details": {
             "annual_amount": lease.annual_amount,
             "actual_annual_amount": lease.actual_annual_amount,
@@ -381,9 +371,6 @@ def serialize_lease(lease):
             "discount": lease.discount,
         }
     }
-
-
-
 
 
 def get_property_images(property_id, single=False):
@@ -452,3 +439,34 @@ def get_lease_status(lease_obj):
         return "About to Expire"
     else:
         return "Ongoing"
+
+
+
+
+
+def get_staff_details(company_staff: CompanyStaff, include_password=False):
+ 
+    staff_profile = company_staff.staff
+    django_user = staff_profile.user
+    total_properties = company_staff.assigned_properties.count()
+    occupied_properties = company_staff.assigned_properties.filter(is_occupied=True).count()
+    tenancy_ratio = f"{occupied_properties}/{total_properties}" if total_properties else "0/0"
+    data = {
+        "staff_id": company_staff.id,
+        "staff_name": django_user.first_name,
+        "email": django_user.email,
+        "contact": staff_profile.contact_number,
+        "emirate_id": staff_profile.emirate_id,
+        "city": staff_profile.city.name if staff_profile.city else None,
+        "locality": staff_profile.locality,
+        "address": staff_profile.address,
+        "additional_address": staff_profile.additional_address,
+        "postal_code": staff_profile.pin_code,
+        "property_count": total_properties,
+        "tenancy_ratio": tenancy_ratio,
+        "roles": [role.name for role in company_staff.roles.all()],
+    }
+
+    if include_password:
+        data["password_hash"] = django_user.password
+    return data

@@ -1,7 +1,7 @@
 
 from django.shortcuts import get_object_or_404
 from django.db import IntegrityError, transaction
-from user_service.models import UserProfile,Documents,OwnerDocumentsMapping,StaffDocumentsMapping,CompanyUserDocumentsMapping,TenantDocumentsMapping,PropertyUnitDetails,Property,Company,PropertyImages ,PropertyDocumentsMapping,Country, State, City
+from user_service.models import UserProfile,Documents,OwnerDocumentsMapping,StaffDocumentsMapping,CompanyUserDocumentsMapping,TenantDocumentsMapping,PropertyUnitDetails,Property,Company,PropertyImages ,PropertyDocumentsMapping,Country, State, City,Role
 from property_management.models import LeasePropertyDetails,TemplateFields, TemplateValues,Template
 from utilities.decorator import is_request_authenticated
 import json
@@ -125,6 +125,21 @@ def options(request):
         {"key": constants.OWNER_DOCUMENT, "value": "Owner Document"},
         {"key": constants.TENANT_DOCUMENT, "value": "Tenant Document"},
              ]
+        elif option_type == "ROLE":
+
+            print('------------------>')
+            company = Company.objects.filter(company_user=user,is_active=True).first()
+            if not company:
+                content["role"] = []
+               
+            else:
+                roles = Role.objects.filter(company=company,is_active=True)
+                content["role"] = [{"key": r.id, "value": r.name}for r in roles]
+              
+ 
+    
+            
+            
         
         else:
             content[option_type] = []

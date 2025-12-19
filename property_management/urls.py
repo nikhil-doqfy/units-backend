@@ -26,7 +26,8 @@ urlpatterns = [
     path('generate/contract', views.generate_contract, name='generate_contract'),
     path('export/property', views.export_property_table_csv, name='export_property_table_csv'),
     path('owner/compnay/csv', views.export_owner_pmc_csv, name='export_owner_pmc_csv'),
-
+    
+    
 
    
 
