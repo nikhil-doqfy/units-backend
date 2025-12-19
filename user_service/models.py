@@ -67,11 +67,11 @@ class Role(Base):
         return self.name
 
 
-# class CompanyStaff(Base):
-#     staff = models.ForeignKey(UserProfile, on_delete=models.CASCADE,related_name="staff_companies")
-#     company = models.ForeignKey("Company",on_delete=models.CASCADE,related_name="company_staff" )
-#     roles = models.ManyToManyField("Role", blank=True)
-#     permissions = models.ManyToManyField(Permission, blank=True)
+class CompanyStaff(Base):
+    staff = models.ForeignKey(UserProfile, on_delete=models.CASCADE,related_name="staff_companies")
+    company = models.ForeignKey("Company",on_delete=models.CASCADE,related_name="company_staff" )
+    roles = models.ManyToManyField("Role", blank=True)
+    permissions = models.ManyToManyField(Permission, blank=True)
     
         
     
@@ -140,11 +140,7 @@ class PropertyUnitDetails(Base):
     company = models.ForeignKey(
         Company, on_delete=models.CASCADE, related_name="properties",null=True, blank=True
     )
-    # assigned_staff = models.ManyToManyField(
-    #     "CompanyStaff",
-    #     related_name="assigned_properties",
-    #     blank=True
-    # )
+    assigned_staff = models.ManyToManyField(CompanyStaff)
     is_occupied = models.BooleanField(default=False)
     property_code = models.CharField(
         max_length=255, null=True, blank=True

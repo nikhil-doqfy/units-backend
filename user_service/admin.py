@@ -3,8 +3,7 @@ from user_service.models import (
     UserProfile, Company, Permission, Role, 
     Property, PropertyUnitDetails, PropertyImages, UserVerification,
     Documents, PropertyDocumentsMapping, OwnerDocumentsMapping,
-    TenantDocumentsMapping, CompanyUserDocumentsMapping, StaffDocumentsMapping,Country, State, City
-    # CompanyStaff
+    TenantDocumentsMapping, CompanyUserDocumentsMapping, StaffDocumentsMapping,Country, State, City, CompanyStaff
 )
 from property_management.models import (
     LeasePropertyDetails, UserInvitation, Template, TemplateFields,
@@ -12,9 +11,8 @@ from property_management.models import (
 )
 
 # -------------------- User Service Admin --------------------
-# @admin.register(CompanyStaff)
-# class CompanyStaffAdmin(admin.ModelAdmin):
-#     list_display = ["id", "staff", "company",  "is_active"]
+class CompanyStaffAdmin(admin.ModelAdmin):
+    list_display = ["id", "staff", "company",  "is_active"]
 
 
 @admin.register(UserProfile)
@@ -121,3 +119,7 @@ class CityAdmin(admin.ModelAdmin):
     list_display = ["id", "name", "state", "code"]
     list_filter = ["state"]          
     search_fields = ["name", "code"]  
+
+
+
+admin.site.register(CompanyStaff, CompanyStaffAdmin)

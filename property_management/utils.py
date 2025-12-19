@@ -1,12 +1,22 @@
-from user_service.models import UserProfile,Documents,OwnerDocumentsMapping,StaffDocumentsMapping,CompanyUserDocumentsMapping,TenantDocumentsMapping,PropertyUnitDetails,Property,Company,PropertyImages ,PropertyDocumentsMapping
-from property_management.models import LeasePropertyDetails,UserInvitation
-from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger,send_ses_email,safe_decimal ,safe_epoch_to_datetime ,replace_placeholders ,fetch_s3_presigned_url ,export_to_csv ,datetime_to_epoch_millis,get_pdfkit_config,generate_property_code ,fetch_s3_presigned_url_for_download
+from user_service.models import (
+    UserProfile,
+    OwnerDocumentsMapping,
+    StaffDocumentsMapping,
+    CompanyUserDocumentsMapping,
+    TenantDocumentsMapping,
+    PropertyUnitDetails,
+    Company,
+    PropertyImages,
+    CompanyStaff,
+)
+from property_management.models import UserInvitation
+from utilities.helper_functions import send_ses_email, fetch_s3_presigned_url, datetime_to_epoch_millis
 from utilities import status ,  constants
 from django.contrib.auth.models import User
 import uuid
 import re
 from django.template.loader import render_to_string
-from datetime import datetime, timedelta
+from datetime import timedelta
 from django.utils import timezone
 
 
@@ -186,17 +196,6 @@ def get_full_property_data(property_unit_id):
     except Exception as e:
         return None, str(e)
 
-
-
-
-#   locality = models.CharField(max_length=255, null=True, blank=True)
-#     pin_code = models.CharField(max_length=20, null=True, blank=True)
-#     address = models.CharField(max_length=255, null=True, blank=True)
-#     additional_address = models.CharField(max_length=255, null=True, blank=True)
-#     emirate_id = models.CharField(max_length=255, null=True, blank=True)
-#     uae_residence_visa = models.CharField(max_length=100, null=True, blank=True)
-#     contact_number = models.CharField(max_length=20, null=True, blank=True)
-#     trade_license_number = models.CharField(max_length=255, null=True, blank=True)
 
 
 def get_full_user_data(user_profile_id):
@@ -444,29 +443,29 @@ def get_lease_status(lease_obj):
 
 
 
-# def get_staff_details(company_staff: CompanyStaff, include_password=False):
+def get_staff_details(company_staff: CompanyStaff, include_password=False):
  
-#     staff_profile = company_staff.staff
-#     django_user = staff_profile.user
-#     total_properties = company_staff.assigned_properties.count()
-#     occupied_properties = company_staff.assigned_properties.filter(is_occupied=True).count()
-#     tenancy_ratio = f"{occupied_properties}/{total_properties}" if total_properties else "0/0"
-#     data = {
-#         "staff_id": company_staff.id,
-#         "staff_name": django_user.first_name,
-#         "email": django_user.email,
-#         "contact": staff_profile.contact_number,
-#         "emirate_id": staff_profile.emirate_id,
-#         "city": staff_profile.city.name if staff_profile.city else None,
-#         "locality": staff_profile.locality,
-#         "address": staff_profile.address,
-#         "additional_address": staff_profile.additional_address,
-#         "postal_code": staff_profile.pin_code,
-#         "property_count": total_properties,
-#         "tenancy_ratio": tenancy_ratio,
-#         "roles": [role.name for role in company_staff.roles.all()],
-#     }
+    staff_profile = company_staff.staff
+    django_user = staff_profile.user
+    total_properties = company_staff.assigned_properties.count()
+    occupied_properties = company_staff.assigned_properties.filter(is_occupied=True).count()
+    tenancy_ratio = f"{occupied_properties}/{total_properties}" if total_properties else "0/0"
+    data = {
+        "staff_id": company_staff.id,
+        "staff_name": django_user.first_name,
+        "email": django_user.email,
+        "contact": staff_profile.contact_number,
+        "emirate_id": staff_profile.emirate_id,
+        "city": staff_profile.city.name if staff_profile.city else None,
+        "locality": staff_profile.locality,
+        "address": staff_profile.address,
+        "additional_address": staff_profile.additional_address,
+        "postal_code": staff_profile.pin_code,
+        "property_count": total_properties,
+        "tenancy_ratio": tenancy_ratio,
+        "roles": [role.name for role in company_staff.roles.all()],
+    }
 
-#     if include_password:
-#         data["password_hash"] = django_user.password
-#     return data
+    if include_password:
+        data["password_hash"] = django_user.password
+    return data
