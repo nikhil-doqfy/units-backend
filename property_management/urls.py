@@ -24,6 +24,7 @@ urlpatterns = [
     path('tenant/table', views.tenant_table_view, name='create_property_basic'), 
     path('property/images', views.property_images, name='property_images'),
     path('property/documents', views.property_documents, name='property_images'), 
+    path('parent/property', views.parent_property_view, name=' parent_property_view'),
     path('statistics', views.dashboard_overview, name='dashboard_statistics'),
     path('company/owners', views.company_owners_view, name='company_owners_view'),
     path('owner/pmc', views.owner_pmc_view, name='owner_pmc_view'),

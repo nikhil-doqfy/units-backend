@@ -31,7 +31,8 @@ from property_management.utils import (
     create_and_send_invitation,
     serialize_lease, 
     get_property_images,
-    get_lease_status
+    get_lease_status,
+    get_location_kv
 )
 from django.db.models import Count, Q
 from django.utils import timezone
@@ -495,6 +496,7 @@ def save_property(request):
                 )
 
             parent_property_id = data.get("parent_property_id")
+            parent_property_name = data.get("parent_property_name")
 
             if parent_property_id:
                 parent_property = Property.objects.filter(id=parent_property_id).first()
@@ -503,17 +505,20 @@ def save_property(request):
                         message=constants.INVALID_PROPERTY_ID,
                         status=status.HTTP_404_NOT_FOUND
                     )
-            else:
+            elif parent_property_name:
                 parent_property = Property.objects.create(
-                    property_name=data.get("property_unit_name"),
-                    Property_code=property_code,
-                    additional_address=data.get("additional_address"),
-                    locality=data.get("locality"),
-                    postal_code=data.get("postal_code"),
-                    property_type_options=data.get("property_type_options"),
-                    city_id=data.get("city_id"),
-                    created_by=user_profile.user
-                )
+                    property_name=parent_property_name,
+                Property_code=property_code,
+                additional_address=data.get("additional_address"),
+                locality=data.get("locality"),
+                postal_code=data.get("postal_code"),
+                property_type_options=data.get("property_type_options"),
+                city_id=data.get("city_id"),
+                created_by=user_profile.user)
+
+            else:
+                return prepare_response(message="Parent property id or name is required",status=status.HTTP_400_BAD_REQUEST)
+            
             new_property_unit = PropertyUnitDetails.objects.create(
                 created_by=user_profile.user,
                 property_unit_name=data.get("property_unit_name"),
@@ -2539,4 +2544,56 @@ def get_template_fields(request):
         )
 
 
+def parent_property_view(request):
+    if request.method == "GET":
+        property_id = request.GET.get("id")
 
+        if not property_id:
+            return prepare_response(
+                message="Property id is required",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        prop = Property.objects.select_related("city").filter(id=property_id).first()
+
+        if not prop:
+            return prepare_response(
+                message="Property not found",
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        data = {
+            "id": prop.id,
+            "property_name": prop.property_name,
+            "total_floors": prop.total_floors,
+            "total_units": prop.total_units,
+            "additional_address": prop.additional_address,
+            "locality": prop.locality,
+            "postal_code": prop.postal_code,
+            "property_code": prop.Property_code,
+            "property_type": prop.property_type_options,
+            "city": {
+                "key": prop.city.id if prop.city else None,
+                "value": prop.city.name if prop.city else None
+            },
+            "state":{
+                "key": prop.city.state.id if prop.city.state else None,
+                "value": prop.city.state.name if prop.city.state else None
+            },
+            "country":{
+                "key": prop.city.state.country.id if prop.city.state.country else None,
+                "value": prop.city.state.country.name if prop.city.state.country else None
+            }
+        }
+
+        return prepare_response(
+            content=data,
+            message="Property details fetched successfully",
+            status=status.HTTP_200_OK
+        )
+
+    else:
+        return prepare_response(
+            message="Invalid request method",
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
