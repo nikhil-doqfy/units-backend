@@ -82,6 +82,7 @@ class Property(Base):
     additional_address = models.TextField(null=True, blank=True)
     locality = models.CharField(max_length=20, null=True, blank=True)
     postal_code = models.CharField(max_length=20, null=True, blank=True)
+    
     Property_code = models.CharField(
         max_length=255,  null=True, blank=True
     )

@@ -2571,7 +2571,9 @@ def parent_property_view(request):
             "locality": prop.locality,
             "postal_code": prop.postal_code,
             "property_code": prop.Property_code,
-            "property_type": prop.property_type_options,
+             "property_type": {
+             "key": prop.property_type_options,
+             "value": prop.get_property_type_options_display()},
             "city": {
                 "key": prop.city.id if prop.city else None,
                 "value": prop.city.name if prop.city else None
