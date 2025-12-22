@@ -39,6 +39,8 @@ from django.db.models import Count, Q
 from django.utils import timezone
 
 
+
+
 @is_request_authenticated
 def serve_media(request, path):
     file_path = os.path.join(settings.MEDIA_ROOT, path)
@@ -1382,13 +1384,14 @@ def company_owners_view(request):
 def owner_pmc_view(request):
     if request.method == "GET":  
         user = request.user
-        company_user_id = request.GET.get("company_user_id")
+        company_id = request.GET.get("company_id")
         search = request.GET.get("search", "").strip()
         page = int(request.GET.get("page", 1))
         limit = int(request.GET.get("limit", 10))
+      
 
         try:
-            if user.user_role == "OWNER" and not company_user_id:
+            if user.user_role == "OWNER" and not company_id:
 
                 properties = PropertyUnitDetails.objects.filter(owner=user)
                 pmc_ids = properties.values_list('company__company_user', flat=True).distinct()
@@ -1421,13 +1424,14 @@ def owner_pmc_view(request):
                             lease_property__in=owner_props
                         ).count()
                         total_count = owner_props.count()
-                        tenancy_ratio = f"{leased_count}/{total_count}" if total_count else "0/0"
+                        tenancy_ratio = f"{leased_count}:{total_count}" if total_count else "0:0"
                         data.append({
                             "company_id": comp.id,
                             "company_name": comp.company_name,
                             "company_address": comp.company_address,
-                            "owner_property_count": total_count,
-                            "tenancy_ratio": tenancy_ratio
+                            "property_handling": f"{total_count} property",
+                            "tenancy_ratio": tenancy_ratio,
+                            "compnay_code":"comp_110",
                         })
 
                 pagination_meta = {
@@ -1444,64 +1448,71 @@ def owner_pmc_view(request):
                     status=status.HTTP_200_OK
                 )
 
-            elif company_user_id:
-                company_user = UserProfile.objects.filter(id=company_user_id, user_role="COMPANY_USER").first()
-                if not company_user:
-                    return prepare_response(message="Company user not found", status=status.HTTP_404_NOT_FOUND)
-                properties = PropertyUnitDetails.objects.filter(company__company_user=company_user)
-                lease_qs = LeasePropertyDetails.objects.filter(lease_property__in=properties).select_related(
-                    'lease_property', 'tenant', 'owner'
-                )
+            elif company_id:
+                if user.user_role != constants.OWNER:
+                    return prepare_response(message="Only owner can access this data",status=status.HTTP_403_FORBIDDEN)
+                company = Company.objects.select_related("company_user__user").filter(id=company_id).first()
+                if not company:
+                    return prepare_response(message="Company not found", status=status.HTTP_404_NOT_FOUND)
+                properties_qs = PropertyUnitDetails.objects.filter(owner=user,company=company ).select_related("property" ).prefetch_related( "lease_details__tenant__user")
 
                 if search:
-                    lease_qs = lease_qs.filter(
-                        Q(lease_property__property_unit_name__icontains=search) |
-                        Q(tenant__user__first_name__icontains=search) |
-                        Q(tenant__user__last_name__icontains=search) |
-                        Q(tenant__user__email__icontains=search)
-                    )
-
-                paginator = Paginator(lease_qs, limit)
+                    properties_qs = properties_qs.filter(Q(property_unit_name__icontains=search) | Q(property__property_name__icontains=search))
+                paginator = Paginator(properties_qs, limit)
                 try:
-                    lease_page = paginator.page(page)
+                    property_page = paginator.page(page)
                 except EmptyPage:
-                    lease_page = paginator.page(paginator.num_pages)
-
-                data = []
-                for lease in lease_page:
-                    tenant = lease.tenant
-                    prop = lease.lease_property
-                    owner = lease.owner
-                    data.append({
-                        "property_id": prop.id,
-                        "property_name": prop.property_unit_name,
-                        "tenant_name": f"{tenant.user.first_name} {tenant.user.last_name}" if tenant.user else None,
-                        "tenancy_status": lease.lease_status,
-                        "bedrooms": prop.bedrooms,
-                        "lease_id": lease.id,
-                        "owner": {
-                            "id": owner.id if owner else None,
-                            "first_name": owner.user.first_name if owner and owner.user else "",
-                            "last_name": owner.user.last_name if owner and owner.user else "",
-                            "email": owner.user.email if owner and owner.user else "",
-                            "profile_image": owner.profile_image if owner else None,
-                            "pin_code": owner.pin_code if owner else None
-                        }
-                    })
-
+                    property_page = paginator.page(paginator.num_pages)
+                properties_data = []
+                for prop in property_page:
+                    lease = prop.lease_details.first()
+                    tenant_name = None
+                    lease_id = None
+                    tenancy_status = "Vacant"
+                    if lease and lease.tenant:
+                        tenant_user = lease.tenant.user
+                        tenant_name = f"{tenant_user.first_name} {tenant_user.last_name}".strip()
+                        lease_id = lease.id
+                        tenancy_status = "Occupied"
+                    properties_data.append({"property_unit_id": prop.id,"property_name": prop.property_unit_name or (
+                                  prop.property.property_name if prop.property else None
+                                   ),"tenant_name": tenant_name,
+                                   "tenancy_status": tenancy_status,
+                                      "dimension": prop.dimension,
+                                      "lease_id": lease_id,
+                                          })
+                pmc_user = company.company_user
+                pmc_profile = {
+                          "company_id": company.id,
+                           "company_code": company.company_code,
+                         "company_name": company.company_name,
+                        "email": pmc_user.user.email,
+                       "first_name": pmc_user.user.first_name,
+                       "last_name": pmc_user.user.last_name,
+                        "postal_code": pmc_user.pin_code,
+                        "profile_image": pmc_user.profile_image,
+                          "total_properties_handled": PropertyUnitDetails.objects.filter(
+                          owner=user,
+                          company=company
+                             ).count()
+                                    }
                 pagination_meta = {
-                    "current_page": lease_page.number,
+                    "current_page": property_page.number,
                     "limit": limit,
                     "total_records": paginator.count,
-                    "total_pages": paginator.num_pages
-                }
-
+                     "total_pages": paginator.num_pages
+                            }
                 return prepare_response(
-                    content=data,
-                    message=f"Properties handled by company user {company_user.user.email if company_user.user else company_user.id}",
+                    content={"company_profile": pmc_profile, "properties": properties_data},
+                    message="PMC profile & property details fetched successfully",
                     pagination=pagination_meta,
-                    status=status.HTTP_200_OK
-                )
+                    status=status.HTTP_200_OK)
+                 
+            
+                    
+
+
+                
 
             else:
                 return prepare_response(message="Unauthorized access or missing parameters", status=status.HTTP_403_FORBIDDEN)
@@ -2229,8 +2240,6 @@ def dashboard_overview(request):
         user = request.user
         now = timezone.now()
         renewal_window = now + timedelta(days=30)
-
-        # Fetch properties based on user role
         if user.user_role == constants.OWNER:
             properties = PropertyUnitDetails.objects.filter(owner=user)
         elif user.user_role == constants.COMPANY_USER:
@@ -2243,13 +2252,9 @@ def dashboard_overview(request):
             properties = PropertyUnitDetails.objects.filter(company=company)
         else:
             properties = PropertyUnitDetails.objects.none()
-
-        # Dashboard basic stats
         total_properties = properties.count()
         rented_count = properties.filter(is_occupied=True).count()
         vacant_count = properties.filter(is_occupied=False).count()
-
-        # Tenant / Lease stats
         lease_queryset = LeasePropertyDetails.objects.filter(
             lease_property__in=properties
         )
@@ -2267,8 +2272,6 @@ def dashboard_overview(request):
         negotiations_count = lease_queryset.filter(
             lease_end_date__lt=now
         ).count()
-
-        # Most revenue generating properties (occupancy rate)
         property_stats = (
             properties
             .values("property_id", "property__property_name")
