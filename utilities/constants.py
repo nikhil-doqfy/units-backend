@@ -4,7 +4,7 @@ USER_NOT_ONBOARDED = "User not onboarded"
 INVALID_EMAIL = "Invalid email address"
 OTP_SEND_FAILED = "Failed to send OTP Email."
 OTP_SENT_SUCCESS = "OTP sent successfully."
-
+COMPANY_NOT_FOUND="Company not found"
 INCORRECT_OTP = "Incorrect OTP"
 OTP_SUCCESS = "OTP successfully verified"
 OTP_EXPIRED = "OTP has expired"
@@ -131,10 +131,12 @@ TENANT_ID_REQUIRE="tenant_id is required for deletion"
 PERMISSSION_DENIED="Permission denied. You cannot delete this tenant."
 USER_ID_FULL_NAME_REQUIRED="user_id and full_name are required"
 OWNER = "OWNER"
-PROPERTY_MANAGER = "PROPERTY_MANAGER"
+COMPANY_USER = "COMPANY_USER"
 TENANT = "TENANT"
 STAFF = "STAFF"
 AVAILABLE="AVAILABLE"
+COMPANY="Company"
+RESET_PASSWORD="reset_password"
 NOT_AVAILABLE="NOT_AVAILABLE" 
 PROPERTY_MANAGER_DETAILS_DELETE_SUCCESS="PMC deleted successfully."
 PROFILE_UPDATED_SUCCESS="Profile updated successfully."
@@ -163,7 +165,7 @@ TENANT_INVITATION_SENT_SUCCESS = "Tenant invitation sent successfully."
 
 INVALID_INPUT_FORMAT = "Invalid input format."
 FORBIDDEN_ASSIGN_PROPERTY = "Forbidden: You are not authorized to assign properties."
-PROPERTY_NOT_FOUND = "Property not found or does not belong to you."
+PROPERTY_NOT_FOUND = "Property not found"
 PROPERTY_ASSIGNED_SUCCESS = "Property assigned successfully."
 PROPERTY_STATSTICS_FETCHED="Property statstics fetched successfully."
 SOMTHING_WENT_WRONG="Something went wrong while fetching property summary."
@@ -178,7 +180,7 @@ STAFF_ID_REQUIRED="Staff ID is required in query params"
 USER_ID_REQUIRED = "User ID is required in query parameters."
 USER_ACTIVE = "User has been activated successfully."
 USER_INACTIVE = "User has been deactivated successfully."
-SOMETHING_WENT_WRONG = "Something went wrong. Please try again later."
+SOMETHING_WENT_WRONG = "Something went wrong."
 
 EMIRATES_ID_INVALID = "Invalid Emirates ID document. Allowed: pdf, jpg, png, doc, docx, xlsx."
 UAE_VISA_INVALID = "Invalid UAE Residence Visa document. Allowed: pdf, jpg, png, doc, docx, xlsx."
@@ -203,7 +205,7 @@ INVALID_TEMPLATE_ID = "Invalid template_id."
 TEMPLATE_ID_REQUIRED = "template_id is required."
 TEMPLATE_FIELDS_FETCHED = "Template fields fetched successfully."
 TEMPLATE_LEASE_VALUES_REQUIRED = "template_id, lease_id, and values are required."
-
+THIS_OWNER_HAS_NO_PROPERTY="This property has no owner"
 
 DOCUMENTS_MUST_BE_LIST = "Documents must be a list."
 LEASE_EJARI_DOCS_UPLOADED = "Lease Ejari Documents uploaded successfully."
@@ -211,7 +213,7 @@ LEASE_EJARI_DOCS_UPDATED = "Lease Ejari Documents updated successfully."
 LEASE_EJARI_DOCS_FETCHED = "Lease Ejari Documents fetched successfully."
 COMMERCIAL_DETAILS_NOT_FOUND = "Commercial details not found."
 COMMERCIAL_DETAILS_FETCHED = "Commercial details fetched."
-LEASE_ID_REQUIRED = "lease_id is required."
+LEASE_ID_REQUIRED = "lease id is required."
 LEASE_LIST_FETCHED = "Lease list fetched successfully."
 LEASE_FETCHED = "Lease fetched successfully."
 LEASE_CREATED = "Lease created successfully."
@@ -220,6 +222,8 @@ LEASE_PROPERTY_TENANT_REQUIRED = "lease_property_id and lease_tenant_id are requ
 LOGGED_IN_USER_NOT_PM = "Logged-in user is not a property manager."
 PROPERTY_NO_OWNER_ASSIGNED = "Property has no owner assigned."
 LEASE_DOCUMENTS_UPLOADED_SUCCESS = "Lease documents uploaded successfully."
+INVALID_LAESE_ID="Invalid lease id"
+
 
 INVALID_LEASE_DATE = "Invalid lease start or end date."
 PMC_NOT_FOUND = "PMC not found for this user."
@@ -278,9 +282,14 @@ INVALID_STATUS = "Invalid status"
 INVALID_LEASE = "Invalid lease"
 INVALID_METHOD = "Invalid method"
 DATA_FETCHED_SUCCESSFULLY="Data Fetched successfully"
+PROPERTY_FETCH_SUCCESS = "Property fetched successfully"
+UNAUTHORIZED_ROLE = "Unauthorized role"
+INVALID_PARENT_ID = "Invalid parent ID"
+
 
 TENANT_DETAIL_FETCHED="teanant data fetched"
-
+COMPANY_NOT_FOUND="company not found"
+UNAUTHORIZED_TO_CREATE_PROPERTY=""
 
 choices=[("MYSELF", "Myself"), ("PMC", "PMC")]
 
@@ -333,6 +342,7 @@ DEFAULT_PERMISSIONS = {
 }
 
 
+ACTIVE = "ACTIVE"
 
 ACCESS_LEVEL_CHOICES = [
     ("NO_ACCESS", "No Access"),
@@ -370,8 +380,12 @@ STEP_CHOICES = (
         ("DOCUMENTS_DETAILS", "Documents Details"),
         
     )
+COMMERCIALS_DETAILS="COMMERCIALS_DETAILS"
+BASIC_DETAILS="BASIC_DETAILS"
+PROPERTY_IMAGES_DETAILS="PROPERTY_IMAGES_DETAILS"
+DOCUMENTS_DETAILS="DOCUMENTS_DETAILS"
 
-DOCUMENT_TYPE_CHOICES = (("FLOOR_PLAN_DOCUMENT", "Floor Plan Document"),
+PROPERTY_DOCUMENT = (("FLOOR_PLAN_DOCUMENT", "Floor Plan Document"),
         ("TENANT_DOCUMENT", "Tenant Document"),
         ("EJARI_CERTIFICATE", "Ejari Certificate"),
         ("PMC_DOCUMENT", "Pmc Document"),
@@ -415,3 +429,49 @@ APPROVAL_STATUS_CHOICES = (
     ("APPROVED", "Approved"),
     ("REJECTED", "Rejected"),
 )
+
+EMIRATES_ID = "emirates_id"
+UAE_RESIDENCE_VISA = "uae_residence_visa"
+DLD_CERTIFICATE = "dld_certificate"
+
+
+
+# Property document constants
+FLOOR_PLAN = "FLOOR_PLAN"
+EJARI_CERTIFICATE = "EJARI_CERTIFICATE"
+PMC_DOCUMENT = "PMC_DOCUMENT"
+CHEQUE_DOCUMENT = "CHEQUE_DOCUMENT"
+OWNER_DOCUMENT = "OWNER_DOCUMENT"
+TENANT_DOCUMENT = "TENANT_DOCUMENT"
+LOGIN="login"
+SIGNUP="signup"
+
+
+VACANT = "VACANT"
+OCCUPIED = "OCCUPIED"
+
+
+
+
+ONGOING = "ONGOING"
+ABOUT_TO_EXPIRE = "ABOUT_TO_EXPIRE"
+EXPIRED = "EXPIRED"
+
+PROPERTY_DOCUMENT_CHOICES = (
+    (FLOOR_PLAN, "Floor Plan"),
+    (EJARI_CERTIFICATE, "Ejari Certificate"),
+    (PMC_DOCUMENT, "PMC Document"),
+    (CHEQUE_DOCUMENT, "Cheque Document"),
+)
+
+
+# ---------- PAYMENT METHOD CHOICES ----------
+CASH = "CASH"
+CHEQUE = "CHEQUE"
+RENT = "RENT"
+OTHER ="OTHER"
+
+
+PAYMENT_PENDING = "PAYMENT_PENDING"
+PAYMENT_SUCCESSFUL = "PAYMENT_SUCCESSFUL"
+PAYMENT_FAILED = "PAYMENT_FAILED"

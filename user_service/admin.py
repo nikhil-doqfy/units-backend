@@ -1,141 +1,125 @@
 from django.contrib import admin
 from user_service.models import (
-    UserProfile, 
-    PropertyManagerCompanyDetails, 
-    StaffRole, 
-    StaffDetails, 
-    PropertyDetails,UserVerification,PropertyDocuments ,PropertyCommercial ,PropertyImages
+    UserProfile, Company, Permission, Role, 
+    Property, PropertyUnitDetails, PropertyImages, UserVerification,
+    Documents, PropertyDocumentsMapping, OwnerDocumentsMapping,
+    TenantDocumentsMapping, CompanyUserDocumentsMapping, StaffDocumentsMapping,Country, State, City, CompanyStaff
+)
+from property_management.models import (
+    LeasePropertyDetails, UserInvitation, Template, TemplateFields,
+    TemplateValues,LeaseDocumentsMapping
 )
 
-from property_management.models import OwnerDetails ,TenantDetails,LeasePropertyDetails,LeaseCommercials ,LeaseEjariUpload , OwnerPMCInvitation ,PMCOwnerInvitation , Template , TemplateFields ,TemplateValues
- 
+# -------------------- User Service Admin --------------------
+class CompanyStaffAdmin(admin.ModelAdmin):
+    list_display = ["id", "staff", "company",  "is_active"]
+
+
+@admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
-    list_display = ["id", "email", "user_type"]
+    list_display = ["id", "user", "user_role", "contact_number"]
 
+@admin.register(Company)
+class CompanyAdmin(admin.ModelAdmin):
+    list_display = ["id", "company_name", "company_code"]
+
+@admin.register(Permission)
+class PermissionAdmin(admin.ModelAdmin):
+    list_display = ["id", "codename", "name"]
+
+@admin.register(Role)
+class RoleAdmin(admin.ModelAdmin):
+    list_display = ["id", "name", "company"]
+
+# @admin.register(PMStaffCompanyMapping)
+# class PMStaffCompanyMappingAdmin(admin.ModelAdmin):
+#     list_display = ["id", "user_profile", "company"]
+
+@admin.register(Property)
+class PropertyAdmin(admin.ModelAdmin):
+    list_display = ["id", "property_name", "Property_code"]
+
+@admin.register(PropertyUnitDetails)
+class PropertyUnitDetailsAdmin(admin.ModelAdmin):
+    list_display = ["id", "property_unit_name", "property", "owner", "is_occupied", "rent"]
+
+@admin.register(PropertyImages)
+class PropertyImagesAdmin(admin.ModelAdmin):
+    list_display = ["id", "property", "file_name", "image_type"]
+
+@admin.register(UserVerification)
 class UserVerificationAdmin(admin.ModelAdmin):
-    list_display = ["id", "email", "otp"]
+    list_display = ["id", "email", "verification_type", "otp", "is_verified"]
 
+@admin.register(Documents)
+class DocumentsAdmin(admin.ModelAdmin):
+    list_display = ["id", "file_name"]
 
-class PropertyManagerCompanyDetailsAdmin(admin.ModelAdmin):
-    list_display = ["id", "company_name", "company_code", "phone_number"]
+@admin.register(PropertyDocumentsMapping)
+class PropertyDocumentsMappingAdmin(admin.ModelAdmin):
+    list_display = ["id", "property", "document"]
 
-class StaffRoleAdmin(admin.ModelAdmin):
-    list_display = ["id", "name", "property_manager"]
+@admin.register(OwnerDocumentsMapping)
+class OwnerDocumentsMappingAdmin(admin.ModelAdmin):
+    list_display = ["id", "owner", "document"]
 
-class StaffDetailsAdmin(admin.ModelAdmin):
-    list_display = ["id", "staff_name", "staff_id", "phone_number", "staff_role", "property_manager"]
+@admin.register(TenantDocumentsMapping)
+class TenantDocumentsMappingAdmin(admin.ModelAdmin):
+    list_display = ["id", "tenant", "document"]
 
-class PropertyDetailsAdmin(admin.ModelAdmin):
-    list_display = ["id", "property_name", "owner", "property_manager", "is_occupied", "rental_status"]
+@admin.register(CompanyUserDocumentsMapping)
+class CompanyUserDocumentsMappingAdmin(admin.ModelAdmin):
+    list_display = ["id", "company_user", "document"]
 
+@admin.register(StaffDocumentsMapping)
+class StaffDocumentsMappingAdmin(admin.ModelAdmin):
+    list_display = ["id", "staff", "document"]
 
-
-
-
-
-
-admin.site.register(UserProfile, UserProfileAdmin)
-admin.site.register(PropertyManagerCompanyDetails, PropertyManagerCompanyDetailsAdmin)
-admin.site.register(StaffRole, StaffRoleAdmin)
-admin.site.register(StaffDetails, StaffDetailsAdmin)
-admin.site.register(PropertyDetails, PropertyDetailsAdmin)
-admin.site.register(UserVerification, UserVerificationAdmin)
-
-class OwnerDetailsAdmin(admin.ModelAdmin):
-    list_display = [
-        "id", "full_name", "emirate_id", "uae_residence_visa", "trade_license_number",
-        "owner_number", "mobile_number", "manage_manually", "manage_through_pmc",
-        "emirates_id_file","residence_visa_file","dld_certificate_file","dewa_registration_file"
-    ]
-    search_fields = ["full_name", "emirate_id", "uae_residence_visa", "owner_number", "mobile_number"]
-    list_filter = ["manage_manually", "manage_through_pmc"]
-
-
-class PropertyDocumentsAdmin(admin.ModelAdmin):
-    list_display = ["document_id", "document_title", "created", "modified", "property_documents"]
-    search_fields = ["document_title"]
-    list_filter = ["created", "modified"]
-
-
-class TenantDetailsAdmin(admin.ModelAdmin):
-    list_display = (
-        'id', 'full_name', 'mobile_number'
-    )
-
-class DocumentTemplateFieldsAdmin(admin.ModelAdmin):
-    list_display = [
-        "id",
-        "document_template",
-        "tenant",
-        "owner",
-        "amount",
-    ]
-    search_fields = ["document_template__name", "tenant__name", "owner__name"]
-    list_filter = ["document_template"]
-
-
+# -------------------- Property Management Admin --------------------
+@admin.register(LeasePropertyDetails)
 class LeasePropertyDetailsAdmin(admin.ModelAdmin):
-    list_display = ["id", "lease_property", "lease_tenant","lease_status","lease_start_date","lease_end_date"]
+    list_display = ["id", "lease_property", "tenant", "owner", "lease_status", "lease_start_date", "lease_end_date"]
 
+@admin.register(UserInvitation)
+class UserInvitationAdmin(admin.ModelAdmin):
+    list_display = ["id", "email", "invited_by", "invitation_type", "status"]
 
-class LeaseCommercialsAdmin(admin.ModelAdmin):
-    list_display = ["id", "lease", "annual_amount","booking_amount"]
-
-class LeaseEjariUploadAdmin(admin.ModelAdmin):
-    list_display = ["id", "lease"]
-
-
-class OwnerPMCInvitationAdmin(admin.ModelAdmin):
-    list_display = ["id", "email","invited_by" ,"status","token",] 
-
-class PMCOwnerInvitationAdmin(admin.ModelAdmin):
-    list_display = ["id", "email","invited_by" ,"status","token",] 
-
-class PropertyDocumentsAdmin(admin.ModelAdmin):
-    list_display = ["id"] 
+@admin.register(Template)
 class TemplateAdmin(admin.ModelAdmin):
-    list_display = ["id", "name", "template_path", "is_active"]   
+    list_display = ["id", "name", "template_path", "is_active"]
 
+@admin.register(TemplateFields)
 class TemplateFieldsAdmin(admin.ModelAdmin):
-    list_display = ["id", "document_template","name_attribute"]    
+    list_display = ["id", "document_template", "name_attribute", "label_attribute", "html_tag"]
+
+@admin.register(TemplateValues)
+class TemplateValuesAdmin(admin.ModelAdmin):
+    list_display = ["id", "document_template", "lease"]
 
 
-class PropertyCommercialAdmin(admin.ModelAdmin):
-    list_display = ["id"]
-
-class TemplateValuesAdmin(admin.ModelAdmin):   
-    list_display = ["id"]
-
-
-class PropertyImagesAdmin(admin.ModelAdmin): 
-    list_display = ["id"]
-    
+@admin.register(LeaseDocumentsMapping)
+class LeaseDocumentsMappingAdmin(admin.ModelAdmin):
+    list_display = ("id", "lease", "document", "document_choice")
 
 
 
+@admin.register(Country)
+class CountryAdmin(admin.ModelAdmin):
+    list_display = ["id", "name", "code"]
+    search_fields = ["name", "code"] 
 
-admin.site.register(OwnerDetails, OwnerDetailsAdmin)  
-# admin.site.register(PropertyDocuments, PropertyDocumentsAdmin)
-admin.site.register(TenantDetails, TenantDetailsAdmin)  
+@admin.register(State)
+class StateAdmin(admin.ModelAdmin):
+    list_display = ["id", "name", "country", "code"]
+    list_filter = ["country"]          
+    search_fields = ["name", "code"]   #
 
-admin.site.register(LeasePropertyDetails, LeasePropertyDetailsAdmin)  
-admin.site.register(LeaseCommercials, LeaseCommercialsAdmin) 
-admin.site.register(LeaseEjariUpload, LeaseEjariUploadAdmin)  
-
-admin.site.register( OwnerPMCInvitation, OwnerPMCInvitationAdmin)  
-
-admin.site.register( PMCOwnerInvitation, PMCOwnerInvitationAdmin)  
-
-admin.site.register( PropertyDocuments, PropertyDocumentsAdmin) 
-admin.site.register(Template, TemplateAdmin)
-admin.site.register(TemplateFields, TemplateFieldsAdmin)
-
-admin.site.register(PropertyCommercial, PropertyCommercialAdmin) 
-
-admin.site.register(TemplateValues, TemplateValuesAdmin) 
-
-admin.site.register(PropertyImages, PropertyImagesAdmin)
+@admin.register(City)
+class CityAdmin(admin.ModelAdmin):
+    list_display = ["id", "name", "state", "code"]
+    list_filter = ["state"]          
+    search_fields = ["name", "code"]  
 
 
 
-
+admin.site.register(CompanyStaff, CompanyStaffAdmin)

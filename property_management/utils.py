@@ -1,217 +1,471 @@
-from property_management.models import OwnerDetails ,TenantDetails , LeasePropertyDetails ,LeaseCommercials,LeaseEjariUpload,OwnerPMCInvitation,PMCOwnerInvitation , PMCTenantInvitation ,Template, TemplateFields ,TemplateValues 
-from user_service.models import PropertyManagerCompanyDetails ,PropertyDetails ,UserProfile,StaffDetails  ,PropertyCommercial ,PropertyImages ,PropertyDocuments 
-from utilities.helper_functions import upload_file_to_s3_base64,fetch_s3_file_as_base64, prepare_response, logger,send_ses_email,safe_decimal ,safe_epoch_to_datetime ,replace_placeholders ,fetch_s3_presigned_url ,export_to_csv ,datetime_to_epoch_millis,get_pdfkit_config,generate_property_code 
+from user_service.models import (
+    UserProfile,
+    OwnerDocumentsMapping,
+    StaffDocumentsMapping,
+    CompanyUserDocumentsMapping,
+    TenantDocumentsMapping,
+    PropertyUnitDetails,
+    Company,
+    PropertyImages,
+    CompanyStaff,
+)
+from property_management.models import UserInvitation
+from utilities.helper_functions import send_ses_email, fetch_s3_presigned_url, datetime_to_epoch_millis
 from utilities import status ,  constants
+from django.contrib.auth.models import User
+import uuid
+import re
+from django.template.loader import render_to_string
+from datetime import timedelta
+from django.utils import timezone
 
-def get_property_images(property_id):
+
+def get_location_kv(city):
+    if not city:
+        return None, None, None
+
+    state = city.state
+    country = state.country if state else None
+    city_kv = {
+        "key": city.id,
+        "value": city.name
+    } if city else None
+
+    state_kv = {
+        "key": state.id,
+        "value": state.name
+    } if state else None
+
+    country_kv = {
+        "key": country.id,
+        "value": country.name
+    } if country else None
+
+    return city_kv, state_kv, country_kv
+
+
+
+
+def get_full_property_data(property_unit_id):
+    try:
+        prop = PropertyUnitDetails.objects.filter(id=property_unit_id).first()
+        if not prop:
+            return None, "PropertyUnitDetails not found"
+
+        parent_property = None
+        if prop.property:
+            property_type_options = dict(constants.PROPERTY_TYPE_CHOICES)
+            city_kv, state_kv, country_kv = get_location_kv(prop.property.city)
+            parent_property = {
+                "id": prop.property.id,
+                "property_name": prop.property.property_name,
+                "property_code": prop.property.Property_code,
+                "property_type": {
+                    "key": prop.property.property_type_options,
+                    "value": property_type_options.get(prop.property.property_type_options)
+                },
+                "additional_address": prop.property.additional_address,
+                "locality": prop.property.locality,
+                "postal_code": prop.property.postal_code,
+                "city": city_kv,
+                 "state": state_kv,
+                 "country": country_kv,
+
+            }
+
+        property_unit_data = {
+            "property_unit_id": prop.id,
+            "property_unit_name": prop.property_unit_name,
+            "land_dm_no": prop.land_dm_no,
+            "area_of_property": prop.area_of_property,
+            "no_of_parking": prop.no_of_parking,
+            "bedrooms": prop.bedrooms,
+            "balcony": prop.balcony,
+            "plot_no": prop.plot_no,
+            "area_unit": prop.area_unit,
+            "land_area": prop.land_area,
+            "apartment_no": prop.apartment_no,
+            "apartment_floor_no": prop.apartment_floor_no,
+            "no_of_floors": prop.no_of_floors,
+            "makani_no": prop.makani_no,
+            "dewa_no": prop.dewa_no,
+            "property_code": prop.property_code,
+            "step_status": prop.step_status,
+            "owner_id": prop.owner.id if prop.owner else None,
+            "company_id": prop.company.id if prop.company else None,
+            "is_occupied": prop.is_occupied,
+            "dimension":prop.dimension,
+            "status": "Not Available" if prop.is_occupied else "Available",
+            "address":prop.address,
+            "commercial_details": {
+                "rent": prop.rent,
+                "security_deposit": prop.security_deposit,
+                "booking_amount": prop.booking_amount,
+                "maintenance_charges": prop.maintenance_charges,
+                "cycle": prop.cycle,
+                "notice_period": prop.notice_period,
+                "commission_percent": prop.commission_percent,
+            }
+        }
+
+        images = [
+            {
+                "id": img.id,
+                "file_name": img.file_name,
+                "url": fetch_s3_presigned_url(img.image_path, file_name=img.file_name),
+                "type": img.image_type
+            }
+            for img in prop.property_images.all().order_by("-id")
+        ]
+        document_type_choices = dict(constants.PROPERTY_DOCUMENT_CHOICES)
+        # type_list = [{"key": key, "value": value} for key, value in document_type_choices.items()]
+        documents_list = [
+    {
+        "id": mapping.id,
+        "file_name": mapping.document.file_name,
+        "url": fetch_s3_presigned_url(
+            mapping.document.file_path,
+            file_name=mapping.document.file_name
+        ),
+        "type": mapping.document_choice
+    }
+         for mapping in prop.property_documents.select_related("document").order_by("-id")]
+        
+        documents =  documents_list
+
+        owner_data = None
+        if prop.owner:
+            city = prop.owner.city
+            city_kv, state_kv, country_kv = get_location_kv(city)
+            state = city.state if city else None
+            country = state.country if state else None
+            owner_data = {
+                "id": prop.owner.id,
+                "email": prop.owner.user.email,
+                "first_name": prop.owner.user.first_name,
+                "last_name": prop.owner.user.last_name,
+                "address": prop.owner.address,
+                "additional_address": prop.owner.additional_address,
+                 "city":city_kv,
+                 "state":state_kv,
+                 "country":country_kv,
+                "postal_code": prop.owner.pin_code,
+                "contact_number": prop.owner.contact_number,
+                 "locality":prop.owner.locality,
+                "uae_residence_visa":prop.owner.uae_residence_visa,
+                "emirate_id":prop.owner.emirate_id,
+                "trade_license_number":prop.owner.trade_license_number,
+                "owner_code":prop.owner.user_code,
+            }
+
+        tenant_data = None
+        lease = prop.lease_details.first()
+        if lease and lease.tenant:
+            city = lease.tenant.city
+            city_kv, state_kv, country_kv = get_location_kv(city)
+        
+            tenant_data = {
+                "id": lease.tenant.id,
+                "email": lease.tenant.user.email,
+                "first_name": lease.tenant.user.first_name,
+                "last_name": lease.tenant.user.last_name,
+                "address": lease.tenant.address,
+                "additional_address": lease.tenant.additional_address,
+                "city":city_kv,
+                 "state":state_kv,
+                 "country":country_kv,
+                "postal_code": lease.tenant.pin_code,
+                "contact_number": lease.tenant.contact_number,
+                "locality":lease.tenant.locality,
+                "uae_residence_visa":lease.tenant.uae_residence_visa,
+                "emirate_id":lease.tenant.emirate_id,
+                "tenant_code":lease.tenant.user_code,
+            }
+
+        final_data = {
+            "property_unit": property_unit_data,
+            "parent_property": parent_property,
+            "images": images,
+            "documents": documents,
+            "owner": owner_data,
+            "tenant": tenant_data,
+        }
+
+        return final_data, None
+
+    except Exception as e:
+        return None, str(e)
+
+
+
+def get_full_user_data(user_profile_id):
     """
-    Returns all images for a given property ID
+    Returns a dictionary with complete user data including:
+    - Basic user info
+    - Company info (if COMPANY_USER)
+    - Documents related to the user
     """
-    images_qs = PropertyImages.objects.filter(property_id=property_id)
-    images_list = []
+
+    try:
+        user_profile = UserProfile.objects.select_related('user').filter(id=user_profile_id).first()
+        if not user_profile:
+            return None, "UserProfile not found"
+
+        user = user_profile.user
+        user_data = {
+            "id": user_profile.id,
+            "email": user.email,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "profile_image": user_profile.profile_image,
+            "last_login": user.last_login,
+            "user_role": user_profile.user_role,
+            "contact_number": user_profile.contact_number,
+            "address": user_profile.address,
+            "additional_address": user_profile.additional_address,
+            "city": user_profile.city,
+            "state": user_profile.state,
+            "country": user_profile.country,
+            "time_zone": user_profile.time_zone,
+            "pin_code": user_profile.pin_code,
+        }
+
+
+        company_data = None
+        if user_profile.user_role == constants.COMPANY_USER:
+            company = Company.objects.filter(company_user=user_profile).first()
+            if company:
+                company_data = {
+                    "id": company.id,
+                    "company_name": company.company_name,
+                    "company_code": company.company_code,
+                    "company_address": company.company_address
+                }
+
+        documents = []
+
+        if user_profile.user_role == constants.OWNER:
+            docs_qs = OwnerDocumentsMapping.objects.filter(owner=user_profile).select_related('document')
+        elif user_profile.user_role == constants.TENANT:
+            docs_qs = TenantDocumentsMapping.objects.filter(tenant=user_profile).select_related('document')
+        elif user_profile.user_role == constants.COMPANY_USER:
+            docs_qs = CompanyUserDocumentsMapping.objects.filter(company_user=user_profile).select_related('document')
+        elif user_profile.user_role == constants.STAFF:
+            docs_qs = StaffDocumentsMapping.objects.filter(staff=user_profile).select_related('document')
+        else:
+            docs_qs = []
+
+        for mapping in docs_qs:
+            doc = mapping.document
+            documents.append({
+                "id": mapping.id,
+                "file_name": doc.file_name,
+                "url": fetch_s3_presigned_url(doc.file_path, file_name=doc.file_name)
+            })
+
+        final_data = {
+            "user": user_data,
+            "company": company_data,
+            "documents": documents
+        }
+
+        return final_data, None
+
+    except Exception as e:
+        return None, str(e)
+
+
+
+def create_and_send_invitation(invited_by_profile, email, invitation_type, template_name, property_unit=None):
+    """
+    invited_by_profile → UserProfile instance
+    email → email to send invitation
+    invitation_type → string (OWNER_TO_PMC / PMC_TO_OWNER / PMC_TO_TENANT)
+    template_name → HTML template file
+    """
+    if UserInvitation.objects.filter(
+        email=email,
+        invitation_type=invitation_type,
+        invited_by=invited_by_profile,
+        property_unit=property_unit
+    ).exists():
+        return None, "Invitation already sent to this email"
+    token = str(uuid.uuid4())
+    invitation = UserInvitation.objects.create(
+        email=email,
+        invited_by=invited_by_profile,
+        created_by=invited_by_profile.user,
+        invitation_type=invitation_type,
+        token=token,
+        status=constants.PENDING,
+        property_unit=property_unit
+    )
+    user_exists = User.objects.filter(email=email).exists()
+    if user_exists:
+        base_url = "https://units.doqfy.in/auth/login"
+    else:
+        base_url = "https://units.doqfy.in/auth/new-user"
+    invite_link = base_url 
+    subject = "Invitation to Join Property Management Portal"
+    property_context = {}
+    if property_unit:
+        property_context = {
+            "property_name": getattr(property_unit.property, "property_name", ""),
+            "property_unit_name": getattr(property_unit, "property_unit_name", ""),
+            "apartment_no": getattr(property_unit, "apartment_no", ""),
+            "address": getattr(property_unit.property, "address", "") if property_unit.property else "",
+        }
+    body_text = (
+        f"You are invited by {invited_by_profile.user.email}\n"
+        f"Property: {property_context.get('property_name', '')}\n"
+        f"Unit: {property_context.get('property_unit_name', '')}\n"
+        f"Apartment No: {property_context.get('apartment_no', '')}\n"
+        f"Address: {property_context.get('address', '')}\n\n"
+        f"Use this link: {invite_link}"
+    )
+    body_html = render_to_string(template_name, {
+        "inviter_email": invited_by_profile.user.email,
+        "invite_link": invite_link,
+        "property": property_context,
+    })
+    try:
+        send_ses_email(email, subject, body_text, body_html)
+    except Exception:
+        return None, "Invitation created but email sending failed"
+    return invitation, None
+
+
+
+
+
+def serialize_lease(lease):
+    return {
+        "id": lease.id,
+        "property": {
+            "key": lease.lease_property.id,
+            "value": lease.lease_property.property.property_name if hasattr(lease.lease_property, "property") else ""
+        },
+        "tenant": {
+            "key": lease.tenant.id,
+            "value": lease.tenant.full_name
+        },
+        "owner_id": lease.owner.id if lease.owner else None,
+        "owner_name": lease.owner.full_name if lease.owner else None,
+        "created_by_id": lease.created_by.id if lease.created_by else None,
+        "lease_start_date": datetime_to_epoch_millis(lease.lease_start_date),
+        "lease_end_date": datetime_to_epoch_millis(lease.lease_end_date),
+        "lease_grace_start_date": datetime_to_epoch_millis(lease.lease_grace_start_date),
+        "lease_grace_end_date": datetime_to_epoch_millis(lease.lease_grace_end_date),
+        "lease_remarks": lease.lease_remarks,
+        "step_status": lease.step_status,
+        "commercial_details": {
+            "annual_amount": lease.annual_amount,
+            "actual_annual_amount": lease.actual_annual_amount,
+            "rent": lease.rent,
+            "booking_amount": lease.booking_amount,
+            "security_deposit": lease.security_deposit,
+            "maintenance_charges": lease.maintenance_charges,
+            "commission_percentage": lease.commission_percentage,
+            "notice_period": lease.notice_period,
+            "discount": lease.discount,
+        }
+    }
+
+
+def get_property_images(property_id, single=False):
+    """
+    get single or list of property images 
+    """
+    try:
+        property_obj = PropertyUnitDetails.objects.get(id=property_id)
+    except PropertyUnitDetails.DoesNotExist:
+        return {
+            "error": True,
+            "message": "Invalid property id"
+        }
+
+    images_qs = PropertyImages.objects.filter(
+        property=property_obj
+    ).order_by("-id")
+
+    if not images_qs.exists():
+        return {
+            "error": False,
+            "property": property_obj,
+            "images": []  
+        }
+
+    final_images = []
+
+ 
+    if single:
+        images_qs = images_qs[:1]  
 
     for img in images_qs:
-        presigned_url = fetch_s3_presigned_url(
-            img.image_path,
-            file_name=img.file_name
-        )
-        images_list.append({
-            "image_url": presigned_url,
-            "image_type": img.image_type,
-            "file_name": img.file_name
-        })
-    return images_list
-
-
-
-
-
-
-def get_owner_full_details(owner_id):
-    """
-    Get full details of an owner by owner_id.
-    
-    Returns dict with all user and owner fields or None if not found.
-    """
-    owner = OwnerDetails.objects.filter(id=owner_id).select_related('user').first()
-    if not owner:
-        return None
-    user = owner.user
-    owner_data = {
-        "owner_id": owner.id,
-        "owner_name": owner.full_name,
-        "email": user.email if user else None,
-        "user_type": user.user_type if user else None,
-        "first_name": user.first_name if user else None,
-        "last_name": user.last_name if user else None,
-        "emirates_id": owner.emirate_id,
-        "uae_residence_visa": owner.uae_residence_visa,
-        "trade_license_number": owner.trade_license_number,
-        "owner_number": owner.owner_number,
-        "mobile_number": owner.mobile_number,
-        "manage_manually": owner.manage_manually,
-        "manage_through_pmc": owner.manage_through_pmc,
-        "manage_through": owner.manage_through,
-        "profile_image": user.profile_image if user else None,
-        "profile_image_type": user.profile_image_type if user else None,
-        "country": user.country if user else None,
-        "time_zone": user.time_zone if user else None,
-        "utc": user.utc if user else None,
-        "last_login": user.last_login if user else None,
-        "address": owner.address,
-        "state": owner.state,
-        "postal_code": owner.postal_code,
-        "emirates_id_file": owner.emirates_id_file,
-        "residence_visa_file": owner.residence_visa_file,
-        "dld_certificate_file": owner.dld_certificate_file,
-        "dewa_registration_file": owner.dewa_registration_file,
-        "owner_documents": owner.owner_documents or {},
-    }
-
-    return owner_data
-
-
-
-
-
-def get_property_documents(property_id):
-    """
-    Fetch all documents for a given property_id.
-    Returns dict with documents list and step_status.
-    """
-    try:
-        property_obj = PropertyDetails.objects.get(id=property_id)
-    except PropertyDetails.DoesNotExist:
-        return None
-
-    docs_qs = PropertyDocuments.objects.filter(property_id=property_id).order_by("-id")
-    final_docs = []
-
-    for doc in docs_qs:
-        url = doc.file_path
-        file_name = doc.file_name
-        doc_type = doc.document_type
-        base64_data = fetch_s3_presigned_url(url, file_name=file_name)
-
-        final_docs.append({
-            "file_name": file_name,
-            "data": base64_data,
-            "type": doc_type,
-            "id": doc.id,
+        final_images.append({
+            "id": img.id,
+            "file_name": img.file_name,
+            "type": img.image_type,
+            "data": fetch_s3_presigned_url(
+                img.image_path,
+                file_name=img.file_name
+            )
         })
 
-    return  final_docs
-
-
-
-
-def get_tenant_data(tenant_id):
-    """
-    Fetch full tenant data by tenant_id.
-    Returns a dictionary with all tenant info and documents.
-    """
-    try:
-        tenant = TenantDetails.objects.select_related("user").get(id=tenant_id)
-    except TenantDetails.DoesNotExist:
-        return None
-
-    tenant_user = tenant.user
-    documents = {}
-    doc_fields = [
-        "emirates_id_file",
-        "passport_self_file",
-        "passport_family_file",
-        "visa_self_file",
-        "visa_family_file",
-        "employment_proof_file",
-        "bank_statement_file"
-    ]
-    for field in doc_fields:
-        file_path = getattr(tenant, field, None)
-        if file_path:
-            documents[field] = fetch_s3_presigned_url(file_path, file_name=file_path.split("/")[-1])
-
-   
-    tenant_data = {
-        "tenant_id": tenant.id,
-        "full_name": tenant.full_name,
-        "email": tenant_user.email if tenant_user else None,
-        "mobile_number": tenant.mobile_number,
-        "tenant_number": tenant.tenant_number,
-        "nationality": tenant.nationality,
-        "address": tenant.address,
-        "city": tenant.city,
-        "state": tenant.state,
-        "postal_code": tenant.postal_code,
-        "emirates_id": tenant.emirate_id,
-        "uae_residence_visa": tenant.uae_residence_visa,
-        "trade_license_number": tenant.trade_license_number,
-        "passport_self": tenant.passport_self,
-        "passport_family_member": tenant.passport_family_member,
-        "passport_expiry": tenant.passport_expiry,
-        "visa_self": tenant.visa_self,
-        "visa_family_member": tenant.visa_family_member,
-        "visa_expiry": tenant.visa_expiry,
-        "employment_proof": tenant.employment_proof,
-        "manage_through": tenant.manage_through,
-        "tenant_documents": documents,
-        "profile_image": tenant_user.profile_image if tenant_user else None,
+    return {
+        "error": False,
+        "property": property_obj,
+        "images": final_images 
     }
-    return tenant_data
 
 
-
-
-def get_lease_ejari_documents(lease_id):
+def get_lease_status(lease_obj):
     """
-    Fetch all Ejari documents for a given lease_id.
-    Returns documents list or None if lease doesn't exist.
+    Args:
+        lease_obj: LeasePropertyDetails instance
+    Returns:
+        str: 'ongoing', 'about_to_expire', 'expired' or None if lease_obj is None
     """
-
-    if not lease_id:
-        return None
-
-    lease_obj = LeasePropertyDetails.objects.filter(id=lease_id).first()
     if not lease_obj:
         return None
+    
+    now = timezone.now()
+    lease_end = lease_obj.lease_end_date
 
-    docs_qs = LeaseEjariUpload.objects.filter(lease_id=lease_id).order_by("-id")
-    final_docs = []
-
-    for doc in docs_qs:
-        url = doc.file_path
-        file_name = doc.file_name
-        doc_type = doc.document_type
-        base64_data = fetch_s3_presigned_url(url, file_name=file_name)
-
-        final_docs.append({
-            "file_name": file_name,
-            "data": base64_data,
-            "type": doc_type,
-            "id": doc.id,
-        })
-
-    return final_docs
-
-
-def get_owner_documents(owner_id):
-    owner = OwnerDetails.objects.filter(id=owner_id).first()
-    if not owner:
-        return None
-    return owner.owner_documents or {}
-
-
-def get_tenant_documents(tenant_id):
-    tenant = TenantDetails.objects.filter(id=tenant_id).first()
-    if not tenant:
-        return None
-    return tenant.tenant_documents or {}
+    if lease_end < now:
+        return "Expired"
+    elif now + timedelta(days=30) >= lease_end: 
+        return "About to Expire"
+    else:
+        return "Ongoing"
 
 
 
 
-def get_pmc_documents(pmc_id):
-    pmc = PropertyManagerCompanyDetails.objects.filter(id=pmc_id).first()
-    if not pmc:
-        return None
-    return pmc.pmc_documents or {}
+
+def get_staff_details(company_staff: CompanyStaff, include_password=False):
+ 
+    staff_profile = company_staff.staff
+    django_user = staff_profile.user
+    total_properties = company_staff.assigned_properties.count()
+    occupied_properties = company_staff.assigned_properties.filter(is_occupied=True).count()
+    tenancy_ratio = f"{occupied_properties}/{total_properties}" if total_properties else "0/0"
+    data = {
+        "staff_id": company_staff.id,
+        "staff_name": django_user.first_name,
+        "email": django_user.email,
+        "contact": staff_profile.contact_number,
+        "emirate_id": staff_profile.emirate_id,
+        "city": staff_profile.city.name if staff_profile.city else None,
+        "locality": staff_profile.locality,
+        "address": staff_profile.address,
+        "additional_address": staff_profile.additional_address,
+        "postal_code": staff_profile.pin_code,
+        "property_count": total_properties,
+        "tenancy_ratio": tenancy_ratio,
+        "roles": [role.name for role in company_staff.roles.all()],
+    }
+
+    if include_password:
+        data["password_hash"] = django_user.password
+    return data

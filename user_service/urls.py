@@ -3,10 +3,10 @@ from user_service import views as user_serviceviews
 from . import views
 
 urlpatterns = [
-    path("signup/", user_serviceviews.user_sign_up),
-    path("otp/send/", user_serviceviews.send_otp),
-    path('staff/signup/', views.staff_signup, name='staff_signup'), 
-    path('profile/view/', views.user_profile_view, name='user_profile_view'), 
-    path('user/management', views.user_management_view, name='user_management_view'), 
-    path('toggle/user/active', views.toggle_user_active, name='toggle_user_active'),
+    path("signup", user_serviceviews.user_sign_up),
+    path("profile", views.userprofile_view, name='userprofile_view'), 
+    path("management", views.user_management, name='user_management'),
+    path('add_role', views.create_role, name='create_role'), 
+    # path('staff_view', views.staff_view, name='staff_view'),
+    path('role_table', views.role_table_view, name='role_table_view'),
 ]

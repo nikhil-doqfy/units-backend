@@ -2,8 +2,9 @@ from functools import wraps
 from user_service.models import UserProfile
 from utilities import constants, status
 from utilities.helper_functions import prepare_response
-from utilities.jwt_token import get_jwt_token, decode_jwt_token  
+from utilities.jwt_token import get_jwt_token, decode_jwt_token
 from jwt import ExpiredSignatureError
+
 
 def is_request_authenticated(view_func):
     @wraps(view_func)
@@ -16,7 +17,7 @@ def is_request_authenticated(view_func):
                     status=status.HTTP_401_UNAUTHORIZED
                 )
             token = get_jwt_token(auth_header)
-            if isinstance(token, dict) and "message" in token:
+            if isinstance(token, dict) and token.get("message"):
                 return prepare_response(
                     message=token["message"],
                     status=status.HTTP_401_UNAUTHORIZED
@@ -28,9 +29,7 @@ def is_request_authenticated(view_func):
                     message=constants.TOKEN_EXPIRED,
                     status=status.HTTP_401_UNAUTHORIZED
                 )
-            
-
-            if isinstance(decoded_token, dict) and "error" in decoded_token:
+            if isinstance(decoded_token, dict) and decoded_token.get("error"):
                 return prepare_response(
                     message=decoded_token["error"],
                     status=status.HTTP_401_UNAUTHORIZED
@@ -41,18 +40,20 @@ def is_request_authenticated(view_func):
                     message=constants.INVALID_TOKEN_PAYLOAD,
                     status=status.HTTP_401_UNAUTHORIZED
                 )
-            user = UserProfile.objects.filter(email=user_email).first()
-            if not user:
+
+            user_profile = UserProfile.objects.filter(user__email=user_email).first()
+            if not user_profile:
                 return prepare_response(
                     message=constants.AUTH_USER_NOT_FOUND,
                     status=status.HTTP_404_NOT_FOUND
                 )
-            if user.token != token:
+
+            if user_profile.token != token:
                 return prepare_response(
                     message=constants.TOKEN_INVALID_OR_EXPIRED,
                     status=status.HTTP_401_UNAUTHORIZED
                 )
-            request.user = user
+            request.user = user_profile  
         except Exception as e:
             print("Auth Error:", e)
             return prepare_response(
@@ -60,7 +61,5 @@ def is_request_authenticated(view_func):
                 status=status.HTTP_401_UNAUTHORIZED
             )
         return view_func(request, *args, **kwargs)
+
     return wrapper
-
-
-
