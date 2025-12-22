@@ -460,3 +460,11 @@ def generate_unique_code(prefix: str) -> str:
     random_part = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
     return f"{prefix}-{random_part}"
 
+def get_user_code_prefix(user_role):
+    if user_role == constants.OWNER:
+        return "OWN"
+    elif user_role == constants.TENANT:
+        return "TEN"
+    elif user_role == constants.COMPANY_USER:
+        return "COM"
+    return "USR"

@@ -1,10 +1,8 @@
 import json
 from utilities import status, constants
-from utilities.helper_functions import prepare_response ,upload_file_to_s3_base64, \
-    datetime_to_epoch_millis,safe_epoch_to_datetime,get_extension_from_base64
-from user_service.models import UserProfile,Documents,OwnerDocumentsMapping, \
-    CompanyUserDocumentsMapping,TenantDocumentsMapping , Company,Country, \
-    State, City , Role, PropertyUnitDetails
+from utilities.helper_functions import prepare_response ,upload_file_to_s3_base64,datetime_to_epoch_millis,safe_epoch_to_datetime,get_extension_from_base64,get_user_code_prefix,generate_unique_code
+from user_service.models import UserProfile,Documents,OwnerDocumentsMapping,  CompanyUserDocumentsMapping,TenantDocumentsMapping , Company,Country, State, City , Role, PropertyUnitDetails
+from user_service.models import CompanyStaff
 from django.db import transaction
 from utilities.decorator import is_request_authenticated
 from django.core.paginator import Paginator, EmptyPage
@@ -43,10 +41,13 @@ def user_sign_up(request):
                 first_name=first_name,
                 last_name=last_name
             )
+            prefix = get_user_code_prefix(user_role)
+            user_code = generate_unique_code(prefix)            
             profile = UserProfile.objects.create(
                 user=user,
                 user_role=user_role,
                 created_by=user,
+                user_code=user_code, 
                 time_zone=data.get("time_zone"),
                 utc=data.get("utc"),
                 locality=data.get("locality"),
@@ -59,7 +60,6 @@ def user_sign_up(request):
                 trade_license_number=data.get("trade_license_number"),
                 manage_through=data.get("manage_through") or constants.choices[0][0]
             )
-
             folder_name = f"{user_role.lower()}_documents/{profile.id}"
             def upload_document(base64_data, file_prefix):
                 if not base64_data:
@@ -101,9 +101,7 @@ def user_sign_up(request):
                     company_name=data.get("company_name"),
                     company_address=data.get("company_address"),
                     created_by=user
-                )
-
-    
+                )    
         return prepare_response(
             message="Signup successful",
             content={
@@ -205,7 +203,6 @@ def userprofile_view(request):
                 "utc",
                 "manage_through",
             ]
-
             for field in updatable_fields:
                 if field in body:
                
@@ -228,7 +225,6 @@ def userprofile_view(request):
 
         except Exception as e:
             return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
     else:
         return prepare_response(
             message=constants.INVALID_REQUEST,
@@ -243,7 +239,6 @@ def user_management(request):
     try:
         if request.method == "POST":
             body = json.loads(request.body)
-
             first_name = body.get("first_name")
             last_name = body.get("last_name")
             email = body.get("email")
@@ -252,7 +247,6 @@ def user_management(request):
             role = body.get("role")
             city_id = body.get("city_id")
        
-
             if not all([first_name, last_name, email, password, role]):
                 return prepare_response(
                     message="Required fields missing",
@@ -313,11 +307,7 @@ def user_management(request):
             start_epoch = request.GET.get("start_date")
             end_epoch = request.GET.get("end_date")
             user_id = request.GET.get("user_id")
-            users_qs = UserProfile.objects.select_related("user").filter(
-                     is_active=is_active,
-                  created_by=user.user 
-                    )
-
+            users_qs = UserProfile.objects.select_related("user").filter( is_active=is_active,created_by=user.user)
             if role:
                 users_qs = users_qs.filter(user_role=role)
             if user_id:
@@ -335,9 +325,7 @@ def user_management(request):
                 )
 
             users_qs = users_qs.order_by("-created")
-           
             paginator = Paginator(users_qs, limit)
-
             try:
                 page_obj = paginator.page(page)
             except EmptyPage:
@@ -482,7 +470,6 @@ def staff_view(request):
     if request.method == "POST":
         try:
             body = json.loads(request.body)
-
             staff_name = body.get("staff_name")
             email = body.get("email")
             contact = body.get("contact")
@@ -496,8 +483,6 @@ def staff_view(request):
             address = body.get("address")
             additional_address = body.get("additional_address")
             pin_code = body.get("postal_code")
-
-            
 
             if not all([staff_name, email, contact, password, confirm_password]):
                 return prepare_response(
@@ -571,7 +556,6 @@ def staff_view(request):
             )
 
         except Exception as e:
-            print("STAFF CREATE ERROR:", e)
             return prepare_response(
                 message=constants.SOMETHING_WENT_WRONG,
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -670,9 +654,6 @@ def staff_view(request):
                     status=status.HTTP_404_NOT_FOUND)
             data = get_staff_details(company_staff, include_password=True)
             return prepare_response(content=data,message="Staff details fetched successfully",status=status.HTTP_200_OK)
-        
-           
-
         if search:
             staff_qs = staff_qs.filter(
                 Q(staff__user__first_name__icontains=search) |
@@ -692,7 +673,7 @@ def staff_view(request):
         for staff in staff_page:
             total_properties = staff.assigned_properties.count()
             occupied = staff.assigned_properties.filter(is_occupied=True).count()
-            tenancy_ratio = f"{occupied}/{total_properties}" if total_properties else "0/0"
+            tenancy_ratio = f"{occupied}:{total_properties}" if total_properties else "0:0"
             data.append({
                 "staff_id": staff.id,
                 "staff_name": staff.staff.user.get_full_name(),

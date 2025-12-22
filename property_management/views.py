@@ -3,8 +3,7 @@ import datetime
 import pdfkit
 import json
 import datetime
-from user_service.models import UserProfile, Documents, PropertyUnitDetails,\
-    Property, Company, PropertyImages ,PropertyDocumentsMapping, Country, State, City, Role
+from user_service.models import UserProfile, Documents, PropertyUnitDetails,Property, Company, PropertyImages ,PropertyDocumentsMapping, Country, State, City, Role
 from property_management.models import LeasePropertyDetails,TemplateFields, TemplateValues,Template
 from utilities.decorator import is_request_authenticated
 from utilities.helper_functions import (
@@ -17,12 +16,11 @@ from utilities.helper_functions import (
     datetime_to_epoch_millis,
     get_pdfkit_config,
     generate_property_code,
+
 )
 from utilities import status, constants
 from django.utils import timezone
 from django.core.paginator import Paginator
-from django.db.models import Q
-from django.db.models import Count
 from django.db.models import Prefetch
 from datetime import timedelta, datetime
 from django.core.paginator import Paginator, EmptyPage
@@ -62,7 +60,7 @@ def options(request):
             message=constants.QUERY_PARAMETER,
             status=status.HTTP_400_BAD_REQUEST
         )
-    option_types = [t.strip() for t in option_types.split(",")]
+    option_types = [t.strip() for t in option_types.split(",")]   
     content = {}
     user = request.user
     for option_type in option_types:
@@ -128,7 +126,7 @@ def options(request):
         
         elif option_type == "PROPERTY_DOCUMENT_CHOICE":
              content["Property_Document"] = [
-                 {"key": constants.FLOOR_PLAN, "value": "Floor Plan"},
+        {"key": constants.FLOOR_PLAN, "value": "Floor Plan"},
         {"key": constants.EJARI_CERTIFICATE, "value": "Ejari Certificate"},
         {"key": constants.PMC_DOCUMENT, "value": "PMC Document"},
         {"key": constants.CHEQUE_DOCUMENT, "value": "Cheque Document"},
@@ -153,7 +151,11 @@ def options(request):
                     "value": lease.lease_number
                 }
                 for lease in leases
-            ]          
+            ]    
+        elif option_type == "OWNER_COMPANY_USER":
+            companies = Company.objects.filter(is_active=True)
+            content["company_user"] = [{"key": c.id,"value": c.company_name or f"Company #{c.id}"}for c in companies]
+
         else:
             content[option_type] = []
             
@@ -184,7 +186,7 @@ def property_table_view(request):
     )
         if not lease_property_id:
             return prepare_response(
-            message="No property assigned to this tenant",
+            message=constants.NO_PROPERTY_ASSIGNED_TO_TENANAT,
             status=status.HTTP_404_NOT_FOUND
         )
         full_data, error = get_full_property_data(lease_property_id)
@@ -192,14 +194,14 @@ def property_table_view(request):
             return prepare_response(message=error, status=status.HTTP_404_NOT_FOUND)
         return prepare_response(
         content=full_data,
-        message="Property details fetched successfully",
+        message=constants.PROPERTIES_FETCHED,
         status=status.HTTP_200_OK
     )
     if property_id:
         full_data, error = get_full_property_data(property_id)
         if error:
             return prepare_response(message=error, status=status.HTTP_404_NOT_FOUND)
-        return prepare_response(content=full_data, message="Property details fetched successfully", status=status.HTTP_200_OK)
+        return prepare_response(content=full_data, message=constants.PROPERTIES_FETCHED, status=status.HTTP_200_OK)
     if user.user_role == constants.OWNER:
         properties_qs = PropertyUnitDetails.objects.filter(owner=user)
 
@@ -292,7 +294,7 @@ def property_table_view(request):
    
     return prepare_response(
         content=data,
-        message="Properties fetched successfully",
+        message=constants.PROPERTIES_FETCHED,
         pagination=pagination_meta,
         status=status.HTTP_200_OK
     )
@@ -360,7 +362,6 @@ def save_property(request):
                 "cycle": prop.cycle,
                 "notice_period": prop.notice_period,
                 "commission_percent": prop.commission_percent,
-
                 "owner_id": prop.owner.id if prop.owner else None,
                 "property": property_data
             }
@@ -377,7 +378,8 @@ def save_property(request):
             current_user = request.user
             data = json.loads(request.body)
 
-            property_id = data.get("property_id")
+            property_id = data.get("property_unit_id")
+            new_property_id = data.get("property_id")
             if not property_id:
                 return prepare_response(
                     message=constants.PROPERTY_ID_REQUIRED,
@@ -390,7 +392,12 @@ def save_property(request):
                     message=constants.PROPERTY_NOT_FOUND,
                     status=status.HTTP_404_NOT_FOUND
                 )
-
+            if new_property_id:
+                new_property = Property.objects.filter(id=new_property_id).first()
+                if not new_property:
+                    return prepare_response(message=constants.INVALID_PROPERTY_ID, status=status.HTTP_404_NOT_FOUND)
+                prop.property = new_property
+            
             parent_property = prop.property
             if parent_property:
                 parent_fields = [
@@ -493,7 +500,7 @@ def save_property(request):
                 parent_property = Property.objects.filter(id=parent_property_id).first()
                 if not parent_property:
                     return prepare_response(
-                        message="Invalid parent property id",
+                        message=constants.INVALID_PROPERTY_ID,
                         status=status.HTTP_404_NOT_FOUND
                     )
             else:
@@ -1478,8 +1485,8 @@ def owner_pmc_view(request):
                                   prop.property.property_name if prop.property else None
                                    ),"tenant_name": tenant_name,
                                    "tenancy_status": tenancy_status,
-                                      "dimension": prop.dimension,
-                                      "lease_id": lease_id,
+                                    "dimension": prop.dimension,
+                                    "lease_id": lease_id,
                                           })
                 pmc_user = company.company_user
                 pmc_profile = {
@@ -1507,12 +1514,6 @@ def owner_pmc_view(request):
                     message="PMC profile & property details fetched successfully",
                     pagination=pagination_meta,
                     status=status.HTTP_200_OK)
-                 
-            
-                    
-
-
-                
 
             else:
                 return prepare_response(message="Unauthorized access or missing parameters", status=status.HTTP_403_FORBIDDEN)
@@ -1528,9 +1529,6 @@ def owner_pmc_view(request):
             message=f"Invalid HTTP method: {request.method}",
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
-
-
-
 
 
 @is_request_authenticated
@@ -1568,9 +1566,6 @@ def send_invitation(request):
         status=status.HTTP_404_NOT_FOUND
     )
         property_unit = property_unit_qs.first()
-
-
-        
         template_map = {
             "OWNER_TO_PMC": "email_templates/invite_owner_to_pmc.html",
             "PMC_TO_OWNER": "email_templates/invite_pmc_to_owner.html",
@@ -1578,8 +1573,6 @@ def send_invitation(request):
         }
 
         template_name = template_map[invite_type]
-
-       
         invitation, error = create_and_send_invitation(
             invited_by_profile=user_profile,
             email=email,
@@ -1587,7 +1580,6 @@ def send_invitation(request):
             template_name=template_name,
             property_unit=property_unit
         )
-
         if error:
             return prepare_response(message=error, status=status.HTTP_400_BAD_REQUEST)
 
@@ -1601,7 +1593,6 @@ def send_invitation(request):
             message="Invitation sent successfully",
             status=status.HTTP_201_CREATED
         )
-
     except Exception as e:
         return prepare_response(
             message=f"Error: {str(e)}",
@@ -2235,7 +2226,6 @@ def dashboard_overview(request):
             message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
-
     try:
         user = request.user
         now = timezone.now()
@@ -2330,69 +2320,69 @@ def dashboard_overview(request):
 
 
 
-@is_request_authenticated
-def most_revenue_generating_properties(request):
-    if request.method != "GET":
-        return prepare_response(
-            message=constants.INVALID_REQUEST_METHOD,
-            status=status.HTTP_405_METHOD_NOT_ALLOWED
-        )
+# @is_request_authenticated
+# def most_revenue_generating_properties(request):
+#     if request.method != "GET":
+#         return prepare_response(
+#             message=constants.INVALID_REQUEST_METHOD,
+#             status=status.HTTP_405_METHOD_NOT_ALLOWED
+#         )
 
-    try:
-        user = request.user
-        if user.user_role == constants.OWNER:
-            units = PropertyUnitDetails.objects.filter(owner=user)
+#     try:
+#         user = request.user
+#         if user.user_role == constants.OWNER:
+#             units = PropertyUnitDetails.objects.filter(owner=user)
 
-        elif user.user_role == constants.COMPANY_USER:
-            units = PropertyUnitDetails.objects.filter(company=user.company)
+#         elif user.user_role == constants.COMPANY_USER:
+#             units = PropertyUnitDetails.objects.filter(company=user.company)
 
-        else:
-            return prepare_response(
-                message=constants.UNAUTHORIZED,
-                status=status.HTTP_403_FORBIDDEN
-            )
+#         else:
+#             return prepare_response(
+#                 message=constants.UNAUTHORIZED,
+#                 status=status.HTTP_403_FORBIDDEN
+#             )
 
-        property_stats = (
-            units
-            .values("property_id", "property__property_name")
-            .annotate(
-                total_units=Count("id"),
-                occupied_units=Count(
-                    "id",
-                    filter=Q(is_occupied=True)
-                )
-            )
-        )
-        result = []
-        index = 1
-        for item in property_stats:
-            total = item["total_units"]
-            occupied = item["occupied_units"]
-            occupancy_rate = round((occupied / total) * 100, 2) if total > 0 else 0
-            result.append({
-                "rank": index,
-                "property_id": item["property_id"],
-                "name": item["property__property_name"],
-                "occupancy_rate": occupancy_rate,
-                "figures": f"{occupancy_rate}%",
-                "total_units": total,
-                "occupied_units": occupied
-            })
-            index += 1
+#         property_stats = (
+#             units
+#             .values("property_id", "property__property_name")
+#             .annotate(
+#                 total_units=Count("id"),
+#                 occupied_units=Count(
+#                     "id",
+#                     filter=Q(is_occupied=True)
+#                 )
+#             )
+#         )
+#         result = []
+#         index = 1
+#         for item in property_stats:
+#             total = item["total_units"]
+#             occupied = item["occupied_units"]
+#             occupancy_rate = round((occupied / total) * 100, 2) if total > 0 else 0
+#             result.append({
+#                 "rank": index,
+#                 "property_id": item["property_id"],
+#                 "name": item["property__property_name"],
+#                 "occupancy_rate": occupancy_rate,
+#                 "figures": f"{occupancy_rate}%",
+#                 "total_units": total,
+#                 "occupied_units": occupied
+#             })
+#             index += 1
 
-        result = sorted(result, key=lambda x: x["occupancy_rate"], reverse=True)
+#         result = sorted(result, key=lambda x: x["occupancy_rate"], reverse=True)
 
-        return prepare_response(
-            content=result,
-            message="Most revenue generating properties fetched successfully",
-            status=status.HTTP_200_OK
-        )
+#         return prepare_response(
+#             content=result,
+#             message="Most revenue generating properties fetched successfully",
+#             status=status.HTTP_200_OK
+#         )
 
-    except Exception as e:
-        return prepare_response(
-            message={"error": str(e)},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+#     except Exception as e:
+#         return prepare_response(
+#             message={"error": str(e)},
+#             status=status.HTTP_500_INTERNAL_SERVER_ERROR
+#         )
 
 @is_request_authenticated
 def generate_contract(request):
@@ -2495,8 +2485,6 @@ def generate_contract(request):
             message=str(e),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
-
 
 
 def get_template_fields(request):

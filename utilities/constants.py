@@ -201,10 +201,10 @@ PMC_NOT_FOUND = "PMC not found for this user."
 CREATED_BY_USER_NOT_FOUND = "Created By user not found."
 
 
-INVALID_TEMPLATE_ID = "Invalid template_id."
+INVALID_TEMPLATE_ID = "Invalid template id."
 TEMPLATE_ID_REQUIRED = "template_id is required."
 TEMPLATE_FIELDS_FETCHED = "Template fields fetched successfully."
-TEMPLATE_LEASE_VALUES_REQUIRED = "template_id, lease_id, and values are required."
+TEMPLATE_LEASE_VALUES_REQUIRED = "template id, lease_id, and values are required."
 THIS_OWNER_HAS_NO_PROPERTY="This property has no owner"
 
 DOCUMENTS_MUST_BE_LIST = "Documents must be a list."
@@ -285,7 +285,7 @@ DATA_FETCHED_SUCCESSFULLY="Data Fetched successfully"
 PROPERTY_FETCH_SUCCESS = "Property fetched successfully"
 UNAUTHORIZED_ROLE = "Unauthorized role"
 INVALID_PARENT_ID = "Invalid parent ID"
-
+NO_PROPERTY_ASSIGNED_TO_TENANAT="No property assigned to this tenant"
 
 TENANT_DETAIL_FETCHED="teanant data fetched"
 COMPANY_NOT_FOUND="company not found"

@@ -140,7 +140,7 @@ class PropertyUnitDetails(Base):
     company = models.ForeignKey(
         Company, on_delete=models.CASCADE, related_name="properties",null=True, blank=True
     )
-    assigned_staff = models.ManyToManyField(CompanyStaff)
+    assigned_staff = models.ManyToManyField(CompanyStaff,related_name="assigned_properties")
     is_occupied = models.BooleanField(default=False)
     property_code = models.CharField(
         max_length=255, null=True, blank=True
@@ -358,10 +358,6 @@ class StaffDocumentsMapping(Base):
 
     def __str__(self):
         return f"{self.staff} -> {self.document}"
-
-
-
-
 
 
 class Country(models.Model):
