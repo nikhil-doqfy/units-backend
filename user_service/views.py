@@ -9,7 +9,7 @@ from django.core.paginator import Paginator, EmptyPage
 from django.db.models import Q
 from django.contrib.auth.models import User
 from django.db import transaction
-from property_management.utils import get_staff_details
+from property_management.utils import get_staff_details,get_property_images
 
 
 def user_sign_up(request):
@@ -647,13 +647,60 @@ def staff_view(request):
         )
 
         if staff_id:
-            company_staff = CompanyStaff.objects.filter(id=staff_id, company=company).select_related("staff__user", "staff__city").prefetch_related("roles", "assigned_properties").first()
+            company_staff = CompanyStaff.objects.filter(
+                              id=staff_id,
+                             company=company
+                              ).select_related(
+                             "staff__user",
+                             "staff__city"
+                             ).prefetch_related(
+                              "roles",
+                              "assigned_properties",
+                            "assigned_properties__property",
+                             "assigned_properties__lease_details",
+                              "assigned_properties__owner"
+                            ).first()
+
+
             if not company_staff:
                 return prepare_response(
                     message="Staff not found",
                     status=status.HTTP_404_NOT_FOUND)
-            data = get_staff_details(company_staff, include_password=True)
-            return prepare_response(content=data,message="Staff details fetched successfully",status=status.HTTP_200_OK)
+            staff_data = get_staff_details(company_staff, include_password=True)
+            properties_table = []
+            for unit in company_staff.assigned_properties.all():
+                lease = unit.lease_details.first()
+                property_image = None
+                image_response = get_property_images(unit.id, single=True)
+                if not image_response.get("error") and image_response.get("images"):
+                    property_image = image_response["images"][0]
+
+                properties_table.append({
+            "property_name": unit.property.property_name if unit.property else None,
+            "property_code": unit.property_code,
+            "property_image": property_image,
+            "tenant_name": (
+                lease.tenant.user.get_full_name()
+                if lease and lease.tenant and lease.tenant.user
+                else None
+            ),
+            "tenant_profile_image":lease.tenant.profile_image,
+            
+            
+            "owner_name": (
+                unit.owner.user.get_full_name()
+                if unit.owner and unit.owner.user
+                else None
+            ),
+            "lease_id": lease.id if lease else None
+        })
+                
+            staff_data["assigned_properties"] = properties_table
+            return prepare_response(
+        content=staff_data,
+        message="Staff details fetched successfully",
+        status=status.HTTP_200_OK
+    )
         if search:
             staff_qs = staff_qs.filter(
                 Q(staff__user__first_name__icontains=search) |
@@ -678,7 +725,7 @@ def staff_view(request):
                 "staff_id": staff.id,
                 "staff_name": staff.staff.user.get_full_name(),
                 "email": staff.staff.user.email,
-                "contact": staff.staff.contact_number,
+                "contact_number": staff.staff.contact_number,
                 "roles": [r.name for r in staff.roles.all()],
                 "property_count": total_properties,
                 "tenancy_ratio": tenancy_ratio

@@ -156,6 +156,9 @@ def options(request):
         elif option_type == "OWNER_COMPANY_USER":
             companies = Company.objects.filter(is_active=True)
             content["company_user"] = [{"key": c.id,"value": c.company_name or f"Company #{c.id}"}for c in companies]
+            
+        elif option_type == "LEASE_STATUS":
+            content["lease_status"] = [{"key": status_key,"value": status_value}for status_key, status_value in constants.LEASE_STATUS_CHOICES]
 
         else:
             content[option_type] = []
@@ -1217,6 +1220,7 @@ def tenant_table_view(request):
             prop_unit = lease.lease_property
             data.append({
                 "lease_id": lease.id,
+                "user_code":tenant.user_code if tenant else None,
                 "tenant_id": tenant.id if tenant else None,
                 "tenant_name": f"{tenant.user.first_name} {tenant.user.last_name}" if tenant.user else None,
                 "tenant_profile_image": tenant.profile_image if tenant else None,
@@ -1400,8 +1404,6 @@ def owner_pmc_view(request):
         search = request.GET.get("search", "").strip()
         page = int(request.GET.get("page", 1))
         limit = int(request.GET.get("limit", 10))
-      
-
         try:
             if user.user_role == "OWNER" and not company_id:
 
@@ -1554,10 +1556,8 @@ def send_invitation(request):
         if not property_unit_id:
             return prepare_response(message="Property unit id is required", status=status.HTTP_400_BAD_REQUEST)
         
-
         if invite_type not in ["OWNER_TO_PMC", "PMC_TO_OWNER", "PMC_TO_TENANT"]:
             return prepare_response(message="Invalid invitation type", status=status.HTTP_400_BAD_REQUEST)
-
       
         if invite_type == "OWNER_TO_PMC" and user_profile.user_role != constants.OWNER:
             return prepare_response(message="Only owners can invite PMC", status=status.HTTP_403_FORBIDDEN)
@@ -1768,23 +1768,22 @@ def lease_tenancy(request):
                 message="Method not allowed",
                 status=status.HTTP_405_METHOD_NOT_ALLOWED
             )
-
-        current_user = request.user
+        current_user = request.user  
+        lease_status_param = request.GET.get("lease_status")
 
         leases_qs = LeasePropertyDetails.objects.select_related(
             "lease_property",
+            "lease_property__company",
             "tenant",
             "tenant__user"
         )
-
         if current_user.user_role == constants.OWNER:
             leases_qs = leases_qs.filter(
                 owner=current_user
             )
-
         elif current_user.user_role == constants.COMPANY_USER:
             leases_qs = leases_qs.filter(
-                lease_property__assigned_staff__staff=current_user
+                lease_property__company__company_user=current_user
             ).distinct()
 
         else:
@@ -1792,18 +1791,27 @@ def lease_tenancy(request):
                 message="Unauthorized role",
                 status=status.HTTP_403_FORBIDDEN
             )
+        if lease_status_param:
+            status_list = [status.strip().upper()for status in lease_status_param.split(",")]
+            leases_qs = leases_qs.filter(lease_status__in=status_list)
+
 
         table_data = []
 
         for lease in leases_qs.order_by("-created"):
             tenant_profile = lease.tenant
+            property_unit = lease.lease_property
 
             table_data.append({
-                "lease_id":lease.id,
-                "property_code": lease.lease_property.property_code,
-                "tenant_name": tenant_profile.user.get_full_name(),
-                "tenant_profile_image": tenant_profile.profile_image,
-                "tenant_contact_number": tenant_profile.contact_number,
+                "lease_id": lease.id,
+                "property_code": property_unit.property_code if property_unit else None,
+                "tenant_name": (
+                    tenant_profile.user.get_full_name()
+                    if tenant_profile and tenant_profile.user
+                    else None
+                ),
+                "tenant_profile_image": tenant_profile.profile_image if tenant_profile else None,
+                "tenant_contact_number": tenant_profile.contact_number if tenant_profile else None,
                 "lease_status": lease.lease_status,
                 "agreement_start_date": datetime_to_epoch_millis(lease.lease_start_date),
                 "agreement_end_date": datetime_to_epoch_millis(lease.lease_end_date),

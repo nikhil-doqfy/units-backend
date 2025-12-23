@@ -449,12 +449,12 @@ def get_staff_details(company_staff: CompanyStaff, include_password=False):
     django_user = staff_profile.user
     total_properties = company_staff.assigned_properties.count()
     occupied_properties = company_staff.assigned_properties.filter(is_occupied=True).count()
-    tenancy_ratio = f"{occupied_properties}/{total_properties}" if total_properties else "0/0"
+    tenancy_ratio = f"{occupied_properties}:{total_properties}" if total_properties else "0:0"
     data = {
         "staff_id": company_staff.id,
         "staff_name": django_user.first_name,
         "email": django_user.email,
-        "contact": staff_profile.contact_number,
+        "contact_number": staff_profile.contact_number,
         "emirate_id": staff_profile.emirate_id,
         "city": staff_profile.city.name if staff_profile.city else None,
         "locality": staff_profile.locality,
