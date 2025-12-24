@@ -2,7 +2,7 @@ from django.db import models
 from django.forms.models import model_to_dict
 from django.contrib.auth.models import User
 from utilities import constants
-from utilities.helper_functions import datetime_to_epoch
+from utilities.helper_functions import datetime_to_epoch ,datetime_to_epoch_millis
 
 class Base(models.Model):
     created = models.DateTimeField(auto_now_add=True)
@@ -89,16 +89,16 @@ class LeasePropertyDetails(Base):
             "notice_period",
             "discount"
         )) 
-        data["created"] = datetime_to_epoch(self.created)
+        data["created"] = datetime_to_epoch_millis(self.created)
         data["lease_status"] = {"key": self.lease_status, "value": self.get_lease_status_display()}
         data["approval_status"] = {"key": self.approval_status, "value": self.get_approval_status_display()}
         data["step_status"] = {"key": self.step_status, "value": self.get_step_status_display()}
-        data["lease_start_date"] = datetime_to_epoch(self.lease_start_date)
-        data["lease_end_date"] = datetime_to_epoch(self.lease_end_date)
-        data["lease_grace_start_date"] = datetime_to_epoch(self.lease_grace_start_date)
-        data["lease_grace_end_date"] = datetime_to_epoch(self.lease_grace_end_date)
+        data["lease_start_date"] = datetime_to_epoch_millis(self.lease_start_date)
+        data["lease_end_date"] = datetime_to_epoch_millis(self.lease_end_date)
+        data["lease_grace_start_date"] = datetime_to_epoch_millis(self.lease_grace_start_date)
+        data["lease_grace_end_date"] = datetime_to_epoch_millis(self.lease_grace_end_date)
         data["lease_property"] = model_to_dict(self.lease_property, fields=["id", "property_unit_name"])
-        data["tenant"] = {"id": self.tenant.id, "first_name": self.tenant.user.first_name} if self.tenant else None
+        data["tenant"] = {"id": self.tenant.id, "first_name": self.tenant.user.first_name ,"contact_number":self.tenant.contact_number ,"email":self.tenant.user.email } if self.tenant else None
         data["owner"] = {"id": self.owner.id, "first_name": self.owner.user.first_name} if self.owner else None
         return data
 

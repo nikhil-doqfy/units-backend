@@ -32,8 +32,8 @@ class ChargeType(Base):
     name = models.CharField(max_length=100)
     default_tax_code = models.CharField(max_length=20)
     
-    def __str__(self): 
-        return "{}-{}".format(self.name, self.city.name)
+    def __str__(self):
+        return self.name
     
     def _get_charge_type_info(self):
         data = model_to_dict(
@@ -102,7 +102,7 @@ class Payment(Base):
     payee_contact = models.CharField(max_length=100, null=True, blank=True)
     account_number = models.CharField(max_length=50, blank=True, null=True)
     cheque_number = models.CharField(max_length=50, blank=True, null=True)
-    cheque_date = models.DateField(null=True, blank=True)
+    cheque_date = models.DateTimeField(null=True, blank=True)
     scanned_image = models.ImageField(upload_to='scans/', null=True, blank=True)
     status = models.CharField(max_length=20, default=constants.PAYMENT_PENDING)
  

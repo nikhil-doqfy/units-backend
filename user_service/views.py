@@ -28,11 +28,12 @@ def user_sign_up(request):
             first_name = data.get("first_name")
             last_name = data.get("last_name")
             if not all([email, password, confirm_password, user_role]):
-                prepare_response(message="All fields are required")
+                return prepare_response(message="All fields are required", status=status.HTTP_400_BAD_REQUEST)
+
             if password != confirm_password:
-                prepare_response(message="Password mismatch")
+                return prepare_response(message="Password mismatch", status=status.HTTP_400_BAD_REQUEST)
             if User.objects.filter(username=email).exists():
-                prepare_response(message=constants.EMAIL_ALREADY_REGISTERED)
+                return prepare_response(message=constants.EMAIL_ALREADY_REGISTERED, status=status.HTTP_400_BAD_REQUEST)
 
             user = User.objects.create_user(
                 username=email,
@@ -472,7 +473,7 @@ def staff_view(request):
             body = json.loads(request.body)
             staff_name = body.get("staff_name")
             email = body.get("email")
-            contact = body.get("contact")
+            contact = body.get("contact_number")
             role_ids = body.get("roles", [])              
             property_ids = body.get("properties", [])     
             password = body.get("password")

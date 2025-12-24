@@ -221,7 +221,6 @@ class Documents(Base):
     file_name = models.CharField(max_length=200,null=True, blank=True)
     file_path = models.CharField(max_length=500,null=True, blank=True)
 
-
     def __str__(self):
         return f"{self.file_path} - {self.file_name}"
 
@@ -257,9 +256,7 @@ class OwnerDocumentsMapping(Base):
     OWNER_DOCUMENT_CHOICES = (
            (constants.EMIRATES_ID, "Emirates ID"),
     (constants.UAE_RESIDENCE_VISA, "UAE Residence Visa"),
-    (constants.DLD_CERTIFICATE ,"DLD Certificate"),
-   
-) 
+    (constants.DLD_CERTIFICATE ,"DLD Certificate"),) 
 
     owner = models.ForeignKey(
         UserProfile,

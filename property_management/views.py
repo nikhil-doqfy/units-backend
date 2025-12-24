@@ -95,7 +95,11 @@ def options(request):
             if user.user_role == constants.OWNER:
                 units = PropertyUnitDetails.objects.filter(owner=user)
             elif user.user_role == constants.COMPANY_USER:
-                units = PropertyUnitDetails.objects.filter(company=user.company)
+                company = Company.objects.filter(company_user=user).first()
+                if not company:
+                    return prepare_response( message="Company not found for this user",status=status.HTTP_404_NOT_FOUND)
+                units = PropertyUnitDetails.objects.filter(company=company)
+                
             else:
                 units = PropertyUnitDetails.objects.none()
             content["property_unit"] = [
@@ -304,6 +308,7 @@ def property_table_view(request):
     )
 
 
+
 @is_request_authenticated
 def save_property(request):
     user_profile = request.user
@@ -328,6 +333,10 @@ def save_property(request):
 
             property_data = None
             if parent_property:
+                city_obj = parent_property.city
+                state_obj = city_obj.state if city_obj else None
+                country_obj = state_obj.country if state_obj else None
+
                 property_data = {
                     "id": parent_property.id,
                     "property_name": parent_property.property_name,
@@ -336,6 +345,15 @@ def save_property(request):
                     "locality": parent_property.locality,
                     "postal_code": parent_property.postal_code,
                     "city_id": parent_property.city.id if parent_property.city else None,
+                    "city":{"key": city_obj.id if city_obj else None,
+                            "value": city_obj.name if city_obj else None,},
+                    "state": {
+                           "key": state_obj.id if state_obj else None,
+                          "value": state_obj.name if state_obj else None,},
+                    "country": {
+                          "key": country_obj.id if country_obj else None,
+                        "value": country_obj.name if country_obj else None,},
+
                     "property_type": {
                         "key": parent_property.property_type_options,
                         "value": property_type_options.get(parent_property.property_type_options)
@@ -367,6 +385,9 @@ def save_property(request):
                 "notice_period": prop.notice_period,
                 "commission_percent": prop.commission_percent,
                 "owner_id": prop.owner.id if prop.owner else None,
+                "dewa_no":prop.dewa_no,
+                "makani_no":prop.makani_no,
+                "land_area":prop.land_area,
                 "property": property_data
             }
 
@@ -518,10 +539,8 @@ def save_property(request):
                 property_type_options=data.get("property_type_options"),
                 city_id=data.get("city_id"),
                 created_by=user_profile.user)
-
             else:
                 return prepare_response(message="Parent property id or name is required",status=status.HTTP_400_BAD_REQUEST)
-            
             new_property_unit = PropertyUnitDetails.objects.create(
                 created_by=user_profile.user,
                 property_unit_name=data.get("property_unit_name"),
@@ -1269,64 +1288,71 @@ def company_owners_view(request):
     owner_id = request.GET.get("owner_id")
     page = int(request.GET.get("page", 1))
     limit = int(request.GET.get("limit", 10))
+    tenancy_status = request.GET.get("tenancy_status") 
 
     try:
         company = Company.objects.filter(company_user=user).first()
         if not company:
             return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_400_BAD_REQUEST)
         if owner_id:
-            owner = UserProfile.objects.filter(id=owner_id, user_role="OWNER").first()
+            owner = UserProfile.objects.filter(
+                id=owner_id,
+                user_role=constants.OWNER
+            ).first()
+           
             if not owner:
                 return prepare_response(message="Owner not found", status=status.HTTP_404_NOT_FOUND)
-            lease_qs = LeasePropertyDetails.objects.filter(
-                lease_property__owner=owner,
-                lease_property__company=company
-            ).select_related(
-                "tenant", "lease_property"
-            )
-
-            if search:
-                lease_qs = lease_qs.filter(
-                    Q(tenant__user__first_name__icontains=search) |
-                    Q(tenant__user__last_name__icontains=search) |
-                    Q(lease_property__property_unit_name__icontains=search) |
-                    Q(tenant__contact_number__icontains=search)
-                )
-
-            lease_qs = lease_qs.order_by("-id")
-
-            paginator = Paginator(lease_qs, limit)
-            try:
-                lease_page = paginator.page(page)
-            except EmptyPage:
-                lease_page = paginator.page(paginator.num_pages)
-
-            data = []
-            for lease in lease_page:
-                tenant = lease.tenant
-                prop_unit = lease.lease_property
-                data.append({
-                    "tenant_id": tenant.id,
-                    "tenant_name": f"{tenant.user.first_name} {tenant.user.last_name}" if tenant.user else "",
-                    "contact_number": tenant.contact_number,
-                    "property_name": prop_unit.property_unit_name if prop_unit else None,
-                    "tenancy_status": lease.lease_status,
-                    "agreement": lease.pdf_path if lease.pdf_path else None,
+            units_qs = PropertyUnitDetails.objects.filter(
+                owner=owner,
+                company=company
+            ).prefetch_related("lease_details", "lease_details__tenant")
+            table_data = []
+            for unit in units_qs:
+                lease = unit.lease_details.filter(
+                    lease_status="ACTIVE"
+                ).first()
+                is_occupied = True if lease else False
+                if tenancy_status:
+                    if tenancy_status == "OCCUPIED" and not is_occupied:
+                        pass
+                    if tenancy_status == "VACANT" and is_occupied:
+                        pass
+                table_data.append({
+                    "property_unit_id": unit.id,
+                    "property_name": unit.property_unit_name,
+                    "owner_name": f"{owner.user.first_name} {owner.user.last_name}",
+                    "tenant_name": (
+                        f"{lease.tenant.user.first_name} {lease.tenant.user.last_name}"
+                        if lease and lease.tenant else None
+                    ),
+                    
+                    "tenancy_status": "Occupied" if is_occupied else "Vacant",
+                    "lease_id": lease.id if lease else None,
+                    "tenant_profile_image":lease.tenant.profile_image if lease and lease.tenant else None ,
+                    
                 })
-
-            pagination_meta = {
-                "current_page": lease_page.number,
-                "limit": limit,
-                "total_records": paginator.count,
-                "total_pages": paginator.num_pages
-            }
-
             return prepare_response(
-                content=data,
-                message=f"Tenant details for owner {owner.user.email if owner.user else owner.id}",
-                pagination=pagination_meta,
+                content={
+                    "owner_details": {
+                        "owner_id": owner.id,
+                        "name": f"{owner.user.first_name} {owner.user.last_name}",
+                        "email": owner.user.email,
+                        "contact_number": owner.contact_number,
+                        "owner_code": owner.user_code,
+                        "emirate_id":owner.emirate_id,
+                        "uae_residence_visa":owner.uae_residence_visa,
+                        "trade_license_number":owner.trade_license_number,
+                        "role":owner.user_role,
+
+                        "owner_profile_image":owner.profile_image,
+                    },
+                    "table": table_data
+                },
+                message="Owner tenancy details fetched successfully",
                 status=status.HTTP_200_OK
             )
+            
+
 
         owners_qs = UserProfile.objects.filter(
             user_role="OWNER",
