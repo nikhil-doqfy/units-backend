@@ -80,15 +80,15 @@ def owner_rent_amounts(request):
                 is_selected=True
             )
 
-            vat_amount = charges.aggregate(
-                vat=Sum("vat_amount")
-            )["vat"] or 0
+            # vat_amount = charges.aggregate(
+            #     vat=Sum("vat_amount")
+            # )["vat"] or 0
 
-            other_charges = charges.aggregate(
-                amt=Sum("amount")
-            )["amt"] or 0
+            # other_charges = charges.aggregate(
+            #     amt=Sum("amount")
+            # )["amt"] or 0
 
-            total_rent = (lease.annual_amount or 0) + other_charges + vat_amount
+            # total_rent = (lease.annual_amount or 0) + other_charges + vat_amount
 
             response.append({
                 # 🔹 Tenant
@@ -108,9 +108,11 @@ def owner_rent_amounts(request):
 
                 # 🔹 Rent details
                 "year_rent": lease.annual_amount,
-                "other_charges": float(other_charges),
-                "vat": float(vat_amount),
-                "total_rent": float(total_rent),
+                "vat":None,
+
+                "other_charges":None,
+                # "vat": float(vat_amount),
+                "total_rent": None,
 
                     #    "lease_start_date": datetime_to_epoch_millis(lease.lease_start_date),
         # "lease_end_date": datetime_to_epoch_millis(lease.lease_end_date),

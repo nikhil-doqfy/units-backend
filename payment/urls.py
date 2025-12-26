@@ -6,7 +6,7 @@ urlpatterns = [
 
     path("owner_rent_amounts/", payment_views.owner_rent_amounts),
 
-    path("rental_payments",payment_views.rental_payments),
+    path("rental_payments/",payment_views.rental_payments),
 
     
 ]
