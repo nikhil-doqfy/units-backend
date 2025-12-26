@@ -3,7 +3,7 @@ from user_service.models import (
     UserProfile, Company, Permission, Role, 
     Property, PropertyUnitDetails, PropertyImages, UserVerification,
     Documents, PropertyDocumentsMapping, OwnerDocumentsMapping,
-    TenantDocumentsMapping, CompanyUserDocumentsMapping, StaffDocumentsMapping,Country, State, City, CompanyStaff
+    TenantDocumentsMapping, CompanyUserDocumentsMapping, StaffDocumentsMapping,Country, State, City, CompanyStaff ,FAQ ,PrivacyPolicy ,Complaint
 )
 from property_management.models import (
     LeasePropertyDetails, UserInvitation, Template, TemplateFields,
@@ -74,6 +74,21 @@ class CompanyUserDocumentsMappingAdmin(admin.ModelAdmin):
 @admin.register(StaffDocumentsMapping)
 class StaffDocumentsMappingAdmin(admin.ModelAdmin):
     list_display = ["id", "staff", "document"]
+
+@admin.register(Complaint)
+class ComplaintAdmin(admin.ModelAdmin):
+    list_display = ("id", "user")
+
+
+@admin.register(PrivacyPolicy)
+class PrivacyPolicyAdmin(admin.ModelAdmin):
+    list_display = ("id", "title")
+
+
+@admin.register(FAQ)
+class FAQAdmin(admin.ModelAdmin):
+    list_display = ("id", "question")
+
 
 # -------------------- Property Management Admin --------------------
 @admin.register(LeasePropertyDetails)

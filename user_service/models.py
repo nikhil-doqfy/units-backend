@@ -103,6 +103,7 @@ class Property(Base):
 
 
 class PropertyUnitDetails(Base):
+
     RENTAL_STATUS_CHOICES = [
         (constants.AVAILABLE, "Available"),
         (constants.NOT_AVAILABLE, "Not Available"),
@@ -142,6 +143,7 @@ class PropertyUnitDetails(Base):
         Company, on_delete=models.CASCADE, related_name="properties",null=True, blank=True
     )
     assigned_staff = models.ManyToManyField(CompanyStaff,related_name="assigned_properties")
+
     is_occupied = models.BooleanField(default=False)
     property_code = models.CharField(
         max_length=255, null=True, blank=True
@@ -160,13 +162,14 @@ class PropertyUnitDetails(Base):
     booking_amount = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True
     )
-    maintenance_charges = models.DecimalField(
-        max_digits=10, decimal_places=2, null=True, blank=True
-    )
+    maintenance_charges = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     cycle = models.CharField(max_length=50, null=True, blank=True)
     notice_period = models.CharField(max_length=50, null=True, blank=True)
     commission_percent = models.DecimalField(
         max_digits=5, decimal_places=2, null=True, blank=True)
+    
+    def __str__(self):
+        return f"{self.property_unit_name} - {self.id} "
 
 
 class PropertyImages(Base):
@@ -389,6 +392,33 @@ class City(models.Model):
     
     def __str__(self):
         return f"{self.name} ({self.state.name}, {self.state.country.name})"
+    
+
+
+class Complaint(Base):
+    user = models.ForeignKey(UserProfile, on_delete=models.CASCADE)
+    message = models.TextField()
+
+    def __str__(self):
+        return f"Complaint by {self.user}"
+
+
+class PrivacyPolicy(Base):
+    title = models.CharField(max_length=255)
+    content = models.TextField()
+    other_policy_content = models.TextField()
+
+    def __str__(self):
+        return self.title
+
+
+class FAQ(models.Model):
+    question = models.CharField(max_length=255)
+    answer = models.TextField()
+
+    def __str__(self):
+        return self.question
+
 
 
 

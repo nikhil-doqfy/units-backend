@@ -1,6 +1,6 @@
 import json
 from utilities import status, constants
-from utilities.helper_functions import prepare_response ,upload_file_to_s3_base64,datetime_to_epoch_millis,safe_epoch_to_datetime,get_extension_from_base64,get_user_code_prefix,generate_unique_code
+from utilities.helper_functions import prepare_response ,upload_file_to_s3_base64,datetime_to_epoch_millis,safe_epoch_to_datetime,get_extension_from_base64,get_user_code_prefix,generate_unique_code ,export_to_csv
 from user_service.models import UserProfile,Documents,OwnerDocumentsMapping,  CompanyUserDocumentsMapping,TenantDocumentsMapping , Company,Country, State, City , Role, PropertyUnitDetails
 from user_service.models import CompanyStaff
 from django.db import transaction
@@ -811,5 +811,241 @@ def role_table_view(request):
         print("Role Table Error:", e)
         return prepare_response(
             message=constants.SOMETHING_WENT_WRONG,
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+
+
+
+
+
+@is_request_authenticated
+def export_users_csv(request):
+    try:
+        if request.method != "GET":
+            return prepare_response(
+                message="Method not allowed",
+                status=status.HTTP_405_METHOD_NOT_ALLOWED
+            )
+
+        user = request.user
+
+        is_active_param = request.GET.get("is_active", "true").lower()
+        is_active = is_active_param == "true"
+        role = request.GET.get("role")
+        search = request.GET.get("search", "").strip()
+        start_epoch = request.GET.get("start_date")
+        end_epoch = request.GET.get("end_date")
+        user_id = request.GET.get("user_id")
+
+    
+        users_qs = UserProfile.objects.select_related("user").filter(
+            is_active=is_active,
+            created_by=user.user
+        )
+
+        if role:
+            users_qs = users_qs.filter(user_role=role)
+
+        if user_id:
+            users_qs = users_qs.filter(id=user_id)
+
+        if start_epoch and end_epoch:
+            s = safe_epoch_to_datetime(int(start_epoch))
+            e = safe_epoch_to_datetime(int(end_epoch))
+            users_qs = users_qs.filter(created__range=(s, e))
+
+        if search:
+            users_qs = users_qs.filter(
+                Q(user__email__icontains=search) |
+                Q(user__first_name__icontains=search) |
+                Q(user__last_name__icontains=search) |
+                Q(contact_number__icontains=search)
+            )
+
+        users_qs = users_qs.order_by("-created")
+
+        field_names = [
+            "User Name",
+            "Phone",
+            "Role",
+            "Email",
+            "Created On",
+            "Last Login",
+            "Status"
+        ]
+
+        data_list = []
+
+        for profile in users_qs:
+            role_value = profile.user_role.replace("_", " ").title()
+
+            data_list.append({
+                "User Name": f"{profile.user.first_name} {profile.user.last_name}".strip(),
+                "Phone": profile.contact_number,
+                "Role": role_value,
+                "Email": profile.user.email,
+                "Created On": profile.created.strftime("%d-%m-%Y %H:%M"),
+                "Last Login": (
+                    profile.user.last_login.strftime("%d-%m-%Y %H:%M")
+                    if profile.user.last_login else ""
+                ),
+                "Status": "Active" if profile.is_active else "Inactive"
+            })
+
+        return export_to_csv(
+            filename="users_export",
+            field_names=field_names,
+            data_list=data_list
+        )
+
+    except Exception as e:
+        return prepare_response(
+            message=f"Error exporting users CSV: {str(e)}",
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+
+
+
+@is_request_authenticated
+def export_staff_csv(request):
+    try:
+        if request.method != "GET":
+            return prepare_response(
+                message="Method not allowed",
+                status=status.HTTP_405_METHOD_NOT_ALLOWED
+            )
+
+        user = request.user
+        search = request.GET.get("search", "").strip()
+        role_id = request.GET.get("role_id")
+        staff_id = request.GET.get("staff_id")
+
+        company = Company.objects.filter(
+            company_user=user,
+            is_active=True
+        ).first()
+
+        if not company:
+            return prepare_response(
+                message=constants.COMPANY_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # ===============================
+        # 🔹 CASE 2 → STAFF DETAIL CSV
+        # ===============================
+        if staff_id:
+            staff = CompanyStaff.objects.filter(
+                id=staff_id,
+                company=company
+            ).select_related(
+                "staff__user"
+            ).prefetch_related(
+                "assigned_properties",
+                "assigned_properties__property",
+                "assigned_properties__lease_details",
+                "assigned_properties__owner"
+            ).first()
+
+            if not staff:
+                return prepare_response(
+                    message="Staff not found",
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            field_names = [
+                "Code",
+                "Property Name",
+                "Tenant Name",
+                "Assigned Staff",
+                "Owner Name",
+                "Document"
+            ]
+
+            data_list = []
+
+            for unit in staff.assigned_properties.all():
+                lease = unit.lease_details.first()
+
+                data_list.append({
+                    "Code": unit.property_code,
+                    "Property Name": unit.property.property_name if unit.property else "",
+                    "Tenant Name": (
+                        lease.tenant.user.get_full_name()
+                        if lease and lease.tenant and lease.tenant.user else ""
+                    ),
+                    "Assigned Staff": staff.staff.user.get_full_name(),
+                    "Owner Name": (
+                        unit.owner.user.get_full_name()
+                        if unit.owner and unit.owner.user else ""
+                    ),
+                    "Document": ""  
+                })
+
+            return export_to_csv(
+                filename="staff_property_details",
+                field_names=field_names,
+                data_list=data_list
+            )
+
+
+        staff_qs = CompanyStaff.objects.filter(
+            company=company,
+            staff__is_active=True
+        ).select_related(
+            "staff__user"
+        ).prefetch_related(
+            "roles",
+            "assigned_properties"
+        )
+
+        if search:
+            staff_qs = staff_qs.filter(
+                Q(staff__user__first_name__icontains=search) |
+                Q(staff__user__email__icontains=search) |
+                Q(staff__contact_number__icontains=search)
+            )
+
+        if role_id:
+            staff_qs = staff_qs.filter(roles__id=role_id)
+
+        field_names = [
+            "Staff Name",
+            "Code",
+            "Contact Number",
+            "Properties",
+            "Tenancy Ratio",
+            "Staff Role"
+        ]
+
+        data_list = []
+
+        for staff in staff_qs:
+            total_properties = staff.assigned_properties.count()
+            occupied = staff.assigned_properties.filter(is_occupied=True).count()
+            tenancy_ratio = f"{occupied}:{total_properties}" if total_properties else "0:0"
+
+            data_list.append({
+                "Staff Name": staff.staff.user.get_full_name(),
+                "Code": staff.staff.user_code,
+                "Contact Number": staff.staff.contact_number,
+                "Properties": total_properties,
+                "Tenancy Ratio": tenancy_ratio,
+                "Staff Role": ", ".join([r.name for r in staff.roles.all()])
+            })
+
+        return export_to_csv(
+            filename="staff_list",
+            field_names=field_names,
+            data_list=data_list
+        )
+
+    except Exception as e:
+        return prepare_response(
+            message=f"Error exporting staff CSV: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
