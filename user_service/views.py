@@ -189,9 +189,17 @@ def userprofile_view(request):
                 user.last_name = body.get("last_name")
             user.save()
 
-            updatable_fields = [
+            if "city" in body:
+                city_id = body["city"]
+                if city_id:
+                    user_profile.city = City.objects.filter(id=city_id).first()
+                else:
+                    user_profile.city = None
+            
+            
+
+            simple_fields = [
                 "profile_image",
-                "city",
                 "locality",
                 "pin_code",
                 "address",
@@ -204,21 +212,12 @@ def userprofile_view(request):
                 "utc",
                 "manage_through",
             ]
-            for field in updatable_fields:
+            for field in simple_fields:
                 if field in body:
-               
-                    if field in ["country", "state", "city"]:
-                        model_class = {"country": Country, "state": State, "city": City}[field]
-                        try:
-                            obj = model_class.objects.get(id=body[field])
-                            setattr(user_profile, field, obj)
-                        except model_class.DoesNotExist:
-                            setattr(user_profile, field, None)
-                    else:
-                        setattr(user_profile, field, body[field])
-
+                    setattr(user_profile, field, body[field])
             user_profile.save()
-
+               
+                    
             return prepare_response(
                 message="User profile updated successfully",
                 status=status.HTTP_200_OK
@@ -935,9 +934,7 @@ def export_staff_csv(request):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        # ===============================
-        # 🔹 CASE 2 → STAFF DETAIL CSV
-        # ===============================
+ 
         if staff_id:
             staff = CompanyStaff.objects.filter(
                 id=staff_id,

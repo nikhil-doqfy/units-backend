@@ -212,6 +212,7 @@ def get_full_user_data(user_profile_id):
             return None, "UserProfile not found"
 
         user = user_profile.user
+        city_kv, state_kv, country_kv = get_location_kv(user_profile.city)
         user_data = {
             "id": user_profile.id,
             "email": user.email,
@@ -223,11 +224,17 @@ def get_full_user_data(user_profile_id):
             "contact_number": user_profile.contact_number,
             "address": user_profile.address,
             "additional_address": user_profile.additional_address,
-            "city": user_profile.city,
-            "state": user_profile.state,
-            "country": user_profile.country,
+            "city": city_kv,
+            "state":state_kv,
+            "country": country_kv,
             "time_zone": user_profile.time_zone,
             "pin_code": user_profile.pin_code,
+            "locality":user_profile.locality,
+            "user_code":user_profile.user_code,
+            "emirate_id":user_profile.emirate_id,
+            
+
+            # "emirates"
         }
 
 

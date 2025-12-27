@@ -3,7 +3,7 @@ import datetime
 import pdfkit
 import json
 import datetime
-from user_service.models import UserProfile, Documents, PropertyUnitDetails,Property, Company, PropertyImages ,PropertyDocumentsMapping, Country, State, City, Role ,Complaint,FAQ
+from user_service.models import UserProfile, Documents, PropertyUnitDetails,Property, Company, PropertyImages ,PropertyDocumentsMapping, Country, State, City, Role ,Complaint,FAQ ,PropertyInterest
 from property_management.models import LeasePropertyDetails,TemplateFields, TemplateValues,Template 
 from utilities.decorator import is_request_authenticated
 from utilities.helper_functions import (
@@ -32,11 +32,12 @@ from property_management.utils import (
     serialize_lease, 
     get_property_images,
     get_lease_status,
-    get_location_kv
+    get_location_kv,
+    get_full_user_data
 )
 from django.db.models import Count, Q
 from django.utils import timezone
-
+from django.db import transaction
 
 
 
@@ -82,10 +83,22 @@ def options(request):
             else:
                 cities = City.objects.filter(state_id=state_id)
                 content["city"] = [{"key": c.id, "value": c.name} for c in cities]
+
         elif option_type == "PARENT_PROPERTY":
-            properties = Property.objects.all()
-            content["property"] = [
-                          {"key": p.id , "value": p.property_name}for p in properties]
+            properties = Property.objects.none()
+            if user.user_role == constants.OWNER:
+                property_ids = PropertyUnitDetails.objects.filter(owner=user).values_list('property_id', flat=True).distinct()
+                properties = Property.objects.filter(id__in=property_ids)
+            elif user.user_role == constants.COMPANY_USER:
+                company = Company.objects.filter(company_user=user).first()
+                if company:
+                    property_ids = PropertyUnitDetails.objects.filter(company=company).values_list('property_id', flat=True).distinct()
+                    properties = Property.objects.filter(id__in=property_ids)
+            content["property"] = [{"key": prop.id, "value": prop.property_name}for prop in properties]
+
+        
+
+            
         elif option_type == "PROPERTY_TYPE":
             content["property_type"] = [
                 {"key": key, "value": value }
@@ -138,6 +151,11 @@ def options(request):
         {"key": constants.OWNER_DOCUMENT, "value": "Owner Document"},
         {"key": constants.TENANT_DOCUMENT, "value": "Tenant Document"},
              ]
+        
+        elif option_type == "PROPERTY_IMAGE_CHOICE":
+            content["Property_Image"] = [
+                {"key": key, "value": value} for key, value in constants.IMAGE_TYPE_CHOICES]
+
         elif option_type == "ROLE":
             company = Company.objects.filter(company_user=user,is_active=True).first()
             if not company:
@@ -163,7 +181,9 @@ def options(request):
             
         elif option_type == "LEASE_STATUS":
             content["lease_status"] = [{"key": status_key,"value": status_value}for status_key, status_value in constants.LEASE_STATUS_CHOICES]
-
+        elif option_type == "OWNER_DETAILS":
+            owners = UserProfile.objects.filter(user_role=constants.OWNER, user__is_active=True)
+            content["owners"] = [{"key": owner.id,"value": f"{owner.user.first_name} {owner.user.last_name}"}for owner in owners]
         else:
             content[option_type] = []
             
@@ -314,7 +334,7 @@ def save_property(request):
     user_profile = request.user
     if request.method == "GET":
         try:
-            property_id = request.GET.get("property_id")
+            property_id = request.GET.get("property_unit_id")
             if not property_id:
                 return prepare_response(
                     message=constants.PROPERTY_ID_REQUIRED,
@@ -344,7 +364,7 @@ def save_property(request):
                     "additional_address": parent_property.additional_address,
                     "locality": parent_property.locality,
                     "postal_code": parent_property.postal_code,
-                    "city_id": parent_property.city.id if parent_property.city else None,
+                    
                     "city":{"key": city_obj.id if city_obj else None,
                             "value": city_obj.name if city_obj else None,},
                     "state": {
@@ -359,6 +379,8 @@ def save_property(request):
                         "value": property_type_options.get(parent_property.property_type_options)
                     }
                 }
+            owner_obj = prop.owner
+
             content = {
                 "id": prop.id,
                 "property_unit_name": prop.property_unit_name,
@@ -384,11 +406,22 @@ def save_property(request):
                 "cycle": prop.cycle,
                 "notice_period": prop.notice_period,
                 "commission_percent": prop.commission_percent,
-                "owner_id": prop.owner.id if prop.owner else None,
+                # "owner_id": prop.owner.id if prop.owner else None,
                 "dewa_no":prop.dewa_no,
                 "makani_no":prop.makani_no,
                 "land_area":prop.land_area,
-                "property": property_data
+                "property": property_data,
+                "owner":{
+                    "key": owner_obj.id if owner_obj else None,
+                    "value":f"{owner_obj.user.first_name} {owner_obj.user.last_name}"
+                                if owner_obj and owner_obj.user
+                              else None
+                },
+
+                "compnay":{
+                    "key": prop.company.id if prop.company else None,
+                    "value":prop.company.company_name if prop.company else None,
+                },
             }
 
             return prepare_response(content=content, status=status.HTTP_200_OK)
@@ -536,7 +569,7 @@ def save_property(request):
                 additional_address=data.get("additional_address"),
                 locality=data.get("locality"),
                 postal_code=data.get("postal_code"),
-                property_type_options=data.get("property_type_options"),
+                property_type_options=data.get("property_type"),
                 city_id=data.get("city_id"),
                 created_by=user_profile.user)
             else:
@@ -549,7 +582,7 @@ def save_property(request):
                 no_of_parking=data.get("no_of_parking"),
                 makani_no=data.get("makani_no"),
                 dewa_no=data.get("dewa_no"),
-                property_type=data.get("property_type"),
+                # property_type=data.get("property_type"),
                 land_area=data.get("land_area"),
                 apartment_no=data.get("apartment_no"),
                 bedrooms=data.get("bedrooms"),
@@ -593,7 +626,7 @@ def save_property(request):
 def property_images(request):
     try:
         if request.method == "GET":
-            property_id = request.GET.get("property_id")
+            property_id = request.GET.get("property_unit_id")
             if not property_id:
                 return prepare_response(message=constants.PROPERTY_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
 
@@ -618,14 +651,15 @@ def property_images(request):
                 message=constants.DATA_FETCHED_SUCCESSFULLY,
                 content={
                     "images": final_images,
-                    "property_id": property_id,
-                    "step_choice": property_obj.step_status
+                    "id": property_id,
+                    "step_status": property_obj.step_status
                 },
                 status=status.HTTP_200_OK
             )
+        
         if request.method == "POST":
             body = json.loads(request.body)
-            property_id = body.get("property_id")
+            property_id = body.get("property_unit_id")
             images = body.get("images", [])
 
             if not property_id:
@@ -675,7 +709,7 @@ def property_images(request):
         
         if request.method == "PUT":
             body = json.loads(request.body)
-            property_id = body.get("property_id")
+            property_id = body.get("property_unit_id")
             images = body.get("images", [])
 
             if not property_id:
@@ -700,7 +734,7 @@ def property_images(request):
                 img_obj, created = PropertyImages.objects.update_or_create(
                     property=property_obj,
                     file_name=file_name,
-                    defaults={"image_type": img_type}
+                    defaults={"image_type": img_type ,"created_by": request.user.user}
                 )
 
                 object_name = f"property_images/{property_id}/{file_name}"
@@ -730,7 +764,7 @@ def property_documents(request):
     try:
     
         if request.method == "GET":
-            property_id = request.GET.get("property_id")
+            property_id = request.GET.get("property_unit_id")
             if not property_id:
                 return prepare_response(message=constants.PROPERTY_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
 
@@ -757,7 +791,7 @@ def property_documents(request):
                 content={
                     "documents": final_docs,
                     "property_id": property_id,
-                    "step_choice": property_obj.step_status
+                    "step_status": property_obj.step_status
                 },
                 status=status.HTTP_200_OK
             )
@@ -765,7 +799,7 @@ def property_documents(request):
    
         if request.method == "POST":
             body = json.loads(request.body)
-            property_id = body.get("property_id")
+            property_id = body.get("property_unit_id")
             documents = body.get("documents", [])
 
             if not property_id:
@@ -823,7 +857,7 @@ def property_documents(request):
 
         if request.method == "PUT":
             body = json.loads(request.body)
-            property_id = body.get("property_id")
+            property_id = body.get("property_unit_id")
             documents = body.get("documents", [])
 
             if not property_id:
@@ -1613,6 +1647,7 @@ def dashboard_overview(request):
         user = request.user
         now = timezone.now()
         renewal_window = now + timedelta(days=30)
+        property_id = request.GET.get("property_id")
         if user.user_role == constants.OWNER:
             properties = PropertyUnitDetails.objects.filter(owner=user)
         elif user.user_role == constants.COMPANY_USER:
@@ -1625,6 +1660,15 @@ def dashboard_overview(request):
             properties = PropertyUnitDetails.objects.filter(company=company)
         else:
             properties = PropertyUnitDetails.objects.none()
+
+        if not property_id:  
+            property_id = properties.values_list("property_id", flat=True).first()
+        if property_id:
+            filtered_units = PropertyUnitDetails.objects.filter(property_id=property_id)
+        else:
+            filtered_units = PropertyUnitDetails.objects.none()
+
+
         total_properties = properties.count()
         rented_count = properties.filter(is_occupied=True).count()
         vacant_count = properties.filter(is_occupied=False).count()
@@ -1674,6 +1718,20 @@ def dashboard_overview(request):
             index += 1
 
         top_properties = sorted(top_properties, key=lambda x: x["occupancy_rate"], reverse=True)
+
+        # ---- Occupancy Section ----
+        total_units = filtered_units.count()
+        occupied_units = filtered_units.filter(is_occupied=True).count()
+        vacant_units = filtered_units.filter(is_occupied=False).count()
+        occupied_percent = round((occupied_units / total_units) * 100, 2) if total_units > 0 else 0
+        vacant_percent = round((vacant_units / total_units) * 100, 2) if total_units > 0 else 0
+        occupancy_data = {
+         "total_units": total_units,
+         "occupied_units": occupied_units,
+        "vacant_units": vacant_units,
+        "occupied_percent": occupied_percent,
+        "vacant_percent": vacant_percent
+                        }
         content = {
             "properties": {
                 "total": total_properties,
@@ -1685,7 +1743,8 @@ def dashboard_overview(request):
                 "upcoming_renewals": upcoming_renewals_count,
                 "negotiations": negotiations_count
             },
-            "top_properties": top_properties
+            "top_properties": top_properties,
+            "occupancy_data":occupancy_data,
         }
 
         return prepare_response(
@@ -2044,9 +2103,6 @@ def export_property_table_csv(request):
             message=f"Error exporting CSV: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
-
-
 
 
 
@@ -2544,5 +2600,209 @@ def export_company_owners_csv(request):
     except Exception as e:
         return prepare_response(
             message=f"Error exporting owner CSV: {str(e)}",
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+
+
+
+@is_request_authenticated
+def toggle_property_interest(request):
+    if request.method != "PUT":
+        return prepare_response(
+            message=constants.INVALID_REQUEST,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+    try:
+        data = json.loads(request.body)
+
+        property_unit_id = data.get("property_unit_id")
+        is_interested = data.get("is_interested")
+
+        if property_unit_id  is None or is_interested is None:
+            return prepare_response(
+                message=constants.INVALID_DATA,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        tenant = request.user 
+
+        if tenant.user_role != constants.TENANT:
+            return prepare_response(
+                message="Only tenant can perform this action",
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        property_unit = PropertyUnitDetails.objects.filter(
+            id=property_unit_id,
+            is_active=True
+        ).first()
+
+        if not property_unit:
+            return prepare_response(
+                message="Property unit not found",
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        with transaction.atomic():
+            interest_obj, created = PropertyInterest.objects.update_or_create(
+                property_unit=property_unit,
+                tenant=tenant,
+                defaults={
+                    "is_active": is_interested,
+                    "created_by": tenant.user
+                }
+            )
+            if is_interested:
+                PropertyInterest.objects.filter(
+                    id=interest_obj.id
+                ).update(created=timezone.now())
+
+        return prepare_response(
+            message="Interest updated successfully",
+            status=status.HTTP_200_OK,
+            content={
+                "property_unit": property_unit.property_unit_name,
+                "is_interested": is_interested
+            }
+        )
+
+    except Exception as e:
+        print("Interest API Error:", e)
+        return prepare_response(
+            message=constants.INTERNAL_SERVER_ERROR,
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+
+@is_request_authenticated
+def company_tenants(request):
+    user = request.user
+
+    if user.user_role != constants.COMPANY_USER:
+        return prepare_response(
+            message="Only company users can access this data",
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    try:
+
+        if request.method == "GET":
+
+            tenant_id = request.GET.get("tenant_id")
+
+            company = Company.objects.filter(company_user=user).first()
+            if not company:
+                return prepare_response(
+                    message="Company not found for this user",
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            if tenant_id:
+                data = get_full_user_data(tenant_id)
+                return prepare_response(
+                    content=data,
+                    message=constants.DATA_FETCHED_SUCCESSFULLY,
+                    status=status.HTTP_200_OK
+                )
+
+           
+            tenants_created = UserProfile.objects.filter(
+                created_by=user.user,
+                user_role=constants.TENANT,
+                is_active=True
+            )
+
+           
+            tenants_interested = UserProfile.objects.filter(
+                interested_properties__property_unit__company=company,
+                interested_properties__is_active=True,
+                user_role=constants.TENANT
+            )
+
+            tenants = (tenants_created | tenants_interested).distinct().select_related(
+                "city", "city__state", "city__state__country"
+            )
+
+            tenant_list = [
+                {
+                    "tenant_id": t.id,
+                    "name": f"{t.user.first_name} {t.user.last_name}",
+                    "email": t.user.email,
+                    "contact_number": t.contact_number,
+                    "emirates_id": t.emirate_id,
+                    "profile_image": t.profile_image,
+                    "user_code": t.user_code,
+                    "locality": t.locality,
+                    "role": t.user_role,
+                    "tenant_status": t.tenant_status,
+                    "city": t.city.name if t.city else None,
+                    "state": t.city.state.name if t.city and t.city.state else None,
+                    "country": (
+                        t.city.state.country.name
+                        if t.city and t.city.state and t.city.state.country
+                        else None
+                    ),
+                }
+                for t in tenants
+            ]
+
+            return prepare_response(
+                message="Tenants fetched successfully",
+                content={"tenants": tenant_list},
+                status=status.HTTP_200_OK
+            )
+        elif request.method == "PUT":
+
+            data = json.loads(request.body)
+
+            tenant_id = data.get("tenant_id")
+            tenant_status = data.get("tenant_status") 
+
+            # if not tenant_id or tenant_status not in [
+            #     constants.APPROVED,
+            #     constants.REJECTED
+            # ]:
+            #     return prepare_response(
+            #         message="data not found ",
+            #         status=status.HTTP_400_BAD_REQUEST
+            #     )
+
+            tenant = UserProfile.objects.filter(
+                id=tenant_id,
+                user_role=constants.TENANT,
+                is_active=True
+            ).first()
+
+            if not tenant:
+                return prepare_response(
+                    message="Tenant not found",
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            tenant.tenant_status = tenant_status
+            tenant.save(update_fields=["tenant_status", "modified"])
+
+            return prepare_response(
+                message="Tenant successfully",
+                content={
+                    "tenant_id": tenant.id,
+                    "tenant_status": tenant.tenant_status
+                },
+                status=status.HTTP_200_OK
+            )
+
+        else:
+            return prepare_response(
+                message=constants.INVALID_REQUEST,
+                status=status.HTTP_405_METHOD_NOT_ALLOWED
+            )
+
+    except Exception as e:
+        print("Company Tenants API Error:", e)
+        return prepare_response(
+            message=constants.INTERNAL_SERVER_ERROR,
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )

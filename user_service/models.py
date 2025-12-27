@@ -13,6 +13,12 @@ class UserProfile(Base):
         (constants.TENANT, "Tenant"),
         
     )
+    TENANT_STATUS_CHOICES = (
+        (constants.PENDING, "Pending"),
+        (constants.APPROVED, "Approved"),
+        (constants.REJECTED, "Rejected"),
+    )
+
     user_code=models.CharField(max_length=255, null=True, blank=True)
     user_role = models.CharField(max_length=50, choices=USER_ROLE_CHOICES)
     otp = models.CharField(max_length=20, null=True, blank=True)
@@ -37,6 +43,14 @@ class UserProfile(Base):
     trade_license_number = models.CharField(max_length=255, null=True, blank=True)
     manage_through = models.CharField(max_length=20, choices=constants.choices,null=True, blank=True)
     is_staff = models.BooleanField(default=False)
+
+    tenant_status = models.CharField(
+        max_length=20,
+        choices=TENANT_STATUS_CHOICES,
+        default="PENDING",
+        null=True,
+        blank=True
+    )
 
     def __str__(self):
         return f"{self.id}-{self.user.email}-{self.user_role}"
@@ -188,6 +202,31 @@ class PropertyImages(Base):
 
     def __str__(self):
         return f"Image for {self.property.property_unit_name}"
+
+
+
+
+class PropertyInterest(Base):
+    property_unit = models.ForeignKey(
+        PropertyUnitDetails,
+        on_delete=models.CASCADE,
+        related_name="interests"
+    )
+    tenant = models.ForeignKey(
+        UserProfile,
+        on_delete=models.CASCADE,
+        related_name="interested_properties"
+    )
+    
+
+    class Meta:
+        unique_together = ("property_unit", "tenant")
+
+    def __str__(self):
+        return f"{self.tenant} → {self.property_unit}"
+
+
+
 
 
 class UserVerification(models.Model):

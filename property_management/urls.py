@@ -39,19 +39,14 @@ urlpatterns = [
     path('lease_tenancy_csv', views.export_lease_tenancy_csv, name='export_lease_tenancy_csv'), #export_lease_tenancy_csv
     path('company_owners_csv', views.export_company_owners_csv, name='export_company_owners_csv'), #after pmc login all owners
 
+    path('interested', views.toggle_property_interest, name='toggle_property_interest'),
 
-   
-
-
+    path('tenants_Approved_Rejected', views.company_tenants, name='company_tenants'),
+ 
+    
 
 
     
-
-    
-    
-    
-
-     
 ] 
 
 if settings.DEBUG:

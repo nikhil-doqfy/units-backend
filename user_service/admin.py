@@ -3,7 +3,7 @@ from user_service.models import (
     UserProfile, Company, Permission, Role, 
     Property, PropertyUnitDetails, PropertyImages, UserVerification,
     Documents, PropertyDocumentsMapping, OwnerDocumentsMapping,
-    TenantDocumentsMapping, CompanyUserDocumentsMapping, StaffDocumentsMapping,Country, State, City, CompanyStaff ,FAQ ,PrivacyPolicy ,Complaint
+    TenantDocumentsMapping, CompanyUserDocumentsMapping, StaffDocumentsMapping,Country, State, City, CompanyStaff ,FAQ ,PrivacyPolicy ,Complaint ,PropertyInterest
 )
 from property_management.models import (
     LeasePropertyDetails, UserInvitation, Template, TemplateFields,
@@ -89,6 +89,9 @@ class PrivacyPolicyAdmin(admin.ModelAdmin):
 class FAQAdmin(admin.ModelAdmin):
     list_display = ("id", "question")
 
+@admin.register(PropertyInterest)
+class PropertyInterestAdmin(admin.ModelAdmin):
+    list_display = ("tenant", "property_unit") 
 
 # -------------------- Property Management Admin --------------------
 @admin.register(LeasePropertyDetails)
