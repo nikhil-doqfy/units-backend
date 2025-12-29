@@ -29,7 +29,7 @@ urlpatterns = [
     path('company/owners', views.company_owners_view, name='company_owners_view'),
     path('owner/pmc', views.owner_pmc_view, name='owner_pmc_view'),
     path('save/lease', views.lease_details_view, name='lease_details_view'),
-    path('generate/contract', views.generate_contract, name='generate_contract'),
+    path('generate/contract', views.generate_contract, name='generate_contract'), 
     path('lease/tenancy', views.lease_tenancy, name='lease_tenancy'),
     path("complaint", views.complaint, name="complaint_api"), 
     path("faq_api", views.faq_api, name="faq_api"),
@@ -38,10 +38,27 @@ urlpatterns = [
     path('tenant_csv', views.export_tenant_csv, name=' export_tenant_csv'), #tenant table
     path('lease_tenancy_csv', views.export_lease_tenancy_csv, name='export_lease_tenancy_csv'), #export_lease_tenancy_csv
     path('company_owners_csv', views.export_company_owners_csv, name='export_company_owners_csv'), #after pmc login all owners
-
     path('interested', views.toggle_property_interest, name='toggle_property_interest'),
+    path('tenants_Approved_Rejected', views.company_tenants, name='company_tenants'), 
 
-    path('tenants_Approved_Rejected', views.company_tenants, name='company_tenants'),
+    path('lease_pdf', views.lease_pdf_view, name='lease_pdf_view'), 
+
+    path('monthly_revenue', views.dashboard_monthly_revenue, name='dashboard_monthly_revenue'), 
+    path('cheque_visibility', views.dashboard_cheque_visibility, name='dashboard_monthly_revenue'), 
+
+
+    path('cheque_aging', views.dashboard_cheque_aging, name='dashboard_cheque_aging'), 
+
+
+    
+
+
+    
+
+
+    
+
+    
  
     
 

@@ -226,9 +226,6 @@ class PropertyInterest(Base):
         return f"{self.tenant} → {self.property_unit}"
 
 
-
-
-
 class UserVerification(models.Model):
     VERIFICATION_TYPE_CHOICES = (
         (constants.MOBILE_VERIFICATION, "Mobile Verification"),

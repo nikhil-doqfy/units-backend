@@ -5,6 +5,7 @@ import json
 import datetime
 from user_service.models import UserProfile, Documents, PropertyUnitDetails,Property, Company, PropertyImages ,PropertyDocumentsMapping, Country, State, City, Role ,Complaint,FAQ ,PropertyInterest
 from property_management.models import LeasePropertyDetails,TemplateFields, TemplateValues,Template 
+from payment.models import Payment
 from utilities.decorator import is_request_authenticated
 from utilities.helper_functions import (
     upload_file_to_s3_base64, 
@@ -16,6 +17,7 @@ from utilities.helper_functions import (
     datetime_to_epoch_millis,
     get_pdfkit_config,
     generate_property_code,
+    fetch_s3_presigned_url_for_download,
 
 )
 from utilities import status, constants
@@ -38,7 +40,10 @@ from property_management.utils import (
 from django.db.models import Count, Q
 from django.utils import timezone
 from django.db import transaction
-
+from django.utils.timezone import now
+from django.utils.dateparse import parse_date
+from django.db.models.functions import TruncMonth
+from django.db.models import Sum
 
 
 @is_request_authenticated
@@ -95,10 +100,6 @@ def options(request):
                     property_ids = PropertyUnitDetails.objects.filter(company=company).values_list('property_id', flat=True).distinct()
                     properties = Property.objects.filter(id__in=property_ids)
             content["property"] = [{"key": prop.id, "value": prop.property_name}for prop in properties]
-
-        
-
-            
         elif option_type == "PROPERTY_TYPE":
             content["property_type"] = [
                 {"key": key, "value": value }
@@ -184,6 +185,21 @@ def options(request):
         elif option_type == "OWNER_DETAILS":
             owners = UserProfile.objects.filter(user_role=constants.OWNER, user__is_active=True)
             content["owners"] = [{"key": owner.id,"value": f"{owner.user.first_name} {owner.user.last_name}"}for owner in owners]
+            
+        elif option_type == "PROPERTY_UNIT_WITH_LEASE":
+            if user.user_role == constants.OWNER:
+                units = PropertyUnitDetails.objects.filter(owner=user,lease_details__isnull=False).distinct()
+            elif user.user_role == constants.COMPANY_USER:
+                company = Company.objects.filter(company_user=user).first()
+                if not company:
+                    return prepare_response(message="Company not found for this user",status=status.HTTP_404_NOT_FOUND)
+                units = PropertyUnitDetails.objects.filter(company=company,lease_details__isnull=False).distinct()
+            else:
+                units = PropertyUnitDetails.objects.none()
+                content["property_unit_with_lease"] = [{"key": u.id,"value": u.property_unit_name or "Unnamed Unit"} for u in units]
+
+
+            
         else:
             content[option_type] = []
             
@@ -246,7 +262,8 @@ def property_table_view(request):
     )
 
     elif user.user_role == constants.TENANT:
-        properties_qs = PropertyUnitDetails.objects.filter(lease_details__tenant=user)
+        # properties_qs = PropertyUnitDetails.objects.filter(lease_details__tenant=user)
+        properties_qs = PropertyUnitDetails.objects.filter(is_occupied=False)
     else:
         return prepare_response(message="Unauthorized user role", status=status.HTTP_403_FORBIDDEN)
     properties_qs = properties_qs.select_related("owner__user", "company", "property").prefetch_related(
@@ -2804,5 +2821,383 @@ def company_tenants(request):
         print("Company Tenants API Error:", e)
         return prepare_response(
             message=constants.INTERNAL_SERVER_ERROR,
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+
+def lease_pdf_view(request):
+    if request.method != "GET":
+        return prepare_response(
+            message=constants.INVALID_REQUEST_METHOD,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+    try:
+        lease_id = request.GET.get("lease_id")
+        purpose = request.GET.get("purpose")  
+
+        if not lease_id:
+            return prepare_response(
+                message="lease_id is required",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        lease = LeasePropertyDetails.objects.filter(id=lease_id).first()
+        if not lease:
+            return prepare_response(
+                message="Lease not found",
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if not lease.pdf_path:
+            return prepare_response(
+                message="Lease PDF not available",
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        file_name = f"lease_{lease.lease_number}.pdf"
+
+       
+        if purpose == "download":
+            presigned_url = fetch_s3_presigned_url_for_download(
+                file_url=lease.pdf_path,
+                file_name=file_name
+            )
+        else:
+           
+            presigned_url = fetch_s3_presigned_url(
+                file_url=lease.pdf_path,
+                file_name=file_name
+            )
+
+        if not presigned_url:
+            return prepare_response(
+                message="Unable to generate PDF URL",
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        return prepare_response(
+            content={
+                "lease_id": lease.id,
+                "lease_number": lease.lease_number,
+                "purpose": purpose or "preview",
+                "pdf_url": presigned_url
+            },
+            message="Lease PDF URL generated successfully",
+            status=status.HTTP_200_OK
+        )
+
+    except Exception as e:
+        return prepare_response(
+            message={"error": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+
+
+
+#--------------------------------------------> Dashboard API<------------------------------------------------------------------
+
+
+
+@is_request_authenticated
+def dashboard_monthly_revenue(request):
+    if request.method != "GET":
+        return prepare_response(
+            message="Invalid request method",
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+    try:
+        user = request.user
+
+        city_id = request.GET.get("city_id")
+        unit_id = request.GET.get("unit_id")
+        from_date = request.GET.get("from_date")
+        to_date = request.GET.get("to_date")
+
+        payments = Payment.objects.filter(
+            status=constants.PAYMENT_SUCCESSFUL,
+            reason_type=constants.RENT,
+            is_active=True
+        )
+
+        leases = LeasePropertyDetails.objects.filter(
+            lease_status=constants.ACTIVE,
+            is_active=True
+        )
+
+
+        if user.user_role == constants.OWNER:
+            payments = payments.filter(
+                rental_account__lease_property__owner=user
+            )
+
+        elif user.user_role == constants.COMPANY_USER:
+            company = Company.objects.filter(company_user=user).first()
+            if not company:
+                return prepare_response(
+                    message="Company not found",
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            payments = payments.filter(
+                rental_account__lease_property__company=company
+            )
+        else:
+            return prepare_response(
+                message="Unauthorized role",
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if city_id:
+            payments = payments.filter(
+                rental_account__lease_property__property__city_id=city_id
+            )
+
+        if unit_id:
+            payments = payments.filter(
+                rental_account__lease_property__id=unit_id
+            )
+
+        if from_date and to_date:
+            payments = payments.filter(
+                created__date__range=[
+                    parse_date(from_date),
+                    parse_date(to_date)
+                ]
+            )
+
+        monthly_data = (
+            payments
+            .annotate(month=TruncMonth("created"))
+            .values("month")
+            .annotate(total_amount=Sum("amount"))
+            .order_by("month")
+        )
+
+        revenue_list = []
+        total_revenue = 0
+
+        for item in monthly_data:
+            amount = float(item["total_amount"] or 0)
+            total_revenue += amount
+            month = item["month"]
+
+            revenue_list.append({
+             "period_epoch": datetime_to_epoch_millis(month), 
+             "month": month.month if month else None,
+            "year": month.year if month else None,
+            "amount": round(amount, 2)
+            })
+        mrr = leases.aggregate(
+            total_mrr=Sum("rent")
+        )["total_mrr"] or 0
+
+        return prepare_response(
+            message="Monthly revenue fetched successfully",
+            status=status.HTTP_200_OK,
+            content={
+                "total_revenue": round(total_revenue, 2),
+                "MRR": round(mrr, 2),
+                "monthly_revenue": revenue_list
+            }
+        )
+
+    except Exception as e:
+        print("Dashboard Revenue Error:", e)
+        return prepare_response(
+            message=str(e),  
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@is_request_authenticated
+def dashboard_cheque_visibility(request):
+    if request.method != "GET":
+        return prepare_response(
+            message="Invalid request method",
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+    
+    try:
+        user = request.user
+        city_id = request.GET.get("city_id")
+        unit_id = request.GET.get("unit_id")
+        from_date = request.GET.get("from_date")
+        to_date = request.GET.get("to_date")
+        if user.user_role == constants.OWNER:
+            leases = LeasePropertyDetails.objects.filter(owner=user, is_active=True)
+        elif user.user_role == constants.COMPANY_USER:
+            companies = Company.objects.filter(company_user=user)
+            if not companies.exists():
+                return prepare_response(message="Company not found", status=404)
+            leases = LeasePropertyDetails.objects.filter(lease_property__company__in=companies,is_active=True)
+        else:
+            return prepare_response(message="Unauthorized role", status=403)
+        if city_id:
+            leases = leases.filter(lease_property__property__city_id=city_id)
+        if unit_id:
+            leases = leases.filter(lease_property__id=unit_id)
+        if from_date and to_date:
+            leases = leases.filter(
+                created__date__range=[parse_date(from_date), parse_date(to_date)])
+        leases = leases.prefetch_related(
+            Prefetch(
+                "payments",
+                queryset=Payment.objects.filter(method=constants.CHEQUE, is_active=True),
+                to_attr="cheque_payments"
+            )
+        ).select_related(
+            "lease_property",
+            "owner",
+            "tenant"
+        )
+
+ 
+        cheque_list = []
+        for lease in leases:
+            property_unit = lease.lease_property
+            owner_name = f"{lease.owner.user.first_name} {lease.owner.user.last_name}".strip() if lease.owner else ""
+            tenant_name = f"{lease.tenant.user.first_name} {lease.tenant.user.last_name}".strip() if lease.tenant else ""
+
+          
+            if lease.cheque_payments:
+                for p in lease.cheque_payments:
+                    cheque_list.append({
+                        "lease_number": lease.lease_number,
+                        "property_unit_name": property_unit.property_unit_name if property_unit else "",
+                        "owner_name": owner_name,
+                        "tenant_name": tenant_name,
+                        "cheque_number": p.cheque_number,
+                        "status": p.get_status_display() if p.status else None,
+                        "amount": round(p.amount, 2)
+                    })
+            else:
+             
+                cheque_list.append({
+                    "lease_number": lease.lease_number,
+                    "property_unit_name": property_unit.property_unit_name if property_unit else "",
+                    "owner_name": owner_name,
+                    "tenant_name": tenant_name,
+                    "cheque_number": None,
+                    "status": None,
+                    "amount": 0
+                })
+
+        return prepare_response(
+            message="Cheque visibility fetched successfully",
+            status=status.HTTP_200_OK,
+            content={"cheques": cheque_list}
+        )
+    except Exception as e:
+        print("Cheque Visibility Error:", e)
+        return prepare_response(
+            message=str(e),
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@is_request_authenticated
+def dashboard_cheque_aging(request):
+    if request.method != "GET":
+        return prepare_response(
+            message="Invalid request method",
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+    try:
+        user = request.user
+        property_unit_id = request.GET.get("property_unit_id")
+        today = now().date()
+        payments = Payment.objects.filter(
+            method=constants.CHEQUE,
+            is_active=True
+        )
+        if user.user_role == constants.OWNER:
+            payments = payments.filter(rental_account__owner=user)
+
+        elif user.user_role == constants.COMPANY_USER:
+            companies = Company.objects.filter(company_user=user)
+            if not companies.exists():
+                return prepare_response(
+                    message="Company not found",
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            payments = payments.filter(
+                rental_account__lease_property__company__in=companies
+            )
+        else:
+            return prepare_response(
+                message="Unauthorized role",
+                status=status.HTTP_403_FORBIDDEN
+            )
+        if property_unit_id:
+            payments = payments.filter(
+                rental_account__lease_property__id=property_unit_id
+            )
+
+        # ================= SUMMARY =================
+        total_cheques = payments.count()
+
+        realized_count = payments.filter(
+            status=constants.PAYMENT_SUCCESSFUL
+        ).count()
+
+        bounced_payments = payments.filter(
+            status=constants.PAYMENT_BOUNCED,
+            cheque_date__isnull=False
+        )
+
+        bounced_count = bounced_payments.count()
+
+        # ================= AGING =================
+        aging_30 = aging_60 = aging_90 = aging_90_plus = 0
+
+        for p in bounced_payments:
+            age_days = (today - p.cheque_date.date()).days
+
+            if age_days <= 30:
+                aging_30 += 1
+            elif age_days <= 60:
+                aging_60 += 1
+            elif age_days <= 90:
+                aging_90 += 1
+            else:
+                aging_90_plus += 1
+
+        data = {
+            "property_unit_id": property_unit_id,
+            "summary": {
+                "total_cheques": total_cheques,
+                "realized_cheques": {
+                    "count": realized_count,
+                    "text": f"{realized_count} / {total_cheques}"
+                },
+                "bounced_cheques": {
+                    "count": bounced_count,
+                    "text": f"{bounced_count} / {total_cheques}"
+                }
+            },
+            "aging_breakup": {
+                "30_days": aging_30,
+                "60_days": aging_60,
+                "90_days": aging_90,
+                "above_90_days": aging_90_plus
+            }
+        }
+
+        return prepare_response(
+            message="Cheque aging fetched successfully",
+            status=status.HTTP_200_OK,
+            content=data
+        )
+
+    except Exception as e:
+        print("Cheque Aging Error:", e)
+        return prepare_response(
+            message=str(e),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )

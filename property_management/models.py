@@ -31,7 +31,7 @@ class LeasePropertyDetails(Base):
     )
 
     owner = models.ForeignKey(
-        "user_service.UserProfile", 
+        "user_service.UserProfile",  
         limit_choices_to={'user_role': constants.OWNER},
         on_delete=models.SET_NULL,
         related_name="owner_leases",
@@ -212,4 +212,7 @@ class TemplateValues(Base):
     def __str__(self):
         return f"Template: {self.document_template.name} | Lease ID: {self.lease.id}"
     
+
+
+
 

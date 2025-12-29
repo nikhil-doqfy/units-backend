@@ -90,6 +90,7 @@ class Payment(Base):
         (constants.PAYMENT_PENDING, "Payment Pending"),
         (constants.PAYMENT_SUCCESSFUL, "Payment Successful"),
         (constants.PAYMENT_FAILED, "Payment Failed"),
+        (constants.PAYMENT_BOUNCED, "Payment Bounced"),
     )
          
     rental_account = models.ForeignKey(LeasePropertyDetails, related_name='payments', on_delete=models.CASCADE)
@@ -104,7 +105,7 @@ class Payment(Base):
     cheque_number = models.CharField(max_length=50, blank=True, null=True)
     cheque_date = models.DateTimeField(null=True, blank=True)
     scanned_image = models.ImageField(upload_to='scans/', null=True, blank=True)
-    status = models.CharField(max_length=20, default=constants.PAYMENT_PENDING)
+    status = models.CharField(max_length=20,choices=PAYMENT_STATUS_CHOICES, default=constants.PAYMENT_PENDING)
  
     def __str__(self): 
         return "{}-{}-{}".format(self.payee_name, self.account_number, self.status)

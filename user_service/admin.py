@@ -41,7 +41,7 @@ class PropertyAdmin(admin.ModelAdmin):
 
 @admin.register(PropertyUnitDetails)
 class PropertyUnitDetailsAdmin(admin.ModelAdmin):
-    list_display = ["id", "property_unit_name", "property", "owner", "is_occupied", "rent"]
+    list_display = ["id", "property_unit_name", "property", "owner", "is_occupied", "rent","company"]
 
 @admin.register(PropertyImages)
 class PropertyImagesAdmin(admin.ModelAdmin):

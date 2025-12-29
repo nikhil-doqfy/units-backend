@@ -21,7 +21,7 @@ class ChargeDetailsAdmin(admin.ModelAdmin):
 
 
 class PaymentAdmin(admin.ModelAdmin):
-    list_display = ["id", "payee_name", "payee_contact", "account_number", "cheque_number", "status"]
+    list_display = ["id", "payee_name", "payee_contact", "account_number", "cheque_number", "status","created"]
     search_fields = ["cheque_number"]
     
 admin.site.register(Bank, BankAdmin)
