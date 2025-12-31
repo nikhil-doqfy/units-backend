@@ -26,8 +26,18 @@ ONLY_EMAIL_OR_CONTACT_NUMBER_ALLOWED = "Only 'email' or 'contact number' is allo
 EMAIL_OR_CONTACT_NUMBER_REQUIRED = "'Email' or 'Contact number' is required"
 MULTIPLE_USER_FOUND_ERROR = "Multiple user found  please contact Optiex"
 INVALID_OTP = " Invalid OTP" 
-FIELD_REQUIRED = "field is required."
+FIELD_REQUIRED = "All field are required."
 PASSWORDS_DO_NOT_MATCH = "Passwords do not match."
+DOCUMENT_UPLOAD_FAILED = "Document upload failed"
+ROLE_IS_REQUIRED = "Role is required"
+ROLE_CREATED_SUCCESS = "Role created successfully"
+USER_ALREADY_EXISTS_EMAIL = "User already exists with this email"
+SIGNUP_SUCCESS = "Signup successful"
+ROLES_FETCH_SUCCESS = "Roles fetched successfully"
+
+
+
+
 EMAIL_ALREADY_REGISTERED = "Email already registered."
 USER_REGISTERED_SUCCESSFULLY = "User registered successfully."
 OTP_GENERATED_SUCCESSFULLY = "OTP sent successfully.",
@@ -89,7 +99,7 @@ AUTHENTICATION_FAILED = "Authentication failed."
 ACCESS_DENIED_TENANTS_ONLY="Access denied. Only tenants can view ,submit or edit details."
 TENANT_DETAILS_ALREADY_EXISTS="Tenant details already exist for this user."
 TENANT_DETAILS_SAVED_SUCCESS="Tenant details saved successfully."
-TENANT_DETAILS_NOT_FOUND="Tenant details not found for the authenticated user."
+TENANT_DETAILS_NOT_FOUND="Tenant details not found "
 TENANT_DETAILS_UPDATED_SUCCESSFULLY="Tenant details updated successfully."
 ACCESS_DENIED_TENANTS_ONLY_UPLOAD_DOC="Access denied. Only tenants can upload documents."
 DOCUMENTS_UPLOAD_SUCCESS="Documents uploaded successfully."
@@ -290,6 +300,49 @@ NO_PROPERTY_ASSIGNED_TO_TENANAT="No property assigned to this tenant"
 TENANT_DETAIL_FETCHED="teanant data fetched"
 COMPANY_NOT_FOUND="company not found"
 UNAUTHORIZED_TO_CREATE_PROPERTY=""
+
+PARENT_PROPERTY_REQUIRED = "Parent property id or name is required"
+OWNER_TENANCY_FETCH_SUCCESS = "Owner tenancy details fetched successfully"
+PROPERTY_MANAGER_COMPANY_DETAILS_SUCCESS = "Property manager company Details fetched successfully"
+
+INVALID_INVITATION_TYPE = "Invalid invitation type"
+ONLY_OWNER_CAN_INVITE_PMC = "Only owners can invite PMC"
+ONLY_PMC_CAN_SEND_INVITATION = "Only PMC can send this invitation"
+INVITATION_SENT_SUCCESS = "Invitation sent successfully"
+UNAUTHORIZED_OR_MISSING_PARAMETERS = "Unauthorized access or missing parameters"
+PMC_PROFILE_PROPERTY_SUCCESS = "PMC profile and property details fetched successfully"
+PROPERTY_AND_TENANT_REQUIRED = "Property ID and Tenant ID are required"
+PROPERTY_TENANT_INVALID = "Invalid property or tenant"
+INVALID_LEASE_DATES = "Invalid lease dates"
+
+INVALID_TENANT = "Invalid tenant"
+INVALID_OWNER = "Invalid owner"
+INVALID_COMPANY = "Invalid company"
+INVALID_PROPERTY = "Invalid property"
+ONLY_TENANT_ALLOWED = "Only tenant can perform this action"
+INVALID_DATA = "Invalid data"
+PROPERTY_UNIT_NOT_FOUND = "Property unit not found"
+INTEREST_UPDATED_SUCCESS = "Interest updated successfully"
+ONLY_COMPANY_USER_ALLOWED = "Only company users can access this data"
+
+LEASE_PDF_NOT_AVAILABLE = "Lease PDF not available"
+LEASE_ID_REQUIRED = "Lease ID is required"
+LEASE_PDF_URL_GENERATED_SUCCESS = "Lease PDF URL generated successfully"
+OTHER_TYPE_PAYMENTS_FETCH_SUCCESS = "Other type payments fetched successfully"
+CHEQUE_AGING_FETCH_SUCCESS = "Cheque aging fetched successfully"
+MONTHLY_REVENUE_FETCH_SUCCESS = "Monthly revenue fetched successfully"
+
+CHEQUE_VISIBILITY_FETCH_SUCCESS = "Cheque visibility fetched successfully"
+COMPLAINT_RAISED_SUCCESS = "Complaint raised successfully"
+
+MESSAGE_REQUIRED = "Message is required"
+PDF_URL_GENERATION_FAILED = "Unable to generate PDF URL"
+UNAUTHORIZED_ACCESS = "Unauthorized access"
+UNAUTHORIZED_USER_ROLE = "Unauthorized user role"
+PARENT_PROPERTY_REQUIRED = "Parent property is required"
+ROLE_ALREADY_EXISTS_IN_COMPANY = "This role already exists in this company"
+STAFF_DETAILS_FETCH_SUCCESS = "Staff details fetched successfully"
+
 
 choices=[("MYSELF", "Myself"), ("PMC", "PMC")]
 

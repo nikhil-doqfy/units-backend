@@ -28,10 +28,10 @@ def user_sign_up(request):
             first_name = data.get("first_name")
             last_name = data.get("last_name")
             if not all([email, password, confirm_password, user_role]):
-                return prepare_response(message="All fields are required", status=status.HTTP_400_BAD_REQUEST)
+                return prepare_response(message=constants.FIELD_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
 
             if password != confirm_password:
-                return prepare_response(message="Password mismatch", status=status.HTTP_400_BAD_REQUEST)
+                return prepare_response(message=constants.PASSWORD_MISMATCH, status=status.HTTP_400_BAD_REQUEST)
             if User.objects.filter(username=email).exists():
                 return prepare_response(message=constants.EMAIL_ALREADY_REGISTERED, status=status.HTTP_400_BAD_REQUEST)
 
@@ -71,7 +71,7 @@ def user_sign_up(request):
                 object_name = f"{folder_name}/{filename}"
                 uploaded_url = upload_file_to_s3_base64(base64_data, object_name)
                 if not uploaded_url:
-                    prepare_response(message="Document upload failed")
+                    prepare_response(message=constants.DOCUMENT_UPLOAD_FAILED)
                 return Documents.objects.create(
                     file_name=filename,
                     file_path=uploaded_url,
@@ -101,7 +101,7 @@ def user_sign_up(request):
                     created_by=user
                 )    
         return prepare_response(
-            message="Signup successful",
+            message=constants.SIGNUP_SUCCESS,
             content={
                 "user_id": user.id,
                 "profile_id": profile.id,
@@ -162,7 +162,7 @@ def userprofile_view(request):
 
             return prepare_response(
                 content=data,
-                message="User profile fetched successfully",
+                message=constants.USER_PROFILE_FETCHED,
                 status=status.HTTP_200_OK
             )
 
@@ -212,7 +212,7 @@ def userprofile_view(request):
                
                     
             return prepare_response(
-                message="User profile updated successfully",
+                message=constants.USER_PROFILE_UPDATED,
                 status=status.HTTP_200_OK
             )
 
@@ -242,19 +242,19 @@ def user_management(request):
        
             if not all([first_name, last_name, email, password, role]):
                 return prepare_response(
-                    message="Required fields missing",
+                    message=constants.ALL_FIELD_REQUIRED,
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
             if role not in [constants.OWNER, constants.TENANT]:
                 return prepare_response(
-                    message="Invalid role",
+                    message=constants.UNAUTHORIZED_USER_ROLE,
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
             if User.objects.filter(email=email).exists():
                 return prepare_response(
-                    message="User already exists",
+                    message=constants.EMAIL_ALREADY_REGISTERED,
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
@@ -282,7 +282,7 @@ def user_management(request):
             )
 
             return prepare_response(
-                message="User created successfully",
+                message=constants.USER_CREATED,
                 content={
                     "user_id": profile.id,
                     "email": django_user.email,
@@ -362,12 +362,12 @@ def user_management(request):
         elif request.method == "PUT":
             return prepare_response(
                 message="Update user API will be added later",
-                status=501
+                status=status.HTTP_501_NOT_IMPLEMENTED
             )
         elif request.method == "DELETE":
             user_id = request.GET.get("user_id")
             if not user_id:
-                return prepare_response(message="user_id is required",status=status.HTTP_400_BAD_REQUEST)
+                return prepare_response(message=constants.USER_ID_REQUIRED,status=status.HTTP_400_BAD_REQUEST)
             
             profile = UserProfile.objects.select_related("user").filter(
                           id=user_id,
@@ -382,7 +382,7 @@ def user_management(request):
             profile.delete()
             django_user.delete()
             return prepare_response(
-                message="User permanently deleted successfully",
+                message=constants.USER_PERMANENTLY_DELETED,
                  status=status.HTTP_200_OK
             )
 
@@ -412,7 +412,7 @@ def create_role(request):
         role_name = body.get("name")
         if not role_name:
             return prepare_response(
-                message="Role name is required",
+                message=constants.ROLE_IS_REQUIRED,
                 status=status.HTTP_400_BAD_REQUEST
             )
         user_profile = request.user 
@@ -420,7 +420,7 @@ def create_role(request):
         company = Company.objects.filter(company_user=user_profile, is_active=True).first()
         if not company:
             return prepare_response(
-                message="Company not found for logged in user",
+                message=constants.COMPANY_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
             )
         if Role.objects.filter(
@@ -429,7 +429,7 @@ def create_role(request):
             is_active=True
         ).exists():
             return prepare_response(
-                message="Role already exists in this company",
+                message=constants.ROLE_ALREADY_EXISTS_IN_COMPANY,
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -444,7 +444,7 @@ def create_role(request):
                 "name": role.name,
                 "company": company.company_name
             },
-            message="Role created successfully",
+            message=constants.ROLE_CREATED_SUCCESS,
             status=status.HTTP_201_CREATED
         )
 
@@ -471,7 +471,7 @@ def staff_view(request):
             password = body.get("password")
             confirm_password = body.get("confirm_password")
             emirate_id = body.get("emirate_id")
-            city_id = body.get("city_id")  
+            city_id = body.get("city")  
             locality = body.get("locality")
             address = body.get("address")
             additional_address = body.get("additional_address")
@@ -479,19 +479,19 @@ def staff_view(request):
 
             if not all([staff_name, email, contact, password, confirm_password]):
                 return prepare_response(
-                    message="All fields are required",
+                    message=constants.ALL_FIELD_REQUIRED,
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
             if password != confirm_password:
                 return prepare_response(
-                    message="Password and confirm password do not match",
+                    message=constants.PASSWORD_MISMATCH,
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
             if User.objects.filter(username=email).exists():
                 return prepare_response(
-                    message="User already exists with this email",
+                    message=constants.USER_ALREADY_EXISTS_EMAIL,
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
@@ -544,7 +544,7 @@ def staff_view(request):
                     prop.assigned_staff.add(company_staff)
 
             return prepare_response(
-                message="Staff created successfully",
+                message=constants.STAFF_CREATION_SUCCESS,
                 status=status.HTTP_201_CREATED
             )
 
@@ -559,13 +559,13 @@ def staff_view(request):
             body = json.loads(request.body)
             staff_id = body.get("staff_id")
             if not staff_id:
-                return prepare_response(message="staff_id is required",status=status.HTTP_400_BAD_REQUEST)
+                return prepare_response(message=constants.STAFF_ID_REQUIRED,status=status.HTTP_400_BAD_REQUEST)
             company = Company.objects.filter(company_user=user, is_active=True).first()
             if not company:
                 return prepare_response(message=constants.COMPANY_NOT_FOUND,status=status.HTTP_404_NOT_FOUND)
             company_staff = CompanyStaff.objects.filter(id=staff_id, company=company).first()
             if not company_staff:
-                return prepare_response(message="Staff not found",status=status.HTTP_404_NOT_FOUND)
+                return prepare_response(message=constants.STAFF_NOT_FOUND,status=status.HTTP_404_NOT_FOUND)
             staff_profile = company_staff.staff
             django_user = staff_profile.user
             if "staff_name" in body:
@@ -573,7 +573,7 @@ def staff_view(request):
             if "email" in body:
                 email = body["email"]
                 if User.objects.filter(username=email).exclude(id=django_user.id).exists():
-                    return prepare_response(message="Email already exists",status=status.HTTP_400_BAD_REQUEST)
+                    return prepare_response(message=constants.EMAIL_ALREADY_REGISTERED,status=status.HTTP_400_BAD_REQUEST)
                 django_user.username = email
                 django_user.email = email
             django_user.save()
@@ -606,7 +606,7 @@ def staff_view(request):
                 for prop in properties:
                     prop.assigned_staff.add(company_staff)
             return prepare_response(
-                message="Staff updated successfully",status=status.HTTP_200_OK)
+                message=constants.STAFF_DETAILS_UPDATED_SUCCESS,status=status.HTTP_200_OK)
         except Exception as e:
             return prepare_response(message=constants.SOMETHING_WENT_WRONG,status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -657,7 +657,7 @@ def staff_view(request):
 
             if not company_staff:
                 return prepare_response(
-                    message="Staff not found",
+                    message=constants.STAFF_NOT_FOUND,
                     status=status.HTTP_404_NOT_FOUND)
             staff_data = get_staff_details(company_staff, include_password=True)
             properties_table = []
@@ -691,7 +691,7 @@ def staff_view(request):
             staff_data["assigned_properties"] = properties_table
             return prepare_response(
         content=staff_data,
-        message="Staff details fetched successfully",
+        message=constants.STAFF_DETAILS_FETCH_SUCCESS,
         status=status.HTTP_200_OK
     )
         if search:
@@ -732,7 +732,7 @@ def staff_view(request):
         return prepare_response(
             content=data,
             pagination=pagination_meta,
-            message="Staff list fetched successfully",
+            message=constants.STAFF_DETAILS_FETCH_SUCCESS,
             status=status.HTTP_200_OK
         )
     elif request.method == "DELETE":
@@ -794,7 +794,7 @@ def role_table_view(request):
             "total_pages": paginator.num_pages
         }
         return prepare_response(
-            message="Roles fetched successfully",
+            message=constants.ROLES_FETCH_SUCCESS,
             content=data,
             pagination=pagination_meta,
             status=status.HTTP_200_OK
@@ -807,20 +807,11 @@ def role_table_view(request):
         )
 
 
-
-
-
-
-
 @is_request_authenticated
 def export_users_csv(request):
     try:
         if request.method != "GET":
-            return prepare_response(
-                message="Method not allowed",
-                status=status.HTTP_405_METHOD_NOT_ALLOWED
-            )
-
+            return prepare_response(message=constants.INVALID_REQUEST_METHOD,status=status.HTTP_405_METHOD_NOT_ALLOWED)
         user = request.user
 
         is_active_param = request.GET.get("is_active", "true").lower()
@@ -830,24 +821,17 @@ def export_users_csv(request):
         start_epoch = request.GET.get("start_date")
         end_epoch = request.GET.get("end_date")
         user_id = request.GET.get("user_id")
-
-    
         users_qs = UserProfile.objects.select_related("user").filter(
             is_active=is_active,
-            created_by=user.user
-        )
-
+            created_by=user.user)
         if role:
             users_qs = users_qs.filter(user_role=role)
-
         if user_id:
             users_qs = users_qs.filter(id=user_id)
-
         if start_epoch and end_epoch:
             s = safe_epoch_to_datetime(int(start_epoch))
             e = safe_epoch_to_datetime(int(end_epoch))
             users_qs = users_qs.filter(created__range=(s, e))
-
         if search:
             users_qs = users_qs.filter(
                 Q(user__email__icontains=search) |
@@ -855,7 +839,6 @@ def export_users_csv(request):
                 Q(user__last_name__icontains=search) |
                 Q(contact_number__icontains=search)
             )
-
         users_qs = users_qs.order_by("-created")
 
         field_names = [
@@ -907,7 +890,7 @@ def export_staff_csv(request):
     try:
         if request.method != "GET":
             return prepare_response(
-                message="Method not allowed",
+                message=constants.INVALID_REQUEST_METHOD,
                 status=status.HTTP_405_METHOD_NOT_ALLOWED
             )
 
@@ -943,7 +926,7 @@ def export_staff_csv(request):
 
             if not staff:
                 return prepare_response(
-                    message="Staff not found",
+                    message=constants.STAFF_NOT_FOUND,
                     status=status.HTTP_404_NOT_FOUND
                 )
 

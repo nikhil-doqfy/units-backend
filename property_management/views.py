@@ -115,7 +115,7 @@ def options(request):
             elif user.user_role == constants.COMPANY_USER:
                 company = Company.objects.filter(company_user=user).first()
                 if not company:
-                    return prepare_response( message="Company not found for this user",status=status.HTTP_404_NOT_FOUND)
+                    return prepare_response( message=constants.COMPANY_NOT_FOUND,status=status.HTTP_404_NOT_FOUND)
                 units = PropertyUnitDetails.objects.filter(company=company)
                 
             else:
@@ -196,7 +196,7 @@ def options(request):
             elif user.user_role == constants.COMPANY_USER:
                 company = Company.objects.filter(company_user=user).first()
                 if not company:
-                    return prepare_response(message="Company not found for this user",status=status.HTTP_404_NOT_FOUND)
+                    return prepare_response(message=constants.COMPANY_NOT_FOUND,status=status.HTTP_404_NOT_FOUND)
                 units = PropertyUnitDetails.objects.filter(company=company,lease_details__isnull=False).distinct()
             else:
                 units = PropertyUnitDetails.objects.none()
@@ -266,7 +266,7 @@ def property_table_view(request):
         # properties_qs = PropertyUnitDetails.objects.filter(lease_details__tenant=user)
         properties_qs = PropertyUnitDetails.objects.filter(is_occupied=False)
     else:
-        return prepare_response(message="Unauthorized user role", status=status.HTTP_403_FORBIDDEN)
+        return prepare_response(message=constants.UNAUTHORIZED_ROLE, status=status.HTTP_403_FORBIDDEN)
     properties_qs = properties_qs.select_related("owner__user", "company", "property").prefetch_related(
         Prefetch("lease_details", queryset=LeasePropertyDetails.objects.select_related("tenant__user"))
     ).distinct()
@@ -591,7 +591,7 @@ def save_property(request):
                 city_id=data.get("city_id"),
                 created_by=user_profile.user)
             else:
-                return prepare_response(message="Parent property id or name is required",status=status.HTTP_400_BAD_REQUEST)
+                return prepare_response(message=constants.PARENT_PROPERTY_REQUIRED ,status=status.HTTP_400_BAD_REQUEST)
             new_property_unit = PropertyUnitDetails.objects.create(
                 created_by=user_profile.user,
                 property_unit_name=data.get("property_unit_name"),
@@ -1096,7 +1096,7 @@ def company_owners_view(request):
             ).first()
            
             if not owner:
-                return prepare_response(message="Owner not found", status=status.HTTP_404_NOT_FOUND)
+                return prepare_response(message=constants.OWNER_DETAILS_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
             units_qs = PropertyUnitDetails.objects.filter(
                 owner=owner,
                 company=company
@@ -1143,7 +1143,7 @@ def company_owners_view(request):
                     },
                     "table": table_data
                 },
-                message="Owner tenancy details fetched successfully",
+                message=constants.OWNER_TENANCY_FETCH_SUCCESS,
                 status=status.HTTP_200_OK
             )
         owners_qs = UserProfile.objects.filter(
@@ -1199,7 +1199,7 @@ def company_owners_view(request):
 
         return prepare_response(
             content=data,
-            message="Owners fetched successfully",
+            message=constants.OWNER_DETAILS_FETCHED_SUCCESS,
             pagination=pagination_meta,
             status=status.HTTP_200_OK
         )
@@ -1263,7 +1263,7 @@ def owner_pmc_view(request):
                             "company_address": comp.company_address,
                             "property_handling": f"{total_count} property",
                             "tenancy_ratio": tenancy_ratio,
-                            "compnay_code":"comp_110",
+                            "compnay_code":comp.company_code,
                         })
 
                 pagination_meta = {
@@ -1275,7 +1275,7 @@ def owner_pmc_view(request):
 
                 return prepare_response(
                     content=data,
-                    message="PMC list fetched successfully",
+                    message=constants.PROPERTY_MANAGER_COMPANY_DETAILS_SUCCESS,
                     pagination=pagination_meta,
                     status=status.HTTP_200_OK
                 )
@@ -1285,7 +1285,7 @@ def owner_pmc_view(request):
                     return prepare_response(message="Only owner can access this data",status=status.HTTP_403_FORBIDDEN)
                 company = Company.objects.select_related("company_user__user").filter(id=company_id).first()
                 if not company:
-                    return prepare_response(message="Company not found", status=status.HTTP_404_NOT_FOUND)
+                    return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
                 properties_qs = PropertyUnitDetails.objects.filter(owner=user,company=company ).select_related("property" ).prefetch_related( "lease_details__tenant__user")
 
                 if search:
@@ -1336,12 +1336,12 @@ def owner_pmc_view(request):
                             }
                 return prepare_response(
                     content={"company_profile": pmc_profile, "properties": properties_data},
-                    message="PMC profile & property details fetched successfully",
+                    message=constants.PMC_PROFILE_PROPERTY_SUCCESS,
                     pagination=pagination_meta,
                     status=status.HTTP_200_OK)
 
             else:
-                return prepare_response(message="Unauthorized access or missing parameters", status=status.HTTP_403_FORBIDDEN)
+                return prepare_response(message=constants.UNAUTHORIZED_OR_MISSING_PARAMETERS, status=status.HTTP_403_FORBIDDEN)
 
         except Exception as e:
             return prepare_response(
@@ -1359,7 +1359,7 @@ def owner_pmc_view(request):
 @is_request_authenticated
 def send_invitation(request):
     if request.method != "POST":
-        return prepare_response(message="Invalid request", status=status.HTTP_405_METHOD_NOT_ALLOWED)
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     try:
         user_profile = request.user  
@@ -1369,23 +1369,23 @@ def send_invitation(request):
         property_unit_id = data.get("property_unit_id")
 
         if not email:
-            return prepare_response(message="Email is required", status=status.HTTP_400_BAD_REQUEST)
+            return prepare_response(message=constants.EMAIL_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
         
         if not property_unit_id:
-            return prepare_response(message="Property unit id is required", status=status.HTTP_400_BAD_REQUEST)
+            return prepare_response(message=constants.PROPERTY_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
         
         if invite_type not in ["OWNER_TO_PMC", "PMC_TO_OWNER", "PMC_TO_TENANT"]:
-            return prepare_response(message="Invalid invitation type", status=status.HTTP_400_BAD_REQUEST)
+            return prepare_response(message=constants.INVALID_INVITATION_TYPE, status=status.HTTP_400_BAD_REQUEST)
       
         if invite_type == "OWNER_TO_PMC" and user_profile.user_role != constants.OWNER:
-            return prepare_response(message="Only owners can invite PMC", status=status.HTTP_403_FORBIDDEN)
+            return prepare_response(message=constants.ONLY_OWNER_CAN_INVITE_PMC, status=status.HTTP_403_FORBIDDEN)
 
         if invite_type in ["PMC_TO_OWNER", "PMC_TO_TENANT"] and user_profile.user_role != constants.COMPANY_USER:
-            return prepare_response(message="Only PMC can send this invitation", status=status.HTTP_403_FORBIDDEN)
+            return prepare_response(message=constants.ONLY_PMC_CAN_SEND_INVITATION, status=status.HTTP_403_FORBIDDEN)
         property_unit_qs = PropertyUnitDetails.objects.filter(id=property_unit_id)
         if not property_unit_qs.exists():
             return prepare_response(
-        message="Invalid property unit id",
+        message=constants.INVALID_PROPERTY_ID,
         status=status.HTTP_404_NOT_FOUND
     )
         property_unit = property_unit_qs.first()
@@ -1413,7 +1413,7 @@ def send_invitation(request):
                 "status": invitation.status,
                 "invitation_type": invitation.invitation_type
             },
-            message="Invitation sent successfully",
+            message=constants.INVITATION_SENT_SUCCESS,
             status=status.HTTP_201_CREATED
         )
     except Exception as e:
@@ -1445,7 +1445,7 @@ def lease_details_view(request):
 
             return prepare_response(
                 content=serialize_lease(lease),
-                message="Lease fetched",
+                message=constants.LEASE_FETCHED,
                 status=status.HTTP_200_OK
             )
 
@@ -1463,7 +1463,7 @@ def lease_details_view(request):
 
             if not property_id or not tenant_id:
                 return prepare_response(
-                    message="property_id and tenant_id are required",
+                    message=constants.PROPERTY_AND_TENANT_REQUIRED,
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
@@ -1471,7 +1471,7 @@ def lease_details_view(request):
             tenant_obj = UserProfile.objects.filter(id=tenant_id, user_role="TENANT").first()
 
             if not property_obj or not tenant_obj:
-                return prepare_response(message="Invalid property or tenant", status=status.HTTP_400_BAD_REQUEST)
+                return prepare_response(message=constants.PROPERTY_TENANT_INVALID, status=status.HTTP_400_BAD_REQUEST)
             owner_obj = property_obj.owner
             if not owner_obj:
                 return prepare_response(message=constants.THIS_OWNER_HAS_NO_PROPERTY, status=status.HTTP_400_BAD_REQUEST)
@@ -1479,7 +1479,7 @@ def lease_details_view(request):
             lease_start_date = safe_epoch_to_datetime(body.get("lease_start_date"))
             lease_end_date = safe_epoch_to_datetime(body.get("lease_end_date"))
             if not lease_start_date or not lease_end_date:
-                return prepare_response(message="Invalid lease dates", status=status.HTTP_400_BAD_REQUEST)
+                return prepare_response(message=constants.INVALID_LEASE_DATES, status=status.HTTP_400_BAD_REQUEST)
             lease_grace_start_date = safe_epoch_to_datetime(body.get("lease_grace_start_date")) if body.get("lease_grace_start_date") else None
             lease_grace_end_date = safe_epoch_to_datetime(body.get("lease_grace_end_date")) if body.get("lease_grace_end_date") else None
             lease = LeasePropertyDetails.objects.create(
@@ -1496,7 +1496,7 @@ def lease_details_view(request):
             )
 
             return prepare_response(
-                message="Lease created successfully",
+                message=constants.LEASE_CREATED,
                 content={"lease_id": lease.id},
                 status=status.HTTP_201_CREATED,
             )
@@ -1553,13 +1553,13 @@ def lease_details_view(request):
                 tenant_obj = UserProfile.objects.filter(
                     id=body["tenant_id"], user_role="TENANT").first()
                 if not tenant_obj:
-                    return prepare_response(message="Invalid tenant_id", status=status.HTTP_400_BAD_REQUEST)
+                    return prepare_response(message=constants.INVALID_TENANT, status=status.HTTP_400_BAD_REQUEST)
                 lease.tenant = tenant_obj
             
             if "property_id" in body:
                 property_obj = PropertyUnitDetails.objects.filter(id=body["property_id"]).first()
                 if not property_obj:
-                    return prepare_response(message="Invalid property", status=status.HTTP_400_BAD_REQUEST)
+                    return prepare_response(message=constants.INVALID_PROPERTY, status=status.HTTP_400_BAD_REQUEST)
                     
                 lease.lease_property = property_obj
                 lease.owner = property_obj.owner
@@ -1583,7 +1583,7 @@ def lease_tenancy(request):
     try:
         if request.method != "GET":
             return prepare_response(
-                message="Method not allowed",
+                message=constants.INVALID_REQUEST_METHOD,
                 status=status.HTTP_405_METHOD_NOT_ALLOWED
             )
         current_user = request.user  
@@ -1606,7 +1606,7 @@ def lease_tenancy(request):
 
         else:
             return prepare_response(
-                message="Unauthorized role",
+                message=constants.UNAUTHORIZED_ROLE,
                 status=status.HTTP_403_FORBIDDEN
             )
         if lease_status_param:
@@ -1672,7 +1672,7 @@ def dashboard_overview(request):
             company = Company.objects.filter(company_user=user).first()
             if not company:
                 return prepare_response(
-                    message="Company not found for user",
+                    message=constants.COMPANY_NOT_FOUND,
                     status=status.HTTP_404_NOT_FOUND
                 )
             properties = PropertyUnitDetails.objects.filter(company=company)
@@ -1941,7 +1941,7 @@ def parent_property_view(request):
 
         if not property_id:
             return prepare_response(
-                message="Property id is required",
+                message=constants.PROPERTY_ID_REQUIRED,
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -1949,7 +1949,7 @@ def parent_property_view(request):
 
         if not prop:
             return prepare_response(
-                message="Property not found",
+                message=constants.PROPERTY_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
             )
 
@@ -1981,13 +1981,13 @@ def parent_property_view(request):
 
         return prepare_response(
             content=data,
-            message="Property details fetched successfully",
+            message=constants.PROPERTY_FETCH_SUCCESS,
             status=status.HTTP_200_OK
         )
 
     else:
         return prepare_response(
-            message="Invalid request method",
+            message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
 
@@ -2026,7 +2026,7 @@ def export_property_table_csv(request):
 
         else:
             return prepare_response(
-                message="Unauthorized user role",
+                message=constants.UNAUTHORIZED_USER_ROLE,
                 status=status.HTTP_403_FORBIDDEN
             )
 
@@ -2133,7 +2133,7 @@ def complaint(request):
             message = data.get("message")
             if not message:
                 return prepare_response(
-                    message="Message is required",
+                    message=constants.MESSAGE_REQUIRED,
                     status=status.HTTP_400_BAD_REQUEST
                 )
             complaint = Complaint.objects.create(
@@ -2142,7 +2142,7 @@ def complaint(request):
                 created_by=request.user.user
             )
             return prepare_response(
-                message="Complaint raised successfully",
+                message=constants.COMPLAINT_RAISED_SUCCESS,
                 status=status.HTTP_201_CREATED,
                 content={
                     "id": complaint.id,
@@ -2356,7 +2356,7 @@ def export_owner_pmc_csv(request):
             company = Company.objects.filter(id=company_id).first()
             if not company:
                 return prepare_response(
-                    message="Company not found",
+                    message=constants.COMPANY_NOT_FOUND,
                     status=status.HTTP_404_NOT_FOUND
                 )
 
@@ -2412,7 +2412,7 @@ def export_owner_pmc_csv(request):
 
         else:
             return prepare_response(
-                message="Unauthorized access",
+                message=constants.UNAUTHORIZED_ACCESS,
                 status=status.HTTP_403_FORBIDDEN
             )
 
@@ -2429,7 +2429,7 @@ def export_lease_tenancy_csv(request):
     try:
         if request.method != "GET":
             return prepare_response(
-                message="Method not allowed",
+                message=constants.INVALID_REQUEST_METHOD,
                 status=status.HTTP_405_METHOD_NOT_ALLOWED
             )
 
@@ -2451,7 +2451,7 @@ def export_lease_tenancy_csv(request):
             ).distinct()
         else:
             return prepare_response(
-                message="Unauthorized role",
+                message=constants.UNAUTHORIZED_ROLE,
                 status=status.HTTP_403_FORBIDDEN
             )
         if lease_status_param:
@@ -2503,7 +2503,7 @@ def export_company_owners_csv(request):
     try:
         if request.method != "GET":
             return prepare_response(
-                message="Method not allowed",
+                message=constants.INVALID_REQUEST_METHOD,
                 status=status.HTTP_405_METHOD_NOT_ALLOWED
             )
 
@@ -2568,7 +2568,7 @@ def export_company_owners_csv(request):
 
         if not owner:
             return prepare_response(
-                message="Owner not found",
+                message=constants.OWNER_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
             )
 
@@ -2649,7 +2649,7 @@ def toggle_property_interest(request):
 
         if tenant.user_role != constants.TENANT:
             return prepare_response(
-                message="Only tenant can perform this action",
+                message=constants.ONLY_TENANT_ALLOWED,
                 status=status.HTTP_403_FORBIDDEN
             )
 
@@ -2660,7 +2660,7 @@ def toggle_property_interest(request):
 
         if not property_unit:
             return prepare_response(
-                message="Property unit not found",
+                message=constants.PROPERTY_UNIT_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
             )
 
@@ -2679,7 +2679,7 @@ def toggle_property_interest(request):
                 ).update(created=timezone.now())
 
         return prepare_response(
-            message="Interest updated successfully",
+            message=constants.INTEREST_UPDATED_SUCCESS,
             status=status.HTTP_200_OK,
             content={
                 "property_unit": property_unit.property_unit_name,
@@ -2704,7 +2704,7 @@ def company_tenants(request):
 
     if user.user_role != constants.COMPANY_USER:
         return prepare_response(
-            message="Only company users can access this data",
+            message=constants.ONLY_COMPANY_USER_ALLOWED,
             status=status.HTTP_403_FORBIDDEN
         )
 
@@ -2716,7 +2716,7 @@ def company_tenants(request):
             company = Company.objects.filter(company_user=user).first()
             if not company:
                 return prepare_response(
-                    message="Company not found for this user",
+                    message=constants.COMPANY_NOT_FOUND,
                     status=status.HTTP_404_NOT_FOUND
                 )
             if tenant_id:
@@ -2771,7 +2771,7 @@ def company_tenants(request):
             ]
 
             return prepare_response(
-                message="Tenants fetched successfully",
+                message=constants.TENANT_DETAILS_FETCHED_SUCCESS,
                 content={"tenants": tenant_list},
                 status=status.HTTP_200_OK
             )
@@ -2799,7 +2799,7 @@ def company_tenants(request):
 
             if not tenant:
                 return prepare_response(
-                    message="Tenant not found",
+                    message=constants.TENANT_DETAILS_NOT_FOUND,
                     status=status.HTTP_404_NOT_FOUND
                 )
 
@@ -2807,7 +2807,7 @@ def company_tenants(request):
             tenant.save(update_fields=["tenant_status", "modified"])
 
             return prepare_response(
-                message="Tenant successfully",
+                message=constants.TENANT_DETAILS_UPDATED_SUCCESSFULLY,
                 content={
                     "tenant_id": tenant.id,
                     "tenant_status": tenant.tenant_status
@@ -2843,20 +2843,20 @@ def lease_pdf_view(request):
 
         if not lease_id:
             return prepare_response(
-                message="lease_id is required",
+                message=constants.LEASE_ID_REQUIRED,
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         lease = LeasePropertyDetails.objects.filter(id=lease_id).first()
         if not lease:
             return prepare_response(
-                message="Lease not found",
+                message=constants.LEASE_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
             )
 
         if not lease.pdf_path:
             return prepare_response(
-                message="Lease PDF not available",
+                message=constants.LEASE_PDF_NOT_AVAILABLE,
                 status=status.HTTP_404_NOT_FOUND
             )
 
@@ -2877,7 +2877,7 @@ def lease_pdf_view(request):
 
         if not presigned_url:
             return prepare_response(
-                message="Unable to generate PDF URL",
+                message=constants.PDF_URL_GENERATION_FAILED,
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
@@ -2888,7 +2888,7 @@ def lease_pdf_view(request):
                 "purpose": purpose or "preview",
                 "pdf_url": presigned_url
             },
-            message="Lease PDF URL generated successfully",
+            message=constants.LEASE_PDF_URL_GENERATED_SUCCESS,
             status=status.HTTP_200_OK
         )
 
@@ -2910,7 +2910,7 @@ def lease_pdf_view(request):
 def dashboard_monthly_revenue(request):
     if request.method != "GET":
         return prepare_response(
-            message="Invalid request method",
+            message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
 
@@ -2943,7 +2943,7 @@ def dashboard_monthly_revenue(request):
             company = Company.objects.filter(company_user=user).first()
             if not company:
                 return prepare_response(
-                    message="Company not found",
+                    message=constants.COMPANY_NOT_FOUND,
                     status=status.HTTP_404_NOT_FOUND
                 )
 
@@ -2952,7 +2952,7 @@ def dashboard_monthly_revenue(request):
             )
         else:
             return prepare_response(
-                message="Unauthorized role",
+                message=constants.UNAUTHORIZED_ROLE,
                 status=status.HTTP_403_FORBIDDEN
             )
 
@@ -3001,7 +3001,7 @@ def dashboard_monthly_revenue(request):
         )["total_mrr"] or 0
 
         return prepare_response(
-            message="Monthly revenue fetched successfully",
+            message=constants.MONTHLY_REVENUE_FETCH_SUCCESS,
             status=status.HTTP_200_OK,
             content={
                 "total_revenue": round(total_revenue, 2),
@@ -3022,7 +3022,7 @@ def dashboard_monthly_revenue(request):
 def dashboard_cheque_visibility(request):
     if request.method != "GET":
         return prepare_response(
-            message="Invalid request method",
+            message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
     try:
@@ -3036,10 +3036,10 @@ def dashboard_cheque_visibility(request):
         elif user.user_role == constants.COMPANY_USER:
             companies = Company.objects.filter(company_user=user)
             if not companies.exists():
-                return prepare_response(message="Company not found", status=404)
+                return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
             leases = LeasePropertyDetails.objects.filter(lease_property__company__in=companies,is_active=True)
         else:
-            return prepare_response(message="Unauthorized role", status=403)
+            return prepare_response(message=constants.UNAUTHORIZED_ROLE, status=status.HTTP_403_FORBIDDEN)
         if city_id:
             leases = leases.filter(lease_property__property__city_id=city_id)
         if unit_id:
@@ -3090,7 +3090,7 @@ def dashboard_cheque_visibility(request):
                 })
 
         return prepare_response(
-            message="Cheque visibility fetched successfully",
+            message=constants.CHEQUE_VISIBILITY_FETCH_SUCCESS,
             status=status.HTTP_200_OK,
             content={"cheques": cheque_list}
         )
@@ -3106,7 +3106,7 @@ def dashboard_cheque_visibility(request):
 def dashboard_cheque_aging(request):
     if request.method != "GET":
         return prepare_response(
-            message="Invalid request method",
+            message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
     try:
@@ -3124,7 +3124,7 @@ def dashboard_cheque_aging(request):
             companies = Company.objects.filter(company_user=user)
             if not companies.exists():
                 return prepare_response(
-                    message="Company not found",
+                    message=constants.COMPANY_NOT_FOUND,
                     status=status.HTTP_404_NOT_FOUND
                 )
 
@@ -3133,7 +3133,7 @@ def dashboard_cheque_aging(request):
             )
         else:
             return prepare_response(
-                message="Unauthorized role",
+                message=constants.UNAUTHORIZED_ROLE,
                 status=status.HTTP_403_FORBIDDEN
             )
         if property_unit_id:
@@ -3192,7 +3192,7 @@ def dashboard_cheque_aging(request):
         }
 
         return prepare_response(
-            message="Cheque aging fetched successfully",
+            message=constants.CHEQUE_AGING_FETCH_SUCCESS,
             status=status.HTTP_200_OK,
             content=data
         )
@@ -3214,7 +3214,7 @@ def dashboard_cheque_aging(request):
 def dashboard_other_type_payments(request):
     if request.method != "GET":
         return prepare_response(
-            message="Invalid request method",
+            message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
 
@@ -3237,7 +3237,7 @@ def dashboard_other_type_payments(request):
             company = Company.objects.filter(company_user=user).first()
             if not company:
                 return prepare_response(
-                    message="Company not found",
+                    message=constants.COMPANY_NOT_FOUND,
                     status=status.HTTP_404_NOT_FOUND
                 )
 
@@ -3246,11 +3246,11 @@ def dashboard_other_type_payments(request):
             )
         else:
             return prepare_response(
-                message="Unauthorized role",
+                message=constants.UNAUTHORIZED_ROLE,
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        # 📅 DATE FILTER
+        # DATE FILTER
         if from_date and to_date:
             payments = payments.filter(
                 created__date__range=[
@@ -3259,7 +3259,7 @@ def dashboard_other_type_payments(request):
                 ]
             )
 
-        # 📊 MONTH + METHOD WISE AGGREGATION
+        # MONTH + METHOD WISE AGGREGATION
         monthly_qs = (
             payments
             .annotate(month=TruncMonth("created"))
@@ -3291,7 +3291,7 @@ def dashboard_other_type_payments(request):
             })
 
         return prepare_response(
-            message="Other type payments fetched successfully",
+            message=constants.OTHER_TYPE_PAYMENTS_FETCH_SUCCESS,
             status=status.HTTP_200_OK,
             content={
                 "total_revenue": round(total_revenue, 2),
@@ -3346,7 +3346,7 @@ def dashboard_other_type_payments(request):
 def dashboard_yearly_dues(request):
     if request.method != "GET":
         return prepare_response(
-            message="Invalid request method",
+            message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
 
@@ -3389,7 +3389,7 @@ def dashboard_yearly_dues(request):
             company = Company.objects.filter(company_user=user).first()
             if not company:
                 return prepare_response(
-                    message="Company not found",
+                    message=constants.COMPANY_NOT_FOUND,
                     status=status.HTTP_404_NOT_FOUND
                 )
 
@@ -3399,7 +3399,7 @@ def dashboard_yearly_dues(request):
             )
         else:
             return prepare_response(
-                message="Unauthorized role",
+                message=constants.UNAUTHORIZED_ROLE,
                 status=status.HTTP_403_FORBIDDEN
             )
 
