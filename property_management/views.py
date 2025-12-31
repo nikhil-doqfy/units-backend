@@ -44,7 +44,7 @@ from django.utils.timezone import now
 from django.utils.dateparse import parse_date
 from django.db.models.functions import TruncMonth
 from django.db.models import Sum
-
+import calendar
 
 @is_request_authenticated
 def serve_media(request, path):
@@ -196,10 +196,7 @@ def options(request):
                 units = PropertyUnitDetails.objects.filter(company=company,lease_details__isnull=False).distinct()
             else:
                 units = PropertyUnitDetails.objects.none()
-                content["property_unit_with_lease"] = [{"key": u.id,"value": u.property_unit_name or "Unnamed Unit"} for u in units]
-
-
-            
+                content["property_unit_with_lease"] = [{"key": u.id,"value": u.property_unit_name or "Unnamed Unit"} for u in units] 
         else:
             content[option_type] = []
             
@@ -2698,6 +2695,8 @@ def toggle_property_interest(request):
 @is_request_authenticated
 def company_tenants(request):
     user = request.user
+    tenant_status = request.GET.get("tenant_status", constants.PENDING)
+
 
     if user.user_role != constants.COMPANY_USER:
         return prepare_response(
@@ -2706,7 +2705,6 @@ def company_tenants(request):
         )
 
     try:
-
         if request.method == "GET":
 
             tenant_id = request.GET.get("tenant_id")
@@ -2729,14 +2727,16 @@ def company_tenants(request):
             tenants_created = UserProfile.objects.filter(
                 created_by=user.user,
                 user_role=constants.TENANT,
-                is_active=True
+                is_active=True,
+                tenant_status=tenant_status
             )
 
            
             tenants_interested = UserProfile.objects.filter(
                 interested_properties__property_unit__company=company,
                 interested_properties__is_active=True,
-                user_role=constants.TENANT
+                user_role=constants.TENANT,
+                tenant_status=tenant_status
             )
 
             tenants = (tenants_created | tenants_interested).distinct().select_related(
@@ -3021,7 +3021,6 @@ def dashboard_cheque_visibility(request):
             message="Invalid request method",
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
-    
     try:
         user = request.user
         city_id = request.GET.get("city_id")
@@ -3201,3 +3200,290 @@ def dashboard_cheque_aging(request):
             message=str(e),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+
+
+
+
+
+@is_request_authenticated
+def dashboard_other_type_payments(request):
+    if request.method != "GET":
+        return prepare_response(
+            message="Invalid request method",
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+    try:
+        user = request.user
+
+        from_date = request.GET.get("from_date")
+        to_date = request.GET.get("to_date")
+
+        payments = Payment.objects.filter(
+                 status=constants.PAYMENT_SUCCESSFUL,
+                is_active=True
+                    )
+        if user.user_role == constants.OWNER:
+            payments = payments.filter(
+                rental_account__lease_property__owner=user
+            )
+
+        elif user.user_role == constants.COMPANY_USER:
+            company = Company.objects.filter(company_user=user).first()
+            if not company:
+                return prepare_response(
+                    message="Company not found",
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            payments = payments.filter(
+                rental_account__lease_property__company=company
+            )
+        else:
+            return prepare_response(
+                message="Unauthorized role",
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # 📅 DATE FILTER
+        if from_date and to_date:
+            payments = payments.filter(
+                created__date__range=[
+                    parse_date(from_date),
+                    parse_date(to_date)
+                ]
+            )
+
+        # 📊 MONTH + METHOD WISE AGGREGATION
+        monthly_qs = (
+            payments
+            .annotate(month=TruncMonth("created"))
+            .values("month")
+            .annotate(
+                credit_card=Sum("amount", filter=Q(method=constants.CREDIT_CARD)),
+                debit_card=Sum("amount", filter=Q(method=constants.DEBIT_CARD)),
+                net_banking=Sum("amount", filter=Q(method=constants.NET_BANKING)),
+                total=Sum("amount")
+            )
+            .order_by("month")
+        )
+
+        monthly_data = []
+        total_revenue = 0
+
+        for row in monthly_qs:
+            month_dt = row["month"]
+            total_revenue += float(row["total"] or 0)
+
+            monthly_data.append({
+                "period_epoch": datetime_to_epoch_millis(month_dt),
+                "month": month_dt.month,
+                "year": month_dt.year,
+                "credit_card": float(row["credit_card"] or 0),
+                "debit_card": float(row["debit_card"] or 0),
+                "net_banking": float(row["net_banking"] or 0),
+                "total": float(row["total"] or 0)
+            })
+
+        return prepare_response(
+            message="Other type payments fetched successfully",
+            status=status.HTTP_200_OK,
+            content={
+                "total_revenue": round(total_revenue, 2),
+                "monthly_data": monthly_data
+            }
+        )
+
+    except Exception as e:
+        print("Other Payment Dashboard Error:", e)
+        return prepare_response(
+            message=str(e),
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+
+
+
+
+# Total Amount → lease se (expected rent)
+
+# Received Amount → payments se (successful rent payments)
+
+# Due Amount → Total − Received
+
+# """
+# LOGIC USED:
+
+# 1. LeasePropertyDetails:
+#    - rent field represents expected MONTHLY rent
+#    - Same rent amount is applicable for every month
+#    - Lease duration (start/end) is NOT considered here
+
+# 2. Payment:
+#    - Represents actual rent paid by user
+#    - Grouped month-wise using created date
+
+# 3. Monthly Due:
+#    - Due = Total Expected Rent - Received Rent
+
+# 4. Yearly Calculation:
+#    - Yearly Total = Monthly Rent * 12
+#    - Percentages calculated on yearly totals
+# """
+
+
+
+
+from datetime import datetime, date
+from calendar import monthrange
+from django.db.models import Sum
+from django.db.models.functions import TruncMonth
+
+@is_request_authenticated
+def dashboard_yearly_dues(request):
+    if request.method != "GET":
+        return prepare_response(
+            message="Invalid request method",
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+    try:
+        user = request.user
+        year = int(request.GET.get("year", datetime.now().year))
+
+        year_start = date(year, 1, 1)
+        year_end = date(year, 12, 31)
+
+        # ------------------------------------------------
+        # 1 BASE LEASE QUERY (Expected Rent)
+        # ------------------------------------------------
+        leases = LeasePropertyDetails.objects.filter(
+            lease_status=constants.ACTIVE,
+            is_active=True,
+            lease_start_date__lte=year_end,
+            lease_end_date__gte=year_start
+        )
+
+        # ------------------------------------------------
+        # 2 BASE PAYMENT QUERY (Actual Received)
+        # ------------------------------------------------
+        payments = Payment.objects.filter(
+            status=constants.PAYMENT_SUCCESSFUL,
+            reason_type=constants.RENT,
+            is_active=True,
+            created__date__range=[year_start, year_end]
+        )
+
+        # ------------------------------------------------
+        # 3 USER WISE FILTER
+        # ------------------------------------------------
+        if user.user_role == constants.OWNER:
+            leases = leases.filter(owner=user)
+            payments = payments.filter(rental_account__owner=user)
+
+        elif user.user_role == constants.COMPANY_USER:
+            company = Company.objects.filter(company_user=user).first()
+            if not company:
+                return prepare_response(
+                    message="Company not found",
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            leases = leases.filter(lease_property__company=company)
+            payments = payments.filter(
+                rental_account__lease_property__company=company
+            )
+        else:
+            return prepare_response(
+                message="Unauthorized role",
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # ------------------------------------------------
+        # 4 PAYMENT MONTHLY MAP → {month: received}
+        # ------------------------------------------------
+        payment_qs = (
+            payments
+            .annotate(month=TruncMonth("created"))
+            .values("month")
+            .annotate(total=Sum("amount"))
+        )
+
+        payment_map = {
+            row["month"].month: float(row["total"] or 0)
+            for row in payment_qs if row["month"]
+        }
+
+        # ------------------------------------------------
+        # 5 MONTHLY CALCULATION (CORRECT LOGIC)
+        # ------------------------------------------------
+        monthly_data = []
+        yearly_total = 0
+        yearly_received = 0
+
+        for month in range(1, 13):
+
+            month_start = date(year, month, 1)
+            month_end = date(year, month, monthrange(year, month)[1])
+
+            #  Active leases in this month
+            active_leases = leases.filter(
+                lease_start_date__lte=month_end,
+                lease_end_date__gte=month_start
+            )
+
+            expected_amount = active_leases.aggregate(
+                total=Sum("rent")
+            )["total"] or 0
+
+            received_amount = payment_map.get(month, 0)
+            due_amount = max(expected_amount - received_amount, 0)
+
+            yearly_total += expected_amount
+            yearly_received += received_amount
+
+            monthly_data.append({
+                "month": month,
+                "month_str": calendar.month_abbr[month],
+                "total_amount": round(expected_amount, 2),
+                "received_amount": round(received_amount, 2),
+                "due_amount": round(due_amount, 2)
+            })
+
+        # ------------------------------------------------
+        # 6️⃣ YEARLY SUMMARY
+        # ------------------------------------------------
+        yearly_due = max(yearly_total - yearly_received, 0)
+
+        received_percent = (yearly_received / yearly_total * 100) if yearly_total else 0
+        due_percent = (yearly_due / yearly_total * 100) if yearly_total else 0
+
+
+        return prepare_response(
+            message="Yearly dues fetched successfully",
+            status=status.HTTP_200_OK,
+            content={
+                "year": year,
+                "overall": {
+                    "total_amount": round(yearly_total, 2),
+                    "received_amount": round(yearly_received, 2),
+                    "due_amount": round(yearly_due, 2),
+                    "total_percent": 100,
+                    "received_percent": round(received_percent, 2),
+                    "due_percent": round(due_percent, 2)
+                },
+                "monthly_data": monthly_data
+            }
+        )
+
+    except Exception as e:
+        print("Yearly Dues Error:", e)
+        return prepare_response(
+            message=str(e),
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+

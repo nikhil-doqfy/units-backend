@@ -77,13 +77,16 @@ class ChargeDetails(Base):
  
 class Payment(Base):
     PAYMENT_METHODS_CHOICES = (
-        (constants.CASH, "Cash"),
-        (constants.CHEQUE, "Cheque")
-    )
+    (constants.CASH, "Cash"),
+    (constants.CHEQUE, "Cheque"),
+    (constants.CREDIT_CARD, "Credit Card"),
+    (constants.DEBIT_CARD, "Debit Card"),
+    (constants.NET_BANKING, "Net Banking"),
+)
     
     REASONS_TYPE_CHOICES = (
         (constants.RENT, "Rent"),
-        (constants.OTHER, "Other")
+        (constants.OTHER, "Other"),
     )
     
     PAYMENT_STATUS_CHOICES = (
@@ -95,8 +98,8 @@ class Payment(Base):
          
     rental_account = models.ForeignKey(LeasePropertyDetails, related_name='payments', on_delete=models.CASCADE)
     bank = models.ForeignKey(Bank, on_delete=models.CASCADE, null=True, blank=True)
-    method = models.CharField(max_length=10, choices=PAYMENT_METHODS_CHOICES, default=constants.CHEQUE)
-    reason_type = models.CharField(max_length=10, choices=REASONS_TYPE_CHOICES, default=constants.RENT)
+    method = models.CharField(max_length=20, choices=PAYMENT_METHODS_CHOICES, default=constants.CHEQUE)
+    reason_type = models.CharField(max_length=20, choices=REASONS_TYPE_CHOICES, default=constants.RENT)
     amount = models.FloatField(default=0)
     payee_name = models.CharField(max_length=100, null=True, blank=True)
     payee_email = models.CharField(max_length=100, null=True, blank=True)
@@ -105,7 +108,7 @@ class Payment(Base):
     cheque_number = models.CharField(max_length=50, blank=True, null=True)
     cheque_date = models.DateTimeField(null=True, blank=True)
     scanned_image = models.ImageField(upload_to='scans/', null=True, blank=True)
-    status = models.CharField(max_length=20,choices=PAYMENT_STATUS_CHOICES, default=constants.PAYMENT_PENDING)
+    status = models.CharField(max_length=50,choices=PAYMENT_STATUS_CHOICES, default=constants.PAYMENT_PENDING)
  
     def __str__(self): 
         return "{}-{}-{}".format(self.payee_name, self.account_number, self.status)

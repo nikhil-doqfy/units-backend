@@ -89,13 +89,10 @@ def user_sign_up(request):
 
             if user_role == constants.OWNER:
                 create_mappings(OwnerDocumentsMapping, profile, [emirates_doc, visa_doc, dld_doc], "owner")
-
             if user_role == constants.TENANT:
                 create_mappings(TenantDocumentsMapping, profile, [emirates_doc, visa_doc], "tenant")
-
             if user_role == constants.COMPANY_USER:
                 create_mappings(CompanyUserDocumentsMapping, profile, [emirates_doc, visa_doc], "company_user")
-
                 Company.objects.create(
                     company_user=profile,
                     company_code=data.get("company_code"),
@@ -150,10 +147,8 @@ def userprofile_view(request):
                     "key": country.id if country else None,
                     "value": country.name if country else None,
                 },
-
-
                 "locality": user_profile.locality,
-                "pin_code": user_profile.pin_code,
+                "postal_code": user_profile.pin_code,
                 "address": user_profile.address,
                 "additional_address": user_profile.additional_address,
                 "contact_number": user_profile.contact_number,
@@ -195,8 +190,6 @@ def userprofile_view(request):
                     user_profile.city = City.objects.filter(id=city_id).first()
                 else:
                     user_profile.city = None
-            
-            
 
             simple_fields = [
                 "profile_image",

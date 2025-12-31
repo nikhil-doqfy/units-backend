@@ -40,30 +40,13 @@ urlpatterns = [
     path('company_owners_csv', views.export_company_owners_csv, name='export_company_owners_csv'), #after pmc login all owners
     path('interested', views.toggle_property_interest, name='toggle_property_interest'),
     path('tenants_Approved_Rejected', views.company_tenants, name='company_tenants'), 
-
     path('lease_pdf', views.lease_pdf_view, name='lease_pdf_view'), 
-
     path('monthly_revenue', views.dashboard_monthly_revenue, name='dashboard_monthly_revenue'), 
     path('cheque_visibility', views.dashboard_cheque_visibility, name='dashboard_monthly_revenue'), 
+    path('cheque_aging', views.dashboard_cheque_aging, name='dashboard_cheque_aging'),
+    path('other_type_payments', views.dashboard_other_type_payments, name='dashboard_other_type_payments'),
+    path('dashboard_graph_due', views.dashboard_yearly_dues, name='dashboard_yearly_due'),
 
-
-    path('cheque_aging', views.dashboard_cheque_aging, name='dashboard_cheque_aging'), 
-
-
-    
-
-
-    
-
-
-    
-
-    
- 
-    
-
-
-    
 ] 
 
 if settings.DEBUG:
