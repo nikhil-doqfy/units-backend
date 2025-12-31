@@ -45,6 +45,10 @@ from django.utils.dateparse import parse_date
 from django.db.models.functions import TruncMonth
 from django.db.models import Sum
 import calendar
+from datetime import datetime, date
+from calendar import monthrange
+from django.db.models import Sum
+from django.db.models.functions import TruncMonth
 
 @is_request_authenticated
 def serve_media(request, path):
@@ -3075,7 +3079,6 @@ def dashboard_cheque_visibility(request):
                         "amount": round(p.amount, 2)
                     })
             else:
-             
                 cheque_list.append({
                     "lease_number": lease.lease_number,
                     "property_unit_name": property_unit.property_unit_name if property_unit else "",
@@ -3337,10 +3340,7 @@ def dashboard_other_type_payments(request):
 
 
 
-from datetime import datetime, date
-from calendar import monthrange
-from django.db.models import Sum
-from django.db.models.functions import TruncMonth
+
 
 @is_request_authenticated
 def dashboard_yearly_dues(request):
@@ -3360,6 +3360,7 @@ def dashboard_yearly_dues(request):
         # ------------------------------------------------
         # 1 BASE LEASE QUERY (Expected Rent)
         # ------------------------------------------------
+        
         leases = LeasePropertyDetails.objects.filter(
             lease_status=constants.ACTIVE,
             is_active=True,
