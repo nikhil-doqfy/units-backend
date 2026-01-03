@@ -30,6 +30,10 @@ urlpatterns = [
     path('save/lease', views.lease_details_view, name='lease_details_view'),
     path('generate/contract', views.generate_contract, name='generate_contract'), 
 
+    path('lease_documents', views.lease_documents, name='lease_documents'), 
+
+    
+
     path('get_template_fields', views.get_template_fields, name='get_template_fields'),
 
     path('lease/tenancy', views.lease_tenancy, name='lease_tenancy'),

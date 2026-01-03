@@ -350,21 +350,35 @@ def serialize_lease(lease):
         "id": lease.id,
         "property": {
             "key": lease.lease_property.id,
-            "value": lease.lease_property.property.property_name if hasattr(lease.lease_property, "property") else ""
+            "value": lease.lease_property.property.property_name
+            if hasattr(lease.lease_property, "property") else ""
         },
         "tenant": {
-            "key": lease.tenant.id,
-            "value": lease.tenant.full_name
+            "key": lease.tenant.id if lease.tenant else None,
+            "value": (
+                lease.tenant.user.get_full_name()
+                if lease.tenant and lease.tenant.user.get_full_name()
+                else lease.tenant.user.username
+                if lease.tenant else None
+            )
         },
         "owner_id": lease.owner.id if lease.owner else None,
-        "owner_name": lease.owner.full_name if lease.owner else None,
+        "owner_name": (
+            lease.owner.user.get_full_name()
+            if lease.owner and lease.owner.user.get_full_name()
+            else lease.owner.user.username
+            if lease.owner else None
+        ),
         "created_by_id": lease.created_by.id if lease.created_by else None,
+
         "lease_start_date": datetime_to_epoch_millis(lease.lease_start_date),
         "lease_end_date": datetime_to_epoch_millis(lease.lease_end_date),
         "lease_grace_start_date": datetime_to_epoch_millis(lease.lease_grace_start_date),
         "lease_grace_end_date": datetime_to_epoch_millis(lease.lease_grace_end_date),
+
         "lease_remarks": lease.lease_remarks,
         "step_status": lease.step_status,
+
         "commercial_details": {
             "annual_amount": lease.annual_amount,
             "actual_annual_amount": lease.actual_annual_amount,
@@ -377,6 +391,7 @@ def serialize_lease(lease):
             "discount": lease.discount,
         }
     }
+
 
 
 def get_property_images(property_id, single=False):

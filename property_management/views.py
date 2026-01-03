@@ -4,7 +4,7 @@ import pdfkit
 import json
 import datetime
 from user_service.models import UserProfile, Documents, PropertyUnitDetails,Property, Company, PropertyImages ,PropertyDocumentsMapping, Country, State, City, Role ,Complaint,FAQ ,PropertyInterest
-from property_management.models import LeasePropertyDetails,TemplateFields, TemplateValues,Template 
+from property_management.models import LeasePropertyDetails,TemplateFields, TemplateValues,Template,LeaseDocumentsMapping
 from payment.models import Payment
 from utilities.decorator import is_request_authenticated
 from utilities.helper_functions import (
@@ -239,7 +239,9 @@ def options(request):
                 else:
                     units = PropertyUnitDetails.objects.none()
             content["property_unit_with_lease"] = [{"key": u.id,"value": u.property_unit_name or "Unnamed Unit"}for u in units]
-               
+
+        elif option_type == "LEASE_DOCUMENT_CHOICES":
+            content["lease_document_choices"] = [{"key": key, "value": value}for key, value in constants.LEASE_DOCUMENT_CHOICES]
 
         else:
             content[option_type] = []  
@@ -1616,6 +1618,222 @@ def lease_details_view(request):
         return prepare_response(message=constants.INVALID_REQUEST, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
 
+
+@is_request_authenticated
+def lease_documents(request):
+    try:
+        if request.method == "GET":
+            lease_id = request.GET.get("lease_id")
+            if not lease_id:
+                return prepare_response(
+                    message=constants.LEASE_ID_REQUIRED,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            try:
+                lease_obj = LeasePropertyDetails.objects.get(id=lease_id)
+            except LeasePropertyDetails.DoesNotExist:
+                return prepare_response(
+                    message=constants.INVALID_LEASE_ID,
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            docs_qs = lease_obj.lease_documents.select_related("document").order_by("-id")
+            final_docs = []
+
+            for mapping in docs_qs:
+                doc = mapping.document
+                base64_data = fetch_s3_presigned_url(
+                    doc.file_path,
+                    file_name=doc.file_name
+                )
+                final_docs.append({
+                    "id": mapping.id,
+                    "file_name": doc.file_name,
+                    "data": base64_data,
+                    "type": mapping.document_choice
+                })
+
+            return prepare_response(
+                message=constants.DATA_FETCHED_SUCCESSFULLY,
+                content={
+                    "documents": final_docs,
+                    "lease_id": lease_id,
+                    "step_status": lease_obj.step_status
+                },
+                status=status.HTTP_200_OK
+            )
+
+        # -------------------- POST --------------------
+        if request.method == "POST":
+            body = json.loads(request.body)
+            lease_id = body.get("lease_id")
+            documents = body.get("documents", [])
+
+            if not lease_id:
+                return prepare_response(
+                    message=constants.LEASE_ID_REQUIRED,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if not isinstance(documents, list) or not documents:
+                return prepare_response(
+                    message=constants.DOCUMENTS_MUST_BE_LIST,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            try:
+                lease_obj = LeasePropertyDetails.objects.get(id=lease_id)
+            except LeasePropertyDetails.DoesNotExist:
+                return prepare_response(
+                    message=constants.INVALID_LEASE_ID,
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            uploaded_files = []
+
+            for doc in documents:
+                file_name = doc.get("file_name")
+                base64_data = doc.get("data")
+                doc_type = doc.get("type", constants.EJARI_CERTIFICATE).upper()
+
+                if not file_name or not base64_data:
+                    return prepare_response(
+                        message=constants.MISSING_FILE_OR_DATA,
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                object_name = f"lease_documents/{lease_id}/{file_name}"
+                file_url = upload_file_to_s3_base64(base64_data, object_name)
+
+                doc_obj = Documents.objects.create(
+                    file_name=file_name,
+                    file_path=file_url,
+                    created_by=request.user.user
+                )
+
+                LeaseDocumentsMapping.objects.create(
+                    lease=lease_obj,
+                    document=doc_obj,
+                    document_choice=doc_type,
+                    created_by=request.user.user
+                )
+
+                uploaded_files.append({
+                    "file_name": file_name,
+                    "file_url": file_url,
+                    "type": doc_type
+                })
+
+            lease_obj.step_status = "UPLOAD_EJARI"
+            lease_obj.save()
+
+            return prepare_response(
+                message=constants.DOCUMENTS_UPLOAD_SUCCESS,
+                content={"uploaded": uploaded_files},
+                status=status.HTTP_201_CREATED
+            )
+
+        # -------------------- PUT --------------------
+        if request.method == "PUT":
+            body = json.loads(request.body)
+            lease_id = body.get("lease_id")
+            documents = body.get("documents", [])
+
+            if not lease_id:
+                return prepare_response(
+                    message=constants.LEASE_ID_REQUIRED,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if not isinstance(documents, list):
+                return prepare_response(
+                    message=constants.DOCUMENTS_MUST_BE_LIST,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            try:
+                lease_obj = LeasePropertyDetails.objects.get(id=lease_id)
+            except LeasePropertyDetails.DoesNotExist:
+                return prepare_response(
+                    message=constants.INVALID_LEASE_ID,
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            updated_files = []
+
+            for doc in documents:
+                file_name = doc.get("file_name")
+                base64_data = doc.get("data")
+                doc_type = doc.get("type", constants.EJARI_CERTIFICATE).upper()
+
+                if not file_name or not base64_data:
+                    return prepare_response(
+                        message=constants.MISSING_FILE_OR_DATA,
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                mapping_obj = LeaseDocumentsMapping.objects.filter(
+                    lease=lease_obj,
+                    document__file_name=file_name
+                ).select_related("document").first()
+
+                if mapping_obj:
+                    doc_obj = mapping_obj.document
+                    mapping_obj.document_choice = doc_type
+                    status_text = "updated"
+                else:
+                    doc_obj = Documents.objects.create(
+                        file_name=file_name,
+                        file_path="",
+                        created_by=request.user.user
+                    )
+                    mapping_obj = LeaseDocumentsMapping.objects.create(
+                        lease=lease_obj,
+                        document=doc_obj,
+                        document_choice=doc_type,
+                        created_by=request.user.user
+                    )
+                    status_text = "created"
+
+                object_name = f"lease_documents/{lease_id}/{file_name}"
+                file_url = upload_file_to_s3_base64(base64_data, object_name)
+
+                doc_obj.file_path = file_url
+                doc_obj.save()
+                mapping_obj.save()
+
+                updated_files.append({
+                    "file_name": file_name,
+                    "file_url": file_url,
+                    "type": doc_type,
+                    "status": status_text
+                })
+
+            return prepare_response(
+                message=constants.DOCUMENTS_UPLOAD_SUCCESS,
+                content={"updated": updated_files},
+                status=status.HTTP_200_OK
+            )
+
+        return prepare_response(
+            message=constants.INVALID_REQUEST_METHOD,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+    except Exception as e:
+        return prepare_response(
+            message=str(e),
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+
+
+
+
+
+
 @is_request_authenticated
 def lease_tenancy(request):
     try:
@@ -1878,7 +2096,7 @@ def generate_contract(request):
                 mapping[key] = values_dict[key]
 
         html_content = replace_placeholders(html_content, mapping)
-        timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
         filename = f"lease_{timestamp}.html"
 
         save_dir = os.path.join(settings.MEDIA_ROOT, "generated_templates")
