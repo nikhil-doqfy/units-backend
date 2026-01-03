@@ -193,3 +193,6 @@ def rental_payments(request):
             message=constants.INVALID_METHOD,
             status=status.HTTP_200_OK
         )
+
+
+

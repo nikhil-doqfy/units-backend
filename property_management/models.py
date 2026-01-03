@@ -54,11 +54,7 @@ class LeasePropertyDetails(Base):
         choices=constants.LEASE_STATUS_CHOICES,
         default="DRAFT"
     )
-    approval_status = models.CharField(
-        max_length=20,
-        choices=constants.APPROVAL_STATUS_CHOICES,
-        default="PENDING"
-    )
+
     pdf_path = models.CharField(max_length=2000, null=True, blank=True)
     
     annual_amount = models.FloatField( null=True, blank=True)
@@ -70,6 +66,12 @@ class LeasePropertyDetails(Base):
     commission_percentage = models.FloatField(null=True, blank=True)
     notice_period = models.IntegerField(null=True, blank=True)
     discount = models.FloatField(null=True, blank=True)
+    # ----------------------new fileds--------------------------------
+    contract_amount = models.FloatField(null=True, blank=True)
+    payment_count = models.IntegerField(null=True, blank=True, help_text="Number of installments")
+    shell = models.BooleanField(default=False, help_text="Is the property Shell?")
+    core = models.BooleanField(default=False, help_text="Is the property Core?")
+
 
     def __str__(self):
         return "{}-{}".format(self.lease_number, self.lease_status)
@@ -214,5 +216,36 @@ class TemplateValues(Base):
     
 
 
+
+class TermAndCondition(models.Model):
+
+    TERM_TYPE_CHOICES = (
+        ("RERA", "RERA"),
+        ("GENERAL", "General"),
+        ("FINAL", "Final"),
+        ("ADDITIONAL", "Additional"),
+    )
+    lease = models.ForeignKey(
+        "LeasePropertyDetails",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="terms",
+        help_text="NULL for predefined terms, set for additional lease-specific terms"
+    )
+    description = models.TextField()
+
+    term_type = models.CharField(
+        max_length=20,
+        choices=TERM_TYPE_CHOICES
+    )
+
+    is_predefined = models.BooleanField(
+        default=True,
+        help_text="True = predefined (global), False = lease-specific"
+    )
+
+    def __str__(self):
+        return f"{self.term_type} | {'Predefined' if self.is_predefined else 'Additional'}"
 
 

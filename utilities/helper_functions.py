@@ -28,6 +28,9 @@ import platform
 import pdfkit
 import random
 import string
+
+
+
 def prepare_response(content={}, message='', status=status.HTTP_200_OK, paginator=None, total_records=0,pagination=None):
     resp = {
         "content": content,
@@ -468,3 +471,34 @@ def get_user_code_prefix(user_role):
     elif user_role == constants.COMPANY_USER:
         return "COM"
     return "USR"
+
+
+
+
+# pip install googletrans==4.0.0-rc1
+
+
+# utilities/translator.py
+from deep_translator import GoogleTranslator
+
+def translate_to_arabic(text: str) -> str:
+    if not text:
+        return ""
+    try:
+        return GoogleTranslator(source="en", target="ar").translate(text)
+    except Exception:
+        return text  # fallback
+
+
+
+import base64
+import uuid
+from django.core.files.base import ContentFile
+
+def base64_to_image(base64_string):
+    if ";base64," in base64_string:
+        base64_string = base64_string.split(";base64,")[1]
+
+    image_data = base64.b64decode(base64_string)
+    file_name = f"{uuid.uuid4()}.jpg"
+    return ContentFile(image_data, name=file_name)

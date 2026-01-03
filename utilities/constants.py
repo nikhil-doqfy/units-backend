@@ -344,6 +344,12 @@ ROLE_ALREADY_EXISTS_IN_COMPANY = "This role already exists in this company"
 STAFF_DETAILS_FETCH_SUCCESS = "Staff details fetched successfully"
 
 
+TERMS_CREATED_SUCCESS = "Terms created successfully."
+DESCRIPTION_REQUIRED    = "Description is required."
+TERMS_MUST_BE_LIST      = "Terms must be a non-empty list."
+DATA_FETCHED_SUCCESS    = "Data fetched successfully."
+
+
 choices=[("MYSELF", "Myself"), ("PMC", "PMC")]
 
 LEASE_STATUS_CHOICES = [

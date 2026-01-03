@@ -347,12 +347,16 @@ def create_and_send_invitation(invited_by_profile, email, invitation_type, templ
 
 def serialize_lease(lease):
     return {
-        "id": lease.id,
-        "property": {
-            "key": lease.lease_property.id,
-            "value": lease.lease_property.property.property_name
-            if hasattr(lease.lease_property, "property") else ""
-        },
+         "id": lease.id,
+        "parent_property": {
+    "key": lease.lease_property.property.id if lease.lease_property and lease.lease_property.property else None,
+    "value": lease.lease_property.property.property_name if lease.lease_property and lease.lease_property.property else ""
+},
+"property_unit_name": {
+    "key": lease.lease_property.id if lease.lease_property else None,
+    "value": lease.lease_property.property_unit_name if lease.lease_property else ""
+},
+
         "tenant": {
             "key": lease.tenant.id if lease.tenant else None,
             "value": (
@@ -362,34 +366,42 @@ def serialize_lease(lease):
                 if lease.tenant else None
             )
         },
-        "owner_id": lease.owner.id if lease.owner else None,
-        "owner_name": (
-            lease.owner.user.get_full_name()
-            if lease.owner and lease.owner.user.get_full_name()
-            else lease.owner.user.username
-            if lease.owner else None
-        ),
+        "owner": {
+            "key": lease.owner.id if lease.owner else None,
+            "value": (
+                lease.owner.user.get_full_name()
+                if lease.owner and lease.owner.user.get_full_name()
+                else lease.owner.user.username
+                if lease.owner else None
+            )
+        },
+
+
         "created_by_id": lease.created_by.id if lease.created_by else None,
 
+        "lease_number": lease.lease_number,
         "lease_start_date": datetime_to_epoch_millis(lease.lease_start_date),
         "lease_end_date": datetime_to_epoch_millis(lease.lease_end_date),
         "lease_grace_start_date": datetime_to_epoch_millis(lease.lease_grace_start_date),
         "lease_grace_end_date": datetime_to_epoch_millis(lease.lease_grace_end_date),
-
         "lease_remarks": lease.lease_remarks,
         "step_status": lease.step_status,
+        "lease_status": lease.lease_status,
+        "pdf_path": lease.pdf_path,
 
-        "commercial_details": {
-            "annual_amount": lease.annual_amount,
-            "actual_annual_amount": lease.actual_annual_amount,
-            "rent": lease.rent,
-            "booking_amount": lease.booking_amount,
-            "security_deposit": lease.security_deposit,
-            "maintenance_charges": lease.maintenance_charges,
-            "commission_percentage": lease.commission_percentage,
-            "notice_period": lease.notice_period,
-            "discount": lease.discount,
-        }
+        "annual_amount": lease.annual_amount,
+        "actual_annual_amount": lease.actual_annual_amount,
+        "rent": lease.rent,
+        "booking_amount": lease.booking_amount,
+        "security_deposit": lease.security_deposit,
+        "maintenance_charges": lease.maintenance_charges,
+        "commission_percentage": lease.commission_percentage,
+        "notice_period": lease.notice_period,
+        "discount": lease.discount,
+        "contract_amount": lease.contract_amount,
+        "payment_count": lease.payment_count,
+        "shell": lease.shell,
+        "core": lease.core,
     }
 
 
@@ -491,3 +503,53 @@ def get_staff_details(company_staff: CompanyStaff, include_password=False):
     if include_password:
         data["password_hash"] = django_user.password
     return data
+
+
+
+
+
+def get_tenant_detail_by_id(tenant_id):
+    tenant_profile = UserProfile.objects.select_related(
+        "user", "city"
+    ).filter(
+        id=tenant_id,
+        user_role=constants.TENANT
+    ).first()
+
+    if not tenant_profile:
+        return None
+
+    user = tenant_profile.user
+
+    return {
+        "tenant_id": tenant_profile.id,
+        "full_name": user.get_full_name(),
+        "email": user.email,
+
+        "user_code": tenant_profile.user_code,
+
+        "contact_number": tenant_profile.contact_number,
+
+        "telephone_number": tenant_profile.telephone_number,
+        "fax_number": tenant_profile.fax_number,
+
+        "passport_number": tenant_profile.passport_number,
+        "passport_expiry_datetime": tenant_profile.passport_expiry_datetime,
+        "visa_number": tenant_profile.visa_number,
+        "visa_expiry_datetime": tenant_profile.visa_expiry_datetime,
+
+        "emirate_id": tenant_profile.emirate_id,
+        "uae_residence_visa": tenant_profile.uae_residence_visa,
+
+        "address": tenant_profile.address,
+        "additional_address": tenant_profile.additional_address,
+        "locality": tenant_profile.locality,
+        "pin_code": tenant_profile.pin_code,
+
+        "city": {
+            "key": tenant_profile.city.id if tenant_profile.city else None,
+            "value": tenant_profile.city.name if tenant_profile.city else None,
+        },
+        "natioanlity":tenant_profile.city.state.country.name if tenant_profile.city else None ,
+    
+    }

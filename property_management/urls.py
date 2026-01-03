@@ -53,6 +53,14 @@ urlpatterns = [
     path('other_type_payments', views.dashboard_other_type_payments, name='dashboard_other_type_payments'),
     path('dashboard_graph_due', views.dashboard_yearly_dues, name='dashboard_yearly_due'),
 
+    path('lease_term_and_condition', views.lease_term_and_condition, name='lease_term_and_condition'),
+
+    path('property_owner_compny_lease', views.property_owner_compny_lease, name='property_owner_compny_lease'),
+
+    path('property_lease_payment', views.property_lease_payment, name='lease_payment'),
+
+    
+
 ] 
 
 if settings.DEBUG:

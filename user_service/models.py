@@ -43,6 +43,13 @@ class UserProfile(Base):
     trade_license_number = models.CharField(max_length=255, null=True, blank=True)
     manage_through = models.CharField(max_length=20, choices=constants.choices,null=True, blank=True)
     is_staff = models.BooleanField(default=False)
+    #-------------------new fileds----------------
+    telephone_number = models.CharField(max_length=20,blank=True, null=True)
+    fax_number = models.CharField(max_length=20,blank=True,null=True)
+    passport_number = models.CharField( max_length=50,blank=True,null=True)
+    passport_expiry_datetime = models.DateTimeField(blank=True,null=True)
+    visa_number = models.CharField(max_length=50,blank=True,null=True)
+    visa_expiry_datetime = models.DateTimeField( blank=True,null=True)
 
     tenant_status = models.CharField(
         max_length=20,
@@ -60,6 +67,10 @@ class Company(Base):
     company_code = models.CharField(max_length=255, null=True, blank=True)
     company_name = models.CharField(max_length=255, null=True, blank=True)
     company_address = models.CharField(max_length=255, null=True, blank=True)
+    # ----------------- Add New-------------------------------------------------- 
+    licence_number = models.CharField(max_length=100)
+    licence_expiry_date = models.DateTimeField(null=True, blank=True)
+    licence_issuer = models.CharField(max_length=150)
 
     def __str__(self):
         return f"{self.company_name}"

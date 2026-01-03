@@ -11,6 +11,11 @@ from user_service.models import City
 class Bank(Base):
     name = models.CharField(max_length=100)
     city = models.ForeignKey(City, on_delete=models.CASCADE)
+    branch_name = models.CharField(max_length=150, null=True, blank=True)
+    branch_code = models.CharField(max_length=20, null=True, blank=True)
+    bank_code = models.CharField(max_length=10, null=True, blank=True)
+    address = models.TextField(null=True, blank=True)
+    swift_code = models.CharField(max_length=11, null=True, blank=True)
     
     def __str__(self):
         return "{}-{}".format(self.name, self.city.name)
@@ -129,4 +134,7 @@ class Payment(Base):
         data["status"] = {"key": self.status, "value": self.get_status_display()}
         data["created"] = datetime_to_epoch(self.created)
         return data
+
+
+
 

@@ -7,7 +7,7 @@ from user_service.models import (
 )
 from property_management.models import (
     LeasePropertyDetails, UserInvitation, Template, TemplateFields,
-    TemplateValues,LeaseDocumentsMapping
+    TemplateValues,LeaseDocumentsMapping , TermAndCondition
 )
 
 # -------------------- User Service Admin --------------------
@@ -138,6 +138,17 @@ class CityAdmin(admin.ModelAdmin):
     list_filter = ["state"]          
     search_fields = ["name", "code"]  
 
-
+@admin.register(TermAndCondition)
+class TermAndConditionAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "description",
+        "term_type",
+        "lease",
+        "is_predefined",
+    )
 
 admin.site.register(CompanyStaff, CompanyStaffAdmin)
+
+
+
