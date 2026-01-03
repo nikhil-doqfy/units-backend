@@ -47,8 +47,8 @@ from django.db.models import Sum
 import calendar
 from datetime import datetime, date
 from calendar import monthrange
-from django.db.models import Sum
-from django.db.models.functions import TruncMonth
+from dateutil.relativedelta import relativedelta
+
 
 @is_request_authenticated
 def serve_media(request, path):
@@ -201,14 +201,52 @@ def options(request):
             else:
                 units = PropertyUnitDetails.objects.none()
                 content["property_unit_with_lease"] = [{"key": u.id,"value": u.property_unit_name or "Unnamed Unit"} for u in units] 
+
+        elif option_type == "PARENT_PROPERTY_WITH_LEASE":
+            if user.user_role == constants.OWNER:
+                properties = Property.objects.filter( units__owner=user,units__lease_details__isnull=False ).distinct()
+
+            elif user.user_role == constants.COMPANY_USER:
+                company = Company.objects.filter(company_user=user).first()
+                if not company:
+                    return prepare_response(message=constants.COMPANY_NOT_FOUND,status=status.HTTP_404_NOT_FOUND)
+                properties = Property.objects.filter(units__company=company,units__lease_details__isnull=False).distinct()
+            else:
+                properties = Property.objects.none()
+            content["property_with_lease"] = [{"key": p.id,"value": p.property_name or "Unnamed Property"}for p in properties]
+        
+         # Fetch all leased property units under selected parent property (user-specific)
+        elif option_type == "PROPERTY_UNIT_BY_LEASE":
+            parent_property_id = request.GET.get("parent_property_id")
+            if not parent_property_id:
+                if user.user_role == constants.OWNER:
+                    units = PropertyUnitDetails.objects.filter(owner=user,lease_details__isnull=False).distinct()
+                elif user.user_role == constants.COMPANY_USER:
+                    company = Company.objects.filter(company_user=user).first()
+                    if not company:
+                        return prepare_response(message=constants.COMPANY_NOT_FOUND,status=status.HTTP_404_NOT_FOUND)
+                    units = PropertyUnitDetails.objects.filter(company=company,lease_details__isnull=False).distinct()
+                else:
+                    units = PropertyUnitDetails.objects.none()
+            else:
+                if user.user_role == constants.OWNER:
+                    units = PropertyUnitDetails.objects.filter(property_id=parent_property_id,owner=user,lease_details__isnull=False).distinct()
+                elif user.user_role == constants.COMPANY_USER:
+                    company = Company.objects.filter(company_user=user).first()
+                    if not company:
+                        return prepare_response(message=constants.COMPANY_NOT_FOUND,status=status.HTTP_404_NOT_FOUND)
+                    units = PropertyUnitDetails.objects.filter(property_id=parent_property_id,company=company,lease_details__isnull=False).distinct()
+                else:
+                    units = PropertyUnitDetails.objects.none()
+            content["property_unit_with_lease"] = [{"key": u.id,"value": u.property_unit_name or "Unnamed Unit"}for u in units]
+               
+
         else:
-            content[option_type] = []
-            
+            content[option_type] = []  
     return prepare_response(
         content=content,
         message=constants.DROPDOWN_DATA_FETCHED_SUCEESS,
-        status=status.HTTP_200_OK
-    )
+        status=status.HTTP_200_OK )
 
 
 @is_request_authenticated
@@ -635,8 +673,8 @@ def save_property(request):
     else:
         return prepare_response(
             message=constants.INVALID_REQUEST_METHOD,
-            status=status.HTTP_405_METHOD_NOT_ALLOWED
-        )
+            status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    
 
 
 
@@ -1883,55 +1921,63 @@ def generate_contract(request):
 
 
 def get_template_fields(request):
-    try:
-        template_id = request.GET.get("template_id")
-        if not template_id:
+    if request.method == "GET":
+        try:
+            template_id = request.GET.get("template_id")
+            if not template_id:
+                return prepare_response(
+                    message=constants.TEMPLATE_ID_REQUIRED,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            template = Template.objects.get(id=template_id)
+            fields = TemplateFields.objects.filter(document_template=template)
+
+            field_list = []
+            for field in fields:
+                field_list.append({
+                    "id_attribute": field.id_attribute,
+                    "name_attribute": field.name_attribute,
+                    "label": field.label_attribute,
+                    "html_tag": field.html_tag,
+                    "required": field.required,
+                    "min_value": field.min_value,
+                    "max_value": field.max_value,
+                    "min_length": field.min_length,
+                    "max_length": field.max_length,
+                    "pattern": field.pattern,
+                    "predefined_value": field.predefined_value,
+                })
+
             return prepare_response(
-                message=constants.TEMPLATE_ID_REQUIRED,
-                status=status.HTTP_400_BAD_REQUEST
+                content={
+                    "template_id": template.id,
+                    "template_name": template.name,
+                    "template_path": template.template_path,
+                    "fields": field_list
+                },
+                message=constants.TEMPLATE_FIELDS_FETCHED,
+                status=status.HTTP_200_OK
             )
 
-        template = Template.objects.get(id=template_id)
-        fields = TemplateFields.objects.filter(document_template=template)
+        except Template.DoesNotExist:
+            return prepare_response(
+                message=constants.INVALID_TEMPLATE_ID,
+                status=status.HTTP_404_NOT_FOUND
+            )
 
-        field_list = []
-        for field in fields:
-            field_list.append({
-                "id_attribute": field.id_attribute,
-                "name_attribute": field.name_attribute,
-                "label": field.label_attribute,
-                "html_tag": field.html_tag,
-                "required": field.required,
-                "min_value": field.min_value,
-                "max_value": field.max_value,
-                "min_length": field.min_length,
-                "max_length": field.max_length,
-                "pattern": field.pattern,
-                "predefined_value": field.predefined_value,
-            })
+        except Exception as e:
+            return prepare_response(
+                message=str(e),
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
+    else:
         return prepare_response(
-            content={
-                "template_id": template.id,
-                "template_name": template.name,
-                "template_path": template.template_path,
-                "fields": field_list
-            },
-            message=constants.TEMPLATE_FIELDS_FETCHED,
-            status=status.HTTP_200_OK
+            message=constants.INVALID_REQUEST_METHOD,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
 
-    except Template.DoesNotExist:
-        return prepare_response(
-            message=constants.INVALID_TEMPLATE_ID,
-            status=status.HTTP_404_NOT_FOUND
-        )
-
-    except Exception as e:
-        return prepare_response(
-            message=str(e),
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
 
 
 
@@ -2778,7 +2824,6 @@ def company_tenants(request):
         elif request.method == "PUT":
 
             data = json.loads(request.body)
-
             tenant_id = data.get("tenant_id")
             tenant_status = data.get("tenant_status") 
 
@@ -2906,6 +2951,8 @@ def lease_pdf_view(request):
 
 
 
+
+
 @is_request_authenticated
 def dashboard_monthly_revenue(request):
     if request.method != "GET":
@@ -2918,14 +2965,30 @@ def dashboard_monthly_revenue(request):
         user = request.user
 
         city_id = request.GET.get("city_id")
-        unit_id = request.GET.get("unit_id")
-        from_date = request.GET.get("from_date")
-        to_date = request.GET.get("to_date")
+        unit_id = request.GET.get("property_unit_id")
+        from_date = request.GET.get("from_date")   # epoch in ms
+        to_date = request.GET.get("to_date")       # epoch in ms
+        year = int(request.GET.get("year", datetime.now().year))
+
+        # =========================
+        # DATE RANGE FILTER LOGIC
+        # =========================
+        if from_date and to_date:
+            start_date = safe_epoch_to_datetime(int(from_date))
+            end_date = safe_epoch_to_datetime(int(to_date))
+            if start_date:
+                start_date = start_date.date()
+            if end_date:
+                end_date = end_date.date()
+        else:
+            start_date = date(year, 1, 1)
+            end_date = date(year, 12, 31)
 
         payments = Payment.objects.filter(
             status=constants.PAYMENT_SUCCESSFUL,
             reason_type=constants.RENT,
-            is_active=True
+            is_active=True,
+            created__date__range=[start_date, end_date]
         )
 
         leases = LeasePropertyDetails.objects.filter(
@@ -2933,12 +2996,13 @@ def dashboard_monthly_revenue(request):
             is_active=True
         )
 
-
+        # =========================
+        # ROLE BASED FILTER
+        # =========================
         if user.user_role == constants.OWNER:
             payments = payments.filter(
                 rental_account__lease_property__owner=user
             )
-
         elif user.user_role == constants.COMPANY_USER:
             company = Company.objects.filter(company_user=user).first()
             if not company:
@@ -2956,6 +3020,9 @@ def dashboard_monthly_revenue(request):
                 status=status.HTTP_403_FORBIDDEN
             )
 
+        # =========================
+        # OPTIONAL FILTERS
+        # =========================
         if city_id:
             payments = payments.filter(
                 rental_account__lease_property__property__city_id=city_id
@@ -2966,14 +3033,9 @@ def dashboard_monthly_revenue(request):
                 rental_account__lease_property__id=unit_id
             )
 
-        if from_date and to_date:
-            payments = payments.filter(
-                created__date__range=[
-                    parse_date(from_date),
-                    parse_date(to_date)
-                ]
-            )
-
+        # =========================
+        # MONTHLY AGGREGATION (12 MONTHS ALWAYS)
+        # =========================
         monthly_data = (
             payments
             .annotate(month=TruncMonth("created"))
@@ -2982,20 +3044,27 @@ def dashboard_monthly_revenue(request):
             .order_by("month")
         )
 
+        # Create a dict for quick lookup
+        monthly_dict = {item["month"].month: float(item["total_amount"] or 0) for item in monthly_data}
+
         revenue_list = []
         total_revenue = 0
 
-        for item in monthly_data:
-            amount = float(item["total_amount"] or 0)
+        for m in range(1, 13):  # Always loop Jan (1) to Dec (12)
+            amount = monthly_dict.get(m, 0)  # 0 if no payments
             total_revenue += amount
-            month = item["month"]
 
             revenue_list.append({
-             "period_epoch": datetime_to_epoch_millis(month), 
-             "month": month.month if month else None,
-            "year": month.year if month else None,
-            "amount": round(amount, 2)
+                "period_epoch": datetime_to_epoch_millis(datetime(year, m, 1)),
+                "month": m,
+                "month_str": calendar.month_abbr[m],
+                "year": year,
+                "amount": round(amount, 2)
             })
+
+        # =========================
+        # MRR
+        # =========================
         mrr = leases.aggregate(
             total_mrr=Sum("rent")
         )["total_mrr"] or 0
@@ -3013,10 +3082,16 @@ def dashboard_monthly_revenue(request):
     except Exception as e:
         print("Dashboard Revenue Error:", e)
         return prepare_response(
-            message=str(e),  
+            message=str(e),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
+
+# dasassa
+
+from datetime import datetime
+
+from django.utils.dateparse import parse_date
 
 @is_request_authenticated
 def dashboard_cheque_visibility(request):
@@ -3025,28 +3100,63 @@ def dashboard_cheque_visibility(request):
             message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
+
     try:
         user = request.user
         city_id = request.GET.get("city_id")
-        unit_id = request.GET.get("unit_id")
+        unit_id = request.GET.get("property_unit_id")
         from_date = request.GET.get("from_date")
-        to_date = request.GET.get("to_date")
+        to_date = request.GET.get("to_date")      
+
+        # =========================
+        # DEFAULT DATE RANGE = CURRENT MONTH
+        # =========================
+        today = datetime.now()
+        if from_date and to_date:
+            start_date = safe_epoch_to_datetime(int(from_date))
+            end_date = safe_epoch_to_datetime(int(to_date))
+            if start_date:
+                start_date = start_date.date()
+            if end_date:
+                end_date = end_date.date()
+        else:
+            start_date = today.replace(day=1).date()  # first day of current month
+            end_date = (today.replace(day=1) + relativedelta(months=1, days=-1)).date()  # last day of current month
+
+        # =========================
+        # ROLE BASED LEASES
+        # =========================
         if user.user_role == constants.OWNER:
             leases = LeasePropertyDetails.objects.filter(owner=user, is_active=True)
         elif user.user_role == constants.COMPANY_USER:
             companies = Company.objects.filter(company_user=user)
             if not companies.exists():
-                return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
-            leases = LeasePropertyDetails.objects.filter(lease_property__company__in=companies,is_active=True)
+                return prepare_response(
+                    message=constants.COMPANY_NOT_FOUND,
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            leases = LeasePropertyDetails.objects.filter(lease_property__company__in=companies, is_active=True)
         else:
-            return prepare_response(message=constants.UNAUTHORIZED_ROLE, status=status.HTTP_403_FORBIDDEN)
+            return prepare_response(
+                message=constants.UNAUTHORIZED_ROLE,
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # =========================
+        # OPTIONAL FILTERS
+        # =========================
         if city_id:
             leases = leases.filter(lease_property__property__city_id=city_id)
         if unit_id:
             leases = leases.filter(lease_property__id=unit_id)
-        if from_date and to_date:
-            leases = leases.filter(
-                created__date__range=[parse_date(from_date), parse_date(to_date)])
+
+        # =========================
+        # APPLY DATE RANGE FILTER
+        # =========================
+        leases = leases.filter(
+            created__date__range=[start_date, end_date]
+        )
+
         leases = leases.prefetch_related(
             Prefetch(
                 "payments",
@@ -3059,14 +3169,15 @@ def dashboard_cheque_visibility(request):
             "tenant"
         )
 
- 
+        # =========================
+        # BUILD RESPONSE
+        # =========================
         cheque_list = []
         for lease in leases:
             property_unit = lease.lease_property
             owner_name = f"{lease.owner.user.first_name} {lease.owner.user.last_name}".strip() if lease.owner else ""
             tenant_name = f"{lease.tenant.user.first_name} {lease.tenant.user.last_name}".strip() if lease.tenant else ""
 
-          
             if lease.cheque_payments:
                 for p in lease.cheque_payments:
                     cheque_list.append({
@@ -3094,12 +3205,14 @@ def dashboard_cheque_visibility(request):
             status=status.HTTP_200_OK,
             content={"cheques": cheque_list}
         )
+
     except Exception as e:
         print("Cheque Visibility Error:", e)
         return prepare_response(
             message=str(e),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
 
 
 @is_request_authenticated
@@ -3208,8 +3321,6 @@ def dashboard_cheque_aging(request):
 
 
 
-
-
 @is_request_authenticated
 def dashboard_other_type_payments(request):
     if request.method != "GET":
@@ -3220,14 +3331,17 @@ def dashboard_other_type_payments(request):
 
     try:
         user = request.user
-
-        from_date = request.GET.get("from_date")
-        to_date = request.GET.get("to_date")
-
+        year = int(request.GET.get("year", datetime.now().year))
+        property_unit_id = request.GET.get("property_unit_id")
+        year_start = date(year, 1, 1)
+        year_end = date(year, 12, 31)
         payments = Payment.objects.filter(
-                 status=constants.PAYMENT_SUCCESSFUL,
-                is_active=True
-                    )
+            status=constants.PAYMENT_SUCCESSFUL,
+            is_active=True,
+            created__date__range=[year_start, year_end]
+        )
+
+        # ---------------- USER FILTER ----------------
         if user.user_role == constants.OWNER:
             payments = payments.filter(
                 rental_account__lease_property__owner=user
@@ -3250,16 +3364,13 @@ def dashboard_other_type_payments(request):
                 status=status.HTTP_403_FORBIDDEN
             )
 
-        # DATE FILTER
-        if from_date and to_date:
+        # ---------------- PROPERTY UNIT FILTER ----------------
+        if property_unit_id:
             payments = payments.filter(
-                created__date__range=[
-                    parse_date(from_date),
-                    parse_date(to_date)
-                ]
+                rental_account__lease_property__id=property_unit_id
             )
 
-        # MONTH + METHOD WISE AGGREGATION
+        # ---------------- MONTH + METHOD AGGREGATION (SAME) ----------------
         monthly_qs = (
             payments
             .annotate(month=TruncMonth("created"))
@@ -3270,24 +3381,38 @@ def dashboard_other_type_payments(request):
                 net_banking=Sum("amount", filter=Q(method=constants.NET_BANKING)),
                 total=Sum("amount")
             )
-            .order_by("month")
         )
 
+        # ---------------- CONVERT TO MAP ----------------
+        month_map = {}
+        for row in monthly_qs:
+            month_no = row["month"].month
+            month_map[month_no] = row
+
+        # ---------------- FORCE JAN → DEC ----------------
         monthly_data = []
         total_revenue = 0
 
-        for row in monthly_qs:
-            month_dt = row["month"]
-            total_revenue += float(row["total"] or 0)
+        for month in range(1, 13):
+            data = month_map.get(month, {})
+
+            credit_card = float(data.get("credit_card", 0) or 0)
+            debit_card = float(data.get("debit_card", 0) or 0)
+            net_banking = float(data.get("net_banking", 0) or 0)
+            total = float(data.get("total", 0) or 0)
+
+            total_revenue += total
+
+            month_date = datetime(year, month, 1)
 
             monthly_data.append({
-                "period_epoch": datetime_to_epoch_millis(month_dt),
-                "month": month_dt.month,
-                "year": month_dt.year,
-                "credit_card": float(row["credit_card"] or 0),
-                "debit_card": float(row["debit_card"] or 0),
-                "net_banking": float(row["net_banking"] or 0),
-                "total": float(row["total"] or 0)
+                "period_epoch": datetime_to_epoch_millis(month_date),
+                "month": month,
+                "year": year,
+                "credit_card": credit_card,
+                "debit_card": debit_card,
+                "net_banking": net_banking,
+                "total": total
             })
 
         return prepare_response(
@@ -3305,6 +3430,8 @@ def dashboard_other_type_payments(request):
             message=str(e),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
 
 
 
@@ -3353,6 +3480,7 @@ def dashboard_yearly_dues(request):
     try:
         user = request.user
         year = int(request.GET.get("year", datetime.now().year))
+        property_unit_id = request.GET.get("property_unit_id")  #  ADDED
 
         year_start = date(year, 1, 1)
         year_end = date(year, 12, 31)
@@ -3360,7 +3488,6 @@ def dashboard_yearly_dues(request):
         # ------------------------------------------------
         # 1 BASE LEASE QUERY (Expected Rent)
         # ------------------------------------------------
-        
         leases = LeasePropertyDetails.objects.filter(
             lease_status=constants.ACTIVE,
             is_active=True,
@@ -3404,7 +3531,16 @@ def dashboard_yearly_dues(request):
             )
 
         # ------------------------------------------------
-        # 4 PAYMENT MONTHLY MAP → {month: received}
+        # 4 PROPERTY UNIT FILTER ( ONLY ADDITION)
+        # ------------------------------------------------
+        if property_unit_id:
+            leases = leases.filter(lease_property__id=property_unit_id)
+            payments = payments.filter(
+                rental_account__lease_property__id=property_unit_id
+            )
+
+        # ------------------------------------------------
+        # 5 PAYMENT MONTHLY MAP → {month: received}
         # ------------------------------------------------
         payment_qs = (
             payments
@@ -3419,7 +3555,7 @@ def dashboard_yearly_dues(request):
         }
 
         # ------------------------------------------------
-        # 5 MONTHLY CALCULATION (CORRECT LOGIC)
+        # 6 MONTHLY CALCULATION (NO LOGIC CHANGE)
         # ------------------------------------------------
         monthly_data = []
         yearly_total = 0
@@ -3430,7 +3566,6 @@ def dashboard_yearly_dues(request):
             month_start = date(year, month, 1)
             month_end = date(year, month, monthrange(year, month)[1])
 
-            #  Active leases in this month
             active_leases = leases.filter(
                 lease_start_date__lte=month_end,
                 lease_end_date__gte=month_start
@@ -3455,13 +3590,12 @@ def dashboard_yearly_dues(request):
             })
 
         # ------------------------------------------------
-        # 6️⃣ YEARLY SUMMARY
+        # 7 YEARLY SUMMARY
         # ------------------------------------------------
         yearly_due = max(yearly_total - yearly_received, 0)
 
         received_percent = (yearly_received / yearly_total * 100) if yearly_total else 0
         due_percent = (yearly_due / yearly_total * 100) if yearly_total else 0
-
 
         return prepare_response(
             message="Yearly dues fetched successfully",
@@ -3486,5 +3620,3 @@ def dashboard_yearly_dues(request):
             message=str(e),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
-
