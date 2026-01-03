@@ -1535,7 +1535,7 @@ def lease_details_view(request):
 
             return prepare_response(
                 message=constants.LEASE_CREATED,
-                content={"lease_id": lease.id},
+                content={"id": lease.id},
                 status=status.HTTP_201_CREATED,
             )
 
@@ -1606,7 +1606,7 @@ def lease_details_view(request):
 
             return prepare_response(
                 message=constants.LEASE_UPDATED,
-                content={"lease_id": lease.id},
+                content={"id": lease.id},
                 status=status.HTTP_200_OK
             )
 
