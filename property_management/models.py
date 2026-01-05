@@ -56,7 +56,6 @@ class LeasePropertyDetails(Base):
     )
 
     pdf_path = models.CharField(max_length=2000, null=True, blank=True)
-    
     annual_amount = models.FloatField( null=True, blank=True)
     actual_annual_amount = models.FloatField(null=True, blank=True)
     rent = models.FloatField( null=True, blank=True)
@@ -93,7 +92,7 @@ class LeasePropertyDetails(Base):
         )) 
         data["created"] = datetime_to_epoch_millis(self.created)
         data["lease_status"] = {"key": self.lease_status, "value": self.get_lease_status_display()}
-        data["approval_status"] = {"key": self.approval_status, "value": self.get_approval_status_display()}
+        # data["approval_status"] = {"key": self.approval_status, "value": self.get_approval_status_display()}
         data["step_status"] = {"key": self.step_status, "value": self.get_step_status_display()}
         data["lease_start_date"] = datetime_to_epoch_millis(self.lease_start_date)
         data["lease_end_date"] = datetime_to_epoch_millis(self.lease_end_date)

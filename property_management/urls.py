@@ -31,11 +31,7 @@ urlpatterns = [
     path('generate/contract', views.generate_contract, name='generate_contract'), 
 
     path('lease_documents', views.lease_documents, name='lease_documents'), 
-
-    
-
     path('get_template_fields', views.get_template_fields, name='get_template_fields'),
-
     path('lease/tenancy', views.lease_tenancy, name='lease_tenancy'),
     path("complaint", views.complaint, name="complaint_api"), 
     path("faq_api", views.faq_api, name="faq_api"),
@@ -52,15 +48,13 @@ urlpatterns = [
     path('cheque_aging', views.dashboard_cheque_aging, name='dashboard_cheque_aging'),
     path('other_type_payments', views.dashboard_other_type_payments, name='dashboard_other_type_payments'),
     path('dashboard_graph_due', views.dashboard_yearly_dues, name='dashboard_yearly_due'),
-
     path('lease_term_and_condition', views.lease_term_and_condition, name='lease_term_and_condition'),
-
     path('property_owner_compny_lease', views.property_owner_compny_lease, name='property_owner_compny_lease'),
-
     path('property_lease_payment', views.property_lease_payment, name='lease_payment'),
 
-    
+    # path('complaint_list', views.complaint_list, name='complaint_list'),
 
+    
 ] 
 
 if settings.DEBUG:

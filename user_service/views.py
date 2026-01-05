@@ -300,7 +300,7 @@ def user_management(request):
             start_epoch = request.GET.get("start_date")
             end_epoch = request.GET.get("end_date")
             user_id = request.GET.get("user_id")
-            users_qs = UserProfile.objects.select_related("user").filter( is_active=is_active,created_by=user.user)
+            users_qs = UserProfile.objects.select_related("user").filter( is_active=is_active,created_by=user.user,is_staff=False)
             if role:
                 users_qs = users_qs.filter(user_role=role)
             if user_id:

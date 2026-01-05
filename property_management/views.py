@@ -122,9 +122,11 @@ def options(request):
                 
             else:
                 units = PropertyUnitDetails.objects.none()
-            content["property_unit"] = [
-        {"key": u.id, "value": u.property_unit_name or "Unnamed Unit"} for u in units
-    ]
+            content["property_unit"] = [{"key": u.id, "value": u.property_unit_name or "Unnamed Unit"} for u in units]
+        
+
+
+
         elif option_type == "TENANTS":
             tenants = UserProfile.objects.filter(user_role=constants.TENANT)
             content["tenants"] = [{"key": t.id, "value": t.user.get_full_name() or t.user.email} for t in tenants]
@@ -257,8 +259,35 @@ def options(request):
             banks = Bank.objects.all()
             content["bank"] = [{"key": bank.id, "value": f"{bank.name} ({bank.branch_code}) - {bank.city.name}"}for bank in banks]
 
+        elif option_type == "PROPERTY_UNIT_BY_PROPERTY":
+            property_id = request.GET.get("property_id")
+            if not property_id:
+                content["property_unit"] = []
+            else:
+                units = PropertyUnitDetails.objects.filter(property_id=property_id , is_occupied=False)
+                content["property_unit"] = [{ "key": unit.id,"value": unit.property_unit_name or f"Unit #{unit.id}"}for unit in units]
+        elif option_type == "COMPLAINT_STATUS":
+            content["complaint_status"] = [{"key": constants.IN_PROGRESS, "value": "In Progress"},
+        {"key": constants.COMPLETED, "value": "Completed"},
+        {"key": constants.ASSIGNED_ENGINEER, "value": "Assigned to Engineer"},
+        {"key": constants.REJECTED, "value": "Rejected"},]
+        
+        elif option_type == "TENANT_BY_COMPANY": #for craeting  lease we get that tenants
+            if user.user_role != constants.COMPANY_USER:
+                content["tenant"] = []
+                continue
+            company = Company.objects.filter(company_user=user).first()
+            if not company:
+                content["tenant"] = []
+                continue
+            tenant_status = request.GET.get("tenant_status", constants.APPROVED)
+            tenants_created = UserProfile.objects.filter(created_by=user.user,user_role=constants.TENANT,is_active=True,tenant_status=tenant_status)
+            tenants_interested = UserProfile.objects.filter(interested_properties__property_unit__company=company, interested_properties__is_active=True,user_role=constants.TENANT,tenant_status=tenant_status)
+            tenants = (tenants_created | tenants_interested).distinct()
+            content["tenant"] = [{"key": t.id,"value": f"{t.user.first_name} {t.user.last_name}"}for t in tenants]
 
-        else:
+            
+        else:   
             content[option_type] = []  
     return prepare_response(
         content=content,
@@ -1855,6 +1884,7 @@ def lease_tenancy(request):
                 message=constants.INVALID_REQUEST_METHOD,
                 status=status.HTTP_405_METHOD_NOT_ALLOWED
             )
+
         current_user = request.user  
         lease_status_param = request.GET.get("lease_status")
 
@@ -1864,10 +1894,11 @@ def lease_tenancy(request):
             "tenant",
             "tenant__user"
         )
+
+        # ================= ROLE BASED FILTER (UNCHANGED) =================
         if current_user.user_role == constants.OWNER:
-            leases_qs = leases_qs.filter(
-                owner=current_user
-            )
+            leases_qs = leases_qs.filter(owner=current_user)
+
         elif current_user.user_role == constants.COMPANY_USER:
             leases_qs = leases_qs.filter(
                 lease_property__company__company_user=current_user
@@ -1878,14 +1909,38 @@ def lease_tenancy(request):
                 message=constants.UNAUTHORIZED_ROLE,
                 status=status.HTTP_403_FORBIDDEN
             )
+
+        # ================= LEASE STATUS FILTER (UNCHANGED) =================
         if lease_status_param:
-            status_list = [status.strip().upper()for status in lease_status_param.split(",")]
+            status_list = [status.strip().upper() for status in lease_status_param.split(",")]
             leases_qs = leases_qs.filter(lease_status__in=status_list)
 
+        # ================= SEARCH FILTER (NEW - NON BREAKING) =================
+        search = request.GET.get("search", "").strip()
+        if search:
+            leases_qs = leases_qs.filter(
+                Q(id__icontains=search) |
+                Q(lease_property__property_code__icontains=search) |
+                Q(tenant__user__first_name__icontains=search) |
+                Q(tenant__user__last_name__icontains=search) |
+                Q(tenant__contact_number__icontains=search)
+            ).distinct()
+
+        # ================= PAGINATION (NEW - SAFE) =================
+        page = int(request.GET.get("page", 1))
+        limit = int(request.GET.get("limit", 10))
+
+        paginator = Paginator(leases_qs.order_by("-created"), limit)
+
+        try:
+            leases_page = paginator.page(page)
+        except EmptyPage:
+            leases_page = paginator.page(paginator.num_pages)
 
         table_data = []
 
-        for lease in leases_qs.order_by("-created"):
+        # ================= LOOP (UNCHANGED LOGIC) =================
+        for lease in leases_page:
             tenant_profile = lease.tenant
             property_unit = lease.lease_property
 
@@ -1906,9 +1961,13 @@ def lease_tenancy(request):
 
         return prepare_response(
             message=constants.DATA_FETCHED_SUCCESSFULLY,
-            content={
-                "count": len(table_data),
-                "results": table_data
+            content=table_data,
+            
+            pagination={
+                "current_page": leases_page.number,
+                "limit": limit,
+                "total_pages": paginator.num_pages,
+                "total_records": paginator.count
             },
             status=status.HTTP_200_OK
         )
@@ -1918,6 +1977,7 @@ def lease_tenancy(request):
             message=str(e),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
 
 
 
@@ -2403,21 +2463,25 @@ def export_property_table_csv(request):
 
 @is_request_authenticated
 def complaint(request):
-    user_profile = request.user 
+    user_profile = request.user
+
     if request.method == "POST":
         try:
             data = json.loads(request.body)
             message = data.get("message")
+
             if not message:
                 return prepare_response(
                     message=constants.MESSAGE_REQUIRED,
                     status=status.HTTP_400_BAD_REQUEST
                 )
+
             complaint = Complaint.objects.create(
                 user=user_profile,
                 message=message,
                 created_by=request.user.user
             )
+
             return prepare_response(
                 message=constants.COMPLAINT_RAISED_SUCCESS,
                 status=status.HTTP_201_CREATED,
@@ -2426,17 +2490,164 @@ def complaint(request):
                     "message": complaint.message
                 }
             )
+
         except Exception as e:
             return prepare_response(
                 message=str(e),
                 status=status.HTTP_400_BAD_REQUEST
             )
+
     elif request.method == "GET":
-        pass
+        login_user = request.user
+        complaints_qs = Complaint.objects.none()
+
+        # ================= ROLE BASED FILTER (UNCHANGED) =================
+        if login_user.user_role == constants.TENANT:
+            complaints_qs = Complaint.objects.filter(user=login_user)
+
+        elif login_user.user_role == constants.OWNER:
+            complaints_qs = Complaint.objects.filter(
+                user__tenant_leases__lease_property__owner=login_user
+            ).distinct()
+
+        elif login_user.user_role == constants.COMPANY_USER:
+            company = Company.objects.filter(company_user=login_user).first()
+            if not company:
+                return prepare_response(
+                    message=constants.COMPANY_NOT_FOUND,
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            complaints_qs = Complaint.objects.filter(
+                user__tenant_leases__lease_property__company=company
+            ).distinct()
+
+        else:
+            return prepare_response(
+                message="Invalid user role",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # ================= STATUS FILTER (UNCHANGED) =================
+        status_param = request.GET.get("status")
+        if status_param:
+            status_list = [s.strip() for s in status_param.split(",")]
+
+            VALID_STATUSES = {
+                constants.IN_PROGRESS,
+                constants.COMPLETED,
+                constants.ASSIGNED_ENGINEER,
+                constants.REJECTED,
+            }
+
+            invalid_status = set(status_list) - VALID_STATUSES
+            if invalid_status:
+                return prepare_response(
+                    message=f"Invalid status value(s): {', '.join(invalid_status)}",
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            complaints_qs = complaints_qs.filter(status__in=status_list)
+        property_unit_id = request.GET.get("property_unit_id")
+        if property_unit_id:
+            if not property_unit_id.isdigit():
+                return prepare_response(message="Invalid property_unit_id",status=status.HTTP_400_BAD_REQUEST)
+            complaints_qs = complaints_qs.filter(user__tenant_leases__lease_property__id=property_unit_id).distinct()
+        
+
+        # ================= SEARCH FILTER (NEW) =================
+        search = request.GET.get("search", "").strip()
+        if search:
+            complaints_qs = complaints_qs.filter(
+                Q(id__icontains=search) |
+                Q(user__user__first_name__icontains=search) |
+                Q(user__user__last_name__icontains=search) |
+                Q(user__tenant_leases__lease_property__property_unit_name__icontains=search)
+            ).distinct()
+
+        complaints_qs = complaints_qs.select_related(
+            "user", "user__user"
+        ).order_by("-created")
+
+        # ================= SUMMARY COUNTS (UNCHANGED) =================
+        total_complaints = complaints_qs.count()
+        total_completed = complaints_qs.filter(status=constants.COMPLETED).count()
+        total_in_progress = complaints_qs.filter(status=constants.IN_PROGRESS).count()
+        total_rejected = complaints_qs.filter(status=constants.REJECTED).count()
+
+        # ================= PAGINATION (NEW) =================
+        page = int(request.GET.get("page", 1))
+        limit = int(request.GET.get("limit", 10))
+
+        paginator = Paginator(complaints_qs, limit)
+        try:
+            complaints_page = paginator.page(page)
+        except EmptyPage:
+            complaints_page = paginator.page(paginator.num_pages)
+
+        complaint_list = []
+
+        for complaint_obj in complaints_page:
+            tenant = complaint_obj.user
+
+            lease = LeasePropertyDetails.objects.filter(
+                tenant=tenant
+            ).select_related("lease_property").first()
+
+            property_unit_name = None
+            property_image = None
+
+            if lease and lease.lease_property:
+                property_obj = lease.lease_property
+                property_unit_name = property_obj.property_unit_name
+
+                image_data = get_property_images(
+                    property_id=property_obj.id,
+                    single=True
+                )
+                if not image_data.get("error") and image_data.get("images"):
+                    property_image = image_data["images"][0]["data"]
+
+            complaint_list.append({
+                "complaint_id": complaint_obj.id,
+                "property_unit_name": property_unit_name,
+                "property_unit_id":property_obj.id,
+                "description": complaint_obj.message,
+                "raised_by_email": tenant.user.email,
+                "raised_by_name": tenant.user.first_name,
+                "status": {
+                    "key": complaint_obj.status,
+                    "value": complaint_obj.get_status_display()
+                },
+                "raised_date": datetime_to_epoch_millis(complaint_obj.created),
+                "property_image": property_image,
+
+                "raised_by_image": tenant.profile_image
+            })
+
+        return prepare_response(
+            content={
+                "summary": {
+                    "total_complaints": total_complaints,
+                    "total_completed": total_completed,
+                    "total_in_progress": total_in_progress,
+                    "total_rejected": total_rejected,
+                },
+                "complaints": complaint_list
+            },
+            pagination={
+                "current_page": complaints_page.number,
+                "limit": limit,
+                "total_records": paginator.count,
+                "total_pages": paginator.num_pages
+            },
+            message="Complaints fetched successfully",
+            status=status.HTTP_200_OK
+        )
 
     elif request.method == "PUT":
         pass
-       
+
     elif request.method == "DELETE":
         pass
 
@@ -2445,6 +2656,8 @@ def complaint(request):
             message=constants.INVALID_REQUEST,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
+
+
 
 
 
@@ -3856,8 +4069,6 @@ def dashboard_yearly_dues(request):
 
 def lease_term_and_condition(request):
     try:
-
-
         if request.method == "GET":
             lease_id = request.GET.get("lease_id")
 
@@ -4050,6 +4261,7 @@ def property_owner_compny_lease(request):
                     "licence_number": unit.company.licence_number,
                     "licence_expiry_date":unit.company.licence_expiry_date,
                     "licence_issuer":unit.company.licence_issuer,
+                    "postal_code":company_user_profile.pin_code, 
                     "company_user": {
                         "user_profile_id": company_user_profile.id,
                         "user_id": company_user.id,
@@ -4057,9 +4269,10 @@ def property_owner_compny_lease(request):
                         "email": company_user.email,
                         "contact_number": company_user_profile.contact_number,
                         "user_role": company_user_profile.user_role,
-                        "postal_code":company_user_profile.pin_code, 
+                        
                         "telephone_number":company_user_profile.telephone_number,
                         "fax_number":company_user_profile.fax_number,
+                        # "postal_code":company_user_profile.pin_code
                     }
                 }
 
@@ -4096,6 +4309,7 @@ def property_owner_compny_lease(request):
                 "land_area_unit":unit.area_unit,
                 "property_code":unit.property_code,
                 "dimension":unit.dimension,
+                "plot_no":unit.plot_no,
 
             }
 
@@ -4142,7 +4356,6 @@ def property_lease_payment(request):
                     message="lease_id or payment_id is required",
                     status=status.HTTP_400_BAD_REQUEST
                 )
-
             data = []
             for p in payments:
                 data.append({
@@ -4219,11 +4432,8 @@ def property_lease_payment(request):
                 content={"payment_id": payment.id},
                 status=status.HTTP_201_CREATED
             )
-
-
         elif request.method == "PUT":
             body = json.loads(request.body)
-
             payment_id = body.get("payment_id")
             if not payment_id:
                 return prepare_response(
@@ -4278,3 +4488,5 @@ def property_lease_payment(request):
             message=str(e),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
