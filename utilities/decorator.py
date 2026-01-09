@@ -118,6 +118,8 @@ def is_request_authenticated(function):
                     status=status.HTTP_401_UNAUTHORIZED
                 )
             # return check_api_permissions(request, function, *args, **kwargs)
+            return function(request, *args, **kwargs)
+
         else:
             return prepare_response(
                 message=constants.INVALID_LOGIN_DETAILS,
