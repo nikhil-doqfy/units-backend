@@ -49,7 +49,7 @@ class UserProfile(Base):
     passport_expiry_datetime = models.DateTimeField(blank=True,null=True)
     visa_number = models.CharField(max_length=50,blank=True,null=True)
     visa_expiry_datetime = models.DateTimeField( blank=True,null=True)
-
+    password_change_timestamp = models.DateTimeField(default=timezone.now)
     tenant_status = models.CharField(
         max_length=20,
         choices=TENANT_STATUS_CHOICES,
