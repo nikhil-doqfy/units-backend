@@ -99,8 +99,7 @@ def validate_phone_number(value):
 
 
 def datetime_to_epoch(dt):
-    return int(dt.strftime('%s'))
-
+    return int(dt.strftime('%s')) * 1000
 
 
 def datetime_to_epoch_millis(dt):

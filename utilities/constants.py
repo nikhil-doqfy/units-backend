@@ -34,7 +34,7 @@ ROLE_CREATED_SUCCESS = "Role created successfully"
 USER_ALREADY_EXISTS_EMAIL = "User already exists with this email"
 SIGNUP_SUCCESS = "Signup successful"
 ROLES_FETCH_SUCCESS = "Roles fetched successfully"
-
+INVALID_LOGIN_DETAILS = "Invalid login details"
 
 
 
@@ -156,7 +156,6 @@ USER_UPDATED_SUCCESS="User updated successfully"
 USER_FETCHED_SUCCESS="User list fetched successfully"
 USER_SOFT_DELETED="user soft deleted successfully"
 OTP_NOT_VERIFIED="otp not vrified or alredy verified "
-# EMAIL_ALREADY_REGISTERED = "This email is already registered."
 
 ACCESS_DENIED_OWNER = "Access denied. Only owners can send invitations."
 EMAIL_REQUIRED = "Email field is required."
@@ -348,6 +347,10 @@ TERMS_CREATED_SUCCESS = "Terms created successfully."
 DESCRIPTION_REQUIRED    = "Description is required."
 TERMS_MUST_BE_LIST      = "Terms must be a non-empty list."
 DATA_FETCHED_SUCCESS    = "Data fetched successfully."
+ROLE_DOES_NOT_EXIST = "Role does not exist."
+USER_ROLE_DOES_NOT_EXIST = "You do not have any role assigned. Please contact the administrator."
+PERMISSION_DENIED_SUCCESS = "This API is not accessible. Permission denied."
+PERMISSION_DOES_NOT_EXIST = "Your role does not have the required permission to access this API."
 
 
 choices=[("MYSELF", "Myself"), ("PMC", "PMC")]
@@ -546,3 +549,25 @@ PAYMENT_PENDING = "PAYMENT_PENDING"
 PAYMENT_SUCCESSFUL = "PAYMENT_SUCCESSFUL"
 PAYMENT_FAILED = "PAYMENT_FAILED"
 PAYMENT_BOUNCED = "PAYMENT_BOUNCED"
+
+
+
+#======================
+# API Method
+#======================
+GET = "GET"
+POST = "POST"
+PUT = "PUT"
+PATCH = "PATCH"
+DELETE = "DELETE"
+OPTION = "OPTION"
+
+
+#==========================
+# Permissions Type Choices
+#==========================
+VIEW_ONLY = "VIEW_ONLY"
+ADD = "ADD"
+MODIFIED = "MODIFIED"
+DELETE = "DELETE"
+TERMINATED = "TERMINATED"

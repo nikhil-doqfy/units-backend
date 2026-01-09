@@ -43,7 +43,6 @@ class UserProfile(Base):
     trade_license_number = models.CharField(max_length=255, null=True, blank=True)
     manage_through = models.CharField(max_length=20, choices=constants.choices,null=True, blank=True)
     is_staff = models.BooleanField(default=False)
-    #-------------------new fileds----------------
     telephone_number = models.CharField(max_length=20,blank=True, null=True)
     fax_number = models.CharField(max_length=20,blank=True,null=True)
     passport_number = models.CharField( max_length=50,blank=True,null=True)
@@ -67,7 +66,6 @@ class Company(Base):
     company_code = models.CharField(max_length=255, null=True, blank=True)
     company_name = models.CharField(max_length=255, null=True, blank=True)
     company_address = models.CharField(max_length=255, null=True, blank=True)
-    # ----------------- Add New-------------------------------------------------- 
     licence_number = models.CharField(max_length=100)
     licence_expiry_date = models.DateTimeField(null=True, blank=True)
     licence_issuer = models.CharField(max_length=150)
@@ -277,11 +275,11 @@ class Documents(Base):
 
 class PropertyDocumentsMapping(Base):
     PROPERTY_DOCUMENT_CHOICES = (
-    (constants.FLOOR_PLAN, "Floor Plan"),
-    (constants.EJARI_CERTIFICATE, "Ejari Certificate"),
-    (constants.PMC_DOCUMENT, "PMC Document"),
-    (constants.CHEQUE_DOCUMENT, "Cheque Document"),
-)
+        (constants.FLOOR_PLAN, "Floor Plan"),
+        (constants.EJARI_CERTIFICATE, "Ejari Certificate"),
+        (constants.PMC_DOCUMENT, "PMC Document"),
+        (constants.CHEQUE_DOCUMENT, "Cheque Document"),
+    )
     property = models.ForeignKey(
         PropertyUnitDetails,
         on_delete=models.CASCADE,
@@ -333,9 +331,9 @@ class TenantDocumentsMapping(Base):
     TENANT_DOCUMENT_CHOICES = (
     (constants.EMIRATES_ID, "Emirates ID"),
     (constants.UAE_RESIDENCE_VISA, "UAE Residence Visa"),
-    (constants.DLD_CERTIFICATE ,"DLD Certificate"),
-   
-) 
+    (constants.DLD_CERTIFICATE ,"DLD Certificate"), 
+    ) 
+    
     tenant = models.ForeignKey(
         UserProfile,
         limit_choices_to={'user_role': constants.TENANT},
@@ -358,11 +356,11 @@ class TenantDocumentsMapping(Base):
 
 class CompanyUserDocumentsMapping(Base):
     COMPANY_DOCUMENT_CHOICES = (  
-    (constants.EMIRATES_ID, "Emirates ID"),
-    (constants.UAE_RESIDENCE_VISA, "UAE Residence Visa"),
-    (constants.DLD_CERTIFICATE ,"DLD Certificate"),
-   
-) 
+        (constants.EMIRATES_ID, "Emirates ID"),
+        (constants.UAE_RESIDENCE_VISA, "UAE Residence Visa"),
+        (constants.DLD_CERTIFICATE ,"DLD Certificate"),
+    ) 
+    
     company_user = models.ForeignKey(
         UserProfile,
         limit_choices_to={'user_role': constants.COMPANY_USER},
@@ -454,10 +452,8 @@ class Complaint(Base):
     status = models.CharField(
         max_length=30,
         choices=STATUS_CHOICES,
-        default="IN_PROGRESS"
+        default=constants.IN_PROGRESS
     )
-
-
 
     def __str__(self):
         return f"Complaint by {self.user}"
@@ -478,14 +474,3 @@ class FAQ(models.Model):
 
     def __str__(self):
         return self.question
-
-
-
-
-
-
-
-
-
-
-

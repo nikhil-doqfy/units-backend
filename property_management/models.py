@@ -2,7 +2,7 @@ from django.db import models
 from django.forms.models import model_to_dict
 from django.contrib.auth.models import User
 from utilities import constants
-from utilities.helper_functions import datetime_to_epoch ,datetime_to_epoch_millis
+from utilities.helper_functions import datetime_to_epoch
 
 class Base(models.Model):
     created = models.DateTimeField(auto_now_add=True)
@@ -90,14 +90,13 @@ class LeasePropertyDetails(Base):
             "notice_period",
             "discount"
         )) 
-        data["created"] = datetime_to_epoch_millis(self.created)
+        data["created"] = datetime_to_epoch(self.created)
         data["lease_status"] = {"key": self.lease_status, "value": self.get_lease_status_display()}
-        # data["approval_status"] = {"key": self.approval_status, "value": self.get_approval_status_display()}
         data["step_status"] = {"key": self.step_status, "value": self.get_step_status_display()}
-        data["lease_start_date"] = datetime_to_epoch_millis(self.lease_start_date)
-        data["lease_end_date"] = datetime_to_epoch_millis(self.lease_end_date)
-        data["lease_grace_start_date"] = datetime_to_epoch_millis(self.lease_grace_start_date)
-        data["lease_grace_end_date"] = datetime_to_epoch_millis(self.lease_grace_end_date)
+        data["lease_start_date"] = datetime_to_epoch(self.lease_start_date)
+        data["lease_end_date"] = datetime_to_epoch(self.lease_end_date)
+        data["lease_grace_start_date"] = datetime_to_epoch(self.lease_grace_start_date)
+        data["lease_grace_end_date"] = datetime_to_epoch(self.lease_grace_end_date)
         data["lease_property"] = model_to_dict(self.lease_property, fields=["id", "property_unit_name"])
         data["tenant"] = {"id": self.tenant.id, "first_name": self.tenant.user.first_name ,"contact_number":self.tenant.contact_number ,"email":self.tenant.user.email } if self.tenant else None
         data["owner"] = {"id": self.owner.id, "first_name": self.owner.user.first_name} if self.owner else None
@@ -248,3 +247,81 @@ class TermAndCondition(models.Model):
         return f"{self.term_type} | {'Predefined' if self.is_predefined else 'Additional'}"
 
 
+#==========================================================
+#--------------- Role Permission management ---------------
+#==========================================================
+# class Role(Base):
+#     name = models.CharField(max_length=255,null=True, blank=True)
+#     priority = models.IntegerField(default=0)
+    
+#     def __str__(self):
+#         return '{}'.format(self.name)
+    
+#     def _get_role_info(self):
+#         data = model_to_dict(self, fields=("id", "priority"))
+#         data["role_name"] = self.name.name 
+#         data["role_created"] = datetime_to_epoch(self.created)
+#         return data
+    
+
+
+# class Permissions(Base):
+#     name = models.CharField(max_length=100)
+#     is_active = models.BooleanField(default=True)
+
+#     def __str__(self):
+#         return '{}'.format(self.name)
+    
+#     def _get_permission_info(self):
+#         data = model_to_dict(self, fields=("id", "name"))
+#         return data
+
+
+# class RolePermission(Base):
+#     role = models.ForeignKey(Role, on_delete=models.CASCADE, null=True, blank=True)
+#     permission = models.ForeignKey(Permissions, on_delete=models.CASCADE)
+#     view_only = models.BooleanField(default=False)
+#     add = models.BooleanField(default=False)
+#     modified = models.BooleanField(default=False)
+#     delete = models.BooleanField(default=False)
+
+#     class Meta:
+#         unique_together = ['role','permission']
+
+#     def __str__(self):
+#         return '{}'.format(self.role)
+    
+#     def _get_role_permission_info(self):
+#         data = model_to_dict(self, fields=("id", "view_only", "add", "modified", "delete", "terminate"))
+#         data["role"] = self.role._get_role_info()
+#         permission_info = self.permission._get_permission_info()
+#         data.update(permission_info)
+#         return data
+    
+
+# class ApiPermissions(Base):
+#     API_PERMISSIONS_TYPE_CHOICES = (
+#         (constants.VIEW_ONLY, "View Only"),
+#         (constants.ADD, "Add"),
+#         (constants.MODIFIED, "Modified"),
+#         (constants.DELETE, "Delete"),
+#         (constants.TERMINATED, "Terminated"), 
+#     )
+#     REQUEST_METHOD_CHOICES = (
+#         (constants.GET, "Get"),
+#         (constants.POST, "Post"),
+#         (constants.PUT, "Put"),
+#         (constants.PATCH, "Patch"),
+#         (constants.DELETE, "Delete"),
+#         (constants.OPTION, "Option")
+#     )
+#     path = models.CharField(max_length=200)
+#     permission_type = models.CharField(max_length=50, choices=API_PERMISSIONS_TYPE_CHOICES)
+#     request_method = models.CharField(max_length=50, choices=REQUEST_METHOD_CHOICES)
+#     permission = models.ForeignKey(Permissions, on_delete=models.CASCADE)
+    
+#     class Meta:
+#         unique_together = ["path", "permission_type"]
+
+#     def __str__(self):
+#         return "{}-{}".format(self.path, self.permission_type)
