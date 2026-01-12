@@ -1,523 +1,349 @@
 import json
-import uuid
-from django.contrib.auth.hashers import make_password
 from utilities import status, constants
-from utilities.helper_functions import prepare_response ,upload_file_to_s3_base64 ,datetime_to_epoch,epoch_to_datetime,datetime_to_epoch_millis,safe_epoch_to_datetime
-from user_service.models import UserProfile ,StaffDetails , PropertyManagerCompanyDetails , StaffRole  
-from property_management.models import OwnerDetails , TenantDetails
-from user_service.utils import request_otp_sent
+from utilities.helper_functions import prepare_response ,upload_file_to_s3_base64,datetime_to_epoch_millis,safe_epoch_to_datetime,get_extension_from_base64,get_user_code_prefix,generate_unique_code ,export_to_csv
+from user_service.models import UserProfile,Documents,OwnerDocumentsMapping,  CompanyUserDocumentsMapping,TenantDocumentsMapping , Company,Country, State, City , Role, PropertyUnitDetails
+from user_service.models import CompanyStaff
 from django.db import transaction
 from utilities.decorator import is_request_authenticated
 from django.core.paginator import Paginator, EmptyPage
 from django.db.models import Q
-from django.utils import timezone
-from django.utils.timezone import make_aware
-import random
-import time
+from django.contrib.auth.models import User
+from django.db import transaction
+from property_management.utils import get_staff_details,get_property_images
+
 
 def user_sign_up(request):
     if request.method != "POST":
         return prepare_response(
-            message=constants.INVALID_REQUEST_METHOD,
+            message=constants.INVALID_REQUEST,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
-
-    data = json.loads(request.body)
-
-    email = data.get("email")
-    password = data.get("password")
-    confirm_password = data.get("confirm_password")
-    user_type = data.get("user_type")
-    first_name = data.get("first_name")
-    last_name = data.get("last_name")
-    unique_id = f"{random.randint(1000,9999)}_{int(time.time()*1000)}"
-    if not all([email, password, confirm_password, user_type]):
-        return prepare_response(
-            message=constants.FIELD_REQUIRED,
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-    if password != confirm_password:
-        return prepare_response(
-            message=constants.PASSWORD_MISMATCH,
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-    if UserProfile.objects.filter(email=email).exists():
-        return prepare_response(
-            message=constants.EMAIL_ALREADY_REGISTERED,
-            status=status.HTTP_400_BAD_REQUEST
-        )
-
-
-    user = UserProfile.objects.create(
-        email=email,
-        hashed_password=make_password(password),
-        user_type=user_type,
-        first_name=first_name,
-        last_name=last_name,
-        is_login_allowed=True
-    )
-
-
-    documents_json = {}
-    folder_name = f"{user_type.lower()}_documents/{user.id}"
-
-    def upload_if_exists(base64_doc, filename):
-        if base64_doc:
-            object_name = f"{folder_name}/{filename}"
-            return upload_file_to_s3_base64(base64_doc, object_name)
-        return None
-
-
-    emirates_id_doc = upload_if_exists(data.get("emirates_id_doc"), "emirates_id.pdf")
-    uae_residence_visa_doc = upload_if_exists(data.get("uae_residence_visa_doc"), "uae_residence_visa.pdf")
-    dld_certificate_doc = upload_if_exists(data.get("dld_certificate_doc"), "dld_certificate.pdf")
- 
-
-    if emirates_id_doc:
-        documents_json["emirates_id_doc"] = emirates_id_doc
-    if uae_residence_visa_doc:
-        documents_json["uae_residence_visa_doc"] = uae_residence_visa_doc
-    if dld_certificate_doc:
-        documents_json["dld_certificate_doc"] = dld_certificate_doc
-    
-
-
-    if user_type == constants.OWNER:
-        OwnerDetails.objects.create(
-            user=user,
-            full_name=f"{first_name} {last_name}",
-            emirate_id=data.get("emirate_id"),
-            uae_residence_visa=data.get("uae_residence_visa"),
-            trade_license_number=data.get("trade_license_number"),
-            owner_number=unique_id,
-            mobile_number=data.get("mobile_number"),
-            manage_through=data.get("manage_through"),
-            owner_documents=documents_json
-        )
-
-    elif user_type == constants.PROPERTY_MANAGER:
-        PropertyManagerCompanyDetails.objects.create(
-            user=user,
-            company_name=data.get("company_name"),
-            uae_residence_visa =data.get("uae_residence_visa"),
-            company_emirate_id=data.get("company_emirate_id"),
-            trade_license_number=data.get("trade_license_number"),
-            phone_number=data.get("mobile_number"),
-            emirate_id=data.get("emirate_id"),
-            
-            pmc_documents=documents_json
-
-        )
-
-    elif user_type == constants.TENANT:
-        TenantDetails.objects.create(
-            user=user,
-            full_name=f"{first_name} {last_name}",
-            emirate_id=data.get("emirate_id"),
-            uae_residence_visa=data.get("uae_residence_visa"),
-            trade_license_number=data.get("trade_license_number"),
-            mobile_number=data.get("mobile_number"),
-            tenant_number=unique_id,
-            nationality="Dubai",
-            manage_through=data.get("manage_through"),
-            tenant_documents=documents_json
-        )
-
-    return prepare_response(
-        content={
-            "id": user.id,
-            "email": user.email,
-            "user_type": user.user_type
-        },
-        message=constants.USER_REGISTERED_SUCCESSFULLY,
-        status=status.HTTP_201_CREATED
-    )
-
-
-
-
-
-
-
-
-def send_otp(request):
-    if request.method == "POST":
-        data = json.loads(request.body)
-        email = data.get("email")   
-        purpose = data.get("purpose")
-         
-    
-        user_profile = UserProfile.objects.filter(email=email).first()
-        if not user_profile:
-            return prepare_response(
-                message=constants.USER_NOT_ONBOARDED,
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        otp = request_otp_sent()
-        user_profile.otp = otp
-        user_profile.save(update_fields=['otp'])
-        return prepare_response(
-            content={"otp": otp},
-            message=constants.OTP_GENERATED_SUCCESSFULLY,
-            status=status.HTTP_200_OK
-        )
-    
-    else:
-        return prepare_response(
-            message=constants.INVALID_REQUEST_METHOD,
-            status=status.HTTP_405_METHOD_NOT_ALLOWED
-        )
-
-
-@is_request_authenticated
-def staff_signup(request):
-    if request.method != 'POST':
-        return prepare_response(message=constants.ONLY_POST_METHOD_ALLOWED,  status=status.HTTP_405_METHOD_NOT_ALLOWED)
     try:
         data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return prepare_response(message=constants.INVALID_JSON_BODY, status=status.HTTP_400_BAD_REQUEST)
-    user_profile = request.user  
-    if user_profile.user_type not in [constants.PROPERTY_MANAGER, constants.STAFF]:
-        return prepare_response(
-            message=constants.ACCESS_DENIED_FOR_STAFF,
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    property_manager_details = None
-    if user_profile.user_type == constants.STAFF:
-        staff_details = StaffDetails.objects.filter(user=user_profile).first() 
-        if not staff_details:
-            return prepare_response(
-                message=constants.STAFF_DETAILS_NOT_FOUND,
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        staff_role = staff_details.staff_role
-        if not staff_role:
-            return prepare_response(
-                message=constants.STAFF_ROLE_NOT_FOUND,
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        if not staff_role.permissions.get("Staff Management", {}).get("Add Staff", False):
-            return prepare_response(
-                message=constants.ACCESS_DENIED_FOR_STAFF,
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        property_manager_details = staff_details.property_manager
-        if not property_manager_details:
-            return prepare_response(
-                message=constants.STAFF_USER_NOT_PROPERTY_MANAGER,
-                status=status.HTTP_400_BAD_REQUEST
-            )
-    elif user_profile.user_type == constants.PROPERTY_MANAGER:
-        property_manager_details = PropertyManagerCompanyDetails.objects.filter(
-            user=user_profile
-        ).first()
-        if not property_manager_details:
-            return prepare_response(
-                message=constants.PROPERTY_MANAGER_DETAILS_NOT_FOUND,
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        staff_role = StaffRole.objects.filter(
-            id=data.get("staff_role_id"),
-            property_manager=property_manager_details
-        ).first()
-        if not staff_role:
-            return prepare_response(
-                message=constants.STAFF_ROLE_NOT_FOUND,
-                status=status.HTTP_400_BAD_REQUEST
-            )
-    try:
-        with transaction.atomic():
-            user = UserProfile.objects.update_or_create(
-                email=data.get("email"),
-                hashed_password=make_password(data.get("hashed_password")),
-                user_type=data.get("user_type"),
-                is_login_allowed=True
-            )
-            staff_id = data.get("staff_id") or str(uuid.uuid4())
-            staff_details = StaffDetails.objects.create(
-                staff_name=data.get("staff_name"),
-                phone_number=data.get("phone_number"),
-                staff_id=staff_id,
-                assign_property=data.get("assign_property"),
-                staff_role=staff_role,
-                property_manager=property_manager_details,
-                user=user,  
-            )
-    except Exception as e:
-        return prepare_response(
-            message=constants.STAFF_CREATION_FAILED,
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-    return prepare_response(
-        content={
-            "user_id": user.id,
-            "email_id": user.email,
-            "type": user.user_type,
-            "otp_verified": user.is_verified,
-            "is_detail_updated": user.is_detail_updated,
-            "is_document_uploaded": user.is_document_uploaded,
-            "staff_role_id": staff_details.staff_role.id,
-        },
-        message=constants.STAFF_USER_CREATED_SUCCESS,
-        status=status.HTTP_201_CREATED
-    ) 
-
-
-
-@is_request_authenticated
-def user_profile_view(request):
-    try:
-        current_user = request.user
-
-        if request.method == "PUT":
-            data = json.loads(request.body)
-            user_fields = ["profile_image", "country", "time_zone", "utc","profile_image_type"]
-
-          
+        with transaction.atomic():  
+            email = data.get("email")
+            password = data.get("password")
+            confirm_password = data.get("confirm_password")
+            user_role = data.get("user_role")
             first_name = data.get("first_name")
             last_name = data.get("last_name")
+            if not all([email, password, confirm_password, user_role]):
+                return prepare_response(message=constants.FIELD_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
 
-            if first_name:
-                current_user.first_name = first_name.strip()
-            if last_name:
-                current_user.last_name = last_name.strip()
+            if password != confirm_password:
+                return prepare_response(message=constants.PASSWORD_MISMATCH, status=status.HTTP_400_BAD_REQUEST)
+            if User.objects.filter(username=email).exists():
+                return prepare_response(message=constants.EMAIL_ALREADY_REGISTERED, status=status.HTTP_400_BAD_REQUEST)
 
-            current_user.save()
-    
+            user = User.objects.create_user(
+                username=email,
+                email=email,
+                password=password,
+                first_name=first_name,
+                last_name=last_name
+            )
+            prefix = get_user_code_prefix(user_role)
+            user_code = generate_unique_code(prefix)            
+            profile = UserProfile.objects.create(
+                user=user,
+                user_role=user_role,
+                created_by=user,
+                user_code=user_code, 
+                time_zone=data.get("time_zone"),
+                utc=data.get("utc"),
+                locality=data.get("locality"),
+                pin_code=data.get("pin_code"),
+                address=data.get("address"),
+                additional_address=data.get("additional_address"),
+                emirate_id=data.get("emirate_id"),
+                uae_residence_visa=data.get("uae_residence_visa"),
+                contact_number=data.get("contact_number"),
+                trade_license_number=data.get("trade_license_number"),
+                manage_through=data.get("manage_through") or constants.choices[0][0]
+            )
+            folder_name = f"{user_role.lower()}_documents/{profile.id}"
+            def upload_document(base64_data, file_prefix):
+                if not base64_data:
+                    return None
 
-  
-            full_name = f"{current_user.first_name} {current_user.last_name}".strip()
+                extension = get_extension_from_base64(base64_data) or ".png"
+                filename = f"{file_prefix}{extension}"
+                object_name = f"{folder_name}/{filename}"
+                uploaded_url = upload_file_to_s3_base64(base64_data, object_name)
+                if not uploaded_url:
+                    prepare_response(message=constants.DOCUMENT_UPLOAD_FAILED)
+                return Documents.objects.create(
+                    file_name=filename,
+                    file_path=uploaded_url,
+                    created_by=user
+                )
+            emirates_doc = upload_document(data.get("emirates_id_doc"), "emirates_id")
+            visa_doc = upload_document(data.get("uae_residence_visa_doc"), "uae_residence_visa")
+            dld_doc = upload_document(data.get("dld_certificate_doc"), "dld_certificate")
+            def create_mappings(mapping_model, profile, docs, attr_name):
+                for doc in docs:
+                    if doc:
+                        mapping_model.objects.create(
+                            **{attr_name: profile, "document": doc, "created_by": user}
+                        )
 
-       
-            related_data = {
-                "mobile_number": data.get("contact_number"),
-                "address": data.get("address"),
-                "state": data.get("state"),
-                "postal_code": data.get("postal_code"),
+            if user_role == constants.OWNER:
+                create_mappings(OwnerDocumentsMapping, profile, [emirates_doc, visa_doc, dld_doc], "owner")
+            if user_role == constants.TENANT:
+                create_mappings(TenantDocumentsMapping, profile, [emirates_doc, visa_doc], "tenant")
+            if user_role == constants.COMPANY_USER:
+                create_mappings(CompanyUserDocumentsMapping, profile, [emirates_doc, visa_doc], "company_user")
+                Company.objects.create(
+                    company_user=profile,
+                    company_code=data.get("company_code"),
+                    company_name=data.get("company_name"),
+                    company_address=data.get("company_address"),
+                    created_by=user
+                )    
+        return prepare_response(
+            message=constants.SIGNUP_SUCCESS,
+            content={
+                "user_id": user.id,
+                "profile_id": profile.id,
+                "email": email,
+                "role": user_role
+            },
+            status=status.HTTP_201_CREATED
+        )
+
+    except Exception as e:
+        return prepare_response(
+            message=str(e),
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+
+@is_request_authenticated
+def userprofile_view(request):
+    user_profile = request.user  
+    if request.method == "GET":
+        try:
+            user = user_profile.user
+            city = user_profile.city
+            state = city.state if city else None
+            country = state.country if state else None
+
+            data = {
+                "id": user_profile.id,
+                "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "user_role": user_profile.user_role,
+                "profile_image": user_profile.profile_image,
+                "city": {
+                    "key": city.id if city else None,
+                    "value": city.name if city else None,
+                },
+                "state": {
+                    "key": state.id if state else None,
+                    "value": state.name if state else None,
+                },
+                "country": {
+                    "key": country.id if country else None,
+                    "value": country.name if country else None,
+                },
+                "locality": user_profile.locality,
+                "postal_code": user_profile.pin_code,
+                "address": user_profile.address,
+                "additional_address": user_profile.additional_address,
+                "contact_number": user_profile.contact_number,
+                "emirate_id": user_profile.emirate_id,
+                "uae_residence_visa": user_profile.uae_residence_visa,
+                "trade_license_number": user_profile.trade_license_number,
+                "time_zone": user_profile.time_zone,
+                "utc": user_profile.utc,
+                "manage_through": user_profile.manage_through,
             }
 
-
-            if current_user.user_type in [constants.OWNER, constants.TENANT]:
-                related_data["full_name"] = full_name
-
-            elif current_user.user_type == constants.PROPERTY_MANAGER:
-                related_data["company_name"] = data.get("company_name", full_name)
-
-   
-            related_data = {k: v for k, v in related_data.items() if v is not None}
-
-   
-            for field in user_fields:
-                if field in data and data[field] is not None:
-                    setattr(current_user, field, data[field])
-            current_user.save()
-
-        
-            if current_user.user_type == constants.OWNER:
-                model = OwnerDetails
-
-            elif current_user.user_type == constants.TENANT:
-                model = TenantDetails
-
-            elif current_user.user_type == constants.PROPERTY_MANAGER:
-                model = PropertyManagerCompanyDetails
-
-                
-                if "mobile_number" in related_data:
-                    related_data["phone_number"] = related_data.pop("mobile_number")
-                if "address" in related_data:
-                    related_data["company_address"] = related_data.pop("address")
-
-            else:
-                model = None
-
-        
-            if model:
-                obj = model.objects.filter(user=current_user).first()
-                if obj:
-                    for field, value in related_data.items():
-                        setattr(obj, field, value)
-                    obj.save()
-                else:
-                    model.objects.create(user=current_user, **related_data)
-
             return prepare_response(
-                message="Profile updated successfully.",
+                content=data,
+                message=constants.USER_PROFILE_FETCHED,
                 status=status.HTTP_200_OK
             )
 
+        except Exception as e:
+            return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        elif request.method == "GET":
-          
-            user_data = {
-                "id": current_user.id,
-                "email": current_user.email,
-                
-                "profile_image": current_user.profile_image if current_user.profile_image else None,
-                "country": current_user.country,
-                "time_zone": current_user.time_zone,
-                "utc": current_user.utc,
-                "user_type": current_user.user_type,
-                "first_name":current_user.first_name,
-                "last_name":current_user.last_name,
-                "profile_image_type":current_user.profile_image_type,
-                
-            }
+    elif request.method == "PUT":
+        try:
+            body = json.loads(request.body)
+            user = user_profile.user
 
-        
-            related_info = {}
-            if current_user.user_type == constants.OWNER:
-                obj = OwnerDetails.objects.filter(user=current_user).first()
-                if obj:
-                    related_info = {
-                        "full_name":obj.full_name,
-                        "contact_number": obj.mobile_number,
-                        "address": obj.address,
-                        "state": obj.state,
-                        "postal_code": obj.postal_code,
-                    }
-            elif current_user.user_type == constants.PROPERTY_MANAGER:
-                obj = PropertyManagerCompanyDetails.objects.filter(user=current_user).first()
-                if obj:
-                    related_info = {
-                        "contact_number": obj.phone_number,
-                        "address": obj.company_address,
-                        "state": obj.state,
-                        "postal_code": obj.postal_code,
-                        "company_name":obj.company_name,
+            restricted_fields = ["email", "user_role", "password"]
+            for field in restricted_fields:
+                body.pop(field, None)
 
-                    }
-            elif current_user.user_type == constants.TENANT:
-                obj = TenantDetails.objects.filter(user=current_user).first()
-                if obj:
-                    related_info = {
-                        "contact_number": obj.mobile_number,
-                        "address": obj.address,
-                        "state": obj.state,
-                        "postal_code": obj.postal_code,
-                    }
+            if "first_name" in body:
+                user.first_name = body.get("first_name")
+            if "last_name" in body:
+                user.last_name = body.get("last_name")
+            user.save()
 
-            user_data.update(related_info)
+            if "city" in body:
+                city_id = body["city"]
+                if city_id:
+                    user_profile.city = City.objects.filter(id=city_id).first()
+                else:
+                    user_profile.city = None
 
+            simple_fields = [
+                "profile_image",
+                "locality",
+                "pin_code",
+                "address",
+                "additional_address",
+                "contact_number",
+                "emirate_id",
+                "uae_residence_visa",
+                "trade_license_number",
+                "time_zone",
+                "utc",
+                "manage_through",
+            ]
+            for field in simple_fields:
+                if field in body:
+                    setattr(user_profile, field, body[field])
+            user_profile.save()
+               
+                    
             return prepare_response(
-                message="User profile fetched successfully",
-                status=status.HTTP_200_OK,
-                content=user_data
+                message=constants.USER_PROFILE_UPDATED,
+                status=status.HTTP_200_OK
             )
 
-        else:
-            return prepare_response("Invalid HTTP method", status=405)
-
-    except Exception as e:
-        print("Error in user_profile_view:", e)
+        except Exception as e:
+            return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    else:
         return prepare_response(
-            message=f"Error: {str(e)}",
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            message=constants.INVALID_REQUEST,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
 
 
 
+@is_request_authenticated
+def user_management(request):
+    user = request.user 
+    try:
+        if request.method == "POST":
+            body = json.loads(request.body)
+            first_name = body.get("first_name")
+            last_name = body.get("last_name")
+            email = body.get("email")
+            password = body.get("password")
+            phone = body.get("phone")
+            role = body.get("role")
+            city_id = body.get("city_id")
+       
+            if not all([first_name, last_name, email, password, role]):
+                return prepare_response(
+                    message=constants.ALL_FIELD_REQUIRED,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
-def user_management_view(request):
+            if role not in [constants.OWNER, constants.TENANT]:
+                return prepare_response(
+                    message=constants.UNAUTHORIZED_USER_ROLE,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
-    if request.method == "GET":
-        try:
-            is_deleted_param = request.GET.get("is_deleted", "false").lower()
-            is_deleted = is_deleted_param == "true"
+            if User.objects.filter(email=email).exists():
+                return prepare_response(
+                    message=constants.EMAIL_ALREADY_REGISTERED,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
 
-            recently_user_param = request.GET.get("recently_user", "false").lower()
-            recently_user = recently_user_param == "true"
+            django_user = User.objects.create_user(
+                username=email,
+                email=email,
+                password=password,
+                first_name=first_name,
+                last_name=last_name
+            )
+            city_instance = None
+            if city_id:
+                city_instance = City.objects.filter(id=city_id).first()
 
+            profile = UserProfile.objects.create(
+                user=django_user,
+                user_role=role,
+                contact_number=phone,
+                address=body.get("address"),
+                locality=body.get("locality"),
+                pin_code=body.get("pin_code"),
+                profile_image=body.get("profile_image"),
+                city=city_instance,
+                created_by=user.user
+            )
 
+            return prepare_response(
+                message=constants.USER_CREATED,
+                content={
+                    "user_id": profile.id,
+                    "email": django_user.email,
+                    "role": profile.user_role
+                },
+                status=status.HTTP_201_CREATED
+            )
+        elif request.method == "GET":
+            is_active_param = request.GET.get("is_active", "true").lower()
+            is_active = is_active_param == "true"
+            role = request.GET.get("role")
             search = request.GET.get("search", "").strip()
             page = int(request.GET.get("page", 1))
             limit = int(request.GET.get("limit", 10))
             start_epoch = request.GET.get("start_date")
             end_epoch = request.GET.get("end_date")
-
-            users_qs = UserProfile.objects.filter(is_deleted=is_deleted)
+            user_id = request.GET.get("user_id")
+            users_qs = UserProfile.objects.select_related("user").filter( is_active=is_active,created_by=user.user,is_staff=False)
+            if role:
+                users_qs = users_qs.filter(user_role=role)
+            if user_id:
+                users_qs = users_qs.filter(id=user_id)
             if start_epoch and end_epoch:
-                try:
-                    start_epoch = int(start_epoch)
-                    end_epoch = int(end_epoch)
-
-                    s = safe_epoch_to_datetime(start_epoch)
-                    e = safe_epoch_to_datetime(end_epoch)
-
-                    if not s or not e:
-                        return prepare_response(
-                            message="Invalid epoch timestamp",
-                status=status.HTTP_400_BAD_REQUEST
-            )
-                    users_qs = users_qs.filter(created__range=[s, e])
-
-
-
-                except Exception as e:
-                    return prepare_response(
-            message=f"Invalid epoch format: {str(e)}",
-            status=status.HTTP_400_BAD_REQUEST
-         )
-
-            
-            if recently_user:
-                users_qs = users_qs.filter(last_login__isnull=False).order_by("-last_login")[:5]
-
+                s = safe_epoch_to_datetime(int(start_epoch))
+                e = safe_epoch_to_datetime(int(end_epoch))
+                users_qs = users_qs.filter(created__range=(s, e))
             if search:
                 users_qs = users_qs.filter(
-                    Q(email__icontains=search) |
-                    Q(owner_details__full_name__icontains=search) |
-                    Q(tenant_details__full_name__icontains=search) |
-                    Q(property_manager_details__full_name__icontains=search)
-                ).distinct()
+                    Q(user__email__icontains=search) |
+                    Q(user__first_name__icontains=search) |
+                    Q(user__last_name__icontains=search) |
+                    Q(contact_number__icontains=search)
+                )
 
-            total_count = users_qs.count()
+            users_qs = users_qs.order_by("-created")
             paginator = Paginator(users_qs, limit)
             try:
                 page_obj = paginator.page(page)
             except EmptyPage:
                 page_obj = paginator.page(paginator.num_pages)
-
             data = []
-            for user in page_obj:
-                phone_number = None
-                user_type = user.user_type.lower()
-
-                if user_type == "owner":
-                    details = getattr(user, "owner_details", None)
-                    if details.exists():
-                        phone_number = details.first().mobile_number
-
-                elif user_type == "tenant":
-                    details = getattr(user, "tenant_details", None)
-                    if details.exists():
-                        phone_number = details.first().mobile_number
-
-                elif user_type == "property_manager":
-                    details = getattr(user, "property_manager_details", None)
-                    if details.exists():
-                        phone_number = details.first().phone_number
-
+            for profile in page_obj:
+                role_key = profile.user_role
+                role_value = role_key.replace("_", " ").title()
                 data.append({
-                    "id": user.id,
-                    "email": user.email,
-                    "role": user.user_type,
-                    "is_verified": user.is_verified,
-                    "is_deleted": user.is_deleted,
-                    "is_login_allowed": user.is_login_allowed,
-                    "phone_number": phone_number,
-                    "created_on": datetime_to_epoch_millis(user.created),
-                    "last_login": datetime_to_epoch_millis(user.last_login) if user.last_login else None,
-                    "is_active": user.is_active,
-                    "profile_image":user.profile_image,
-                    "first_name":user.first_name,
-                    "last_name":user.last_name,
-                    "profile_image_type":user.profile_image_type,
-                    
-                    
+                    "id": profile.id,
+                    "email": profile.user.email,
+                    "first_name": profile.user.first_name,
+                    "last_name": profile.user.last_name,
+                    "contact_number": profile.contact_number,
+                    "address": profile.address,
+                    "locality": profile.locality,
+                    "pin_code": profile.pin_code,
+                    "profile_image": profile.profile_image,
+                    "is_active": profile.is_active,
+                    "created_on": datetime_to_epoch_millis(profile.created),
+                    "last_login": datetime_to_epoch_millis(profile.user.last_login) if profile.user.last_login else None,
+                    "role": {
+                        "key": role_key,
+                        "value": role_value
+                    }
                 })
 
             pagination_meta = {
@@ -529,206 +355,670 @@ def user_management_view(request):
 
             return prepare_response(
                 message=constants.USER_FETCHED_SUCCESS,
-                   content={
-                    "user_count": total_count,
-                     "data": data
-                        },
+                content=data,
                 pagination=pagination_meta,
-                status=status.HTTP_200_OK,
+                status=status.HTTP_200_OK
+            )
+        elif request.method == "PUT":
+            return prepare_response(
+                message="Update user API will be added later",
+                status=status.HTTP_501_NOT_IMPLEMENTED
+            )
+        elif request.method == "DELETE":
+            user_id = request.GET.get("user_id")
+            if not user_id:
+                return prepare_response(message=constants.USER_ID_REQUIRED,status=status.HTTP_400_BAD_REQUEST)
             
+            profile = UserProfile.objects.select_related("user").filter(
+                          id=user_id,
+                          created_by=user.user).first()
+            if not profile:
+                return prepare_response( message=constants.USER_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+            if profile.is_active: 
+                profile.is_active = False
+                profile.save(update_fields=["is_active"])
+                return prepare_response(message="User deactivated successfully",content={"user_id": profile.id,"is_active": profile.is_active},status=status.HTTP_200_OK)
+            django_user = profile.user
+            profile.delete()
+            django_user.delete()
+            return prepare_response(
+                message=constants.USER_PERMANENTLY_DELETED,
+                 status=status.HTTP_200_OK
             )
 
-        except Exception as e:
+        else:
             return prepare_response(
-                message=f"Error fetching users: {str(e)}",
+                message=constants.INVALID_METHOD,
+                status=status.HTTP_405_METHOD_NOT_ALLOWED
+            )
+
+    except Exception as e:
+        return prepare_response(
+            message=f"Error: {str(e)}",
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+
+@is_request_authenticated
+def create_role(request):
+    if request.method != "POST":
+        return prepare_response(
+            message=constants.INVALID_REQUEST_METHOD,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+    try:
+        body = json.loads(request.body)
+        role_name = body.get("name")
+        if not role_name:
+            return prepare_response(
+                message=constants.ROLE_IS_REQUIRED,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        user_profile = request.user 
+        django_user = user_profile.user
+        company = Company.objects.filter(company_user=user_profile, is_active=True).first()
+        if not company:
+            return prepare_response(
+                message=constants.COMPANY_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+        if Role.objects.filter(
+            name__iexact=role_name,
+            company=company,
+            is_active=True
+        ).exists():
+            return prepare_response(
+                message=constants.ROLE_ALREADY_EXISTS_IN_COMPANY,
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        role = Role.objects.create(
+            name=role_name,
+            company=company,
+            created_by=django_user
+        )
+        return prepare_response(
+            content={
+                "id": role.id,
+                "name": role.name,
+                "company": company.company_name
+            },
+            message=constants.ROLE_CREATED_SUCCESS,
+            status=status.HTTP_201_CREATED
+        )
 
-    elif request.method == "POST":
+    except Exception as e:
+        print("Create Role Error:", e)
+        return prepare_response(
+            message=constants.SOMETHING_WENT_WRONG,
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+
+@is_request_authenticated
+def staff_view(request):
+    user = request.user 
+    if request.method == "POST":
         try:
             body = json.loads(request.body)
-
-           
-            first_name = body.get("first_name")
-            last_name = body.get("last_name")
+            staff_name = body.get("staff_name")
             email = body.get("email")
-            phone_number = body.get("phone_number")
-            user_type = body.get("user_type")
-            location = body.get("location")
+            contact = body.get("contact_number")
+            role_ids = body.get("roles", [])              
+            property_ids = body.get("properties", [])     
             password = body.get("password")
             confirm_password = body.get("confirm_password")
-            profile_image = body.get("profile_image")
+            emirate_id = body.get("emirate_id")
+            city_id = body.get("city")  
+            locality = body.get("locality")
+            address = body.get("address")
+            additional_address = body.get("additional_address")
+            pin_code = body.get("postal_code")
 
-        
-            if not all([first_name, last_name, email, phone_number, user_type, location, password, confirm_password]):
+            if not all([staff_name, email, contact, password, confirm_password]):
                 return prepare_response(
-                    message="All fields (first_name, last_name, email, phone_number, role, location, password, confirm_password) are required.",
+                    message=constants.ALL_FIELD_REQUIRED,
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
             if password != confirm_password:
                 return prepare_response(
-                    message="Password and Confirm Password do not match.",
+                    message=constants.PASSWORD_MISMATCH,
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            if UserProfile.objects.filter(email=email).exists():
+            if User.objects.filter(username=email).exists():
                 return prepare_response(
-                    message=constants.EMAIL_ALREADY_REGISTERED,
-                    status=status.HTTP_409_CONFLICT
+                    message=constants.USER_ALREADY_EXISTS_EMAIL,
+                    status=status.HTTP_400_BAD_REQUEST
                 )
 
-          
-            full_name = f"{first_name} {last_name}"
+            company = Company.objects.filter(
+                company_user=user,
+                is_active=True
+            ).first()
 
-         
-            hashed_password = make_password(password)
+            if not company:
+                return prepare_response(
+                    message=constants.COMPANY_NOT_FOUND,
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            city = City.objects.filter(id=city_id).first() if city_id else None
 
-            user = UserProfile.objects.create(
+            django_user = User.objects.create_user(
+                username=email,
                 email=email,
-                hashed_password=hashed_password,
-                user_type=user_type,
-                profile_image=profile_image,
-                is_verified=False,
-                is_deleted=False,
-                is_login_allowed=False,
-                last_login=timezone.now()    
+                password=password,
+                first_name=staff_name
             )
+            staff_profile = UserProfile.objects.create(
+                user=django_user,
+                user_role=constants.COMPANY_USER,
+                contact_number=contact,
+                is_staff=True,
+                emirate_id=emirate_id,
+                city=city,
+                locality=locality,
+                address=address,
+                additional_address=additional_address,
+                pin_code=pin_code,
+                created_by=user.user
+            )
+            company_staff = CompanyStaff.objects.create(
+                staff=staff_profile,
+                company=company,
+                created_by=user.user
+            )
+            if role_ids:
+                roles = Role.objects.filter(id__in=role_ids, company=company)
+                company_staff.roles.set(roles)
 
-       
-            if user_type.lower() == "owner":
-                OwnerDetails.objects.create(
-                    user=user,
-                    full_name=full_name,
-                    mobile_number=phone_number,
-                    
+            if property_ids:
+                properties = PropertyUnitDetails.objects.filter(
+                    id__in=property_ids,
+                    company=company
                 )
-
-            elif user_type.lower() == "tenant":
-                TenantDetails.objects.create(
-                    user=user,
-                    full_name=full_name,
-                    mobile_number=phone_number,
-                  
-                )
-
-            elif user_type.lower() == "property_manager":
-                PropertyManagerCompanyDetails.objects.create(
-                    user=user,
-                    full_name=full_name,
-                    phone_number=phone_number,
-                    
-                )
-
-            elif user_type.lower() == "staff":
-                StaffDetails.objects.create(
-                    user=user,
-                    full_name=full_name,
-                    phone_number=phone_number,
-                   
-                )
+                for prop in properties:
+                    prop.assigned_staff.add(company_staff)
 
             return prepare_response(
-                message="User created successfully.",
-                content={
-                    "id": user.id,
-                    "email": user.email,
-                    "full_name": full_name,
-                    "phone_number": phone_number,
-                    "role": user.user_type,
-                    "location": location,
-                    "created_on": user.created,
-                    "last_login": user.last_login,
-                    "is_active": user.is_active
-                },
+                message=constants.STAFF_CREATION_SUCCESS,
                 status=status.HTTP_201_CREATED
             )
 
         except Exception as e:
             return prepare_response(
-                message=f"Error creating user: {str(e)}",
-                status=status.HTTP_400_BAD_REQUEST
+                message=constants.SOMETHING_WENT_WRONG,
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
- 
+        
     elif request.method == "PUT":
         try:
-            user_id = request.GET.get("id")
-            if not user_id:
-                return prepare_response(
-                    message=constants.ID_REQUIRE_QUERY_PARAMS,
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
             body = json.loads(request.body)
-            user = UserProfile.objects.filter(id=user_id, is_deleted=False).first()
-            if not user:
-                return prepare_response(
-                    message=constants.USER_NOT_FOUND,
-                    status=status.HTTP_404_NOT_FOUND
-                )
-
+            staff_id = body.get("staff_id")
+            if not staff_id:
+                return prepare_response(message=constants.STAFF_ID_REQUIRED,status=status.HTTP_400_BAD_REQUEST)
+            company = Company.objects.filter(company_user=user, is_active=True).first()
+            if not company:
+                return prepare_response(message=constants.COMPANY_NOT_FOUND,status=status.HTTP_404_NOT_FOUND)
+            company_staff = CompanyStaff.objects.filter(id=staff_id, company=company).first()
+            if not company_staff:
+                return prepare_response(message=constants.STAFF_NOT_FOUND,status=status.HTTP_404_NOT_FOUND)
+            staff_profile = company_staff.staff
+            django_user = staff_profile.user
+            if "staff_name" in body:
+                django_user.first_name = body["staff_name"]
             if "email" in body:
-                user.email = body["email"]
+                email = body["email"]
+                if User.objects.filter(username=email).exclude(id=django_user.id).exists():
+                    return prepare_response(message=constants.EMAIL_ALREADY_REGISTERED,status=status.HTTP_400_BAD_REQUEST)
+                django_user.username = email
+                django_user.email = email
+            django_user.save()
+
+            if "contact" in body:
+                staff_profile.contact_number = body["contact"]
+            if "emirate_id" in body:
+                staff_profile.emirate_id = body["emirate_id"]
+            if "city_id" in body:
+                city = City.objects.filter(id=body["city_id"]).first()
+                staff_profile.city = city
+            if "locality" in body:
+                staff_profile.locality = body["locality"]
+            if "address" in body:
+                staff_profile.address = body["address"]
+            if "additional_address" in body:
+                staff_profile.additional_address = body["additional_address"]
+            if "postal_code" in body:
+                staff_profile.pin_code = body["postal_code"]
+            staff_profile.save()
+            if "roles" in body:
+                role_ids = body["roles"]
+                roles = Role.objects.filter(id__in=role_ids, company=company)
+                company_staff.roles.set(roles)
+            if "properties" in body:
+                property_ids = body["properties"]
+                properties = PropertyUnitDetails.objects.filter(id__in=property_ids, company=company)
+                for prop in company_staff.assigned_properties.exclude(id__in=property_ids):
+                    prop.assigned_staff.remove(company_staff)
+                for prop in properties:
+                    prop.assigned_staff.add(company_staff)
+            return prepare_response(
+                message=constants.STAFF_DETAILS_UPDATED_SUCCESS,status=status.HTTP_200_OK)
+        except Exception as e:
+            return prepare_response(message=constants.SOMETHING_WENT_WRONG,status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+    elif request.method == "GET":
+        search = request.GET.get("search", "").strip()
+        page = int(request.GET.get("page", 1))
+        limit = int(request.GET.get("limit", 10))
+        role_id = request.GET.get("role_id")
+        staff_id = request.GET.get("staff_id")
+
+        company = Company.objects.filter(
+            company_user=user,
+            is_active=True
+        ).first()
+
+        if not company:
+            return prepare_response(
+                message=constants.COMPANY_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        staff_qs = CompanyStaff.objects.filter(
+            company=company,
+            staff__is_active=True
+        ).select_related(
+            "staff__user"
+        ).prefetch_related(
+            "roles",
+            "assigned_properties"
+        )
+
+        if staff_id:
+            company_staff = CompanyStaff.objects.filter(
+                              id=staff_id,
+                             company=company
+                              ).select_related(
+                             "staff__user",
+                             "staff__city"
+                             ).prefetch_related(
+                              "roles",
+                              "assigned_properties",
+                            "assigned_properties__property",
+                             "assigned_properties__lease_details",
+                              "assigned_properties__owner"
+                            ).first()
+
+
+            if not company_staff:
+                return prepare_response(
+                    message=constants.STAFF_NOT_FOUND,
+                    status=status.HTTP_404_NOT_FOUND)
+            staff_data = get_staff_details(company_staff, include_password=True)
+            properties_table = []
+            for unit in company_staff.assigned_properties.all():
+                lease = unit.lease_details.first()
+                property_image = None
+                image_response = get_property_images(unit.id, single=True)
+                if not image_response.get("error") and image_response.get("images"):
+                    property_image = image_response["images"][0]
+
+                properties_table.append({
+            "property_name": unit.property.property_name if unit.property else None,
+            "property_code": unit.property_code,
+            "property_image": property_image,
+            "tenant_name": (
+                lease.tenant.user.get_full_name()
+                if lease and lease.tenant and lease.tenant.user
+                else None
+            ),
+            "tenant_profile_image":lease.tenant.profile_image,
             
-
-
-            user.save()
-
+            
+            "owner_name": (
+                unit.owner.user.get_full_name()
+                if unit.owner and unit.owner.user
+                else None
+            ),
+            "lease_id": lease.id if lease else None
+        })
+                
+            staff_data["assigned_properties"] = properties_table
             return prepare_response(
-                message=constants.USER_UPDATED_SUCCESS,
-                content={"id": user.id, "email": user.email},
-                status=status.HTTP_200_OK
+        content=staff_data,
+        message=constants.STAFF_DETAILS_FETCH_SUCCESS,
+        status=status.HTTP_200_OK
+    )
+        if search:
+            staff_qs = staff_qs.filter(
+                Q(staff__user__first_name__icontains=search) |
+                Q(staff__user__email__icontains=search) |
+                Q(staff__contact_number__icontains=search)
             )
+        if role_id:
+            staff_qs = staff_qs.filter(roles__id=role_id)
 
-        except Exception as e:
-            return prepare_response(
-                message=f"Error updating user: {str(e)}",
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-    elif request.method == "DELETE":
+        paginator = Paginator(staff_qs, limit)
         try:
-            user_id = request.GET.get("user_id")
-            if not user_id:
-                return prepare_response(
-                    message=constants.ID_REQUIRE_QUERY_PARAMS,
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+            staff_page = paginator.page(page)
+        except EmptyPage:
+            staff_page = paginator.page(paginator.num_pages)
 
-            user = UserProfile.objects.filter(id=user_id).first()
-            if not user:
-                return prepare_response(
-                    message=constants.USER_NOT_FOUND,
-                    status=status.HTTP_404_NOT_FOUND
-                )
-
-            if not user.is_deleted:
-                user.is_deleted = True
-                user.save()
-                return prepare_response(
-                    message="User soft deleted successfully.",
-                    content={"id": user.id, "is_deleted": user.is_deleted},
-                    status=status.HTTP_200_OK
-                )
-            else:
-                user.delete()
-                return prepare_response(
-                    message="User permanently deleted.",
-                    content={"id": user_id},
-                    status=status.HTTP_200_OK
-                )
-
-        except Exception as e:
-            return prepare_response(
-                message=f"Error deleting user: {str(e)}",
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-
+        data = []
+        for staff in staff_page:
+            total_properties = staff.assigned_properties.count()
+            occupied = staff.assigned_properties.filter(is_occupied=True).count()
+            tenancy_ratio = f"{occupied}:{total_properties}" if total_properties else "0:0"
+            data.append({
+                "staff_id": staff.id,
+                "staff_name": staff.staff.user.get_full_name(),
+                "email": staff.staff.user.email,
+                "contact_number": staff.staff.contact_number,
+                "roles": [r.name for r in staff.roles.all()],
+                "property_count": total_properties,
+                "tenancy_ratio": tenancy_ratio
+            })
+        pagination_meta = {
+            "current_page": staff_page.number,
+            "limit": limit,
+            "total_records": paginator.count,
+            "total_pages": paginator.num_pages
+        }
+        return prepare_response(
+            content=data,
+            pagination=pagination_meta,
+            message=constants.STAFF_DETAILS_FETCH_SUCCESS,
+            status=status.HTTP_200_OK
+        )
+    elif request.method == "DELETE":
+        pass
     else:
         return prepare_response(
             message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+
+@is_request_authenticated
+def role_table_view(request):
+    user = request.user
+    if request.method != "GET":
+        return prepare_response(
+            message=constants.INVALID_REQUEST_METHOD,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+    try:
+        search = request.GET.get("search", "").strip()
+        page = int(request.GET.get("page", 1))
+        limit = int(request.GET.get("limit", 10))
+        start_epoch = request.GET.get("start_date")
+        end_epoch = request.GET.get("end_date")
+        is_active_param = request.GET.get("is_active", "true").lower()
+        is_active = is_active_param == "true"
+        company = Company.objects.filter(company_user=user, is_active=True).first()
+        if not company:
+            return prepare_response(
+                message=constants.COMPANY_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+        roles_qs = Role.objects.filter(company=company, is_active=is_active)
+        if search:
+            roles_qs = roles_qs.filter(name__icontains=search)
+        if start_epoch and end_epoch:
+            start_dt = safe_epoch_to_datetime(int(start_epoch))
+            end_dt = safe_epoch_to_datetime(int(end_epoch))
+            roles_qs = roles_qs.filter(created__range=(start_dt, end_dt))
+        roles_qs = roles_qs.order_by("-created")
+        paginator = Paginator(roles_qs, limit)
+        try:
+            page_obj = paginator.page(page)
+        except EmptyPage:
+            page_obj = paginator.page(paginator.num_pages)
+
+        data = []
+        for role in page_obj:
+            data.append({
+                "role_id": role.id,
+                "role_name": role.name,
+                "created_on": datetime_to_epoch_millis(role.created)
+            })
+        pagination_meta = {
+            "current_page": page_obj.number,
+            "limit": limit,
+            "total_records": paginator.count,
+            "total_pages": paginator.num_pages
+        }
+        return prepare_response(
+            message=constants.ROLES_FETCH_SUCCESS,
+            content=data,
+            pagination=pagination_meta,
+            status=status.HTTP_200_OK
+        )
+    except Exception as e:
+        print("Role Table Error:", e)
+        return prepare_response(
+            message=constants.SOMETHING_WENT_WRONG,
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@is_request_authenticated
+def export_users_csv(request):
+    try:
+        if request.method != "GET":
+            return prepare_response(message=constants.INVALID_REQUEST_METHOD,status=status.HTTP_405_METHOD_NOT_ALLOWED)
+        user = request.user
+
+        is_active_param = request.GET.get("is_active", "true").lower()
+        is_active = is_active_param == "true"
+        role = request.GET.get("role")
+        search = request.GET.get("search", "").strip()
+        start_epoch = request.GET.get("start_date")
+        end_epoch = request.GET.get("end_date")
+        user_id = request.GET.get("user_id")
+        users_qs = UserProfile.objects.select_related("user").filter(
+            is_active=is_active,
+            created_by=user.user)
+        if role:
+            users_qs = users_qs.filter(user_role=role)
+        if user_id:
+            users_qs = users_qs.filter(id=user_id)
+        if start_epoch and end_epoch:
+            s = safe_epoch_to_datetime(int(start_epoch))
+            e = safe_epoch_to_datetime(int(end_epoch))
+            users_qs = users_qs.filter(created__range=(s, e))
+        if search:
+            users_qs = users_qs.filter(
+                Q(user__email__icontains=search) |
+                Q(user__first_name__icontains=search) |
+                Q(user__last_name__icontains=search) |
+                Q(contact_number__icontains=search)
+            )
+        users_qs = users_qs.order_by("-created")
+
+        field_names = [
+            "User Name",
+            "Phone",
+            "Role",
+            "Email",
+            "Created On",
+            "Last Login",
+            "Status"
+        ]
+
+        data_list = []
+
+        for profile in users_qs:
+            role_value = profile.user_role.replace("_", " ").title()
+
+            data_list.append({
+                "User Name": f"{profile.user.first_name} {profile.user.last_name}".strip(),
+                "Phone": profile.contact_number,
+                "Role": role_value,
+                "Email": profile.user.email,
+                "Created On": profile.created.strftime("%d-%m-%Y %H:%M"),
+                "Last Login": (
+                    profile.user.last_login.strftime("%d-%m-%Y %H:%M")
+                    if profile.user.last_login else ""
+                ),
+                "Status": "Active" if profile.is_active else "Inactive"
+            })
+
+        return export_to_csv(
+            filename="users_export",
+            field_names=field_names,
+            data_list=data_list
+        )
+
+    except Exception as e:
+        return prepare_response(
+            message=f"Error exporting users CSV: {str(e)}",
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+
+
+
+@is_request_authenticated
+def export_staff_csv(request):
+    try:
+        if request.method != "GET":
+            return prepare_response(
+                message=constants.INVALID_REQUEST_METHOD,
+                status=status.HTTP_405_METHOD_NOT_ALLOWED
+            )
+
+        user = request.user
+        search = request.GET.get("search", "").strip()
+        role_id = request.GET.get("role_id")
+        staff_id = request.GET.get("staff_id")
+
+        company = Company.objects.filter(
+            company_user=user,
+            is_active=True
+        ).first()
+
+        if not company:
+            return prepare_response(
+                message=constants.COMPANY_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+ 
+        if staff_id:
+            staff = CompanyStaff.objects.filter(
+                id=staff_id,
+                company=company
+            ).select_related(
+                "staff__user"
+            ).prefetch_related(
+                "assigned_properties",
+                "assigned_properties__property",
+                "assigned_properties__lease_details",
+                "assigned_properties__owner"
+            ).first()
+
+            if not staff:
+                return prepare_response(
+                    message=constants.STAFF_NOT_FOUND,
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            field_names = [
+                "Code",
+                "Property Name",
+                "Tenant Name",
+                "Assigned Staff",
+                "Owner Name",
+                "Document"
+            ]
+
+            data_list = []
+
+            for unit in staff.assigned_properties.all():
+                lease = unit.lease_details.first()
+
+                data_list.append({
+                    "Code": unit.property_code,
+                    "Property Name": unit.property.property_name if unit.property else "",
+                    "Tenant Name": (
+                        lease.tenant.user.get_full_name()
+                        if lease and lease.tenant and lease.tenant.user else ""
+                    ),
+                    "Assigned Staff": staff.staff.user.get_full_name(),
+                    "Owner Name": (
+                        unit.owner.user.get_full_name()
+                        if unit.owner and unit.owner.user else ""
+                    ),
+                    "Document": ""  
+                })
+
+            return export_to_csv(
+                filename="staff_property_details",
+                field_names=field_names,
+                data_list=data_list
+            )
+
+
+        staff_qs = CompanyStaff.objects.filter(
+            company=company,
+            staff__is_active=True
+        ).select_related(
+            "staff__user"
+        ).prefetch_related(
+            "roles",
+            "assigned_properties"
+        )
+
+        if search:
+            staff_qs = staff_qs.filter(
+                Q(staff__user__first_name__icontains=search) |
+                Q(staff__user__email__icontains=search) |
+                Q(staff__contact_number__icontains=search)
+            )
+
+        if role_id:
+            staff_qs = staff_qs.filter(roles__id=role_id)
+
+        field_names = [
+            "Staff Name",
+            "Code",
+            "Contact Number",
+            "Properties",
+            "Tenancy Ratio",
+            "Staff Role"
+        ]
+
+        data_list = []
+
+        for staff in staff_qs:
+            total_properties = staff.assigned_properties.count()
+            occupied = staff.assigned_properties.filter(is_occupied=True).count()
+            tenancy_ratio = f"{occupied}:{total_properties}" if total_properties else "0:0"
+
+            data_list.append({
+                "Staff Name": staff.staff.user.get_full_name(),
+                "Code": staff.staff.user_code,
+                "Contact Number": staff.staff.contact_number,
+                "Properties": total_properties,
+                "Tenancy Ratio": tenancy_ratio,
+                "Staff Role": ", ".join([r.name for r in staff.roles.all()])
+            })
+
+        return export_to_csv(
+            filename="staff_list",
+            field_names=field_names,
+            data_list=data_list
+        )
+
+    except Exception as e:
+        return prepare_response(
+            message=f"Error exporting staff CSV: {str(e)}",
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )

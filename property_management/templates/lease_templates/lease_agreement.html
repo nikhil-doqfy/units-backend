@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Ejari Tenancy Contract</title>
+
+    <style>
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            background: #f5f6f8;
+            padding: 20px;
+        }
+
+        .certificate {
+            width: 900px;
+            margin: auto;
+            background: #fff;
+            padding: 30px;
+            border: 1px solid #ccc;
+        }
+
+        .header {
+            text-align: center;
+            border-bottom: 2px solid #1c2b4a;
+            padding-bottom: 15px;
+        }
+
+        .header h2 {
+            margin: 5px 0;
+            letter-spacing: 1px;
+        }
+
+        .section {
+            margin-top: 25px;
+        }
+
+        .section-title {
+            background: #1c2b4a;
+            color: #fff;
+            padding: 6px 10px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+
+        td {
+            padding: 8px 10px;
+            border-bottom: 1px solid #ddd;
+        }
+
+        td.label {
+            width: 30%;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .terms li {
+            margin-bottom: 6px;
+        }
+
+        .signatures {
+            margin-top: 40px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .signature-box {
+            width: 40%;
+            text-align: center;
+        }
+
+        .signature-line {
+            margin-top: 40px;
+            border-top: 1px solid #000;
+            padding-top: 5px;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="certificate">
+
+    <!-- HEADER -->
+    <div class="header">
+        <h2>GOVERNMENT OF DUBAI</h2>
+        <h2>TENANCY CONTRACT (EJARI)</h2>
+        <p>Date: <strong>${agreement_date}</strong></p>
+    </div>
+
+    <!-- OWNER / LANDLORD -->
+    <div class="section">
+        <div class="section-title">Owner / Lessor Information</div>
+        <table>
+            <tr>
+                <td class="label">Owner Name</td>
+                <td>${landlord_name}</td>
+            </tr>
+            <tr>
+                <td class="label">Contact Number</td>
+                <td>${landlord_mobile}</td>
+            </tr>
+            <tr>
+                <td class="label">Email</td>
+                <td>${landlord_email}</td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- TENANT -->
+    <div class="section">
+        <div class="section-title">Tenant Information</div>
+        <table>
+            <tr>
+                <td class="label">Tenant Name</td>
+                <td>${tenant_name}</td>
+            </tr>
+            <tr>
+                <td class="label">Mobile</td>
+                <td>${tenant_mobile}</td>
+            </tr>
+            <tr>
+                <td class="label">Email</td>
+                <td>${tenant_email}</td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- PROPERTY -->
+    <div class="section">
+        <div class="section-title">Property Information</div>
+        <table>
+            <tr>
+                <td class="label">Property Address</td>
+                <td>${property_address}</td>
+            </tr>
+            <tr>
+                <td class="label">Lease Period</td>
+                <td>${start_date} to ${end_date}</td>
+            </tr>
+            <tr>
+                <td class="label">Monthly Rent</td>
+                <td>${monthly_rent} INR</td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- TERMS -->
+    <div class="section">
+        <div class="section-title">Terms & Conditions</div>
+        <ul class="terms">
+            <li>Security Deposit: <strong>${security_deposit}</strong> INR</li>
+            <li>Late Fee: <strong>${late_fee}</strong> INR</li>
+            <li>Maintenance Charges: <strong>${maintenance_charges}</strong> INR</li>
+        </ul>
+    </div>
+
+    <!-- SIGNATURES -->
+    <div class="signatures">
+        <div class="signature-box">
+            <div class="signature-line">Landlord Signature</div>
+        </div>
+
+        <div class="signature-box">
+            <div class="signature-line">Tenant Signature</div>
+        </div>
+    </div>
+
+</div>
+
+</body>
+</html>

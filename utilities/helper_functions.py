@@ -21,6 +21,15 @@ from utilities.ses_utils import send
 import logging
 from django.core.files.base import ContentFile
 from decimal import Decimal, InvalidOperation
+import mimetypes
+import csv
+from django.http import HttpResponse
+import platform
+import pdfkit
+import random
+import string
+
+
 
 def prepare_response(content={}, message='', status=status.HTTP_200_OK, paginator=None, total_records=0,pagination=None):
     resp = {
@@ -90,8 +99,7 @@ def validate_phone_number(value):
 
 
 def datetime_to_epoch(dt):
-    return int(dt.strftime('%s'))
-
+    return int(dt.strftime('%s')) * 1000
 
 
 def datetime_to_epoch_millis(dt):
@@ -209,7 +217,8 @@ console_handler.setFormatter(formatter)
 if not logger.handlers:
     logger.addHandler(console_handler)
 
-def upload_file_to_s3_base64(base64_data, object_name, bucket=None):
+def upload_file_to_s3_base64(file_data, object_name, bucket=None):
+
     if not bucket:
         bucket = S3_BUCKET_NAME
     try:
@@ -219,22 +228,32 @@ def upload_file_to_s3_base64(base64_data, object_name, bucket=None):
             aws_secret_access_key=AWS_SECRET_KEY,
             region_name=AWS_REGION,
         )
-        if "," in base64_data:
-            base64_data = base64_data.split(",")[1]
-        file_bytes = base64.b64decode(base64_data)
+
+  
+        if isinstance(file_data, str):
+            if "," in file_data:
+                file_data = file_data.split(",")[1]
+            file_bytes = base64.b64decode(file_data)
+        elif isinstance(file_data, (bytes, bytearray)):
+            file_bytes = file_data
+        else:
+            raise ValueError("Unsupported file_data type. Must be base64 string or bytes.")
+
         s3_client.put_object(
             Bucket=bucket,
             Key=object_name,
-            Body=file_bytes,  
+            Body=file_bytes,
         )
         logger.info(f" File '{object_name}' uploaded successfully to '{bucket}'")
         return f"https://{bucket}.s3.{AWS_REGION}.amazonaws.com/{object_name}"
+
     except ClientError as e:
-        logger.error(f" Failed to upload Base64 file '{object_name}': {str(e)}")
+        logger.error(f" Failed to upload file '{object_name}': {str(e)}")
         raise e
     except Exception as e:
         logger.error(f" Unexpected error uploading file '{object_name}': {str(e)}")
         raise e
+
 
 
 logger = logging.getLogger(__name__)
@@ -255,13 +274,119 @@ def fetch_s3_file_as_base64(file_url):
         logger.error(f" ClientError fetching from S3: {e}")
         return None
     except Exception as e:
-        logger.error(f" Unexpected error fetching from S3: {str(e)}")
+        logger.error(f" Unexpected error fetching from S3: {str(e)}") 
         return None
     
 
 
 
 
+def fetch_s3_presigned_url(file_url, file_name=None, expiration=3600):
+    """
+    Returns a pre-signed URL for the given S3 file URL.
+    Uses file_name to determine content type for inline browser view.
+    expiration: time in seconds for which URL is valid (default 1 hour)
+    """
+    try:
+        bucket_name = config.S3_BUCKET_NAME
+        key = file_url.split(".amazonaws.com/")[1]
+
+     
+        if file_name:
+            content_type, _ = mimetypes.guess_type(file_name)
+        else:
+         
+            content_type = "application/octet-stream"
+
+        s3_client = boto3.client(
+            "s3",
+            aws_access_key_id=config.AWS_ACCESS_KEY,
+            aws_secret_access_key=config.AWS_SECRET_KEY,
+            region_name=config.AWS_REGION,
+        )
+
+        presigned_url = s3_client.generate_presigned_url(
+            "get_object",
+            Params={
+                "Bucket": bucket_name,
+                "Key": key,
+                "ResponseContentDisposition": "inline",  
+                "ResponseContentType": content_type or "application/octet-stream"
+            },
+            ExpiresIn=expiration
+        )
+        return presigned_url
+
+    except ClientError as e:
+        logger.error(f"ClientError generating presigned URL: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error generating presigned URL: {str(e)}")
+        return None
+
+
+
+
+def fetch_s3_presigned_url_for_download(file_url, file_name=None, expiration=3600):
+    """
+    Returns a pre-signed URL that forces file download from S3.
+    """
+    try:
+        bucket_name = config.S3_BUCKET_NAME
+        key = file_url.split(".amazonaws.com/")[1]
+
+        if file_name:
+            content_type, _ = mimetypes.guess_type(file_name)
+        else:
+            content_type = "application/octet-stream"
+
+        s3_client = boto3.client(
+            "s3",
+            aws_access_key_id=config.AWS_ACCESS_KEY,
+            aws_secret_access_key=config.AWS_SECRET_KEY,
+            region_name=config.AWS_REGION,
+        )
+
+        presigned_url = s3_client.generate_presigned_url(
+            "get_object",
+            Params={
+                "Bucket": bucket_name,
+                "Key": key,
+                "ResponseContentDisposition": f'attachment; filename="{file_name or "file"}"',
+                "ResponseContentType": content_type or "application/octet-stream"
+            },
+            ExpiresIn=expiration
+        )
+        return presigned_url
+
+    except ClientError as e:
+        logger.error(f"ClientError generating download presigned URL: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Unexpected error generating download presigned URL: {str(e)}")
+        return None
+
+
+def get_extension_from_base64(base64_string):
+    try:
+        header = base64_string.split(",")[0]
+
+        if "pdf" in header:
+            return ".pdf"
+        elif "jpeg" in header or "jpg" in header:
+            return ".jpg"
+        elif "png" in header:
+            return ".png"
+        elif "msword" in header:
+            return ".doc"
+        elif "vnd.openxmlformats-officedocument.wordprocessingml.document" in header:
+            return ".docx"
+        elif "vnd.openxmlformats-officedocument.spreadsheetml.sheet" in header:
+            return ".xlsx"
+        else:
+            return None  
+    except:
+        return None
 
 
 
@@ -272,3 +397,107 @@ def safe_decimal(value):
         return Decimal(str(value))
     except InvalidOperation:
         return None  
+
+
+def replace_placeholders(template_html, mapping):
+    """
+    Replace ${variable} placeholders using regex.
+    mapping = { "var1": "value1", "var2": "value2" }
+    """
+
+    pattern = r"\$\{(.*?)\}"   
+
+    def replacer(match):
+        key = match.group(1).strip()  
+        return str(mapping.get(key, match.group(0))) 
+
+    return re.sub(pattern, replacer, template_html)
+
+
+
+
+
+def export_to_csv(filename, field_names, data_list):
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="{filename}.csv"'
+
+    writer = csv.writer(response)
+    writer.writerow(field_names)
+
+
+    for obj in data_list:
+        row = [obj.get(field, "N/A") for field in field_names]
+        writer.writerow(row)
+    return response
+
+
+
+
+def get_pdfkit_config():
+    system = platform.system()
+    print("Running on:", system)  
+
+    if system == "Windows":
+        path = r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe"
+    elif system == "Linux":
+        path = "/usr/bin/wkhtmltopdf"  
+    else:
+        path = "/usr/local/bin/wkhtmltopdf" 
+
+    return pdfkit.configuration(wkhtmltopdf=path)
+
+
+def generate_property_code():
+    random_str = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    return f"PR-{random_str}"
+
+
+
+
+def generate_unique_code(prefix: str) -> str:
+    """
+    Generate a short unique code with a prefix.
+    Example: prefix='PR' -> 
+    """
+    random_part = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    return f"{prefix}-{random_part}"
+
+def get_user_code_prefix(user_role):
+    if user_role == constants.OWNER:
+        return "OWN"
+    elif user_role == constants.TENANT:
+        return "TEN"
+    elif user_role == constants.COMPANY_USER:
+        return "COM"
+    return "USR"
+
+
+
+
+# pip install googletrans==4.0.0-rc1
+
+
+# utilities/translator.py
+from deep_translator import GoogleTranslator
+
+def translate_to_arabic(text: str) -> str:
+    if not text:
+        return ""
+    try:
+        return GoogleTranslator(source="en", target="ar").translate(text)
+    except Exception:
+        return text  # fallback
+
+
+
+import base64
+import uuid
+from django.core.files.base import ContentFile
+
+def base64_to_image(base64_string):
+    if ";base64," in base64_string:
+        base64_string = base64_string.split(";base64,")[1]
+
+    image_data = base64.b64decode(base64_string)
+    file_name = f"{uuid.uuid4()}.jpg"
+    return ContentFile(image_data, name=file_name)

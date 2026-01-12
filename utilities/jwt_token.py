@@ -8,7 +8,7 @@ def create_jwt_token(user_profile):
     expiry_time = datetime.utcnow() + timedelta(minutes=constants.JWT_TOKEN_EXPIRY_MINUTES)
     payload = {
         'user_id': user_profile.id,
-        'email': user_profile.email,
+        'email': user_profile.user.email,
         'exp': expiry_time
     }
     token = jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)

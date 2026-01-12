@@ -2,6 +2,9 @@ USER_NOT_ACTIVE = "User not active"
 PASSWORD_EXPIRED = "Password has expired.Please contact Admin"
 USER_NOT_ONBOARDED = "User not onboarded"
 INVALID_EMAIL = "Invalid email address"
+OTP_SEND_FAILED = "Failed to send OTP Email."
+OTP_SENT_SUCCESS = "OTP sent successfully."
+COMPANY_NOT_FOUND="Company not found"
 INCORRECT_OTP = "Incorrect OTP"
 OTP_SUCCESS = "OTP successfully verified"
 OTP_EXPIRED = "OTP has expired"
@@ -16,14 +19,25 @@ BAD_REQUEST = "Bad Request"
 PASSWORD_MISMATCH = "Password does not match"
 PASSWORD_CHANGE_SUCCESSFULL = "Password changed successfully"
 INVALID_REQUEST_METHOD = "Invalid request method"
+USER_CREATED = "User created successfully."
 INVALID_TOKEN = "Invalid Token"
 LOGOUT_SUCCESSFULL = "Logout Successfull"
 ONLY_EMAIL_OR_CONTACT_NUMBER_ALLOWED = "Only 'email' or 'contact number' is allowed"
 EMAIL_OR_CONTACT_NUMBER_REQUIRED = "'Email' or 'Contact number' is required"
 MULTIPLE_USER_FOUND_ERROR = "Multiple user found  please contact Optiex"
 INVALID_OTP = " Invalid OTP" 
-FIELD_REQUIRED = "field is required."
+FIELD_REQUIRED = "All field are required."
 PASSWORDS_DO_NOT_MATCH = "Passwords do not match."
+DOCUMENT_UPLOAD_FAILED = "Document upload failed"
+ROLE_IS_REQUIRED = "Role is required"
+ROLE_CREATED_SUCCESS = "Role created successfully"
+USER_ALREADY_EXISTS_EMAIL = "User already exists with this email"
+SIGNUP_SUCCESS = "Signup successful"
+ROLES_FETCH_SUCCESS = "Roles fetched successfully"
+INVALID_LOGIN_DETAILS = "Invalid login details"
+
+
+
 EMAIL_ALREADY_REGISTERED = "Email already registered."
 USER_REGISTERED_SUCCESSFULLY = "User registered successfully."
 OTP_GENERATED_SUCCESSFULLY = "OTP sent successfully.",
@@ -70,7 +84,7 @@ OTP_EXPIRED = "OTP expired."
 OTP_VERIFIED_SUCCESS = "OTP verified successfully."
 OTP_SEND_SUCCESS = "OTP sent successfully."
 OTP_SEND_FAILED = "Failed to send OTP email."
-USER_NOT_FOUND = "User with this email does not exist."
+# USER_NOT_FOUND = "User with this email does not exist."
 EMAIL_OTP_PASSWORD_REQUIRED = "Email, otp, password, and confirm_password are required."
 PASSWORD_MISMATCH = "Password and confirm password do not match."
 WEAK_PASSWORD = "Weak password. Must contain upper, lower, number, and special char."
@@ -85,7 +99,7 @@ AUTHENTICATION_FAILED = "Authentication failed."
 ACCESS_DENIED_TENANTS_ONLY="Access denied. Only tenants can view ,submit or edit details."
 TENANT_DETAILS_ALREADY_EXISTS="Tenant details already exist for this user."
 TENANT_DETAILS_SAVED_SUCCESS="Tenant details saved successfully."
-TENANT_DETAILS_NOT_FOUND="Tenant details not found for the authenticated user."
+TENANT_DETAILS_NOT_FOUND="Tenant details not found "
 TENANT_DETAILS_UPDATED_SUCCESSFULLY="Tenant details updated successfully."
 ACCESS_DENIED_TENANTS_ONLY_UPLOAD_DOC="Access denied. Only tenants can upload documents."
 DOCUMENTS_UPLOAD_SUCCESS="Documents uploaded successfully."
@@ -106,7 +120,7 @@ PROPERTY_DELETED = "Property detail deleted successfully."
 PROPERTY_UPDATE_SUCCESS = "Property details updated successfully."
 PROPERTY_ADDED = "Property added successfully."
 TENANT_LIST_FETCHED_SUCCES="Tenant list fetched successfully"
-PROPERTY_ID_REQUIRED="Property ID is required in query params (e.g. ?id=5)"
+PROPERTY_ID_REQUIRED="Property  is required"
 DATA_NOT_FOUND='data not found'
 PROPERTY_MANAGER_LIST_FETCHED="property manager list fetch successfully"
 OWNER_LIST_FETCHED_SUCCESS="owner list fetch successfully"
@@ -127,10 +141,12 @@ TENANT_ID_REQUIRE="tenant_id is required for deletion"
 PERMISSSION_DENIED="Permission denied. You cannot delete this tenant."
 USER_ID_FULL_NAME_REQUIRED="user_id and full_name are required"
 OWNER = "OWNER"
-PROPERTY_MANAGER = "PROPERTY_MANAGER"
+COMPANY_USER = "COMPANY_USER"
 TENANT = "TENANT"
 STAFF = "STAFF"
 AVAILABLE="AVAILABLE"
+COMPANY="Company"
+RESET_PASSWORD="reset_password"
 NOT_AVAILABLE="NOT_AVAILABLE" 
 PROPERTY_MANAGER_DETAILS_DELETE_SUCCESS="PMC deleted successfully."
 PROFILE_UPDATED_SUCCESS="Profile updated successfully."
@@ -158,7 +174,7 @@ TENANT_INVITATION_SENT_SUCCESS = "Tenant invitation sent successfully."
 
 INVALID_INPUT_FORMAT = "Invalid input format."
 FORBIDDEN_ASSIGN_PROPERTY = "Forbidden: You are not authorized to assign properties."
-PROPERTY_NOT_FOUND = "Property not found or does not belong to you."
+PROPERTY_NOT_FOUND = "Property not found"
 PROPERTY_ASSIGNED_SUCCESS = "Property assigned successfully."
 PROPERTY_STATSTICS_FETCHED="Property statstics fetched successfully."
 SOMTHING_WENT_WRONG="Something went wrong while fetching property summary."
@@ -168,6 +184,174 @@ IMAGE_UPLOADED_SUCCESS="Images uploaded successfully"
 QUERY_PARAMETER="option_type query parameter is required"
 
 DROPDOWN_DATA_FETCHED_SUCEESS="Dropdown data fetched successfully"
+STAFF_ID_REQUIRED="Staff ID is required in query params"
+
+USER_ID_REQUIRED = "User ID is required in query parameters."
+USER_ACTIVE = "User has been activated successfully."
+USER_INACTIVE = "User has been deactivated successfully."
+SOMETHING_WENT_WRONG = "Something went wrong."
+
+EMIRATES_ID_INVALID = "Invalid Emirates ID document. Allowed: pdf, jpg, png, doc, docx, xlsx."
+UAE_VISA_INVALID = "Invalid UAE Residence Visa document. Allowed: pdf, jpg, png, doc, docx, xlsx."
+DLD_CERT_INVALID = "Invalid DLD Certificate document. Allowed: pdf, jpg, png, doc, docx, xlsx."
+NO_PROPERTY_FOUND_OWNER="No properties found for this owner."
+STAFF_NOT_FOUND="Staff not found"
+REQUIRED_PMC_PROPERTY="property_id & pmc_id required"
+YOU_NOT_OWNER_OF_PROPERTY="You are not owner of this property!"
+PMC_LINKED_NOT="PMC not found or not linked to your properties"
+
+NOT_FOUND = "Not found."
+INVALID_LEASE_ID = "Invalid lease "
+LEASE_NOT_FOUND = "Lease not found."
+TENANT_NOT_FOUND = "Tenant not found."
+PROPERTY_NOT_FOUND = "Property not found."
+OWNER_NOT_FOUND = "Owner not found."
+PMC_NOT_FOUND = "PMC not found for this user."
+CREATED_BY_USER_NOT_FOUND = "Created By user not found."
+
+
+INVALID_TEMPLATE_ID = "Invalid template id."
+TEMPLATE_ID_REQUIRED = "template_id is required."
+TEMPLATE_FIELDS_FETCHED = "Template fields fetched successfully."
+TEMPLATE_LEASE_VALUES_REQUIRED = "template id, lease_id, and values are required."
+THIS_OWNER_HAS_NO_PROPERTY="This property has no owner"
+
+DOCUMENTS_MUST_BE_LIST = "Documents must be a list."
+LEASE_EJARI_DOCS_UPLOADED = "Lease Ejari Documents uploaded successfully."
+LEASE_EJARI_DOCS_UPDATED = "Lease Ejari Documents updated successfully."
+LEASE_EJARI_DOCS_FETCHED = "Lease Ejari Documents fetched successfully."
+COMMERCIAL_DETAILS_NOT_FOUND = "Commercial details not found."
+COMMERCIAL_DETAILS_FETCHED = "Commercial details fetched."
+LEASE_ID_REQUIRED = "lease id is required."
+LEASE_LIST_FETCHED = "Lease list fetched successfully."
+LEASE_FETCHED = "Lease fetched successfully."
+LEASE_CREATED = "Lease created successfully."
+LEASE_UPDATED = "Lease updated successfully."
+LEASE_PROPERTY_TENANT_REQUIRED = "lease_property_id and lease_tenant_id are required."
+LOGGED_IN_USER_NOT_PM = "Logged-in user is not a property manager."
+PROPERTY_NO_OWNER_ASSIGNED = "Property has no owner assigned."
+LEASE_DOCUMENTS_UPLOADED_SUCCESS = "Lease documents uploaded successfully."
+INVALID_LAESE_ID="Invalid lease id"
+
+
+INVALID_LEASE_DATE = "Invalid lease start or end date."
+PMC_NOT_FOUND = "PMC not found for this user."
+
+PDF_URL_FETCHED_SUCCESSFULLY = "PDF URL fetched successfully."
+
+FAILED_TO_GENERATE_PRESIGNED_URL = "Failed to generate presigned URL."
+
+PDF_NOT_AVAILABLE_FOR_LEASE = "PDF not available for this lease."
+
+
+COMMERCIAL_OR_LEASE_ID_REQUIRED = "commercial_id or lease_id is required."
+LEASE_COMMERCIALS_LIST_FETCHED = "LeaseCommercials list fetched successfully."
+LEASE_COMMERCIALS_FETCHED = "LeaseCommercials fetched successfully."
+LEASE_COMMERCIALS_UPDATED = "LeaseCommercials updated successfully."
+NO_LEASE_COMMERCIALS_FOR_LEASE = "No LeaseCommercials found for the given lease_id."
+LEASE_COMMERCIALS_CREATED = "LeaseCommercials created successfully."
+
+PROPERTIES_FETCHED = "Properties fetched successfully."
+CONTRACT_GENERATED_SUCCESS = "Contract generated successfully."
+MISSING_FILE_OR_DATA = "Missing file name or data."
+PROPERTY_NOT_FOUND = "Property not found."
+LEASE_COMMERCIALS_NOT_FOUND = "LeaseCommercials not found."
+ANNUAL_AMOUNT_RENT_REQUIRED = "annual_amount and rent are required."
+COMMERCIAL_DETAILS_UPDATED = "Commercial details updated successfully."
+INVALID_PROPERTY_ID = "Invalid property"
+COMMERCIAL_DETAILS_CREATED = "Commercial details created successfully."
+USER_PERMANENTLY_DELETED = "User permanently deleted."
+USER_SOFT_DELETED = "User soft deleted successfully."
+ALL_USER_FIELDS_REQUIRED = "All fields (first_name, last_name, email, phone_number, role, location, password, confirm_password) are required."
+USER_PROFILE_FETCHED = "User profile fetched successfully."
+USER_PROFILE_UPDATED = "Profile updated successfully."
+EMAIL_REQUIRED = "Email is required."
+INVALID_PURPOSE = "Invalid purpose."
+OTP_VERIFIED_SUCCESS = "OTP verified successfully."
+
+USER_ACCOUNT_DISABLED = "User account is disabled."
+USER_TYPE_MISMATCH = "User type does not match."
+EMAIL_OTP_REQUIRED = "Email & OTP are required."
+
+OLD_NEW_CONFIRM_PASSWORD_REQUIRED = "Current Password, New Password and Confirm Password are required."
+CURRENT_PASSWORD_INCORRECT = "Current password is incorrect."
+PASSWORD_UPDATED = "Password updated successfully."
+
+TOKEN_EXPIRED = "Your session has expired. Please login again."
+INVALID_TOKEN_PAYLOAD = "Invalid login information. Please login again."
+TOKEN_INVALID_OR_EXPIRED = "Session invalid or expired. Please login again."
+AUTHENTICATION_FAILED = "Login failed. Please check your credentials."
+AUTH_HEADER_MISSING = "Authorization information is missing. Please login."
+AUTH_USER_NOT_FOUND = "User does not exist. Please login or sign up."
+TENANT_DETAILS_NOT_FOUND = "Tenant details not found."
+
+APPROVALS_FETCHED = "List fetched successfully"
+LEASE_AND_STATUS_REQUIRED = "lease_id & status required"
+INVALID_STATUS = "Invalid status"
+INVALID_LEASE = "Invalid lease"
+INVALID_METHOD = "Invalid method"
+DATA_FETCHED_SUCCESSFULLY="Data Fetched successfully"
+PROPERTY_FETCH_SUCCESS = "Property fetched successfully"
+UNAUTHORIZED_ROLE = "Unauthorized role"
+INVALID_PARENT_ID = "Invalid parent ID"
+NO_PROPERTY_ASSIGNED_TO_TENANAT="No property assigned to this tenant"
+
+TENANT_DETAIL_FETCHED="teanant data fetched"
+COMPANY_NOT_FOUND="company not found"
+UNAUTHORIZED_TO_CREATE_PROPERTY=""
+
+PARENT_PROPERTY_REQUIRED = "Parent property id or name is required"
+OWNER_TENANCY_FETCH_SUCCESS = "Owner tenancy details fetched successfully"
+PROPERTY_MANAGER_COMPANY_DETAILS_SUCCESS = "Property manager company Details fetched successfully"
+
+INVALID_INVITATION_TYPE = "Invalid invitation type"
+ONLY_OWNER_CAN_INVITE_PMC = "Only owners can invite PMC"
+ONLY_PMC_CAN_SEND_INVITATION = "Only PMC can send this invitation"
+INVITATION_SENT_SUCCESS = "Invitation sent successfully"
+UNAUTHORIZED_OR_MISSING_PARAMETERS = "Unauthorized access or missing parameters"
+PMC_PROFILE_PROPERTY_SUCCESS = "PMC profile and property details fetched successfully"
+PROPERTY_AND_TENANT_REQUIRED = "Property ID and Tenant ID are required"
+PROPERTY_TENANT_INVALID = "Invalid property or tenant"
+INVALID_LEASE_DATES = "Invalid lease dates"
+
+INVALID_TENANT = "Invalid tenant"
+INVALID_OWNER = "Invalid owner"
+INVALID_COMPANY = "Invalid company"
+INVALID_PROPERTY = "Invalid property"
+ONLY_TENANT_ALLOWED = "Only tenant can perform this action"
+INVALID_DATA = "Invalid data"
+PROPERTY_UNIT_NOT_FOUND = "Property unit not found"
+INTEREST_UPDATED_SUCCESS = "Interest updated successfully"
+ONLY_COMPANY_USER_ALLOWED = "Only company users can access this data"
+
+LEASE_PDF_NOT_AVAILABLE = "Lease PDF not available"
+LEASE_ID_REQUIRED = "Lease ID is required"
+LEASE_PDF_URL_GENERATED_SUCCESS = "Lease PDF URL generated successfully"
+OTHER_TYPE_PAYMENTS_FETCH_SUCCESS = "Other type payments fetched successfully"
+CHEQUE_AGING_FETCH_SUCCESS = "Cheque aging fetched successfully"
+MONTHLY_REVENUE_FETCH_SUCCESS = "Monthly revenue fetched successfully"
+
+CHEQUE_VISIBILITY_FETCH_SUCCESS = "Cheque visibility fetched successfully"
+COMPLAINT_RAISED_SUCCESS = "Complaint raised successfully"
+
+MESSAGE_REQUIRED = "Message is required"
+PDF_URL_GENERATION_FAILED = "Unable to generate PDF URL"
+UNAUTHORIZED_ACCESS = "Unauthorized access"
+UNAUTHORIZED_USER_ROLE = "Unauthorized user role"
+PARENT_PROPERTY_REQUIRED = "Parent property is required"
+ROLE_ALREADY_EXISTS_IN_COMPANY = "This role already exists in this company"
+STAFF_DETAILS_FETCH_SUCCESS = "Staff details fetched successfully"
+
+
+TERMS_CREATED_SUCCESS = "Terms created successfully."
+DESCRIPTION_REQUIRED    = "Description is required."
+TERMS_MUST_BE_LIST      = "Terms must be a non-empty list."
+DATA_FETCHED_SUCCESS    = "Data fetched successfully."
+ROLE_DOES_NOT_EXIST = "Role does not exist."
+USER_ROLE_DOES_NOT_EXIST = "You do not have any role assigned. Please contact the administrator."
+PERMISSION_DENIED_SUCCESS = "This API is not accessible. Permission denied."
+PERMISSION_DOES_NOT_EXIST = "Your role does not have the required permission to access this API."
+
 
 choices=[("MYSELF", "Myself"), ("PMC", "PMC")]
 
@@ -184,6 +368,7 @@ PROPERTY_TYPE_CHOICES = (
         ("Townhouse", "Townhouse"),
         ("Penthouse", "Penthouse"),
         ("Duplex", "Duplex"),
+        ("Skyscraper","Skyscraper"),
        
     )
 LAYOUT_CHOICES = [
@@ -219,6 +404,7 @@ DEFAULT_PERMISSIONS = {
 }
 
 
+ACTIVE = "ACTIVE"
 
 ACCESS_LEVEL_CHOICES = [
     ("NO_ACCESS", "No Access"),
@@ -233,9 +419,155 @@ INVITATION_STATUS_CHOICES = (
     )
 
 PENDING="Pending"
+REJECTED="REJECTED"
+APPROVED="APPROVED"
+
+IN_PROGRESS="IN_PROGRESS"
+COMPLETED="COMPLETED"
+ASSIGNED_ENGINEER="ASSIGNED_ENGINEER"
+
+
 
 JWT_TOKEN_EXPIRY_MINUTES = 60
 OTP_EXPIRY_MINUTES = 5 
 
 RENTAL_AVAILABLE = "Available"
 RENTAL_NOT_AVAILABLE = "Not Available"
+
+
+
+NUMBER = "number"
+DATE = "date"
+TEXT = "text"
+RADIO = "radio"
+CHOICE = "choice" 
+CHECKBOX = "checkbox"
+
+STEP_CHOICES = (
+        ("BASIC_DETAILS", "Basic Details"),
+        ("COMMERCIALS_DETAILS", "Commercials Details"),
+        ("PROPERTY_IMAGES_DETAILS", "Property Images Details"),
+        ("DOCUMENTS_DETAILS", "Documents Details"),
+        
+    )
+COMMERCIALS_DETAILS="COMMERCIALS_DETAILS"
+BASIC_DETAILS="BASIC_DETAILS"
+PROPERTY_IMAGES_DETAILS="PROPERTY_IMAGES_DETAILS"
+DOCUMENTS_DETAILS="DOCUMENTS_DETAILS"
+
+PROPERTY_DOCUMENT = (("FLOOR_PLAN_DOCUMENT", "Floor Plan Document"),
+        ("TENANT_DOCUMENT", "Tenant Document"),
+        ("EJARI_CERTIFICATE", "Ejari Certificate"),
+        ("PMC_DOCUMENT", "Pmc Document"),
+        ("CHEQUE_DOCUMENT", "Cheque Document"),
+    )  
+
+Ejari_DOCUMENT_CATEGORY_CHOICES = (
+    ("EMIRATES_ID", "Emirates ID"),
+    ("PASSPORT_SELF", "Passport(Self)"),
+    ("PASSPORT_FAMILY", "Passport(Family)"),
+    ("EMPLOYMENT_PROOF", "Employment Proof"),
+    ("VISA_SELF", "Visa(Self)"),
+    ("VISA_FAMILY", "Visa(Family)"),
+    ("BANK_STATEMENT", "Bank Statement"),
+)
+
+
+
+IMAGE_TYPE_CHOICES = (
+         ("INTERIOR", "Interior"),
+         ("EXTERIOR", "Exterior"),
+          )
+
+
+LEASE_STEP_STATUS = (
+    ("LEASE_DETAILS", "Lease Details"),
+    ("LEASE_COMMERCIALS", "Lease Commercials"),
+    ("DOCUMENTS_LAYOUT", "Documents Layout"),
+    ("NEGOTIATION", "Negotiation"),
+    ("UPLOAD_EJARI", "Upload Ejari"),
+)
+
+DOCUMENTS_STATUS_CHOICES = (
+        ("PENDING", "Pending"),
+        ("APPROVED", "Approved"),
+        ("REJECTED", "Rejected"),
+    )
+
+APPROVAL_STATUS_CHOICES = (
+    ("PENDING", "Pending"),
+    ("APPROVED", "Approved"),
+    ("REJECTED", "Rejected"),
+)
+
+EMIRATES_ID = "emirates_id"
+UAE_RESIDENCE_VISA = "uae_residence_visa"
+DLD_CERTIFICATE = "dld_certificate"
+
+
+
+# Property document constants
+FLOOR_PLAN = "FLOOR_PLAN"
+EJARI_CERTIFICATE = "EJARI_CERTIFICATE"
+PMC_DOCUMENT = "PMC_DOCUMENT"
+CHEQUE_DOCUMENT = "CHEQUE_DOCUMENT"
+OWNER_DOCUMENT = "OWNER_DOCUMENT"
+TENANT_DOCUMENT = "TENANT_DOCUMENT"
+LOGIN="login"
+SIGNUP="signup"
+LEASE_DOCUMENT_CHOICES = (
+        (EJARI_CERTIFICATE, "Ejari Certificate"),
+        (CHEQUE_DOCUMENT, "Cheque Document")
+    )
+
+VACANT = "VACANT"
+OCCUPIED = "OCCUPIED"
+
+ONGOING = "ONGOING"
+ABOUT_TO_EXPIRE = "ABOUT_TO_EXPIRE"
+EXPIRED = "EXPIRED"
+
+PROPERTY_DOCUMENT_CHOICES = (
+    (FLOOR_PLAN, "Floor Plan"),
+    (EJARI_CERTIFICATE, "Ejari Certificate"),
+    (PMC_DOCUMENT, "PMC Document"),
+    (CHEQUE_DOCUMENT, "Cheque Document"),
+)
+
+
+# ---------- PAYMENT METHOD CHOICES ----------
+CASH = "CASH"
+CHEQUE = "CHEQUE"
+RENT = "RENT"
+OTHER ="OTHER"
+CREDIT_CARD = "CREDIT_CARD"
+DEBIT_CARD = "DEBIT_CARD"
+NET_BANKING = "NET_BANKING"
+
+
+PAYMENT_PENDING = "PAYMENT_PENDING"
+PAYMENT_SUCCESSFUL = "PAYMENT_SUCCESSFUL"
+PAYMENT_FAILED = "PAYMENT_FAILED"
+PAYMENT_BOUNCED = "PAYMENT_BOUNCED"
+
+
+
+#======================
+# API Method
+#======================
+GET = "GET"
+POST = "POST"
+PUT = "PUT"
+PATCH = "PATCH"
+DELETE = "DELETE"
+OPTION = "OPTION"
+
+
+#==========================
+# Permissions Type Choices
+#==========================
+VIEW_ONLY = "VIEW_ONLY"
+ADD = "ADD"
+MODIFIED = "MODIFIED"
+DELETE = "DELETE"
+TERMINATED = "TERMINATED"

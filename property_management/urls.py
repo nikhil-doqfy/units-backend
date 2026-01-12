@@ -4,54 +4,57 @@ from django.conf.urls.static import static
 from property_management import settings
 from user_service import urls as user_service_urls  
 from auth_service import urls as auth_service_urls
+from payment import urls as payment_urls
 from . import views
+from django.urls import re_path
+
+
 urlpatterns = [ 
     path('admin/', admin.site.urls),
     path('user/', include(user_service_urls)),
     path('auth/', include(auth_service_urls)), 
-    path('owner/details/', views.owner_details_view, name='owner_details_view'),
-    path('choose/manage/option/', views.choose_manage_option, name='choose_manage_option'),
-    path('upload/owner/documents/', views.upload_owner_documents, name='upload_owner_documents'),
-    path("get/owner/documents/", views.get_owner_documents, name="get_owner_documents"),     
-    path("upload/tenant/documents", views.upload_tenant_documents,name="upload_tenant_documents"), 
-    path("update/tenant/documents", views.update_tenant_documents,name="update_tenant_documents"),
-    path('upload/pmc/documents', views.upload_pmc_documents, name='upload_pmc_documents'),
-    path('property/details/', views.property_details_view, name='property_details_view'), 
-    path('tenant/details/', views.tenant_details_view, name='tenant_details_view'),
-    path('owner/properties/tenants/', views.owner_property_tenants_view, name='owner_tenants_list'),
-    path('property/manager/details/', views.property_manager_details_view, name='property_manager_details_view'),
-    path('property/manager/list/', views.property_manager_list, name='property_manager_list'), 
-    path('owner/details/list/view/', views.owner_details_list_view, name='owner_details_list_view') ,
-    path('tenant/list/view', views.tenant_list_view, name='tenant_list_view'),
-    path('staff/view/', views.staff_view, name='staff_view') , 
-    path('pmc/dashboard/view', views.pmc_dashboard_view, name='pmc_dashboard_view') ,
-    path('pmc/owner/view/list/', views.pmc_owner_view_list, name='pmc_owner_view_list') ,   
-    path('property/details/list/view/', views.property_details_list_view, name='property_details_list_view') ,
-    path('invite/owner/pmc', views.invite_owner_pmc, name='invite_owner_pmc') , 
-    path('invite/pmc/owner', views.invite_pmc_to_owner, name='invite_pmc_to_owner'),
+    path('payment/', include(payment_urls)), 
     
-    path('invite/tenant/pmc', views.invite_tenant_by_pmc, name='invite_tenant_by_pmc'),
+    re_path(r"^media/(?P<path>.*)$", views.serve_media), 
+    path('options', views.options, name='options'),   
+    path('invitation', views.send_invitation, name='send_invitation'),
+    path('property/details', views.property_table_view, name='property_table_view'),
+    path('save/property', views.save_property, name='save_property'),
+    path('tenant/table', views.tenant_table_view, name='create_property_basic'), 
+    path('property/images', views.property_images, name='property_images'),
+    path('property/documents', views.property_documents, name='property_images'), 
+    path('parent/property', views.parent_property_view, name=' parent_property_view'),
+    path('statistics', views.dashboard_overview, name='dashboard_statistics'),
+    path('company/owners', views.company_owners_view, name='company_owners_view'),
+    path('owner/pmc', views.owner_pmc_view, name='owner_pmc_view'),
+    path('save/lease', views.lease_details_view, name='lease_details_view'),
+    path('generate/contract', views.generate_contract, name='generate_contract'), 
+
+    path('lease_documents', views.lease_documents, name='lease_documents'), 
+    path('get_template_fields', views.get_template_fields, name='get_template_fields'),
+    path('lease/tenancy', views.lease_tenancy, name='lease_tenancy'),
+    path("complaint", views.complaint, name="complaint_api"), 
+    path("faq_api", views.faq_api, name="faq_api"),
+    path('owner_compnay_csv', views.export_owner_pmc_csv, name='export_owner_pmc_csv'),  #after owner login all pmc
+    path('export/property', views.export_property_table_csv, name='export_property_table_csv'), #Property
+    path('tenant_csv', views.export_tenant_csv, name=' export_tenant_csv'), #tenant table
+    path('lease_tenancy_csv', views.export_lease_tenancy_csv, name='export_lease_tenancy_csv'), #export_lease_tenancy_csv
+    path('company_owners_csv', views.export_company_owners_csv, name='export_company_owners_csv'), #after pmc login all owners
+    path('interested', views.toggle_property_interest, name='toggle_property_interest'),
+    path('tenants_Approved_Rejected', views.company_tenants, name='company_tenants'), 
+    path('lease_pdf', views.lease_pdf_view, name='lease_pdf_view'), 
+    path('monthly_revenue', views.dashboard_monthly_revenue, name='dashboard_monthly_revenue'), 
+    path('cheque_visibility', views.dashboard_cheque_visibility, name='dashboard_monthly_revenue'), 
+    path('cheque_aging', views.dashboard_cheque_aging, name='dashboard_cheque_aging'),
+    path('other_type_payments', views.dashboard_other_type_payments, name='dashboard_other_type_payments'),
+    path('dashboard_graph_due', views.dashboard_yearly_dues, name='dashboard_yearly_due'),
+    path('lease_term_and_condition', views.lease_term_and_condition, name='lease_term_and_condition'),
+    path('property_owner_compny_lease', views.property_owner_compny_lease, name='property_owner_compny_lease'),
+    path('property_lease_payment', views.property_lease_payment, name='lease_payment'),
+
+    # path('complaint_list', views.complaint_list, name='complaint_list'),
+
     
-    path('assign/property/by/owner', views.assign_property_by_owner, name='assign_property_by_owner'),
-    path('property/statistics', views.property_statistics, name='dashboard_statistics'),
-    path('tenant/property', views.tenant_my_property, name='tenant_my_property'),
-
-    path('tenant/owner/property/', views.property_tenant_list_view, name='property_tenant_list_view'),
-    
-    path('create/property/basic', views.create_property_basic, name='create_property_basic'),
-    path('property/commercial/details', views.add_commercial_details, name='add_commercial_details'),
-    path('upload/property/images', views.upload_property_images, name='upload_property_images'), 
-    path('get/property/images', views.get_property_images, name='get_property_images'),
-
-    path('upload/property/documents', views.upload_property_documents, name='upload_property_documents'),
-    path('fetch/property/documents', views.fetch_property_documents, name='fetch_property_documents'),
-
-    # path('fetch/property/documents', views.fetch_property_documents, name='fetch_property_documents'),
-    path('options/', views.options, name='options'),  
-
-    path('property/images/', views.property_images_view, name='property_images_view'),
-    
-
 ] 
 
 if settings.DEBUG:
