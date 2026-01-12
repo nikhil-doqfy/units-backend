@@ -48,13 +48,7 @@ def owner_rent_amounts(request):
         )
 
     try:
-        owner = request.user  # UserProfile
-
-        if owner.user_role != constants.OWNER:
-            return prepare_response(
-                message="Only owner can access this data",
-                status=status.HTTP_403_FORBIDDEN
-            )
+        user = request.user  # UserProfile
 
         # 🔹 Payments related to OWNER via property_unit → owner
         payments = Payment.objects.select_related(
@@ -63,7 +57,7 @@ def owner_rent_amounts(request):
             "rental_account__lease_property",
             "rental_account__lease_property__property",
         ).filter(
-            rental_account__lease_property__owner=owner
+            rental_account__lease_property__owner=user
         )
 
         response = []
@@ -126,7 +120,7 @@ def owner_rent_amounts(request):
 
         return prepare_response(
             content=response,
-            message="Owner rent amounts fetched successfully",
+            message="Rent amounts fetched successfully",
             status=status.HTTP_200_OK
         )
 
