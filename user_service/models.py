@@ -4,6 +4,10 @@ from utilities import constants
 from django.utils import timezone
 from django.conf import settings
 from django.contrib.auth.models import User
+from django.forms import model_to_dict
+from utilities.helper_functions import (
+    datetime_to_epoch,
+)
 
 class UserProfile(Base):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="profile")
@@ -60,6 +64,15 @@ class UserProfile(Base):
 
     def __str__(self):
         return f"{self.id}-{self.user.email}-{self.user_role}"
+    
+
+    def _get_user_basic_info(self):
+        data = model_to_dict(self, fields=("id", "email"))
+        data["timestamp"] = datetime_to_epoch(self.created)
+        data["first_name"] = self.user.first_name
+        data["last_name"] = self.user.last_name
+        return data
+
 
 class Company(Base):
     company_user = models.ForeignKey( UserProfile, on_delete=models.CASCADE, related_name="company_user")

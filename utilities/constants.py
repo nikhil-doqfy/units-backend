@@ -353,6 +353,29 @@ PERMISSION_DENIED_SUCCESS = "This API is not accessible. Permission denied."
 PERMISSION_DOES_NOT_EXIST = "Your role does not have the required permission to access this API."
 
 
+TICKET_ID_REQUIRED = "Ticket id is required."
+TICKET_DOES_NOT_EXIST = "Ticket does not exist."
+INVALID_REQUEST_METHOD = "Invalid request method."
+DATA_FETCHED_SUCCESSFULLY = "Data fetched successfully."
+TICKET_CREATED_SUCCESSFULLY = "Ticket created successfully."
+PROPERTY_NOT_FOUND = "Property not found."
+INVALID_CATEGORY_FOUND = "Invalid category found."
+ONLY_TENANT_ALLOWED = "Only tenant is allowed to create ticket."
+USER_PROFILE_DOES_NOT_EXIST = "User profile does not exist."
+CATEGORY_ID_REQUIRED = "Category id is required."
+VENDOR_DOES_NOT_EXIST = "Vendor does not exist."
+VENDOR_NOT_ELIGIBLE_TO_ACCEPT = "Vendor is not eligible to accept this ticket."
+VENDOR_NOT_ELIGIBLE_TO_REJECT = "Vendor is not eligible to reject this ticket."
+TICKET_SUCCESSFULLY_BROADCASTED = "Ticket broadcasted successfully."
+TICKET_ASSIGNED_SUCCESSFULLY = "Ticket assigned successfully."
+VENDOR_REJECTED_TICKET = "Vendor rejected the ticket."
+WORK_SUBMITTED_SUCCESSFULLY = "Work submitted successfully."
+TICKET_CLOSED_SUCCESSFULLY = "Ticket closed successfully."
+TICKET_REJECTED_SUCCESSFULLY = "Ticket rejected successfully."
+TICKET_STATUS_FETCHED_SUCCESSFULLY = "Ticket status fetched successfully."
+
+
+
 choices=[("MYSELF", "Myself"), ("PMC", "PMC")]
 
 LEASE_STATUS_CHOICES = [
@@ -571,3 +594,33 @@ ADD = "ADD"
 MODIFIED = "MODIFIED"
 DELETE = "DELETE"
 TERMINATED = "TERMINATED"
+
+
+#=============================
+# TICKET FLOW CHOICES
+#=============================
+NEW = "NEW"
+CATEGORIZED = "CATEGORIZED"
+BROADCASTED = "BROADCASTED"
+ASSIGNED = "ASSIGNED"
+IN_PROGRESS = "IN_PROGRESS"
+WORK_SUBMITTED = "WORK_SUBMITTED"
+PENDING_APPROVAL = "PENDING_APPROVAL"
+CLOSED = "CLOSED"
+REJECTED = "REJECTED"
+EXPIRED = "EXPIRED"
+
+
+LOW = "LOW"
+MEDIUM = "MEDIUM"
+HIGH = "HIGH"
+
+
+SENT = "SENT"
+ACCEPTED = "ACCEPTED"
+REJECTED = "REJECTED"
+EXPIRED = "EXPIRED"
+
+TENANT = "TENANT"
+VENDOR = "VENDOR"
+SYSTEM = "SYSTEM"

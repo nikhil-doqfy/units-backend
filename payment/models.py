@@ -29,7 +29,7 @@ class Bank(Base):
             )
         )
         data["created"] = datetime_to_epoch(self.created)
-        data["city"] = model_to_dict(self, fields=["id", "code", "name"])
+        data["city"] = model_to_dict(self.city, fields=["id", "code", "name"])
         return data
     
 

@@ -3,8 +3,7 @@ from payment.models import Payment,ChargeDetails
 from utilities.helper_functions import prepare_response ,datetime_to_epoch_millis
 from utilities import status, constants
 from utilities.decorator import is_request_authenticated
-from django.db.models import Sum
-from django.db.models import Prefetch
+
 
 #=====================================
 #PAYMENT METHOD VIEWS
@@ -68,21 +67,10 @@ def owner_rent_amounts(request):
             unit = lease.lease_property
             property_obj = unit.property if unit else None
 
-            # 🔹 Charges (VAT, other charges)
             charges = ChargeDetails.objects.filter(
                 lease=lease,
                 is_selected=True
             )
-
-            # vat_amount = charges.aggregate(
-            #     vat=Sum("vat_amount")
-            # )["vat"] or 0
-
-            # other_charges = charges.aggregate(
-            #     amt=Sum("amount")
-            # )["amt"] or 0
-
-            # total_rent = (lease.annual_amount or 0) + other_charges + vat_amount
 
             response.append({
                 # 🔹 Tenant
@@ -108,10 +96,6 @@ def owner_rent_amounts(request):
                 # "vat": float(vat_amount),
                 "total_rent": None,
 
-                    #    "lease_start_date": datetime_to_epoch_millis(lease.lease_start_date),
-        # "lease_end_date": datetime_to_epoch_millis(lease.lease_end_date),
-
-                # 🔹 Payment info
                 "payment_amount": payment.amount,
                 "payment_method": payment.method,
                 "payment_status": payment.status,
@@ -135,8 +119,7 @@ def owner_rent_amounts(request):
 
 @is_request_authenticated
 def rental_payments(request):
-    user_profile = request.user         
-    auth_user = request.user.user     
+    auth_user = request.user
  
     if request.method == "GET":
         lease_id = request.GET.get("lease_id")
