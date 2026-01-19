@@ -353,7 +353,8 @@ PERMISSION_DENIED_SUCCESS = "This API is not accessible. Permission denied."
 PERMISSION_DOES_NOT_EXIST = "Your role does not have the required permission to access this API."
 
 
-TICKET_ID_REQUIRED = "Ticket id is required."
+VENDOR_ID_REQUIRED = "Vendor ID is required."
+TICKET_ID_REQUIRED = "Ticket ID is required."
 TICKET_DOES_NOT_EXIST = "Ticket does not exist."
 INVALID_REQUEST_METHOD = "Invalid request method."
 DATA_FETCHED_SUCCESSFULLY = "Data fetched successfully."
@@ -362,7 +363,7 @@ PROPERTY_NOT_FOUND = "Property not found."
 INVALID_CATEGORY_FOUND = "Invalid category found."
 ONLY_TENANT_ALLOWED = "Only tenant is allowed to create ticket."
 USER_PROFILE_DOES_NOT_EXIST = "User profile does not exist."
-CATEGORY_ID_REQUIRED = "Category id is required."
+CATEGORY_ID_REQUIRED = "Category ID is required."
 VENDOR_DOES_NOT_EXIST = "Vendor does not exist."
 VENDOR_NOT_ELIGIBLE_TO_ACCEPT = "Vendor is not eligible to accept this ticket."
 VENDOR_NOT_ELIGIBLE_TO_REJECT = "Vendor is not eligible to reject this ticket."
@@ -373,7 +374,17 @@ WORK_SUBMITTED_SUCCESSFULLY = "Work submitted successfully."
 TICKET_CLOSED_SUCCESSFULLY = "Ticket closed successfully."
 TICKET_REJECTED_SUCCESSFULLY = "Ticket rejected successfully."
 TICKET_STATUS_FETCHED_SUCCESSFULLY = "Ticket status fetched successfully."
-
+VENDOR_FORCE_ASSIGNED_SUCCESSFULLY = "Vendor force assigned successfully."
+VENDOR_IS_AVAILABLE = "Vendor is available." 
+VENDOR_NOT_AVAILABLE = "Vendor is not available."
+MESSAGE_ID_REQUIRED = "Message ID is required"
+MESSAGE_DOES_NOT_EXIST = "Message does not exist"
+MESSAGE_ALREADY_SENT = "Message already sent successfully"
+MESSAGE_RESEND_ATTEMPTED = "Message resend attempted successfully"
+MESSAGE_LOG_FETCHED_SUCCESSFULLY = "Message log fetched successfully"
+MESSAGE_CREATED_SUCCESSFULLY = "Message created successfully"
+INVALID_MESSAGE_STATUS = "Invalid message status"
+INVALID_REQUEST_METHOD = "Invalid request method"
 
 
 choices=[("MYSELF", "Myself"), ("PMC", "PMC")]
@@ -624,3 +635,12 @@ EXPIRED = "EXPIRED"
 TENANT = "TENANT"
 VENDOR = "VENDOR"
 SYSTEM = "SYSTEM"
+
+
+PENDING = "PENDING"
+SENT = "SENT"
+FAILED = "FAILED"
+
+
+INCOMING = "INCOMING"
+OUTGOING = "OUTGOING"

@@ -6,6 +6,7 @@ from ticket.models import (
     TicketImages,
     TicketAuditLog,
     VendorTicketBroadcast,
+    WhatsAppMessage,
 )
 
 
@@ -33,9 +34,14 @@ class VendorTicketBroadcastAdmin(admin.ModelAdmin):
     list_display = ["id", "ticket", "vendor", "status", "responded_at"]
 
 
+class WhatsAppMessageAdmin(admin.ModelAdmin):
+    list_display = ["id", "status"]
+
+
 admin.site.register(Category, CategoryAdmin)
 admin.site.register(Vendor, VendorAdmin)
 admin.site.register(Ticket, TicketAdmin)
 admin.site.register(TicketImages, TicketImagesAdmin)
 admin.site.register(TicketAuditLog, TicketAuditLogAdmin)
 admin.site.register(VendorTicketBroadcast, VendorTicketBroadcastAdmin)
+admin.site.register(WhatsAppMessage, WhatsAppMessageAdmin)

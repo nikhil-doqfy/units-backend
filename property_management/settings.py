@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     'user_service',
     'property_management',
     "payment",
+    "ticket",
     'sslserver'
 
 ]

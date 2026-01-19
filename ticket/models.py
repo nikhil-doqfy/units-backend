@@ -217,4 +217,25 @@ class VendorTicketBroadcast(Base):
         data["responded_at"] = datetime_to_epoch(self.responded_at)
         data["created"] = datetime_to_epoch(self.created)
         return data
+    
+
+class WhatsAppMessage(models.Model):
+    MESSAGE_STATUS_CHOICES = (
+        (constants.SENT, "Sent"),
+        (constants.ACCEPTED, "Accepted"),
+        (constants.REJECTED, "Rejected"),
+        (constants.EXPIRED, "Expired"),
+    )
+
+    MESSAGE_TYPE_CHOICES = (
+        (constants.INCOMING, "Incoming"),
+        (constants.OUTGOING, "Outgoing"),
+    )
+
+    recipient = models.CharField(max_length=50)  ###phone number
+    sender = models.ForeignKey(UserProfile, on_delete=models.SET_NULL, null=True, blank=True)
+    content = models.TextField()
+    status = models.CharField(max_length=20, choices=MESSAGE_STATUS_CHOICES, default="pending")
+    message_type = models.CharField(max_length=20, choices=MESSAGE_TYPE_CHOICES, default="outgoing")
+    retries = models.PositiveIntegerField(default=0)
 #================================================================================================================================
