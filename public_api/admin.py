@@ -10,7 +10,7 @@ class APIListAdmin(admin.ModelAdmin):
 
 
 class ApiAccessAdmin(admin.ModelAdmin):
-    list_display = ("id", "api_key","secret_key", "user_profile")
+    list_display = ("id", "api_key", "secret_key", "user_profile")
     search_fields = ["id", "user_profile"]
 
 
