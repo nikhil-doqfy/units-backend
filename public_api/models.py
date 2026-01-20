@@ -55,7 +55,7 @@ class ApiAccess(Base):
 
 
     class Meta:
-        unique_together = ("user_profile", "api_key","secret_key")
+        unique_together = ("user_profile", "api_key", "secret_key")
     
     def __str__(self): 
         return "{} - {}".format(self.api_key, self.secret_key)
