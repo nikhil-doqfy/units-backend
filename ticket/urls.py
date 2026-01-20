@@ -1,5 +1,5 @@
 from django.urls import path
-from ticket import ticket_admin_views as ticket_views
+from ticket import views as ticket_views
 from ticket import admin_views as ticket_admin_views
 
 urlpatterns = [

@@ -386,6 +386,8 @@ MESSAGE_CREATED_SUCCESSFULLY = "Message created successfully"
 INVALID_MESSAGE_STATUS = "Invalid message status"
 INVALID_REQUEST_METHOD = "Invalid request method"
 
+API_KEY_SECRET_KEY_FETCHED = "api-key and secret-key are fetched"
+API_KEY_SECRET_KEY_CREATED = "api-key and secret-key are created"
 
 choices=[("MYSELF", "Myself"), ("PMC", "PMC")]
 
