@@ -6,6 +6,7 @@ from user_service import urls as user_service_urls
 from auth_service import urls as auth_service_urls
 from payment import urls as payment_urls
 from ticket import urls as ticket_urls
+from public_api import urls as public_api_urls
 
 from . import views
 from django.urls import re_path
@@ -17,6 +18,7 @@ urlpatterns = [
     path('auth/', include(auth_service_urls)), 
     path('payment/', include(payment_urls)), 
     path('api/', include(ticket_urls)),
+    path("public_api/", include(public_api_urls)),
 
 
 
