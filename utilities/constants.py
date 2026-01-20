@@ -385,7 +385,9 @@ MESSAGE_LOG_FETCHED_SUCCESSFULLY = "Message log fetched successfully"
 MESSAGE_CREATED_SUCCESSFULLY = "Message created successfully"
 INVALID_MESSAGE_STATUS = "Invalid message status"
 INVALID_REQUEST_METHOD = "Invalid request method"
-
+INVALID_COMPANY_USER = "Invalid company user."
+VENDOR_ALREADY_EXISTS = "Vendor already exists."
+VENDOR_CREATED_SUCCESSFULLY = "Vendor created successfully."
 API_KEY_SECRET_KEY_FETCHED = "api-key and secret-key are fetched"
 API_KEY_SECRET_KEY_CREATED = "api-key and secret-key are created"
 
