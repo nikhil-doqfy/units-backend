@@ -11,10 +11,15 @@ from utilities import (
 )
 from utilities.decorator import is_request_authenticated
 from ticket.models import (
+    Category,
     Vendor,
     Ticket,
     WhatsAppMessage,
 )
+from user_service.models import (
+    UserProfile
+)
+
 
 #------------------------------------Start of admin fow api's---------------------------------------
 
@@ -404,6 +409,61 @@ def admin_resend_message(request):
             },
             message=constants.MESSAGE_RESEND_ATTEMPTED,
             status=status.HTTP_200_OK
+        )
+    
+    else:
+        return prepare_response(
+            message=constants.INVALID_REQUEST_METHOD,
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+@is_request_authenticated
+def admin_create_vendor(request):
+    if request.method == "POST":
+        data = json.loads(request.body)
+        vendor_user_id = data.get("vendor_user_id")
+        category_ids = data.get("category_ids", [])
+        is_available = data.get("is_available", True)
+
+        if not vendor_user_id:
+            return prepare_response(
+                message=constants.VENDOR_ID_REQUIRED,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        vendor_profile = UserProfile.objects.filter(
+            id=vendor_user_id,
+            user_role=constants.COMPANY_USER
+        ).first()
+        if not vendor_profile:
+            return prepare_response(
+                message=constants.INVALID_COMPANY_USER,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if Vendor.objects.filter(vendor=vendor_profile).exists():
+            return prepare_response(
+                message=constants.VENDOR_ALREADY_EXISTS,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        categories = Category.objects.filter(id__in=category_ids)
+        if categories.count() != len(category_ids):
+            return prepare_response(
+                message=constants.INVALID_CATEGORY_FOUND,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+            
+        vendor = Vendor.objects.create(
+            vendor=vendor_profile,
+            is_available=is_available,
+            created_by=request.user
+        )
+        vendor.ticket_category.add(*categories)
+        
+        return prepare_response(
+            message=constants.VENDOR_CREATED_SUCCESSFULLY,
+            status=status.HTTP_201_CREATED
         )
     
     else:

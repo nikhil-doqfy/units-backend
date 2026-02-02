@@ -26,5 +26,6 @@ urlpatterns = [
     path("admin/sla-overview/", ticket_admin_views.admin_sla_overview, name="admin_sla_overview"),
     path("admin/messages/", ticket_admin_views.admin_message_log, name="admin_message_log"),
     path("admin/message/resend/", ticket_admin_views.admin_resend_message, name="admin_resend_message"),
+    path("admin/create/vendor/", ticket_admin_views.admin_create_vendor, name="admin_create_vendor"),
 
 ] 
