@@ -1,6 +1,7 @@
 import json
 from django.utils import timezone
 from django.core.paginator import Paginator
+from django.db.models import Q
 from utilities.helper_functions import (
     prepare_response,
 )
@@ -25,6 +26,7 @@ def admin_ticket_list(request):
     if request.method == "GET":
         req_data = request.GET
         ticket_id = req_data.get("ticket_id")
+        search_text = req_data.get('search_text', '')
         page_number = req_data.get("page", 1)
         limit = req_data.get("limit", 10)
 
@@ -34,6 +36,13 @@ def admin_ticket_list(request):
             kwargs["id"] = ticket_id
         
         tickets = Ticket.objects.filter(**kwargs).order_by("-created")
+
+        if len(search_text) > 2:
+            condition = Q()
+            search_words = search_text.split()
+            for word in search_words:
+                condition &= Q(name__icontains=word)
+            tickets = tickets.filter(condition)
 
         paginator = Paginator(tickets, limit)
         paginated_queryset = paginator.get_page(page_number)
