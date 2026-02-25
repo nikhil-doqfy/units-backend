@@ -51,7 +51,7 @@ urlpatterns = [
     path('lease_term_and_condition', views.lease_term_and_condition, name='lease_term_and_condition'),
     path('property_owner_compny_lease', views.property_owner_compny_lease, name='property_owner_compny_lease'),
     path('property_lease_payment', views.property_lease_payment, name='lease_payment'),
-
+    path('api/', include('Terms.urls')),
     # path('complaint_list', views.complaint_list, name='complaint_list'),
 
     

@@ -40,9 +40,10 @@ INSTALLED_APPS = [
     'auth_service',
     'user_service',
     'property_management',
-    "payment",
-    'sslserver'
-
+    'payment',
+    'Terms',
+    'sslserver',
+    'corsheaders',
 ]
 
 MIDDLEWARE = [
