@@ -7,7 +7,7 @@ from auth_service import urls as auth_service_urls
 from payment import urls as payment_urls
 from . import views
 from django.urls import re_path
-
+from terms import urls as terms_urls
 
 urlpatterns = [ 
     path('admin/', admin.site.urls),
@@ -51,7 +51,7 @@ urlpatterns = [
     path('lease_term_and_condition', views.lease_term_and_condition, name='lease_term_and_condition'),
     path('property_owner_compny_lease', views.property_owner_compny_lease, name='property_owner_compny_lease'),
     path('property_lease_payment', views.property_lease_payment, name='lease_payment'),
-
+    path('terms/', include(terms_urls)),
     # path('complaint_list', views.complaint_list, name='complaint_list'),
 
     
