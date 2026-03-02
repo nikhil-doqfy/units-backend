@@ -7,3 +7,5 @@ requirements.txt
 media
 static
 .env
+.venv
+venv/
