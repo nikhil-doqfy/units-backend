@@ -1022,3 +1022,46 @@ def export_staff_csv(request):
             message=f"Error exporting staff CSV: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+@is_request_authenticated
+def contact_list_view(request):
+
+    if request.method == "GET":
+        role_filter = request.GET.get("role")
+        search = request.GET.get("search")
+
+        profiles = UserProfile.objects.select_related("user")
+
+        if role_filter and role_filter.upper() != "ALL":
+            profiles = profiles.filter(user_role=role_filter.upper())
+
+        if search:
+            profiles = profiles.filter(
+
+                Q(user__first_name__istartswith=search) |
+                Q(user__last_name__istartswith=search) |
+                Q(user__email__istartswith=search) |
+                Q(contact_number__icontains=search)
+                )
+
+        results = []
+
+        for profile in profiles:
+            user = profile.user
+            results.append({
+                "id": profile.id,
+                "full_name": f"{user.first_name} {user.last_name}",
+                "email": user.email,
+                "phone": profile.contact_number
+            })
+
+        return prepare_response(
+            content=results,
+            message=constants.CONTACTS_FETCH_SUCCESS
+        )
+
+    return prepare_response(
+        message=constants.METHOD_NOT_ALLOWED,
+        status=status.HTTP_405_METHOD_NOT_ALLOWED
+    )
