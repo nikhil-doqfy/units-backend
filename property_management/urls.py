@@ -8,6 +8,9 @@ from payment import urls as payment_urls
 from . import views
 from django.urls import re_path
 from terms import urls as terms_urls
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView,
+    TokenRefreshView)
 
 urlpatterns = [ 
     path('admin/', admin.site.urls),
@@ -54,7 +57,6 @@ urlpatterns = [
     path('terms/', include(terms_urls)),
     # path('complaint_list', views.complaint_list, name='complaint_list'),
 
-    
 ] 
 
 if settings.DEBUG:
