@@ -1,218 +1,134 @@
-from django.db.models import Q
-from rest_framework.decorators import api_view
-from rest_framework import status
-
-from terms.models import TermAndCondition, TermCategory
+import json
+from terms.models import TermsAndConditions, TermCategory
 from user_service.models import Country
+from utilities.decorator import is_request_authenticated
 from utilities.helper_functions import prepare_response
+from utilities import constants
 
+@is_request_authenticated
+def terms_api(request):
+    if request.method == constants.GET:
+        key = request.GET.get("type") or request.GET.get("key")
+        country_codes = request.GET.getlist("country")
+        terms = TermsAndConditions.objects.select_related("country", "category").filter(is_active=True)
 
-ALLOWED_KEYS = ["login_signup", "commercial"]
+        if key:
+            terms = terms.filter(key__iexact=key)
 
+        if country_codes:
+            country_codes = [c.upper() for c in country_codes]
+            terms = terms.filter(country__code__in=country_codes)
 
-@api_view(["GET", "POST"])
-def terms_list_create(request):
+        terms = terms.order_by('id')
 
-    if request.method == "GET":
-
-        country_param = request.GET.get("country")
-        category_param = request.GET.get("category")
-        key_param = request.GET.get("key")
-
-        terms = TermAndCondition.objects.filter(is_active=True)
-
-        if country_param:
-            terms = terms.filter(
-                Q(country__code__iexact=country_param) |
-                Q(country__name__icontains=country_param)
-            )
-
-        if category_param:
-            terms = terms.filter(
-                category__code__iexact=category_param
-            )
-
-        if key_param:
-            terms = terms.filter(
-                key__iexact=key_param
-            )
-
-        content = [
+        data = [
             {
-                "id": term.id,
                 "key": term.key,
                 "title": term.title,
                 "description": term.description,
-                "country": term.country.code,
-                "category": term.category.code,
+                "category": term.category.code.lower(),
+                "country": term.country.code
             }
             for term in terms
         ]
 
         return prepare_response(
-            content=content,
-            message="Terms fetched successfully",
-            status=status.HTTP_200_OK,
+            status=200,
+            message=constants.DATA_FETCHED_SUCCESS,
+            content=data
         )
 
+    try:
+        body = json.loads(request.body)
+    except Exception:
+        return prepare_response(message=constants.INVALID_JSON_BODY, status=400)
 
-    if request.method == "POST":
+    if request.method == constants.POST:
+        key = body.get("key", "").lower()
+        title = body.get("title")
+        description = body.get("description")
+        country_code = body.get("country")
+        category_code = body.get("category", "").lower()
 
-        key = request.data.get("key", "").lower()
-        title = request.data.get("title")
-        description = request.data.get("description")
-        country_param = request.data.get("country")
-        category_param = request.data.get("category")
+        if not key or not title or not description or not country_code or not category_code:
+            return prepare_response(message=constants.ALL_FIELD_REQUIRED, status=400)
 
-        if not all([key, title, description, country_param, category_param]):
-            return prepare_response(
-                message="All fields are required",
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if key not in ALLOWED_KEYS:
-            return prepare_response(
-                message="Invalid key. Allowed: login_signup, commercial",
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
- 
         try:
-            country = Country.objects.get(
-                Q(code__iexact=country_param) |
-                Q(name__icontains=country_param)
-            )
+            country_obj = Country.objects.get(code__iexact=country_code)
         except Country.DoesNotExist:
-            return prepare_response(
-                message="Invalid country",
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return prepare_response(message=constants.COMPANY_NOT_FOUND, status=400)
 
         try:
-            category = TermCategory.objects.get(
-                code__iexact=category_param
-            )
+            category_obj = TermCategory.objects.get(code__iexact=category_code)
         except TermCategory.DoesNotExist:
-            return prepare_response(
-                message="Invalid category",
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            return prepare_response(message=constants.ROLE_DOES_NOT_EXIST, status=400)
 
-        if TermAndCondition.objects.filter(
-            key=key,
-            country=country,
-            category=category
-        ).exists():
-            return prepare_response(
-                message="Term already exists for this country and category",
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+        if TermsAndConditions.objects.filter(key=key, country=country_obj, category=category_obj, is_active=True).exists():
+            return prepare_response(message=constants.TERMS_MUST_BE_LIST, status=400)
 
-        term = TermAndCondition.objects.create(
+        term = TermsAndConditions.objects.create(
             key=key,
             title=title,
             description=description,
-            country=country,
-            category=category,
+            country=country_obj,
+            category=category_obj
         )
-
-        content = {
-            "id": term.id,
-            "key": term.key,
-            "title": term.title,
-            "description": term.description,
-            "country": term.country.code,
-            "category": term.category.code,
-        }
 
         return prepare_response(
-            content=content,
-            message="Term created successfully",
-            status=status.HTTP_201_CREATED,
+            status=201,
+            message=constants.TERMS_CREATED_SUCCESS,
+            content={
+                "key": term.key,
+                "title": term.title,
+                "description": term.description,
+                "category": term.category.code.lower(),
+                "country": term.country.code
+            }
         )
 
+    if request.method == constants.PUT:
+        term_id = body.get("id")
+        if not term_id:
+            return prepare_response(message="Term ID is required", status=400)
 
-@api_view(["PUT", "PATCH", "DELETE"])
-def terms_update_delete(request, pk):
+        try:
+            term = TermsAndConditions.objects.get(id=term_id, is_active=True)
+        except TermsAndConditions.DoesNotExist:
+            return prepare_response(message="Term not found", status=404)
 
-    try:
-        term = TermAndCondition.objects.get(id=pk)
-    except TermAndCondition.DoesNotExist:
-        return prepare_response(
-            message="Term not found",
-            status=status.HTTP_404_NOT_FOUND,
-        )
-
-    if request.method in ["PUT", "PATCH"]:
-
-        key = request.data.get("key", term.key).lower()
-        title = request.data.get("title", term.title)
-        description = request.data.get("description", term.description)
-        country_param = request.data.get("country")
-        category_param = request.data.get("category")
-
-        if key not in ALLOWED_KEYS:
-            return prepare_response(
-                message="Invalid key",
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        if country_param:
-            try:
-                term.country = Country.objects.get(
-                    Q(code__iexact=country_param) |
-                    Q(name__icontains=country_param)
-                )
-            except Country.DoesNotExist:
-                return prepare_response(
-                    message="Invalid country",
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-        if category_param:
-            try:
-                term.category = TermCategory.objects.get(
-                    code__iexact=category_param
-                )
-            except TermCategory.DoesNotExist:
-                return prepare_response(
-                    message="Invalid category",
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-        if TermAndCondition.objects.filter(
-            key=key,
-            country=term.country,
-            category=term.category
-        ).exclude(id=term.id).exists():
-            return prepare_response(
-                message="Duplicate term exists",
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-
-        term.key = key
-        term.title = title
-        term.description = description
+        term.title = body.get("title", term.title)
+        term.description = body.get("description", term.description)
+        term.is_active = body.get("is_active", term.is_active)
         term.save()
 
-        content = {
-            "id": term.id,
-            "key": term.key,
-            "title": term.title,
-            "description": term.description,
-            "country": term.country.code,
-            "category": term.category.code,
-        }
-
         return prepare_response(
-            content=content,
+            status=200,
             message="Term updated successfully",
-            status=status.HTTP_200_OK,
+            content={
+                "key": term.key,
+                "title": term.title,
+                "description": term.description,
+                "category": term.category.code.lower(),
+                "country": term.country.code
+            }
         )
 
-    if request.method == "DELETE":
-        term.delete()
+    if request.method == constants.DELETE:
+        term_id = body.get("id")
+        if not term_id:
+            return prepare_response(message="Term ID is required", status=400)
+
+        try:
+            term = TermsAndConditions.objects.get(id=term_id, is_active=True)
+        except TermsAndConditions.DoesNotExist:
+            return prepare_response(message="Term not found", status=404)
+
+        term.is_active = False
+        term.save()
+
         return prepare_response(
-            message="Term deleted successfully",
-            status=status.HTTP_200_OK,
+            status=200,
+            message="Term deleted successfully"
         )
+
+    return prepare_response(message=constants.METHOD_NOT_ALLOWED, status=405)
