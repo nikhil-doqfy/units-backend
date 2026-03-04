@@ -1028,8 +1028,10 @@ def export_staff_csv(request):
 def contact_list_view(request):
 
     if request.method == "GET":
-        role_filter = request.GET.get("role")
+
         search = request.GET.get("search")
+        logged_in_profile = request.user
+        role_filter = logged_in_profile.user_role
 
         profiles = UserProfile.objects.select_related("user")
 
@@ -1038,23 +1040,21 @@ def contact_list_view(request):
 
         if search:
             profiles = profiles.filter(
-
                 Q(user__first_name__istartswith=search) |
                 Q(user__last_name__istartswith=search) |
                 Q(user__email__istartswith=search) |
                 Q(contact_number__icontains=search)
-                )
+            )
 
-        results = []
-
-        for profile in profiles:
-            user = profile.user
-            results.append({
+        results = [
+            {
                 "id": profile.id,
-                "full_name": f"{user.first_name} {user.last_name}",
-                "email": user.email,
+                "full_name": f"{profile.user.first_name} {profile.user.last_name}",
+                "email": profile.user.email,
                 "phone": profile.contact_number
-            })
+            }
+            for profile in profiles
+        ]
 
         return prepare_response(
             content=results,
