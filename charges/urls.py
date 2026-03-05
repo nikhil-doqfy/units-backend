@@ -1,6 +1,8 @@
 from django.urls import path
-from .views import charges_api
+from charges import views as charge_views
+from . import views
 
 urlpatterns = [
-    path("", charges_api),   
+    path("manage_charges/", charge_views.charges_api),  
+    path("toggle_charge_editable/", views.toggle_charge_editable), 
 ]

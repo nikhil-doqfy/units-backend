@@ -413,6 +413,13 @@ class Country(models.Model):
     def __str__(self):
         return self.name
 
+    def _get_country_info(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "code": self.code
+        }
+
 
 class State(models.Model):
     country = models.ForeignKey(

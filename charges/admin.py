@@ -1,21 +1,18 @@
 from django.contrib import admin
 from .models import Charge
 
-
-@admin.register(Charge)
 class ChargeAdmin(admin.ModelAdmin):
-    list_display = (
+    list_display = [
         "id",
         "description",
-        "country",
         "amount",
-        "vat_display",  
+        "tax_code",  
         "vat_amount",
         "total_amount",
         "is_editable",
-    )
+    ]
 
-    fields = (
+    fields = [
         "description",
         "country",
         "amount",
@@ -23,14 +20,11 @@ class ChargeAdmin(admin.ModelAdmin):
         "vat_amount",
         "total_amount",
         "is_editable",
-    )
+    ]
 
-    readonly_fields = ("vat_amount", "total_amount")
+    readonly_fields = ["vat_amount", "total_amount"]
 
-    def vat_display(self, obj):
-        return obj.tax_label
-
-    vat_display.short_description = "Tax code"
+admin.site.register(Charge, ChargeAdmin)
 
 
     
