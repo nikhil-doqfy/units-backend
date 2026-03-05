@@ -8,9 +8,7 @@ from payment import urls as payment_urls
 from . import views
 from django.urls import re_path
 from terms import urls as terms_urls
-from rest_framework_simplejwt.views import (
-    TokenObtainPairView,
-    TokenRefreshView)
+
 
 urlpatterns = [ 
     path('admin/', admin.site.urls),
@@ -55,9 +53,7 @@ urlpatterns = [
     path('property_owner_compny_lease', views.property_owner_compny_lease, name='property_owner_compny_lease'),
     path('property_lease_payment', views.property_lease_payment, name='lease_payment'),
 
-    path('terms/', include(terms_urls)),
-    path('api/', include('terms.urls')),
-
+    path('terms/',  include(terms_urls)),
     # path('complaint_list', views.complaint_list, name='complaint_list'),
 
 ] 

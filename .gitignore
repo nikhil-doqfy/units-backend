@@ -7,4 +7,3 @@ requirements.txt
 media
 static
 .env
-setup.bat
