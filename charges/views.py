@@ -44,7 +44,7 @@ def charges_api(request):
 
         return prepare_response(
             content=charge._get_charge_info(),
-            message="Charges created successfully",
+            message=constants.DATA_CREATED_SUCCESSFULLY,
             status=status.HTTP_201_CREATED
         )
 
@@ -120,7 +120,7 @@ def charges_api(request):
 
         return prepare_response(
             content=charge._get_charge_info(),
-            message="Data updated successfully",
+            message=constants.DATA_UPDATED_SUCCESSFULLY,
             status=status.HTTP_200_OK
         )
 
@@ -148,7 +148,7 @@ def charges_api(request):
         charge.delete()
 
         return prepare_response(
-            message="Data deleted successfully",
+            message=constants.DATA_DELETED_SUCCESSFULLY,
             status=status.HTTP_200_OK
         )
 
@@ -176,7 +176,7 @@ def toggle_charge_editable(request):
 
     user_country = user_profile.city.state.country
 
-    data = json.loads(request.body or "{}")
+    data = json.loads(request.body)
     charge_id = data.get("charge_id")
 
     if not charge_id:
@@ -199,8 +199,12 @@ def toggle_charge_editable(request):
     charge.is_editable = not charge.is_editable
     charge.save()
 
+    if charge.is_editable:
+        message = "Charge enabled"
+    else:
+        message = "Charge deactivate"
+
     return prepare_response(
-        content=charge._get_charge_info(),
         message="Charge editable status updated",
         status=status.HTTP_200_OK
     )
