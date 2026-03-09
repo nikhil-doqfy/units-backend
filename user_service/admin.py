@@ -1,7 +1,8 @@
 from django.contrib import admin
 from user_service.models import (
     UserProfile, Company, Permission, Role, 
-    Property, PropertyUnitDetails, PropertyImages, UserVerification,
+    Property, PropertyUnitDetails,  PropertyUnitImages,
+    PropertyImages, UserVerification,
     Documents, PropertyDocumentsMapping, OwnerDocumentsMapping,
     TenantDocumentsMapping, CompanyUserDocumentsMapping, StaffDocumentsMapping,Country, State, City, CompanyStaff ,FAQ ,PrivacyPolicy ,Complaint ,PropertyInterest
 )
@@ -37,7 +38,7 @@ class RoleAdmin(admin.ModelAdmin):
 
 @admin.register(Property)
 class PropertyAdmin(admin.ModelAdmin):
-    list_display = ["id", "property_name", "Property_code"]
+    list_display = ["id", "property_name", "property_code"]
 
 @admin.register(PropertyUnitDetails)
 class PropertyUnitDetailsAdmin(admin.ModelAdmin):
@@ -46,6 +47,10 @@ class PropertyUnitDetailsAdmin(admin.ModelAdmin):
 @admin.register(PropertyImages)
 class PropertyImagesAdmin(admin.ModelAdmin):
     list_display = ["id", "property", "file_name", "image_type"]
+
+@admin.register(PropertyUnitImages)
+class PropertyUnitImagesAdmin(admin.ModelAdmin):
+    list_display = ["id", "property_unit", "file_name", "image_type"]
 
 @admin.register(UserVerification)
 class UserVerificationAdmin(admin.ModelAdmin):

@@ -22,7 +22,8 @@ urlpatterns = [
     path('property/details', views.property_table_view, name='property_table_view'),
     path('save/property', views.save_property, name='save_property'),
     path('tenant/table', views.tenant_table_view, name='create_property_basic'), 
-    path('property/images', views.property_images, name='property_images'),
+    path("property/images", views.property_images, name="property_images"),
+    path("property/unit/images", views.property_unit_images, name="property_unit_images"),
     path('property/documents', views.property_documents, name='property_images'), 
     path('parent/property', views.parent_property_view, name=' parent_property_view'),
     path('statistics', views.dashboard_overview, name='dashboard_statistics'),
@@ -52,7 +53,6 @@ urlpatterns = [
     path('lease_term_and_condition', views.lease_term_and_condition, name='lease_term_and_condition'),
     path('property_owner_compny_lease', views.property_owner_compny_lease, name='property_owner_compny_lease'),
     path('property_lease_payment', views.property_lease_payment, name='lease_payment'),
-
     path('terms/',  include(terms_urls)),
     # path('complaint_list', views.complaint_list, name='complaint_list'),
 

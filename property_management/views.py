@@ -3,7 +3,7 @@ import datetime
 import pdfkit
 import json
 import datetime
-from user_service.models import UserProfile, Documents, PropertyUnitDetails,Property, Company, PropertyImages ,PropertyDocumentsMapping, Country, State, City, Role ,Complaint,FAQ ,PropertyInterest
+from user_service.models import UserProfile, Documents, PropertyUnitDetails,Property, Company, PropertyImages ,PropertyUnitImages ,PropertyDocumentsMapping, Country, State, City, Role ,Complaint,FAQ ,PropertyInterest
 from property_management.models import LeasePropertyDetails,TemplateFields, TemplateValues,Template,LeaseDocumentsMapping,TermAndCondition
 from payment.models import Payment,Bank
 from utilities.decorator import is_request_authenticated
@@ -50,6 +50,9 @@ import calendar
 from datetime import datetime, date
 from calendar import monthrange
 from dateutil.relativedelta import relativedelta
+import base64
+from django.core.files.base import ContentFile
+
 
 
 @is_request_authenticated
@@ -434,152 +437,143 @@ def property_table_view(request):
 @is_request_authenticated
 def save_property(request):
     user_profile = request.user
+
     if request.method == "GET":
-        try:
-            property_id = request.GET.get("property_unit_id")
-            if not property_id:
-                return prepare_response(
-                    message=constants.PROPERTY_ID_REQUIRED,
-                    status=status.HTTP_400_BAD_REQUEST
-                )
 
-            prop = PropertyUnitDetails.objects.filter(id=property_id).first()
-            if not prop:
-                return prepare_response(
-                    message=constants.PROPERTY_NOT_FOUND,
-                    status=status.HTTP_404_NOT_FOUND
-                )
+        property_unit_id = request.GET.get("property_unit_id")
 
-            parent_property = prop.property
-            property_type_options = dict(constants.PROPERTY_TYPE_CHOICES)
+        if not property_unit_id:
+            return prepare_response(
+                message=constants.PROPERTY_ID_REQUIRED,
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-            property_data = None
-            if parent_property:
-                city_obj = parent_property.city
-                state_obj = city_obj.state if city_obj else None
-                country_obj = state_obj.country if state_obj else None
+        prop = PropertyUnitDetails.objects.filter(id=property_unit_id).select_related(
+            "property", "owner", "company"
+        ).first()
 
-                property_data = {
-                    "id": parent_property.id,
-                    "property_name": parent_property.property_name,
-                    "property_code": parent_property.Property_code,
-                    "additional_address": parent_property.additional_address,
-                    "locality": parent_property.locality,
-                    "postal_code": parent_property.postal_code,
-                    
-                    "city":{"key": city_obj.id if city_obj else None,
-                            "value": city_obj.name if city_obj else None,},
-                    "state": {
-                           "key": state_obj.id if state_obj else None,
-                          "value": state_obj.name if state_obj else None,},
-                    "country": {
-                          "key": country_obj.id if country_obj else None,
-                        "value": country_obj.name if country_obj else None,},
+        if not prop:
+            return prepare_response(
+                message=constants.PROPERTY_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
 
-                    "property_type": {
-                        "key": parent_property.property_type_options,
-                        "value": property_type_options.get(parent_property.property_type_options)
-                    }
-                }
-            owner_obj = prop.owner
+        parent_property = prop.property
 
-            content = {
-                "id": prop.id,
-                "property_unit_name": prop.property_unit_name,
-                "land_dm_no": prop.land_dm_no,
-                "area_of_property": prop.area_of_property,
-                "no_of_parking": prop.no_of_parking,
-                "bedrooms": prop.bedrooms,
-                "balcony": prop.balcony,
-                "plot_no": prop.plot_no,
-                "area_unit": prop.area_unit,
-                "land_area_unit": prop.land_area_unit,
-                "dimension": prop.dimension,
-                "property_code": prop.property_code,
-                "address": prop.address,
-                "apartment_no": prop.apartment_no,
-                "apartment_floor_no": prop.apartment_floor_no,
-                "no_of_floors": prop.no_of_floors,
-                "step_status": prop.step_status,
-                "rent": prop.rent,
-                "security_deposit": prop.security_deposit,
-                "booking_amount": prop.booking_amount,
-                "maintenance_charges": prop.maintenance_charges,
-                "cycle": prop.cycle,
-                "notice_period": prop.notice_period,
-                "commission_percent": prop.commission_percent,
-                # "owner_id": prop.owner.id if prop.owner else None,
-                "dewa_no":prop.dewa_no,
-                "makani_no":prop.makani_no,
-                "land_area":prop.land_area,
-                "property": property_data,
-                "owner":{
-                    "key": owner_obj.id if owner_obj else None,
-                    "value":f"{owner_obj.user.first_name} {owner_obj.user.last_name}"
-                                if owner_obj and owner_obj.user
-                              else None
-                },
+        property_data = None
 
-                "compnay":{
-                    "key": prop.company.id if prop.company else None,
-                    "value":prop.company.company_name if prop.company else None,
-                },
+        if parent_property:
+            property_data = {
+                "id": parent_property.id,
+                "property_name": parent_property.property_name,
+                "property_code": parent_property.property_code,
+                "locality": parent_property.locality,
+                "postal_code": parent_property.postal_code,
             }
 
-            return prepare_response(content=content, status=status.HTTP_200_OK)
+        owner_obj = prop.owner
 
+        content = {
+            "id": prop.id,
+            "property_block": prop.property_block,
+            "property_unit_name": prop.property_unit_name,
+            "property_type": prop.property_type,
+            "land_dm_no": prop.land_dm_no,
+            "land_area": prop.land_area,
+            "land_area_unit": prop.land_area_unit,
+            "area_of_property": prop.area_of_property,
+            "area_unit": prop.area_unit,
+            "apartment_floor_no": prop.apartment_floor_no,
+            "bedrooms": prop.bedrooms,
+            "balcony": prop.balcony,
+            "no_of_parking": prop.no_of_parking,
+            "plot_no": prop.plot_no,
+            "makani_no": prop.makani_no,
+            "dewa_no": prop.dewa_no,
+            "property_code": prop.property_code,
+            "step_status": prop.step_status,
+
+            "rent": prop.rent,
+            "security_deposit": prop.security_deposit,
+            "booking_amount": prop.booking_amount,
+            "maintenance_charges": prop.maintenance_charges,
+            "cycle": prop.cycle,
+            "notice_period": prop.notice_period,
+            "commission_percent": prop.commission_percent,
+
+            "property": property_data,
+
+            "owner": {
+                "key": owner_obj.id if owner_obj else None,
+                "value": f"{owner_obj.user.first_name} {owner_obj.user.last_name}"
+                if owner_obj and owner_obj.user else None
+            },
+
+            "company": {
+                "key": prop.company.id if prop.company else None,
+                "value": prop.company.company_name if prop.company else None
+            }
+        }
+
+        return prepare_response(content=content, status=status.HTTP_200_OK)
+
+    elif request.method == "PUT":
+
+        try:
+            data = json.loads(request.body)
         except Exception as e:
             return prepare_response(
                 message={"error": str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                status=status.HTTP_400_BAD_REQUEST
             )
-    elif request.method == "PUT":
-        try:
-            current_user = request.user
-            data = json.loads(request.body)
 
-            property_id = data.get("property_unit_id")
-            new_property_id = data.get("property_id")
-            if not property_id:
-                return prepare_response(
-                    message=constants.PROPERTY_ID_REQUIRED,
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+        property_unit_id = data.get("property_unit_id")
 
-            prop = PropertyUnitDetails.objects.filter(id=property_id).first()
-            if not prop:
+        if not property_unit_id:
+            return prepare_response(
+                message=constants.PROPERTY_ID_REQUIRED,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        prop = PropertyUnitDetails.objects.filter(id=property_unit_id).first()
+
+        if not prop:
+            return prepare_response(
+                message=constants.PROPERTY_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        new_property_id = data.get("property_id")
+
+        if new_property_id:
+            parent_property = Property.objects.filter(id=new_property_id).first()
+
+            if not parent_property:
                 return prepare_response(
-                    message=constants.PROPERTY_NOT_FOUND,
+                    message=constants.INVALID_PROPERTY_ID,
                     status=status.HTTP_404_NOT_FOUND
                 )
-            if new_property_id:
-                new_property = Property.objects.filter(id=new_property_id).first()
-                if not new_property:
-                    return prepare_response(message=constants.INVALID_PROPERTY_ID, status=status.HTTP_404_NOT_FOUND)
-                prop.property = new_property
-            
-            parent_property = prop.property
-            if parent_property:
-                parent_fields = [
-                    "property_name",
-                    "additional_address",
-                    "locality",
-                    "postal_code",
-                    "property_type_options",
-                    "city"
-                ]
-                for field in parent_fields:
-                    if field in data and data[field] is not None:
-                        setattr(parent_property, field, data[field])
-                parent_property.save()
+
+            prop.property = parent_property
+
+        try:
 
             basic_fields = [
-                "property_unit_name", "land_dm_no", "area_of_property",
-                "no_of_parking", "makani_no", "dewa_no",
-                "land_area", "apartment_no", "bedrooms", "balcony",
-                "plot_no", "area_unit", "land_area_unit",
-                "apartment_floor_no", "no_of_floors",
-                "dimension", "address"
+                "property_block",
+                "property_unit_name",
+                "property_type",
+                "land_area",
+                "land_area_unit",
+                "land_dm_no",
+                "bedrooms",
+                "area_of_property",
+                "area_unit",
+                "apartment_floor_no",
+                "no_of_parking",
+                "balcony",
+                "plot_no",
+                "makani_no",
+                "dewa_no",
             ]
 
             for field in basic_fields:
@@ -587,9 +581,13 @@ def save_property(request):
                     setattr(prop, field, data[field])
 
             commercial_fields = [
-                "rent", "security_deposit", "booking_amount",
-                "maintenance_charges", "cycle",
-                "notice_period", "commission_percent"
+                "rent",
+                "security_deposit",
+                "booking_amount",
+                "maintenance_charges",
+                "cycle",
+                "notice_period",
+                "commission_percent"
             ]
 
             for field in commercial_fields:
@@ -598,12 +596,18 @@ def save_property(request):
                     if prop.step_status == constants.BASIC_DETAILS:
                         prop.step_status = constants.COMMERCIALS_DETAILS
 
+            current_user = request.user
+
             if current_user.user_role == constants.COMPANY_USER:
+
                 owner_id = data.get("owner_id")
+
                 if owner_id:
                     owner_obj = UserProfile.objects.filter(
-                        id=owner_id, user_role=constants.OWNER
+                        id=owner_id,
+                        user_role=constants.OWNER
                     ).first()
+
                     if owner_obj:
                         prop.owner = owner_obj
 
@@ -611,102 +615,105 @@ def save_property(request):
                     prop.company = current_user.company
 
             elif current_user.user_role == constants.OWNER:
+
                 company_id = data.get("company_id")
+
                 if company_id:
                     company_obj = Company.objects.filter(id=company_id).first()
+
                     if company_obj:
                         prop.company = company_obj
+
                 prop.owner = current_user
 
             prop.save()
 
-            return prepare_response(
-                message=constants.PROPERTY_UPDATE_SUCCESS,
-                content={"property_id": prop.id},
-                status=status.HTTP_200_OK
-            )
-
         except Exception as e:
             return prepare_response(
                 message={"error": str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+        return prepare_response(
+            message=constants.PROPERTY_UPDATE_SUCCESS,
+            content={"property_unit_id": prop.id},
+            status=status.HTTP_200_OK
+        )
+
     elif request.method == "POST":
+
         try:
             data = json.loads(request.body)
-            property_code = generate_property_code()
-
-            if user_profile.user_role == constants.OWNER:
-                owner = user_profile
-                company = None
-
-            elif user_profile.user_role == constants.COMPANY_USER:
-                company = Company.objects.filter(company_user=user_profile).first()
-                if not company:
-                    return prepare_response(
-                        message=constants.COMPANY_NOT_FOUND,
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                owner = None
-            else:
-                return prepare_response(
-                    message=constants.UNAUTHORIZED_TO_CREATE_PROPERTY,
-                    status=status.HTTP_403_FORBIDDEN
-                )
-
-            parent_property_id = data.get("parent_property_id")
-            parent_property_name = data.get("parent_property_name")
-
-            if parent_property_id:
-                parent_property = Property.objects.filter(id=parent_property_id).first()
-                if not parent_property:
-                    return prepare_response(
-                        message=constants.INVALID_PROPERTY_ID,
-                        status=status.HTTP_404_NOT_FOUND
-                    )
-            elif parent_property_name:
-                parent_property = Property.objects.create(
-                    property_name=parent_property_name,
-                Property_code=property_code,
-                additional_address=data.get("additional_address"),
-                locality=data.get("locality"),
-                postal_code=data.get("postal_code"),
-                property_type_options=data.get("property_type"),
-                city_id=data.get("city_id"),
-                created_by=user_profile.user)
-            else:
-                return prepare_response(message=constants.PARENT_PROPERTY_REQUIRED ,status=status.HTTP_400_BAD_REQUEST)
-            new_property_unit = PropertyUnitDetails.objects.create(
-                created_by=user_profile.user,
-                property_unit_name=data.get("property_unit_name"),
-                land_dm_no=data.get("land_dm_no"),
-                area_of_property=data.get("area_of_property"),
-                no_of_parking=data.get("no_of_parking"),
-                makani_no=data.get("makani_no"),
-                dewa_no=data.get("dewa_no"),
-                # property_type=data.get("property_type"),
-                land_area=data.get("land_area"),
-                apartment_no=data.get("apartment_no"),
-                bedrooms=data.get("bedrooms"),
-                balcony=data.get("balcony"),
-                plot_no=data.get("plot_no"),
-                area_unit=data.get("area_unit"),
-                land_area_unit=data.get("land_area_unit"),
-                apartment_floor_no=data.get("apartment_floor_no"),
-                no_of_floors=data.get("no_of_floors"),
-                dimension=data.get("dimension"),
-                address=data.get("address"),
-                property_code=property_code,
-                owner=owner,
-                company=company,
-                property=parent_property,
-                step_status=constants.BASIC_DETAILS,
+        except Exception as e:
+            return prepare_response(
+                message={"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
             )
 
+        property_code = generate_property_code()
+
+        if user_profile.user_role == constants.OWNER:
+            owner = user_profile
+            company = None
+
+        elif user_profile.user_role == constants.COMPANY_USER:
+
+            company = Company.objects.filter(company_user=user_profile).first()
+
+            if not company:
+                return prepare_response(
+                    message=constants.COMPANY_NOT_FOUND,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            owner = None
+
+        else:
             return prepare_response(
-                message=constants.PROPERTY_ADDED,
-                content={"id": new_property_unit.id},
-                status=status.HTTP_201_CREATED
+                message=constants.UNAUTHORIZED_TO_CREATE_PROPERTY,
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        parent_property_id = data.get("parent_property_id")
+
+        parent_property = Property.objects.filter(id=parent_property_id).first()
+
+        if not parent_property:
+            return prepare_response(
+                message=constants.INVALID_PROPERTY_ID,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        try:
+
+            new_property_unit = PropertyUnitDetails.objects.create(
+                created_by=user_profile.user,
+                property=parent_property,
+                owner=owner,
+                company=company,
+                property_code=property_code,
+
+                property_block=data.get("property_block"),
+                property_unit_name=data.get("property_unit_name"),
+                property_type=data.get("property_type"),
+
+                land_area=data.get("land_area"),
+                land_area_unit=data.get("land_area_unit"),
+                land_dm_no=data.get("land_dm_no"),
+
+                bedrooms=data.get("bedrooms"),
+                area_of_property=data.get("area_of_property"),
+                area_unit=data.get("area_unit"),
+
+                apartment_floor_no=data.get("apartment_floor_no"),
+                no_of_parking=data.get("no_of_parking"),
+                balcony=data.get("balcony"),
+
+                plot_no=data.get("plot_no"),
+                makani_no=data.get("makani_no"),
+                dewa_no=data.get("dewa_no"),
+
+                step_status=constants.BASIC_DETAILS
             )
 
         except Exception as e:
@@ -715,152 +722,177 @@ def save_property(request):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-
-    else:
         return prepare_response(
-            message=constants.INVALID_REQUEST_METHOD,
-            status=status.HTTP_405_METHOD_NOT_ALLOWED)
+            message=constants.PROPERTY_ADDED,
+            content={"property_unit_id": new_property_unit.id},
+            status=status.HTTP_201_CREATED
+        )
+
+    return prepare_response(
+        message=constants.INVALID_REQUEST_METHOD,
+        status=status.HTTP_405_METHOD_NOT_ALLOWED
+    )
     
 
+import json
+import base64
+import uuid
+from django.http import JsonResponse
+from django.core.files.base import ContentFile
+
+# Local Helper (Replaces S3 upload)
+def save_local_base64(base64_data, original_name):
+    try:
+        if "," in base64_data:
+            base64_str = base64_data.split(",")[1]
+        else:
+            base64_str = base64_data
+        
+        decoded_file = base64.b64decode(base64_str)
+        extension = original_name.split('.')[-1] if '.' in original_name else 'jpg'
+        unique_name = f"{uuid.uuid4()}.{extension}"
+        return ContentFile(decoded_file, name=unique_name)
+    except:
+        return None
 
 
 @is_request_authenticated
 def property_images(request):
-    try:
-        if request.method == "GET":
-            property_id = request.GET.get("property_unit_id")
-            if not property_id:
-                return prepare_response(message=constants.PROPERTY_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
-
-            try:
-                property_obj = PropertyUnitDetails.objects.get(id=property_id)
-            except PropertyUnitDetails.DoesNotExist:
-                return prepare_response(message=constants.INVALID_PROPERTY_ID, status=status.HTTP_404_NOT_FOUND)
-
-            images_qs = PropertyImages.objects.filter(property=property_obj).order_by("-id")
-            final_images = []
-
-            for img in images_qs:
-                base64_data = fetch_s3_presigned_url(img.image_path, file_name=img.file_name)
-                final_images.append({
-                    "id": img.id,
-                    "file_name": img.file_name,
-                    "data": base64_data,
-                    "type": img.image_type
-                })
-
+    if request.method == "GET":
+        property_id = request.GET.get("property_id")
+        if not property_id:
             return prepare_response(
-                message=constants.DATA_FETCHED_SUCCESSFULLY,
-                content={
-                    "images": final_images,
-                    "id": property_id,
-                    "step_status": property_obj.step_status
-                },
-                status=status.HTTP_200_OK
+                message="Property ID is required",
+                status=400
             )
-        
-        if request.method == "POST":
+
+        images = PropertyImages.objects.filter(property_id=property_id).order_by("-id")
+        final_images = [
+            {
+                "id": img.id,
+                "file_name": img.file_name,
+                "url": img.image.url if img.image else None,
+                "type": img.image_type
+            } for img in images
+        ]
+        return prepare_response(message="Success", content={"images": final_images}, status=200)
+
+    elif request.method == "POST":
+        try:
             body = json.loads(request.body)
-            property_id = body.get("property_unit_id")
-            images = body.get("images", [])
+        except json.JSONDecodeError:
+            return prepare_response(message="Invalid JSON", status=400)
 
-            if not property_id:
-                return prepare_response(message=constants.PROPERTY_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
-            if not isinstance(images, list) or not images:
-                return prepare_response(message="Images must be a list", status=status.HTTP_400_BAD_REQUEST)
+        property_id = body.get("property_unit_id") or body.get("property_id")
+        if not property_id:
+            return prepare_response(message="Property ID is required", status=400)
+
+        images_data = body.get("images", [])
+        if not images_data:
+            return prepare_response(message="No images provided", status=400)
+
+        uploaded = []
+
+        for img in images_data:
+            image_data = img.get("data")
+            file_name = img.get("file_name")
+            image_type = img.get("type", "INTERIOR").upper()
+
+            if not image_data or not file_name:
+                continue  # skip invalid entries
+
+            # Strip the base64 header if exists
+            if ',' in image_data:
+                image_data = image_data.split(',')[1]
 
             try:
-                property_obj = PropertyUnitDetails.objects.get(id=property_id)
-            except PropertyUnitDetails.DoesNotExist:
-                return prepare_response(message=constants.PROPERTY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+                decoded_file = base64.b64decode(image_data)
+            except Exception:
+                continue  # skip invalid base64
 
-            uploaded_files = []
-            for img in images:
-                file_name = img.get("file_name")
-                base64_data = img.get("data")
-                img_type = img.get("type", "INTERIOR").upper()
+            image_file = ContentFile(decoded_file, name=file_name)
 
-                if not file_name or not base64_data:
-                    return prepare_response(message=constants.MISSING_FILE_OR_DATA, status=status.HTTP_400_BAD_REQUEST)
-
-                object_name = f"property_images/{property_id}/{file_name}"
-                image_url = upload_file_to_s3_base64(base64_data, object_name)
-
-                PropertyImages.objects.create(
-                    property=property_obj,
-                    file_name=file_name,
-                    image_path=image_url,
-                    image_type=img_type,
-                    created_by = request.user.user
-
-                )
-
-                uploaded_files.append({
-                    "file_name": file_name,
-                    "image_url": image_url,
-                    "image_type": img_type
-                })
-            property_obj.step_status = "PROPERTY_IMAGES_DETAILS"
-            property_obj.save()
-
-            return prepare_response(
-                message=constants.IMAGE_UPLOADED_SUCCESS,
-                content={"uploaded": uploaded_files},
-                status=status.HTTP_201_CREATED
+            instance = PropertyImages.objects.create(
+                property_id=property_id,
+                image=image_file,
+                file_name=file_name,
+                image_type=image_type,
+                created_by=request.user.user
             )
-        
-        if request.method == "PUT":
+            uploaded.append({"image_id": instance.id, "url": instance.image.url})
+
+        if not uploaded:
+            return prepare_response(message="No valid images uploaded", status=400)
+
+        return prepare_response(message="Uploaded Successfully", content={"uploaded": uploaded}, status=201)
+
+
+@is_request_authenticated
+def property_unit_images(request):
+    if request.method == "GET":
+        unit_id = request.GET.get("property_unit_id")
+        if not unit_id:
+            return prepare_response(message="Property Unit ID is required", status=400)
+
+        images = PropertyUnitImages.objects.filter(property_unit_id=unit_id).order_by("-id")
+        final_images = [
+            {
+                "id": img.id,
+                "file_name": img.file_name,
+                "url": img.image.url if img.image else None,
+                "type": img.image_type
+            } for img in images
+        ]
+        return prepare_response(message="Success", content={"images": final_images}, status=200)
+
+    elif request.method == "POST":
+        try:
             body = json.loads(request.body)
-            property_id = body.get("property_unit_id")
-            images = body.get("images", [])
+        except json.JSONDecodeError:
+            return prepare_response(message="Invalid JSON", status=400)
 
-            if not property_id:
-                return prepare_response(message=constants.PROPERTY_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
-            if not isinstance(images, list):
-                return prepare_response(message="Images must be a list", status=status.HTTP_400_BAD_REQUEST)
+        unit_id = body.get("property_unit_id")
+        if not unit_id:
+            return prepare_response(message="Property Unit ID is required", status=400)
+
+        images_data = body.get("images", [])
+        if not images_data:
+            return prepare_response(message="No images provided", status=400)
+
+        uploaded = []
+
+        for img in images_data:
+            image_data = img.get("data")
+            file_name = img.get("file_name")
+            image_type = img.get("type", "INTERIOR").upper()
+
+            if not image_data or not file_name:
+                continue
+
+            if ',' in image_data:
+                image_data = image_data.split(',')[1]
 
             try:
-                property_obj = PropertyUnitDetails.objects.get(id=property_id)
-            except PropertyUnitDetails.DoesNotExist:
-                return prepare_response(message=constants.PROPERTY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+                decoded_file = base64.b64decode(image_data)
+            except Exception:
+                continue
 
-            updated_files = []
-            for img in images:
-                file_name = img.get("file_name")
-                base64_data = img.get("data")
-                img_type = img.get("type", "INTERIOR").upper()
+            image_file = ContentFile(decoded_file, name=file_name)
 
-                if not file_name or not base64_data:
-                    return prepare_response(message=constants.MISSING_FILE_OR_DATA, status=status.HTTP_400_BAD_REQUEST)
-
-                img_obj, created = PropertyImages.objects.update_or_create(
-                    property=property_obj,
-                    file_name=file_name,
-                    defaults={"image_type": img_type ,"created_by": request.user.user}
-                )
-
-                object_name = f"property_images/{property_id}/{file_name}"
-                image_url = upload_file_to_s3_base64(base64_data, object_name)
-                img_obj.image_path = image_url
-                img_obj.save()
-
-                updated_files.append({
-                    "file_name": file_name,
-                    "image_url": image_url,
-                    "image_type": img_type,
-                    "status": "created" if created else "updated"
-                })
-
-            return prepare_response(
-                message=constants.IMAGE_UPLOADED_SUCCESS,
-                content={"updated": updated_files},
-                status=status.HTTP_200_OK
+            instance = PropertyUnitImages.objects.create(
+                property_unit_id=unit_id,
+                image=image_file,
+                file_name=file_name,
+                image_type=image_type,
+                created_by=request.user.user
             )
-    except Exception as e:
-        return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            uploaded.append({"image_id": instance.id, "url": instance.image.url})
 
+        if not uploaded:
+            return prepare_response(message="No valid images uploaded", status=400)
 
-
+        return prepare_response(message="Uploaded Successfully", content={"uploaded": uploaded}, status=201)
+    
 @is_request_authenticated
 def property_documents(request):
     try:

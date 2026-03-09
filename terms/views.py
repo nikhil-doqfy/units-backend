@@ -3,13 +3,10 @@ from terms.models import TermsAndConditions, TermCategory
 from user_service.models import Country
 from utilities.decorator import is_request_authenticated
 from utilities.helper_functions import prepare_response
-from utilities import constants
+from utilities import constants, status  
 
 
-def format_terms_data(terms_queryset):
-    """
-    Helper function to format terms data
-    """
+def format_terms_data(terms_queryset):  # helper function
     data = []
 
     for term in terms_queryset:
@@ -27,40 +24,46 @@ def format_terms_data(terms_queryset):
 @is_request_authenticated
 def terms_api(request):
 
-    # ---------------- GET TERMS ----------------
     if request.method == constants.GET:
 
         key = request.GET.get("type") or request.GET.get("key")
         country_codes = request.GET.getlist("country")
+        category_code = request.GET.get("category")   
 
         terms = TermsAndConditions.objects.select_related(
             "country", "category"
         ).filter(is_active=True)
 
+        # Filter by key
         if key:
             terms = terms.filter(key__iexact=key)
 
+        # Filter by country
         if country_codes:
             country_codes = [c.upper() for c in country_codes]
             terms = terms.filter(country__code__in=country_codes)
+
+        # Filter by category
+        if category_code:
+            terms = terms.filter(category__code__iexact=category_code)
 
         terms = terms.order_by("id")
 
         data = format_terms_data(terms)
 
         return prepare_response(
-            status=200,
+            status=status.HTTP_200_OK,
             message=constants.DATA_FETCHED_SUCCESS,
             content=data
         )
 
-    # -------- Parse JSON Body --------
+    # ---------------- PARSE JSON BODY ----------------
     try:
         body = json.loads(request.body)
     except Exception:
         return prepare_response(
             message=constants.INVALID_JSON_BODY,
-            status=400
+            status=status.HTTP_400_BAD_REQUEST
         )
 
     # ---------------- CREATE TERM ----------------
@@ -75,7 +78,7 @@ def terms_api(request):
         if not all([key, title, description, country_code, category_code]):
             return prepare_response(
                 message=constants.ALL_FIELD_REQUIRED,
-                status=400
+                status=status.HTTP_400_BAD_REQUEST
             )
 
         try:
@@ -83,7 +86,7 @@ def terms_api(request):
         except Country.DoesNotExist:
             return prepare_response(
                 message=constants.COMPANY_NOT_FOUND,
-                status=400
+                status=status.HTTP_400_BAD_REQUEST
             )
 
         try:
@@ -91,7 +94,7 @@ def terms_api(request):
         except TermCategory.DoesNotExist:
             return prepare_response(
                 message=constants.ROLE_DOES_NOT_EXIST,
-                status=400
+                status=status.HTTP_400_BAD_REQUEST
             )
 
         if TermsAndConditions.objects.filter(
@@ -102,7 +105,7 @@ def terms_api(request):
         ).exists():
             return prepare_response(
                 message=constants.TERMS_MUST_BE_LIST,
-                status=400
+                status=status.HTTP_400_BAD_REQUEST
             )
 
         TermsAndConditions.objects.create(
@@ -114,7 +117,7 @@ def terms_api(request):
         )
 
         return prepare_response(
-            status=201,
+            status=status.HTTP_201_CREATED,
             message=constants.TERMS_CREATED_SUCCESS
         )
 
@@ -128,7 +131,7 @@ def terms_api(request):
         if not term_id:
             return prepare_response(
                 message="Term ID is required",
-                status=400
+                status=status.HTTP_400_BAD_REQUEST
             )
 
         try:
@@ -136,7 +139,7 @@ def terms_api(request):
         except TermsAndConditions.DoesNotExist:
             return prepare_response(
                 message="Term not found",
-                status=404
+                status=status.HTTP_404_NOT_FOUND
             )
 
         if title:
@@ -148,7 +151,7 @@ def terms_api(request):
         term.save()
 
         return prepare_response(
-            status=200,
+            status=status.HTTP_200_OK,
             message="Term updated successfully"
         )
 
@@ -160,7 +163,7 @@ def terms_api(request):
         if not term_id:
             return prepare_response(
                 message="Term ID is required",
-                status=400
+                status=status.HTTP_400_BAD_REQUEST
             )
 
         try:
@@ -168,18 +171,19 @@ def terms_api(request):
         except TermsAndConditions.DoesNotExist:
             return prepare_response(
                 message="Term not found",
-                status=404
+                status=status.HTTP_404_NOT_FOUND
             )
 
         term.is_active = False
         term.save()
 
         return prepare_response(
-            status=200,
+            status=status.HTTP_200_OK,
             message="Term deleted successfully"
         )
 
+    # ---------------- METHOD NOT ALLOWED ----------------
     return prepare_response(
         message=constants.METHOD_NOT_ALLOWED,
-        status=405
+        status=status.HTTP_405_METHOD_NOT_ALLOWED
     )

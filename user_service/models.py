@@ -99,26 +99,41 @@ class CompanyStaff(Base):
         
     
 class Property(Base):
-    property_name = models.CharField(max_length=255,null=True, blank=True)
+    property_name = models.CharField(max_length=255, null=True, blank=True)
     total_floors = models.IntegerField(null=True, blank=True)
     total_units = models.IntegerField(null=True, blank=True)
-    additional_address = models.TextField(null=True, blank=True)
-    locality = models.CharField(max_length=20, null=True, blank=True)
-    postal_code = models.CharField(max_length=20, null=True, blank=True)
-    
-    Property_code = models.CharField(
-        max_length=255,  null=True, blank=True
-    )
-    property_type_options = models.CharField(
+    property_type = models.CharField(
         max_length=50,
         choices=constants.PROPERTY_TYPE_CHOICES,
         default="Apartment"
     )
+
+    land_area = models.FloatField(null=True, blank=True)
+    land_dm_no = models.CharField(max_length=100, null=True, blank=True)
+    plot_no = models.CharField(max_length=100, null=True, blank=True)
+    makani_no = models.CharField(max_length=100, null=True, blank=True)
+    dewa_no = models.CharField(max_length=100, null=True, blank=True)
+    property_code = models.CharField(max_length=255, null=True, blank=True)
+    address_line1 = models.TextField(null=True, blank=True)
+    address_line2 = models.TextField(null=True, blank=True)
+    landmark = models.CharField(max_length=255, null=True, blank=True)
+    postal_code = models.CharField(max_length=20, null=True, blank=True)
+    locality = models.CharField(max_length=100, null=True, blank=True)
+    latitude = models.FloatField(null=True, blank=True)
+    longitude = models.FloatField(null=True, blank=True)
+    owner = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="owned_properties"
+    )
+
     city = models.ForeignKey(
         "City",
         on_delete=models.SET_NULL,
         null=True,
-        blank=True,
+        blank=True
     )
 
     def __str__(self):
@@ -131,87 +146,131 @@ class PropertyUnitDetails(Base):
         (constants.AVAILABLE, "Available"),
         (constants.NOT_AVAILABLE, "Not Available"),
     ]
-    property_unit_name = models.CharField(max_length=255, null=True, blank=True)
-    land_dm_no = models.CharField(max_length=255, null=True, blank=True)
-    area_of_property = models.FloatField(null=True, blank=True)
-    no_of_parking = models.IntegerField(null=True, blank=True)
-    makani_no = models.CharField(max_length=255, null=True, blank=True)
-    dewa_no = models.CharField(max_length=255, null=True, blank=True)
-    property_type = models.CharField(max_length=50, default="Apartment")
-    land_area = models.CharField(max_length=50, default="1048")
-    apartment_no = models.CharField(max_length=50, default="48")
-    bedrooms = models.CharField(max_length=50, default="Select bedroom")
-    apartment_floor_no = models.CharField(max_length=50, default="3")
-    balcony = models.CharField(max_length=50, default="1")
-    plot_no = models.CharField(max_length=50, default="128")
-    area_unit = models.CharField(max_length=20, default="Sq-ft")
-    land_area_unit = models.CharField(max_length=20, null=True, blank=True)
-    no_of_floors = models.IntegerField(default=1,null=True, blank=True)
-    dimension= models.CharField(max_length=20, null=True, blank=True)
-    address = models.TextField(null=True, blank=True)
 
     property = models.ForeignKey(
-        Property, on_delete=models.CASCADE, related_name="units",null=True, blank=True
+        Property,
+        on_delete=models.CASCADE,
+        related_name="units",
+        null=True,
+        blank=True
     )
-    
+
+    property_block = models.CharField(max_length=255, null=True, blank=True)
+    property_unit_name = models.CharField(max_length=255, null=True, blank=True)
+    property_type = models.CharField(max_length=50, default="Apartment")
+    land_area = models.FloatField(null=True, blank=True)
+
+    land_area_unit = models.CharField(
+        max_length=20,
+        choices=[("Sq-ft", "Sq-ft"), ("Sq-m", "Sq-m")],
+        default="Sq-ft"
+    )
+
+    land_dm_no = models.CharField(max_length=255, null=True, blank=True)
+    bedrooms = models.IntegerField(null=True, blank=True)
+    area_of_property = models.FloatField(null=True, blank=True)
+    area_unit = models.CharField(
+        max_length=20,
+        choices=[("Sq-ft", "Sq-ft"), ("Sq-m", "Sq-m")],
+        default="Sq-ft"
+    )
+
+    apartment_floor_no = models.IntegerField(null=True, blank=True)
+    no_of_parking = models.IntegerField(null=True, blank=True)
+    balcony = models.IntegerField(null=True, blank=True)
+    plot_no = models.CharField(max_length=50, null=True, blank=True)
+    makani_no = models.CharField(max_length=255, null=True, blank=True)
+    dewa_no = models.CharField(max_length=255, null=True, blank=True)
+
     owner = models.ForeignKey(
         UserProfile,
         on_delete=models.SET_NULL,
         limit_choices_to={'user_role': constants.OWNER},
-        related_name="owner_properties",
-        null=True, blank=True
+        related_name="owner_units",
+        null=True,
+        blank=True
     )
 
     company = models.ForeignKey(
-        Company, on_delete=models.CASCADE, related_name="properties",null=True, blank=True
+        Company,
+        on_delete=models.CASCADE,
+        related_name="property_units",
+        null=True,
+        blank=True
     )
-    assigned_staff = models.ManyToManyField(CompanyStaff,related_name="assigned_properties")
+
+    assigned_staff = models.ManyToManyField(
+        CompanyStaff,
+        related_name="assigned_units",
+        blank=True
+    )
 
     is_occupied = models.BooleanField(default=False)
-    property_code = models.CharField(
-        max_length=255, null=True, blank=True
-    )
+    property_code = models.CharField(max_length=255, null=True, blank=True)
     step_status = models.CharField(
         max_length=50,
         choices=constants.STEP_CHOICES,
         default="BASIC_DETAILS"
     )
+
     rent = models.DecimalField(
-        max_digits=10, decimal_places=2, null=True, blank=True
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True
     )
+
     security_deposit = models.DecimalField(
-        max_digits=10, decimal_places=2, null=True, blank=True
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True
     )
+
     booking_amount = models.DecimalField(
-        max_digits=10, decimal_places=2, null=True, blank=True
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True
     )
-    maintenance_charges = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+
+    maintenance_charges = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        null=True,
+        blank=True
+    )
+
     cycle = models.CharField(max_length=50, null=True, blank=True)
     notice_period = models.CharField(max_length=50, null=True, blank=True)
-    commission_percent = models.DecimalField(
-        max_digits=5, decimal_places=2, null=True, blank=True)
-    
-    def __str__(self):
-        return f"{self.property_unit_name} - {self.id} "
 
+    commission_percent = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True
+    )
+
+    def __str__(self):
+        return f"{self.property_unit_name} - {self.id}"
+
+
+from django.db import models
 
 class PropertyImages(Base):
-    property = models.ForeignKey(
-        PropertyUnitDetails,
-        on_delete=models.CASCADE,
-        related_name="property_images",null=True, blank=True
-    )
-    image_path = models.TextField(null=True, blank=True)
-    image_type = models.CharField(
-        max_length=20,
-        choices=constants.IMAGE_TYPE_CHOICES,
-        default="INTERIOR",null=True, blank=True
-    )
-    file_name = models.CharField(max_length=255,null=True, blank=True)
+    property = models.ForeignKey('Property', on_delete=models.CASCADE, related_name="property_images")
+    image = models.ImageField(upload_to="property_images/", null=True, blank=True)
+    image_type = models.CharField(max_length=20, default="EXTERIOR")
+    file_name = models.CharField(max_length=255, null=True, blank=True)
 
     def __str__(self):
-        return f"Image for {self.property.property_unit_name}"
+        return f"{self.property.property_name} Image"
 
+class PropertyUnitImages(Base):
+    property_unit = models.ForeignKey('PropertyUnitDetails', on_delete=models.CASCADE, related_name="unit_images")
+    image = models.ImageField(upload_to="property_unit_images/", null=True, blank=True)
+    image_type = models.CharField(max_length=20, default="INTERIOR")
+    file_name = models.CharField(max_length=255, null=True, blank=True)
 
 
 
