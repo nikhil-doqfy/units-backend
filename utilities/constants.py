@@ -351,6 +351,17 @@ ROLE_DOES_NOT_EXIST = "Role does not exist."
 USER_ROLE_DOES_NOT_EXIST = "You do not have any role assigned. Please contact the administrator."
 PERMISSION_DENIED_SUCCESS = "This API is not accessible. Permission denied."
 PERMISSION_DOES_NOT_EXIST = "Your role does not have the required permission to access this API."
+# ── Lead Messages ──────────────────────────────────────────────
+NAME_REQUIRED            = "Name is required."
+PLATFORM_REQUIRED        = "Platform is required."
+LEAD_TYPE_REQUIRED       = "Lead type is required."
+LEAD_CREATED_SUCCESSFULLY = "Lead created successfully."
+LEAD_UPDATED_SUCCESSFULLY = "Lead updated successfully."
+LEAD_DELETED_SUCCESSFULLY = "Lead deleted successfully."
+LEAD_NOT_FOUND           = "Lead not found."
+UNIT_NOT_FOUND           = "Unit not found."
+REFERRED_USER_NOT_FOUND  = "Referred user not found."
+LEAD_FETCHED_SUCCESSFULLY = "Leads fetched successfully."
 
 
 choices=[("MYSELF", "Myself"), ("PMC", "PMC")]
@@ -571,3 +582,44 @@ ADD = "ADD"
 MODIFIED = "MODIFIED"
 DELETE = "DELETE"
 TERMINATED = "TERMINATED"
+
+
+# ── Lead Choices ───────────────────────────────────────────────
+INTERESTED     = 'INTERESTED'
+NOT_INTERESTED = 'NOT_INTERESTED'
+LEASE_TENANCY  = 'LEASE_TENANCY'
+
+PROPERTY_FINDER = 'PROPERTY_FINDER'
+BAYUT           = 'BAYUT'
+DIRECT          = 'DIRECT'
+REFERRAL        = 'REFERRAL'
+
+EMAIL    = 'EMAIL'
+WHATSAPP = 'WHATSAPP'
+CALL     = 'CALL'
+
+# ── Lead ID Prefixes ───────────────────────────────────────────
+LP = 'LP'   # Portal leads
+VC = 'VC'   # Walk-in leads
+
+# ── Portal Platforms → LP, Walk-in → VC ───────────────────────
+PORTAL_PLATFORMS = [PROPERTY_FINDER, BAYUT]
+
+LEAD_STATUS_CHOICES = (
+    (INTERESTED,     'Interested'),
+    (NOT_INTERESTED, 'Not Interested'),
+    (LEASE_TENANCY,  'Lease/ Tenancy'),
+)
+
+PLATFORM_CHOICES = (
+    (PROPERTY_FINDER, 'Property Finder'),
+    (BAYUT,           'Bayut'),
+    (DIRECT,          'Direct'),
+    (REFERRAL,        'Referral'),
+)
+
+LEAD_TYPE_CHOICES = (
+    (EMAIL,    'Email'),
+    (WHATSAPP, 'WhatsApp'),
+    (CALL,     'Call'),
+)

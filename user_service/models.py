@@ -474,3 +474,72 @@ class FAQ(models.Model):
 
     def __str__(self):
         return self.question
+  
+class Lead(Base):
+
+    lead_id = models.CharField(max_length=20, unique=True, null=True, blank=True)
+
+    unit = models.ForeignKey(
+        PropertyUnitDetails,
+        on_delete=models.SET_NULL,
+        related_name="leads",
+        null=True, blank=True
+    )
+
+    tenant = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        related_name="tenant_leads",
+        null=True, blank=True
+    )
+    name = models.CharField(max_length=255, null=True, blank=True)
+    email = models.EmailField(null=True, blank=True)
+    contact_number = models.CharField(max_length=20, null=True, blank=True)
+
+    status = models.CharField(
+        max_length=20,
+        choices=constants.LEAD_STATUS_CHOICES,
+        default=constants.INTERESTED,
+        null=True, blank=True
+    )
+
+    platform = models.CharField(
+        max_length=20,
+        choices=constants.PLATFORM_CHOICES,
+        null=True, blank=True
+    )
+
+    lead_type = models.CharField(
+        max_length=20,
+        choices=constants.LEAD_TYPE_CHOICES,
+        null=True, blank=True
+    )
+
+    referred_by = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        related_name="referred_leads",
+        null=True, blank=True
+    )
+
+    company = models.ForeignKey(
+        Company,
+        on_delete=models.SET_NULL,
+        related_name="leads",
+        null=True, blank=True
+    )
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if not self.lead_id:
+            # ── PORTAL (Property Finder, Bayut) → LP ───────────────
+            # ── WALK-IN (Direct, Referral)      → VC ───────────────
+            if self.platform in constants.PORTAL_PLATFORMS:
+                prefix = constants.LP
+            else:
+                prefix = constants.VC
+            self.lead_id = f"{prefix}{self.id}{timezone.now().strftime('%y')}"
+            Lead.objects.filter(id=self.id).update(lead_id=self.lead_id)
+
+    def __str__(self):
+        return f"{self.lead_id} - {self.name}"       
