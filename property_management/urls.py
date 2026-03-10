@@ -5,7 +5,7 @@ from property_management import settings
 from user_service import urls as user_service_urls  
 from auth_service import urls as auth_service_urls
 from payment import urls as payment_urls
-from . import views
+from property_management import views
 from django.urls import re_path
 from terms import urls as terms_urls
 

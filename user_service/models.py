@@ -95,9 +95,6 @@ class CompanyStaff(Base):
     company = models.ForeignKey("Company",on_delete=models.CASCADE,related_name="company_staff" )
     roles = models.ManyToManyField("Role", blank=True)
     permissions = models.ManyToManyField(Permission, blank=True)
-    
-        
-    
 class Property(Base):
     property_name = models.CharField(max_length=255, null=True, blank=True)
     total_floors = models.IntegerField(null=True, blank=True)
@@ -107,7 +104,6 @@ class Property(Base):
         choices=constants.PROPERTY_TYPE_CHOICES,
         default="Apartment"
     )
-
     land_area = models.FloatField(null=True, blank=True)
     land_dm_no = models.CharField(max_length=100, null=True, blank=True)
     plot_no = models.CharField(max_length=100, null=True, blank=True)
@@ -128,7 +124,6 @@ class Property(Base):
         blank=True,
         related_name="owned_properties"
     )
-
     city = models.ForeignKey(
         "City",
         on_delete=models.SET_NULL,
@@ -147,6 +142,24 @@ class PropertyUnitDetails(Base):
         (constants.NOT_AVAILABLE, "Not Available"),
     ]
 
+    BEDROOM_CHOICES = [
+        (1, "1 BHK"),
+        (2, "2 BHK"),
+        (3, "3 BHK"),
+        (4, "4 BHK+"),
+    ]
+
+    BALCONY_CHOICES = [
+        (0, "0"),
+        (1, "1"),
+        (2, "2"),
+        (3, "3"),
+        (4, "4+"),
+    ]
+
+    FLOOR_CHOICES = [(i, str(i)) for i in range(0, 21)]
+    AREA_UNIT_CHOICES = [("Sq-ft", "Sq-ft"), ("Sq-m", "Sq-m")]
+
     property = models.ForeignKey(
         Property,
         on_delete=models.CASCADE,
@@ -154,33 +167,6 @@ class PropertyUnitDetails(Base):
         null=True,
         blank=True
     )
-
-    property_block = models.CharField(max_length=255, null=True, blank=True)
-    property_unit_name = models.CharField(max_length=255, null=True, blank=True)
-    property_type = models.CharField(max_length=50, default="Apartment")
-    land_area = models.FloatField(null=True, blank=True)
-
-    land_area_unit = models.CharField(
-        max_length=20,
-        choices=[("Sq-ft", "Sq-ft"), ("Sq-m", "Sq-m")],
-        default="Sq-ft"
-    )
-
-    land_dm_no = models.CharField(max_length=255, null=True, blank=True)
-    bedrooms = models.IntegerField(null=True, blank=True)
-    area_of_property = models.FloatField(null=True, blank=True)
-    area_unit = models.CharField(
-        max_length=20,
-        choices=[("Sq-ft", "Sq-ft"), ("Sq-m", "Sq-m")],
-        default="Sq-ft"
-    )
-
-    apartment_floor_no = models.IntegerField(null=True, blank=True)
-    no_of_parking = models.IntegerField(null=True, blank=True)
-    balcony = models.IntegerField(null=True, blank=True)
-    plot_no = models.CharField(max_length=50, null=True, blank=True)
-    makani_no = models.CharField(max_length=255, null=True, blank=True)
-    dewa_no = models.CharField(max_length=255, null=True, blank=True)
 
     owner = models.ForeignKey(
         UserProfile,
@@ -204,6 +190,46 @@ class PropertyUnitDetails(Base):
         related_name="assigned_units",
         blank=True
     )
+
+    property_block = models.CharField(max_length=255, null=True, blank=True)
+    property_unit_name = models.CharField(max_length=255, null=True, blank=True)
+    property_type = models.CharField(
+        max_length=50,
+        choices=constants.PROPERTY_TYPE_CHOICES,
+        default="Apartment"
+    )
+    land_area = models.FloatField(null=True, blank=True)
+    land_area_unit = models.CharField(
+        max_length=20,
+        choices=AREA_UNIT_CHOICES,
+        default="Sq-ft"
+    )
+    land_dm_no = models.CharField(max_length=255, null=True, blank=True)
+    bedrooms = models.IntegerField(
+        choices=BEDROOM_CHOICES,
+        null=True,
+        blank=True
+    )
+    area_of_property = models.FloatField(null=True, blank=True)
+    area_unit = models.CharField(
+        max_length=20,
+        choices=AREA_UNIT_CHOICES,
+        default="Sq-ft"
+    )
+    apartment_floor_no = models.IntegerField(
+        choices=FLOOR_CHOICES,
+        null=True,
+        blank=True
+    )
+    balcony = models.IntegerField(
+        choices=BALCONY_CHOICES,
+        null=True,
+        blank=True
+    )
+    no_of_parking = models.IntegerField(null=True, blank=True)
+    plot_no = models.CharField(max_length=50, null=True, blank=True)
+    makani_no = models.CharField(max_length=255, null=True, blank=True)
+    dewa_no = models.CharField(max_length=255, null=True, blank=True)
 
     is_occupied = models.BooleanField(default=False)
     property_code = models.CharField(max_length=255, null=True, blank=True)
@@ -254,9 +280,6 @@ class PropertyUnitDetails(Base):
     def __str__(self):
         return f"{self.property_unit_name} - {self.id}"
 
-
-from django.db import models
-
 class PropertyImages(Base):
     property = models.ForeignKey('Property', on_delete=models.CASCADE, related_name="property_images")
     image = models.ImageField(upload_to="property_images/", null=True, blank=True)
@@ -271,7 +294,6 @@ class PropertyUnitImages(Base):
     image = models.ImageField(upload_to="property_unit_images/", null=True, blank=True)
     image_type = models.CharField(max_length=20, default="INTERIOR")
     file_name = models.CharField(max_length=255, null=True, blank=True)
-
 
 
 class PropertyInterest(Base):
