@@ -3,7 +3,8 @@ from user_service.models import (
     UserProfile, Company, Permission, Role, 
     Property, PropertyUnitDetails, PropertyImages, UserVerification,
     Documents, PropertyDocumentsMapping, OwnerDocumentsMapping,
-    TenantDocumentsMapping, CompanyUserDocumentsMapping, StaffDocumentsMapping,Country, State, City, CompanyStaff ,FAQ ,PrivacyPolicy ,Complaint ,PropertyInterest
+    TenantDocumentsMapping, CompanyUserDocumentsMapping, StaffDocumentsMapping,Country, State, City, CompanyStaff ,FAQ ,PrivacyPolicy ,Complaint ,
+    PropertyInterest, Lead
 )
 from property_management.models import (
     LeasePropertyDetails, UserInvitation, Template, TemplateFields,
@@ -149,6 +150,12 @@ class TermAndConditionAdmin(admin.ModelAdmin):
     )
 
 admin.site.register(CompanyStaff, CompanyStaffAdmin)
+
+@admin.register(Lead)
+class LeadAdmin(admin.ModelAdmin):
+    list_display = ("lead_id", "name", "tenant", "unit", "email", "contact_number", "status", "platform", "lead_type")
+    search_fields = ("lead_id", "name", "email", "contact_number")
+    list_filter = ("status", "platform", "lead_type")
 
 
 
