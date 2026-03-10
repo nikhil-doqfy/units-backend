@@ -480,10 +480,9 @@ class Lead(Base):
     lead_id = models.CharField(max_length=20, unique=True)
 
     unit = models.ForeignKey(
-        PropertyUnitDetails,
-        on_delete=models.SET_NULL,
-        related_name="leads",
-        null=True
+    PropertyUnitDetails,
+    on_delete=models.CASCADE,
+    related_name="leads"
     )
 
     tenant = models.ForeignKey(
@@ -526,25 +525,26 @@ class Lead(Base):
 
     company = models.ForeignKey(
         Company,
-        on_delete=models.SET_NULL,
-        related_name="leads",
-        null=True,
-        blank=True
+        on_delete=models.CASCADE,
+        related_name="leads"
     )
 
     def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)
-
         if not self.lead_id:
-
             if self.platform in constants.PORTAL_PLATFORMS:
                 prefix = constants.LP
             else:
                 prefix = constants.VC
+            # ── Get last lead count and increment ─────────────────
+            last_lead = Lead.objects.filter(
+                lead_id__startswith=prefix
+            ).order_by('-id').first()
 
-            self.lead_id = f"{prefix}{self.id}{timezone.now().strftime('%y')}"
+            if last_lead:
+                last_number = int(last_lead.lead_id[len(prefix):])
+                new_number = last_number + 1
+            else:
+                new_number = 1
 
-            Lead.objects.filter(id=self.id).update(lead_id=self.lead_id)
-
-    def __str__(self):
-        return f"{self.lead_id} - {self.name}"
+            self.lead_id = f"{prefix}{str(new_number).zfill(4)}"
+        super().save(*args, **kwargs)
