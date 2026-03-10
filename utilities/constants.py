@@ -342,6 +342,9 @@ PARENT_PROPERTY_REQUIRED = "Parent property is required"
 ROLE_ALREADY_EXISTS_IN_COMPANY = "This role already exists in this company"
 STAFF_DETAILS_FETCH_SUCCESS = "Staff details fetched successfully"
 
+DATA_CREATED_SUCCESSFULLY = "Data created successfully"
+DATA_UPDATED_SUCCESSFULLY = "Data updated successfully"
+DATA_DELETED_SUCCESSFULLY = "Data deleted successfully"
 
 TERMS_CREATED_SUCCESS = "Terms created successfully."
 DESCRIPTION_REQUIRED    = "Description is required."

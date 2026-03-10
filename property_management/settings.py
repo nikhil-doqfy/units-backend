@@ -41,7 +41,8 @@ INSTALLED_APPS = [
     'user_service',
     'property_management',
     "payment",
-    'sslserver'
+    'sslserver',
+    'charges'
 
 ]
 
