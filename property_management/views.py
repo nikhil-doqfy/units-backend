@@ -4,7 +4,7 @@ import pdfkit
 import json
 import datetime
 from user_service.models import UserProfile, Documents, PropertyUnitDetails,Property, Company, PropertyImages ,PropertyDocumentsMapping, Country, State, City, Role ,Complaint,FAQ ,PropertyInterest
-from property_management.models import LeasePropertyDetails,TemplateFields, TemplateValues,Template,LeaseDocumentsMapping,TermAndCondition
+from property_management.models import LeasePropertyDetails,TemplateFields, TemplateValues,Template,LeaseDocumentsMapping,TermAndCondition,AuditLog
 from payment.models import Payment,Bank
 from utilities.decorator import is_request_authenticated
 from utilities.helper_functions import (
@@ -37,7 +37,8 @@ from property_management.utils import (
     get_lease_status,
     get_location_kv,
     get_full_user_data ,
-    get_tenant_detail_by_id
+    get_tenant_detail_by_id,
+    audit_logs
 )
 from django.db.models import Count, Q
 from django.utils import timezone
@@ -620,6 +621,12 @@ def save_property(request):
 
             prop.save()
 
+            audit_logs(
+                request,
+                f"Property '{prop.property.property_name if prop.property else ''}' unit '{prop.property_unit_name}' updated",
+                constants.UPDATED
+            )
+
             return prepare_response(
                 message=constants.PROPERTY_UPDATE_SUCCESS,
                 content={"property_id": prop.id},
@@ -701,6 +708,12 @@ def save_property(request):
                 company=company,
                 property=parent_property,
                 step_status=constants.BASIC_DETAILS,
+            )
+
+            audit_logs(
+                request,
+                f"Property '{parent_property.property_name}' unit '{new_property_unit.property_unit_name}' created",
+                constants.CREATED
             )
 
             return prepare_response(
@@ -950,6 +963,13 @@ def property_documents(request):
 
             property_obj.step_status = "DOCUMENTS_DETAILS"
             property_obj.save()
+            
+            audit_logs(
+                request,
+                f"Documents uploaded for property unit '{property_obj.property_unit_name}'",
+                constants.CREATED
+            )
+
 
             return prepare_response(
                 message=constants.DOCUMENTS_UPLOAD_SUCCESS,
@@ -1018,6 +1038,11 @@ def property_documents(request):
                     "type": doc_type,
                     "status": status_text
                 })
+            audit_logs(
+                request,
+                f"Documents updated for property '{property_obj.property.property_name}' unit '{property_obj.property_unit_name}'",
+                constants.UPDATED
+            )
 
             return prepare_response(
                 message=constants.DOCUMENTS_UPLOAD_SUCCESS,
@@ -1595,6 +1620,12 @@ def lease_details_view(request):
                 core=body.get("core", False),
             )
 
+            audit_logs(
+                request,
+                f"Added lease agreement for {property_obj.property.property_name} – Unit {property_obj.property_unit_name}",
+                constants.CREATED
+            )
+
             return prepare_response(
                 message=constants.LEASE_CREATED,
                 content={"id": lease.id},
@@ -1646,6 +1677,12 @@ def lease_details_view(request):
                     setattr(lease, field, body[field])
 
             lease.save()
+
+            audit_logs(
+                request,
+                f"Updated lease agreement for {lease.lease_property.property.property_name} – Unit {lease.lease_property.property_unit_name}",
+                constants.UPDATED
+            )
 
             return prepare_response(
                 message=constants.LEASE_UPDATED,
@@ -1770,6 +1807,12 @@ def lease_documents(request):
             lease_obj.step_status = "UPLOAD_EJARI"
             lease_obj.save()
 
+            audit_logs(
+                request,
+                f"Uploaded lease documents for unit '{lease_obj.lease_property.property_unit_name}'",
+                constants.CREATED
+            )
+
             return prepare_response(
                 message=constants.DOCUMENTS_UPLOAD_SUCCESS,
                 content={"uploaded": uploaded_files},
@@ -1851,6 +1894,12 @@ def lease_documents(request):
                     "type": doc_type,
                     "status": status_text
                 })
+
+            audit_logs(
+                request,
+                f"Updated lease documents for unit '{lease_obj.lease_property.property_unit_name}'",
+                constants.UPDATED
+            )
 
             return prepare_response(
                 message=constants.DOCUMENTS_UPLOAD_SUCCESS,
@@ -2193,6 +2242,12 @@ def generate_contract(request):
 
         lease.pdf_path = pdf_s3_url
         lease.save(update_fields=["pdf_path"])
+
+        audit_logs(
+            request,
+            f"Generated lease contract for unit '{lease.lease_property.property_unit_name}'",
+            constants.CREATED
+        )
 
         return prepare_response(
             message=constants.CONTRACT_GENERATED_SUCCESS,
@@ -4427,6 +4482,12 @@ def property_lease_payment(request):
                 status=body.get("status")
             )
 
+            audit_logs(
+                request,
+                f"Created payment of {payment.amount} for Lease {lease.id}", 
+                constants.CREATED
+            )
+
             return prepare_response(
                 message="Payment created successfully",
                 content={"payment_id": payment.id},
@@ -4470,13 +4531,18 @@ def property_lease_payment(request):
 
             payment.save()
 
+            audit_logs(
+               request,
+                f"Updated payment {payment.id}",
+               constants.UPDATED
+            )
+
             return prepare_response(
                 message="Payment updated successfully",
                 content={"payment_id": payment.id},
                 status=status.HTTP_200_OK
             )
 
-        # -------------------- INVALID METHOD --------------------
         else:
             return prepare_response(
                 message="Invalid request method",
@@ -4489,4 +4555,30 @@ def property_lease_payment(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
+@is_request_authenticated
+def audit_log(request):
 
+    if request.method != "GET":
+        return prepare_response(
+            message=constants.INVALID_REQUEST_METHOD,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+    logs = AuditLog.objects.select_related("userprofile__user").order_by("-created")
+
+    data = []
+
+    for log in logs:
+        data.append({
+            "id": log.id,
+            "user": log.userprofile.get_user_basic_info() if log.userprofile else None,
+            "message": log.message,
+            "action_type": log.action_type,
+            "created": datetime_to_epoch_millis(log.created)
+        })
+
+    return prepare_response(
+        content=data,
+        message=constants.DATA_FETCHED_SUCCESSFULLY,
+        status=status.HTTP_200_OK
+    )

@@ -7,7 +7,7 @@ from user_service.models import (
 )
 from property_management.models import (
     LeasePropertyDetails, UserInvitation, Template, TemplateFields,
-    TemplateValues,LeaseDocumentsMapping , TermAndCondition
+    TemplateValues,LeaseDocumentsMapping , TermAndCondition ,AuditLog
 )
 
 # -------------------- User Service Admin --------------------
@@ -150,5 +150,10 @@ class TermAndConditionAdmin(admin.ModelAdmin):
 
 admin.site.register(CompanyStaff, CompanyStaffAdmin)
 
+@admin.register(AuditLog)
+class AuditLogAdmin(admin.ModelAdmin):
 
+    list_display = ["id","userprofile","action_type","message","created"]
+    list_filter = ["action_type","created"]
+    search_fields = ["message","user__user__username"]
 
