@@ -3,7 +3,8 @@ from user_service.models import (
     UserProfile, Company, Permission, Role, 
     Property, PropertyUnitDetails, PropertyImages, UserVerification,
     Documents, PropertyDocumentsMapping, OwnerDocumentsMapping,
-    TenantDocumentsMapping, CompanyUserDocumentsMapping, StaffDocumentsMapping,Country, State, City, CompanyStaff ,FAQ ,PrivacyPolicy ,Complaint ,PropertyInterest
+    TenantDocumentsMapping, CompanyUserDocumentsMapping, StaffDocumentsMapping,Country, State, City, CompanyStaff ,FAQ ,PrivacyPolicy ,Complaint ,
+    PropertyInterest, Lead
 )
 from property_management.models import (
     LeasePropertyDetails, UserInvitation, Template, TemplateFields,
@@ -161,4 +162,5 @@ class AuditLogAdmin(admin.ModelAdmin):
     list_display = ["id","userprofile","action_type","message","created"]
     list_filter = ["action_type","created"]
     search_fields = ["message","userprofile__user__username"]
+
 
