@@ -57,7 +57,7 @@ def terms_api(request):
             content=data
         )
 
-    # ---------------- PARSE JSON BODY ----------------
+
     try:
         body = json.loads(request.body)
     except Exception:
@@ -66,7 +66,6 @@ def terms_api(request):
             status=status.HTTP_400_BAD_REQUEST
         )
 
-    # ---------------- CREATE TERM ----------------
     if request.method == constants.POST:
 
         key = body.get("key", "").lower()
@@ -121,7 +120,6 @@ def terms_api(request):
             message=constants.TERMS_CREATED_SUCCESS
         )
 
-    # ---------------- UPDATE TERM ----------------
     if request.method == constants.PUT:
 
         term_id = body.get("id")
@@ -155,7 +153,6 @@ def terms_api(request):
             message="Term updated successfully"
         )
 
-    # ---------------- DELETE TERM ----------------
     if request.method == constants.DELETE:
 
         term_id = body.get("id")
@@ -182,7 +179,6 @@ def terms_api(request):
             message="Term deleted successfully"
         )
 
-    # ---------------- METHOD NOT ALLOWED ----------------
     return prepare_response(
         message=constants.METHOD_NOT_ALLOWED,
         status=status.HTTP_405_METHOD_NOT_ALLOWED

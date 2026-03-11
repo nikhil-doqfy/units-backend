@@ -6,6 +6,7 @@ class TermsConfig(AppConfig):
     name = 'Terms'
 
 
+
 class TermsServiceConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'Terms'

@@ -9,6 +9,7 @@ class TermCategoryAdmin(admin.ModelAdmin):
     ordering = ("id",)
 
 
+
 @admin.register(TermsAndConditions)
 class TermsAndConditionsAdmin(admin.ModelAdmin):
     list_display = ("id", "key", "title", "country", "category", "is_active")

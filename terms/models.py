@@ -10,6 +10,7 @@ class TermCategory(models.Model):
         return self.name
 
 
+
 class TermsAndConditions(models.Model):
     key = models.CharField(max_length=100)
     title = models.CharField(max_length=255)
