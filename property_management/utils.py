@@ -4,7 +4,7 @@ from user_service.models import (
     StaffDocumentsMapping,
     CompanyUserDocumentsMapping,
     TenantDocumentsMapping,
-    PropertyUnitDetails,
+    UnitDetails,
     Company,
     PropertyImages,
     CompanyStaff,
@@ -44,49 +44,45 @@ def get_location_kv(city):
     return city_kv, state_kv, country_kv
 
 
-
-
-def get_full_property_data(property_unit_id):
+def get_full_property_data(unit_id):
     try:
-        prop = PropertyUnitDetails.objects.filter(id=property_unit_id).first()
+        prop = UnitDetails.objects.filter(id=unit_id).first()
         if not prop:
-            return None, "PropertyUnitDetails not found"
+            return None, "UnitDetails not found"
 
         parent_property = None
         if prop.property:
-            property_type_options = dict(constants.PROPERTY_TYPE_CHOICES)
-            city_kv, state_kv, country_kv = get_location_kv(prop.property.city)
+            property_type_choices = dict(constants.PROPERTY_TYPE_CHOICES)
             parent_property = {
                 "id": prop.property.id,
                 "property_name": prop.property.property_name,
-                "property_code": prop.property.Property_code,
                 "property_type": {
-                    "key": prop.property.property_type_options,
-                    "value": property_type_options.get(prop.property.property_type_options)
+                    "key": prop.property.property_type,
+                    "value": property_type_choices.get(prop.property.property_type)
                 },
-                "additional_address": prop.property.additional_address,
-                "locality": prop.property.locality,
-                "postal_code": prop.property.postal_code,
-                "city": city_kv,
-                 "state": state_kv,
-                 "country": country_kv,
-
+                "address_line_1": prop.property.address_line_1,
+                "address_line_2": prop.property.address_line_2,
+                "landmark": prop.property.landmark,
+                "pincode": prop.property.pincode,
+                "latitude": prop.property.latitude,
+                "longitude": prop.property.longitude,
+                "map_address": prop.property.map_address,
             }
 
         property_unit_data = {
-            "property_unit_id": prop.id,
-            "property_unit_name": prop.property_unit_name,
-            "land_dm_no": prop.land_dm_no,
-            "area_of_property": prop.area_of_property,
-            "no_of_parking": prop.no_of_parking,
-            "bedrooms": prop.bedrooms,
-            "balcony": prop.balcony,
-            "plot_no": prop.plot_no,
-            "area_unit": prop.area_unit,
+            "unit_id": prop.id,
+            "unit_name": prop.unit_name,
+            "property_type": prop.property_type,
             "land_area": prop.land_area,
-            "apartment_no": prop.apartment_no,
-            "apartment_floor_no": prop.apartment_floor_no,
-            "no_of_floors": prop.no_of_floors,
+            "land_area_unit": prop.land_area_unit,
+            "land_dm_no": prop.land_dm_no,
+            "no_of_bedrooms": prop.no_of_bedrooms,
+            "area_of_property": prop.area_of_property,
+            "area_of_property_unit": prop.area_of_property_unit,
+            "floor_no": prop.floor_no,
+            "parking_no": prop.parking_no,
+            "no_of_balcony": prop.no_of_balcony,
+            "plot_no": prop.plot_no,
             "makani_no": prop.makani_no,
             "dewa_no": prop.dewa_no,
             "property_code": prop.property_code,
@@ -94,9 +90,7 @@ def get_full_property_data(property_unit_id):
             "owner_id": prop.owner.id if prop.owner else None,
             "company_id": prop.company.id if prop.company else None,
             "is_occupied": prop.is_occupied,
-            "dimension":prop.dimension,
             "status": "Not Available" if prop.is_occupied else "Available",
-            "address":prop.address,
             "commercial_details": {
                 "rent": prop.rent,
                 "security_deposit": prop.security_deposit,
@@ -117,28 +111,26 @@ def get_full_property_data(property_unit_id):
             }
             for img in prop.property_images.all().order_by("-id")
         ]
+
         document_type_choices = dict(constants.PROPERTY_DOCUMENT_CHOICES)
-        # type_list = [{"key": key, "value": value} for key, value in document_type_choices.items()]
         documents_list = [
-    {
-        "id": mapping.id,
-        "file_name": mapping.document.file_name,
-        "url": fetch_s3_presigned_url(
-            mapping.document.file_path,
-            file_name=mapping.document.file_name
-        ),
-        "type": mapping.document_choice
-    }
-         for mapping in prop.property_documents.select_related("document").order_by("-id")]
-        
-        documents =  documents_list
+            {
+                "id": mapping.id,
+                "file_name": mapping.document.file_name,
+                "url": fetch_s3_presigned_url(
+                    mapping.document.file_path,
+                    file_name=mapping.document.file_name
+                ),
+                "type": mapping.document_choice
+            }
+            for mapping in prop.property_documents.select_related("document").order_by("-id")
+        ]
+        documents = documents_list
 
         owner_data = None
         if prop.owner:
             city = prop.owner.city
             city_kv, state_kv, country_kv = get_location_kv(city)
-            state = city.state if city else None
-            country = state.country if state else None
             owner_data = {
                 "id": prop.owner.id,
                 "email": prop.owner.user.email,
@@ -146,16 +138,16 @@ def get_full_property_data(property_unit_id):
                 "last_name": prop.owner.user.last_name,
                 "address": prop.owner.address,
                 "additional_address": prop.owner.additional_address,
-                 "city":city_kv,
-                 "state":state_kv,
-                 "country":country_kv,
+                "city": city_kv,
+                "state": state_kv,
+                "country": country_kv,
                 "postal_code": prop.owner.pin_code,
                 "contact_number": prop.owner.contact_number,
-                 "locality":prop.owner.locality,
-                "uae_residence_visa":prop.owner.uae_residence_visa,
-                "emirate_id":prop.owner.emirate_id,
-                "trade_license_number":prop.owner.trade_license_number,
-                "owner_code":prop.owner.user_code,
+                "locality": prop.owner.locality,
+                "uae_residence_visa": prop.owner.uae_residence_visa,
+                "emirate_id": prop.owner.emirate_id,
+                "trade_license_number": prop.owner.trade_license_number,
+                "owner_code": prop.owner.user_code,
             }
 
         tenant_data = None
@@ -163,7 +155,6 @@ def get_full_property_data(property_unit_id):
         if lease and lease.tenant:
             city = lease.tenant.city
             city_kv, state_kv, country_kv = get_location_kv(city)
-        
             tenant_data = {
                 "id": lease.tenant.id,
                 "email": lease.tenant.user.email,
@@ -171,15 +162,15 @@ def get_full_property_data(property_unit_id):
                 "last_name": lease.tenant.user.last_name,
                 "address": lease.tenant.address,
                 "additional_address": lease.tenant.additional_address,
-                "city":city_kv,
-                 "state":state_kv,
-                 "country":country_kv,
+                "city": city_kv,
+                "state": state_kv,
+                "country": country_kv,
                 "postal_code": lease.tenant.pin_code,
                 "contact_number": lease.tenant.contact_number,
-                "locality":lease.tenant.locality,
-                "uae_residence_visa":lease.tenant.uae_residence_visa,
-                "emirate_id":lease.tenant.emirate_id,
-                "tenant_code":lease.tenant.user_code,
+                "locality": lease.tenant.locality,
+                "uae_residence_visa": lease.tenant.uae_residence_visa,
+                "emirate_id": lease.tenant.emirate_id,
+                "tenant_code": lease.tenant.user_code,
             }
 
         final_data = {
@@ -405,14 +396,13 @@ def serialize_lease(lease):
     }
 
 
-
 def get_property_images(property_id, single=False):
     """
     get single or list of property images 
     """
     try:
-        property_obj = PropertyUnitDetails.objects.get(id=property_id)
-    except PropertyUnitDetails.DoesNotExist:
+        property_obj = property.objects.get(id=property_id)
+    except property.DoesNotExist:
         return {
             "error": True,
             "message": "Invalid property id"
