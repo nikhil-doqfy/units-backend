@@ -8,7 +8,7 @@ from user_service.models import (
 )
 from property_management.models import (
     LeasePropertyDetails, UserInvitation, Template, TemplateFields,
-    TemplateValues,LeaseDocumentsMapping , TermAndCondition
+    TemplateValues,LeaseDocumentsMapping , TermAndCondition ,AuditLog
 )
 
 # -------------------- User Service Admin --------------------
@@ -155,6 +155,12 @@ class LeadAdmin(admin.ModelAdmin):
     list_display = ("lead_id", "name", "get_tenant", "unit", "email", "contact_number", "status", "platform", "lead_type")
     search_fields = ("lead_id", "name", "email", "contact_number")
     list_filter = ("status", "platform", "lead_type")
+
+@admin.register(AuditLog)
+class AuditLogAdmin(admin.ModelAdmin):
+    list_display = ["id","userprofile","action_type","message","created"]
+    list_filter = ["action_type","created"]
+    search_fields = ["message","userprofile__user__username"]
 
     def get_tenant(self, obj):
         if obj.tenant:
