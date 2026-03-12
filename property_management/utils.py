@@ -9,7 +9,7 @@ from user_service.models import (
     PropertyImages,
     CompanyStaff,
 )
-from property_management.models import UserInvitation
+from property_management.models import UserInvitation, AuditLog
 from utilities.helper_functions import send_ses_email, fetch_s3_presigned_url, datetime_to_epoch_millis
 from utilities import status ,  constants
 from django.contrib.auth.models import User
@@ -543,3 +543,13 @@ def get_tenant_detail_by_id(tenant_id):
         "natioanlity":tenant_profile.city.state.country.name if tenant_profile.city else None ,
     
     }
+
+def audit_logs(request, message, action_type):
+    user_profile = request.user
+
+    AuditLog.objects.create(
+        userprofile=user_profile,
+        created_by=user_profile.user,
+        message=message,
+        action_type=action_type
+    )

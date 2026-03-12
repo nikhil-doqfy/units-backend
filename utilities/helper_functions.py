@@ -205,6 +205,7 @@ def send_ses_email(to_email, subject, body_text, body_html):
         )
         return True
     except Exception as e:
+        print(f"Error sending email via SES: {str(e)}")
         return False
     
 
@@ -217,8 +218,8 @@ console_handler.setFormatter(formatter)
 if not logger.handlers:
     logger.addHandler(console_handler)
 
-def upload_file_to_s3_base64(file_data, object_name, bucket=None):
 
+def upload_file_to_s3_base64(file_data, object_name, bucket=None):
     if not bucket:
         bucket = S3_BUCKET_NAME
     try:
@@ -228,8 +229,6 @@ def upload_file_to_s3_base64(file_data, object_name, bucket=None):
             aws_secret_access_key=AWS_SECRET_KEY,
             region_name=AWS_REGION,
         )
-
-  
         if isinstance(file_data, str):
             if "," in file_data:
                 file_data = file_data.split(",")[1]
@@ -253,8 +252,6 @@ def upload_file_to_s3_base64(file_data, object_name, bucket=None):
     except Exception as e:
         logger.error(f" Unexpected error uploading file '{object_name}': {str(e)}")
         raise e
-
-
 
 logger = logging.getLogger(__name__)
 def fetch_s3_file_as_base64(file_url):
