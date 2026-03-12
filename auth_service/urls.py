@@ -8,6 +8,5 @@ urlpatterns = [
     path("otp/verify", views.verify_otp, name="verify_otp"),
     path("password/reset", views.reset_password, name="reset_password"),
     path("change/password", views.change_password, name="change_password"),     
-
-    ]
+]
 

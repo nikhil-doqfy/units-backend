@@ -1,7 +1,6 @@
 from django.db import models
 from django.forms.models import model_to_dict
-from property_management.models import Base
-from user_service.models import Country
+from property_management.models import Base, Country
 
 
 class Charge(Base): 

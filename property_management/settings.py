@@ -12,22 +12,14 @@ https://docs.djangoproject.com/en/4.0/ref/settings/
 import os
 from pathlib import Path
 
-
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-
 SECRET_KEY = 'django-insecure--w_9ca8o1wlh-l3foy8=g*x%9ay90j@2#3&pntlrv$wausuo8&'
-
-
 DEBUG = True
-
 ALLOWED_HOSTS = ['*']
 CSRF_TRUSTED_ORIGINS = ["https://*.doqfy.in"] 
 
-
 # CSRF_TRUSTED_ORIGINS = ["https://units-api.doqfy.in",  "https://34.14.170.254"]
-
-
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -39,12 +31,11 @@ INSTALLED_APPS = [
     'django_celery_beat',
     'auth_service',
     'user_service',
-    'property_service',
+    'property',
     'property_management',
     "payment",
     'sslserver',
     'charges'
-
 ]
 
 MIDDLEWARE = [
@@ -57,7 +48,6 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'corsheaders.middleware.CorsMiddleware',
-    
 ]
 
 ROOT_URLCONF = 'property_management.urls'
@@ -80,16 +70,12 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'property_management.wsgi.application'
 
-
-
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
     }
 }
-
-
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -106,39 +92,27 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-
-
-
 LANGUAGE_CODE = 'en-us'
- 
 TIME_ZONE = 'UTC'
- 
 USE_I18N = True
- 
 USE_TZ = True
  
 CORS_ALLOWED_ORIGINS = [
  "http://localhost:4200",
-"https://units.doqfy.in",
-
+ "https://units.doqfy.in",
 ]
-
  
 CORS_ALLOW_CREDENTIALS = True
- 
  
 STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'static')
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 MEDIA_URL = '/media/'
  
- 
 # MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR /'media'
 
-
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
 
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_USE_TLS = True
@@ -146,12 +120,4 @@ EMAIL_HOST = ""
 EMAIL_HOST_USER = ''
 EMAIL_HOST_PASSWORD = ''
 EMAIL_PORT = 587
-
-
-
-
 # --------------------------------------------------------------------------------------------------------------------------------------------
-
-
-
- 

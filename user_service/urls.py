@@ -1,6 +1,6 @@
 from django.urls import path
 from user_service import views as user_serviceviews
-from . import views
+from user_service import views
 
 urlpatterns = [
     path("signup", user_serviceviews.user_sign_up),
@@ -12,6 +12,4 @@ urlpatterns = [
     path('users_csv', views.export_users_csv, name='export_users_csv'),
     path('staff_csv', views.export_staff_csv, name='export_staff_csv'),
     path("search_details", views.contact_list_view, name="contact_list"),
-    path('create_lead', views.create_lead, name='create_lead'),
-    path('convert_lead', views.convert_lead_to_tenant, name='convert_lead_to_tenant'),
-    ] 
+] 

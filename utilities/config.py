@@ -31,3 +31,5 @@ AWS_SECRET_KEY = os.getenv("AWS_SECRET_KEY")
 AWS_REGION = os.getenv("AWS_REGION")
 AWS_PRESIGNED_EXPIRATION = int(os.getenv("AWS_PRESIGNED_EXPIRATION", 3600))
 S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
+
+OTP_VALID_TIME = int(os.getenv("OTP_VALID_TIME", 300))  # Default to 5 minutes (300 seconds)

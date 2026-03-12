@@ -2,8 +2,7 @@ from django.db import models
 from django.forms.models import model_to_dict
 from utilities.helper_functions import datetime_to_epoch
 from utilities import constants
-from property_management.models import Base, LeasePropertyDetails
-from user_service.models import City
+from property_management.models import Base, LeasePropertyDetails, City
 
 #========================================
 #PROPERTY MANAGEMENT PAYMENT FLOW MODELS

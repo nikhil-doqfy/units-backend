@@ -1,26 +1,30 @@
 from django.db import models
 from property_management.models import Base
 from utilities import constants
+from user_service.models import Documents
 
 
-class Company(Base):
-    company_user = models.ForeignKey(
-        "user_service.UserProfile",
-        on_delete=models.CASCADE,
-        related_name="company_user"
-    )
-    company_code = models.CharField(max_length=255, null=True, blank=True)
-    company_name = models.CharField(max_length=255, null=True, blank=True)
-    company_address = models.CharField(max_length=255, null=True, blank=True)
+class PropertyManagmentCompany(Base):
+    code = models.CharField(max_length=255, blank=True)
+    name = models.CharField(max_length=255)
+    address_line_1 = models.CharField(max_length=255)
+    address_line_2 = models.CharField(max_length=255)
     licence_number = models.CharField(max_length=100)
-    licence_expiry_date = models.DateTimeField(null=True, blank=True)
+    licence_expiry_date = models.DateTimeField()
     licence_issuer = models.CharField(max_length=150)
 
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if not self.code:
+            self.code = f"VC{self.pk:04d}"
+            PropertyManagmentCompany.objects.filter(pk=self.pk).update(code=self.code)
+
     def __str__(self):
-        return f"{self.company_name}"
+        return f"{self.name}"
 
 
 class Property(Base):
+    code = models.CharField(max_length=255, blank=True)
     property_name = models.CharField(max_length=255)
     no_of_blocks = models.IntegerField(choices=constants.BLOCKS_CHOICES)
     no_of_units = models.IntegerField(choices=constants.UNITS_CHOICES)
@@ -46,17 +50,90 @@ class Property(Base):
     latitude = models.DecimalField(max_digits=20, decimal_places=15, null=True, blank=True)
     longitude = models.DecimalField(max_digits=20, decimal_places=15, null=True, blank=True)
     map_address = models.TextField(null=True, blank=True)
-    property_pmc = models.ForeignKey(
-        Company,
+    pmc = models.ForeignKey(
+        PropertyManagmentCompany,
         on_delete=models.CASCADE,
         related_name="pmc_properties",
         null=True,
         blank=True
     )
 
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if not self.code:
+            from utilities.helper_functions import generate_property_code
+            self.code = generate_property_code()
+            Property.objects.filter(pk=self.pk).update(code=self.code)
+
     def __str__(self):
         return self.property_name or f"Property #{self.id}"
 
+    def _get_thumbnail(self):
+        img = self.property_images.filter(image_type="EXTERIOR").first()
+        if not img:
+            return None
+        from utilities.helper_functions import fetch_s3_presigned_url
+        return fetch_s3_presigned_url(img.image_path, img.file_name)
+
+    def _serialize_property(self):
+        return {
+            "id": self.id,
+            "code": self.code,
+            "property_name": self.property_name,
+            "property_type": self.property_type,
+            "no_of_blocks": self.no_of_blocks,
+            "no_of_units": self.no_of_units,
+            "land_area": self.land_area,
+            "land_area_unit": self.land_area_unit,
+            "land_dm_no": self.land_dm_no,
+            "plot_no": self.plot_no,
+            "makani_no": self.makani_no,
+            "dewa_no": self.dewa_no,
+            "address_line_1": self.address_line_1,
+            "address_line_2": self.address_line_2,
+            "landmark": self.landmark,
+            "pincode": self.pincode,
+            "latitude": self.latitude,
+            "longitude": self.longitude,
+            "map_address": self.map_address,
+            "pmc": {
+                "key": self.pmc.id if self.pmc else None,
+                "value": self.pmc.name if self.pmc else None,
+            },
+            "property_owners": [
+                {
+                    "id": po.owner.id,
+                    "name": f"{po.owner.user.first_name} {po.owner.user.last_name}".strip(),
+                    "email": po.owner.user.email,
+                    "contact_number": po.owner.contact_number,
+                    "emirates_id": po.owner.emirate_id,
+                }
+                for po in self.property_owners.select_related("owner__user").all()
+            ],
+            "thumbnail": self._get_thumbnail(),
+        }
+    
+class PropertyOwner(Base):
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name="property_owners")
+    owner = models.ForeignKey(
+        "user_service.Owner",
+        on_delete=models.CASCADE,
+        related_name="property_owner_mappings"
+    )
+
+    def __str__(self):
+        return f"{self.owner} -> {self.property}"
+    
+
+class PropertyBlocks(Base):
+    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name="property_blocks")
+    block_name = models.CharField(max_length=255)
+    no_of_floors = models.IntegerField(choices=constants.FLOOR_CHOICES)
+    no_of_parking = models.IntegerField(choices=constants.PARKING_CHOICES)
+    no_of_units = models.IntegerField(choices=constants.UNITS_CHOICES)
+
+    def __str__(self):
+        return f"{self.block_name} - {self.property.property_name}"
 
 class Unit(Base):
     property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name="units")
@@ -70,21 +147,15 @@ class Unit(Base):
     owner = models.ForeignKey(
         "user_service.UserProfile",
         on_delete=models.SET_NULL,
-        limit_choices_to={'user_role': constants.OWNER},
         related_name="owner_properties",
         null=True,
         blank=True
     )
     company = models.ForeignKey(
-        Company,
+        PropertyManagmentCompany,
         on_delete=models.CASCADE,
         related_name="company_units",
         null=True,
-        blank=True
-    )
-    assigned_staff = models.ManyToManyField(
-        "user_service.CompanyStaff",
-        related_name="assigned_units",
         blank=True
     )
     unit_name = models.CharField(max_length=255)
@@ -140,15 +211,13 @@ class PropertyImages(Base):
         null=True,
         blank=True
     )
-    image_path = models.TextField(null=True, blank=True)
+    image_path = models.TextField()
     image_type = models.CharField(
         max_length=20,
         choices=constants.IMAGE_TYPE_CHOICES,
-        default="INTERIOR",
-        null=True,
-        blank=True
+        default="INTERIOR"
     )
-    file_name = models.CharField(max_length=255, null=True, blank=True)
+    file_name = models.CharField(max_length=255)
 
     def __str__(self):
         return f"Image for Property #{self.property_id}"
@@ -173,93 +242,23 @@ class PropertyInterest(Base):
         return f"{self.tenant} → {self.property_unit}"
 
 
-class PropertyDocumentsMapping(Base):
-    PROPERTY_DOCUMENT_CHOICES = (
-        (constants.FLOOR_PLAN, "Floor Plan"),
-        (constants.EJARI_CERTIFICATE, "Ejari Certificate"),
-        (constants.PMC_DOCUMENT, "PMC Document"),
-        (constants.CHEQUE_DOCUMENT, "Cheque Document"),
-    )
+class PropertyDocuments(Documents):
     property = models.ForeignKey(
         Property,
         on_delete=models.CASCADE,
-        related_name="property_documents",
-        null=True,
-        blank=True
+        related_name="property_documents"
     )
-    document = models.ForeignKey(
-        "user_service.Documents",
-        on_delete=models.CASCADE,
-        related_name="property_document_mappings",
-        null=True,
-        blank=True
-    )
-    document_choice = models.CharField(
-        max_length=50,
-        choices=PROPERTY_DOCUMENT_CHOICES,
-        default=constants.FLOOR_PLAN
-    )
-
     def __str__(self):
-        return f"{self.property} -> {self.document}"
+        return f"{self.property}"
 
 
-class CompanyUserDocumentsMapping(Base):
-    COMPANY_DOCUMENT_CHOICES = (
-        (constants.EMIRATES_ID, "Emirates ID"),
-        (constants.UAE_RESIDENCE_VISA, "UAE Residence Visa"),
-        (constants.DLD_CERTIFICATE, "DLD Certificate"),
-    )
+class PropertyManagerDocuments(Documents):
     company_user = models.ForeignKey(
         "user_service.UserProfile",
-        limit_choices_to={'user_role': constants.COMPANY_USER},
         on_delete=models.CASCADE,
         related_name="company_user_documents",
         null=True,
         blank=True
     )
-    document = models.ForeignKey(
-        "user_service.Documents",
-        on_delete=models.CASCADE,
-        related_name="company_user_document_mappings",
-        null=True,
-        blank=True
-    )
-    document_choice = models.CharField(
-        max_length=50,
-        choices=COMPANY_DOCUMENT_CHOICES,
-        default=constants.EMIRATES_ID
-    )
-
     def __str__(self):
         return f"{self.company_user} -> {self.document}"
-
-
-class StaffDocumentsMapping(Base):
-    STAFF_DOCUMENT_CHOICES = (
-        (constants.EMIRATES_ID, "Emirates ID"),
-        (constants.UAE_RESIDENCE_VISA, "UAE Residence Visa"),
-        (constants.DLD_CERTIFICATE, "DLD Certificate"),
-    )
-    staff = models.ForeignKey(
-        "user_service.UserProfile",
-        on_delete=models.CASCADE,
-        related_name="staff_documents",
-        null=True,
-        blank=True
-    )
-    document = models.ForeignKey(
-        "user_service.Documents",
-        on_delete=models.CASCADE,
-        related_name="staff_document_mappings",
-        null=True,
-        blank=True
-    )
-    document_choice = models.CharField(
-        max_length=50,
-        choices=STAFF_DOCUMENT_CHOICES,
-        default=constants.EMIRATES_ID
-    )
-
-    def __str__(self):
-        return f"{self.staff} -> {self.document}"
