@@ -126,9 +126,6 @@ class LeaseDocumentsMapping(Base):
     def __str__(self):
         return f"Lease {self.lease.id} -> Document {self.document.file_name}"
 
-
-
-
 class UserInvitation(Base):
     INVITATION_TYPE_CHOICES = (
         ("OWNER_TO_PMC", "Owner inviting Property Manager"),
@@ -212,8 +209,6 @@ class TemplateValues(Base):
     def __str__(self):
         return f"Template: {self.document_template.name} | Lease ID: {self.lease.id}"
     
-
-
 
 class TermAndCondition(models.Model):
 

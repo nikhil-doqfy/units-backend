@@ -97,7 +97,6 @@ class CompanyStaff(Base):
     permissions = models.ManyToManyField(Permission, blank=True)
     
         
-    
 class Property(Base):
     property_name = models.CharField(max_length=255,null=True, blank=True)
     total_floors = models.IntegerField(null=True, blank=True)
