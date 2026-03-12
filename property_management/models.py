@@ -16,7 +16,7 @@ class Base(models.Model):
 class LeasePropertyDetails(Base):
     lease_number = models.CharField(max_length=50, unique=True, null=True, blank=True)
     lease_property = models.ForeignKey(
-        "user_service.UnitDetails", 
+        "property_service.Unit",
         on_delete=models.CASCADE,
         related_name="lease_details",null=True, blank=True
     )
@@ -145,7 +145,7 @@ class UserInvitation(Base):
     )
     token = models.CharField(max_length=255, null=True, blank=True)
     property_unit = models.ForeignKey(
-        "user_service.UnitDetails",
+        "property_service.Unit",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

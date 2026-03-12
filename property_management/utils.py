@@ -1,13 +1,15 @@
 from user_service.models import (
     UserProfile,
     OwnerDocumentsMapping,
-    StaffDocumentsMapping,
-    CompanyUserDocumentsMapping,
     TenantDocumentsMapping,
-    UnitDetails,
+    CompanyStaff,
+)
+from property_service.models import (
+    Unit,
     Company,
     PropertyImages,
-    CompanyStaff,
+    CompanyUserDocumentsMapping,
+    StaffDocumentsMapping,
 )
 from property_management.models import UserInvitation, AuditLog
 from utilities.helper_functions import send_ses_email, fetch_s3_presigned_url, datetime_to_epoch_millis
@@ -46,9 +48,9 @@ def get_location_kv(city):
 
 def get_full_property_data(unit_id):
     try:
-        prop = UnitDetails.objects.filter(id=unit_id).first()
+        prop = Unit.objects.filter(id=unit_id).first()
         if not prop:
-            return None, "UnitDetails not found"
+            return None, "Unit not found"
 
         parent_property = None
         if prop.property:
