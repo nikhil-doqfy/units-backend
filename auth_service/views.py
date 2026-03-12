@@ -4,7 +4,8 @@ import uuid
 from django.contrib.auth.hashers import make_password ,check_password
 from utilities import status, constants
 from utilities.helper_functions import prepare_response , validate_email, send_email, validate_password, send_ses_email
-from user_service.models import UserProfile,Documents,OwnerDocumentsMapping,StaffDocumentsMapping,CompanyUserDocumentsMapping,TenantDocumentsMapping,UserVerification ,Company
+from user_service.models import UserProfile, Documents, OwnerDocumentsMapping, TenantDocumentsMapping, UserVerification
+from property_service.models import Company, CompanyUserDocumentsMapping, StaffDocumentsMapping
 from user_service.utils import request_otp_sent
 from utilities.decorator import is_request_authenticated
 from utilities.jwt_token import create_jwt_token , get_jwt_token, decode_jwt_token
