@@ -4,7 +4,7 @@ import pdfkit
 import json
 import datetime
 from user_service.models import UserProfile, Documents, UnitDetails,Property, Company, PropertyImages ,PropertyDocumentsMapping,\
-Country, State, City, Role ,Complaint,FAQ ,PropertyInterest
+Country, State, City, Role ,Complaint,FAQ ,PropertyInterest, Lead
 from property_management.models import LeasePropertyDetails,TemplateFields, TemplateValues,Template,LeaseDocumentsMapping,TermAndCondition
 from payment.models import Payment,Bank
 from utilities.decorator import is_request_authenticated
@@ -4548,3 +4548,164 @@ def property_lease_payment(request):
         )
 
 
+@is_request_authenticated
+def create_lease(request):
+
+    if request.method == "GET":
+        lead_id = request.GET.get("lead_id")
+
+        if not lead_id:
+            return prepare_response(
+                message=constants.LEAD_NOT_FOUND,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        company = Company.objects.filter(company_user=request.user,is_active=True).first()
+        if not company:
+            return prepare_response(
+                message=constants.COMPANY_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        lead = Lead.objects.filter(lead_id=lead_id,company=company,is_active=True).first()
+        if not lead:
+            return prepare_response(
+                message=constants.LEAD_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        unit = lead.unit
+        tenant = lead.tenant
+        owner = unit.owner if unit else None
+
+        leased_unit = {
+            "unit_id": unit.id if unit else None,
+            "property_name": unit.property.property_name if unit and unit.property else None,
+            "block_tower": unit.property_block_tower.property_name if unit and unit.property_block_tower else None,
+            "unit_no": unit.unit_name if unit else None,
+            "unit_size": unit.area_of_property if unit else None,
+            "unit_size_unit": unit.area_of_property_unit if unit else None,
+            "land_no": unit.land_dm_no if unit else None,
+            "dm_no": unit.dewa_no if unit else None,
+            "property_type": {
+                "key": unit.property_type,
+                "value": unit.get_property_type_display()
+            } if unit else None,
+            "makani_no": unit.makani_no if unit else None,
+            "floor_no": unit.floor_no if unit else None,
+            "rent": unit.rent if unit else None,
+            "security_deposit": unit.security_deposit if unit else None,
+            "booking_amount": unit.booking_amount if unit else None,
+            "maintenance_charges": unit.maintenance_charges if unit else None,
+            "commission_percent": unit.commission_percent if unit else None,
+        } if unit else None
+
+        tenant_data = {
+            "tenant_id": tenant.user_code,
+            "tenant_name": f"{tenant.user.first_name} {tenant.user.last_name}".strip(),
+            "passport_no": tenant.passport_number,
+            "passport_expiry_date": tenant.passport_expiry_datetime,
+            "emirates_id": tenant.emirate_id,
+            "visa_no": tenant.visa_number,
+            "visa_expiry_date": tenant.visa_expiry_datetime,
+            "tel_no": tenant.telephone_number,
+            "contact_number": tenant.contact_number,
+            "email": tenant.user.email,
+            "address": tenant.address,
+        } if tenant else None
+
+        owner_data = {
+            "owner_id": owner.user_code,
+            "owner_name": f"{owner.user.first_name} {owner.user.last_name}".strip(),
+            "trade_license_no": owner.trade_license_number,
+            "emirates_id": owner.emirate_id,
+        } if owner else None
+
+        lessor_data = {
+            "license_no": owner.trade_license_number,
+            "license_expiry": owner.license_expiry,
+            "license_issuer": owner.license_issuer,
+            "tel_no": owner.telephone_number,
+            "fax_no": owner.fax_number,
+            "email": owner.user.email,
+            "po_box": owner.po_box,
+            "address": owner.address,
+        } if owner else None
+
+        data = {
+            "leased_unit": leased_unit,
+            "tenant": tenant_data,
+            "owner": owner_data,
+            "lessor": lessor_data,
+        }
+
+        return prepare_response(
+            content=data,
+            message=constants.LEASE_FETCHED_SUCCESSFULLY,
+            status=status.HTTP_200_OK
+        )
+
+    elif request.method == "POST":
+        body = json.loads(request.body)
+        lead_id = request.GET.get("lead_id")
+
+        if not lead_id:
+            return prepare_response(
+                message=constants.LEAD_NOT_FOUND,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        company = Company.objects.filter(company_user=request.user,is_active=True).first()
+        if not company:
+            return prepare_response(
+                message=constants.COMPANY_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        lead = Lead.objects.filter(lead_id=lead_id,company=company,is_active=True).first()
+        if not lead:
+            return prepare_response(
+                message=constants.LEAD_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        unit = lead.unit
+        tenant = lead.tenant
+        owner = unit.owner if unit else None
+
+        lease = LeasePropertyDetails.objects.create(
+            lease_property=unit,
+            tenant=tenant,
+            owner=owner,
+            company=company,
+            rent=body.get("rent"),
+            security_deposit=body.get("security_deposit"),
+            booking_amount=body.get("booking_amount"),
+            maintenance_charges=body.get("maintenance_charges"),
+            commission_percentage=body.get("commission_percentage"),
+            annual_amount=body.get("annual_amount"),
+            actual_annual_amount=body.get("actual_annual_amount"),
+            contract_amount=body.get("contract_amount"),
+            payment_count=body.get("payment_count"),
+            notice_period=body.get("notice_period"),
+            discount=body.get("discount"),
+            lease_start_date=body.get("lease_start_date"),
+            lease_end_date=body.get("lease_end_date"),
+            lease_grace_start_date=body.get("lease_grace_start_date"),
+            lease_grace_end_date=body.get("lease_grace_end_date"),
+            lease_remarks=body.get("lease_remarks"),
+            lease_status=constants.DRAFT,
+            step_status="LEASE_DETAILS",
+            created_by=request.user.user
+        )
+
+        return prepare_response(
+            content={"lease_id": lease.id},
+            message=constants.LEASE_CREATED_SUCCESSFULLY,
+            status=status.HTTP_201_CREATED
+        )
+
+    return prepare_response(
+        message=constants.METHOD_NOT_ALLOWED,
+        status=status.HTTP_405_METHOD_NOT_ALLOWED
+    )

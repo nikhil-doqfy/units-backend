@@ -370,6 +370,14 @@ LEAD_FETCHED_SUCCESSFULLY = "Leads fetched successfully."
 LEAD_ALREADY_CONVERTED = "Lead already converted to tenant."
 LEAD_CONVERTED_SUCCESSFULLY = "Lead converted to tenant successfully."
 
+# ── Lease Messages ─────────────────────────────────────────────
+LEASE_FETCHED_SUCCESSFULLY = "Lease fetched successfully."
+LEASE_CREATED_SUCCESSFULLY = "Lease created successfully."
+LEASE_UPDATED_SUCCESSFULLY = "Lease updated successfully."
+LEASE_DELETED_SUCCESSFULLY = "Lease deleted successfully."
+LEASE_NOT_FOUND = "Lease not found."
+LEASE_ALREADY_EXISTS = "Lease already exists for this unit."
+
 
 choices=[("MYSELF", "Myself"), ("PMC", "PMC")]
 

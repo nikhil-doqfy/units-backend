@@ -50,14 +50,10 @@ class UserProfile(Base):
     visa_number = models.CharField(max_length=50,blank=True,null=True)
     visa_expiry_datetime = models.DateTimeField( blank=True,null=True)
     password_change_timestamp = models.DateTimeField(default=timezone.now)
-    tenant_status = models.CharField(
-        max_length=20,
-        choices=TENANT_STATUS_CHOICES,
-        default="PENDING",
-        null=True,
-        blank=True
-    )
-
+    tenant_status = models.CharField(max_length=20,choices=TENANT_STATUS_CHOICES,default="PENDING",null=True,blank=True )
+    license_expiry = models.DateTimeField(default=timezone.now)
+    license_issuer = models.CharField(max_length=255, default='')
+    po_box = models.CharField(max_length=100, null=True, blank=True)
     def __str__(self):
         return f"{self.id}-{self.user.email}-{self.user_role}"
 

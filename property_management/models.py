@@ -70,6 +70,7 @@ class LeasePropertyDetails(Base):
     payment_count = models.IntegerField(null=True, blank=True, help_text="Number of installments")
     shell = models.BooleanField(default=False, help_text="Is the property Shell?")
     core = models.BooleanField(default=False, help_text="Is the property Core?")
+    company = models.ForeignKey("user_service.Company",on_delete=models.CASCADE,related_name="company_leases")
 
 
     def __str__(self):
