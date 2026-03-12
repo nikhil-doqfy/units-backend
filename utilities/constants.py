@@ -354,6 +354,8 @@ ROLE_DOES_NOT_EXIST = "Role does not exist."
 USER_ROLE_DOES_NOT_EXIST = "You do not have any role assigned. Please contact the administrator."
 PERMISSION_DENIED_SUCCESS = "This API is not accessible. Permission denied."
 PERMISSION_DOES_NOT_EXIST = "Your role does not have the required permission to access this API."
+CONTACTS_FETCH_SUCCESS = "Contacts fetched successfully"
+METHOD_NOT_ALLOWED = "Method not allowed"
 # ── Lead Messages ──────────────────────────────────────────────
 NAME_REQUIRED            = "Name is required."
 PLATFORM_REQUIRED        = "Platform is required."
@@ -365,6 +367,8 @@ LEAD_NOT_FOUND           = "Lead not found."
 UNIT_NOT_FOUND           = "Unit not found."
 REFERRED_USER_NOT_FOUND  = "Referred user not found."
 LEAD_FETCHED_SUCCESSFULLY = "Leads fetched successfully."
+LEAD_ALREADY_CONVERTED = "Lead already converted to tenant."
+LEAD_CONVERTED_SUCCESSFULLY = "Lead converted to tenant successfully."
 
 
 choices=[("MYSELF", "Myself"), ("PMC", "PMC")]
@@ -376,15 +380,6 @@ LEASE_STATUS_CHOICES = [
     ("EXPIRED", "Expired"),
 ]
 
-PROPERTY_TYPE_CHOICES = (
-        ("Apartment", "Apartment"),
-        ("Villa", "Villa"),
-        ("Townhouse", "Townhouse"),
-        ("Penthouse", "Penthouse"),
-        ("Duplex", "Duplex"),
-        ("Skyscraper","Skyscraper"),
-       
-    )
 LAYOUT_CHOICES = [
         ("AI_GENERATED", "Create Layout by AI"),
         ("TEMPLATE_SELECTED", "Select Template"),
@@ -636,4 +631,61 @@ LEAD_TYPE_CHOICES = (
     (EMAIL,    'Email'),
     (WHATSAPP, 'WhatsApp'),
     (CALL,     'Call'),
+)
+
+# ── Property Type ──────────────────────────────────────────────
+APARTMENT   = 'APARTMENT'
+VILLA       = 'VILLA'
+TOWNHOUSE   = 'TOWNHOUSE'
+PENTHOUSE   = 'PENTHOUSE'
+STUDIO      = 'STUDIO'
+OFFICE      = 'OFFICE'
+SHOP        = 'SHOP'
+WAREHOUSE   = 'WAREHOUSE'
+PROPERTY_TYPE_CHOICES = (
+    (APARTMENT,  'Apartment'),
+    (VILLA,      'Villa'),
+    (TOWNHOUSE,  'Townhouse'),
+    (PENTHOUSE,  'Penthouse'),
+    (STUDIO,     'Studio'),
+    (OFFICE,     'Office'),
+    (SHOP,       'Shop'),
+    (WAREHOUSE,  'Warehouse'),
+)
+
+# ── Area Unit ─────────────────────────────────────────────────
+SQ_FT = 'SQ_FT'
+SQ_MT = 'SQ_MT'
+SQ_YD = 'SQ_YD'
+AREA_UNIT_CHOICES = (
+    (SQ_FT, 'Sq-ft'),
+    (SQ_MT, 'Sq-mt'),
+    (SQ_YD, 'Sq-yd'),
+)
+
+# ── No of Blocks ──────────────────────────────────────────────
+BLOCKS_CHOICES = tuple((i, str(i)) for i in range(1, 21))
+
+# ── No of Units ───────────────────────────────────────────────
+UNITS_CHOICES = tuple((i, str(i)) for i in range(1, 101))
+
+# ── Bedrooms ──────────────────────────────────────────────────
+BEDROOM_CHOICES = tuple((i, str(i)) for i in range(1, 11))
+
+# ── Floor ─────────────────────────────────────────────────────
+FLOOR_CHOICES = tuple((i, str(i)) for i in range(0, 51))
+
+# ── Balcony ───────────────────────────────────────────────────
+BALCONY_CHOICES = tuple((i, str(i)) for i in range(0, 11))
+
+# ── Step Status ───────────────────────────────────────────────
+BASIC_DETAILS   = 'BASIC_DETAILS'
+ADDRESS_DETAILS = 'ADDRESS_DETAILS'
+FINANCIAL       = 'FINANCIAL'
+COMPLETED       = 'COMPLETED'
+STEP_CHOICES = (
+    (BASIC_DETAILS,   'Basic Details'),
+    (ADDRESS_DETAILS, 'Address Details'),
+    (FINANCIAL,       'Financial'),
+    (COMPLETED,       'Completed'),
 )

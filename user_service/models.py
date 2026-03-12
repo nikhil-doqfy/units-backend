@@ -108,108 +108,69 @@ class CompanyStaff(Base):
     roles = models.ManyToManyField("Role", blank=True)
     permissions = models.ManyToManyField(Permission, blank=True)
     
-        
     
 class Property(Base):
-    property_name = models.CharField(max_length=255,null=True, blank=True)
-    total_floors = models.IntegerField(null=True, blank=True)
-    total_units = models.IntegerField(null=True, blank=True)
-    additional_address = models.TextField(null=True, blank=True)
-    locality = models.CharField(max_length=20, null=True, blank=True)
-    postal_code = models.CharField(max_length=20, null=True, blank=True)
-    
-    Property_code = models.CharField(
-        max_length=255,  null=True, blank=True
-    )
-    property_type_options = models.CharField(
-        max_length=50,
-        choices=constants.PROPERTY_TYPE_CHOICES,
-        default="Apartment"
-    )
-    city = models.ForeignKey(
-        "City",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-    )
+    property_name = models.CharField(max_length=255)
+    no_of_blocks = models.IntegerField(choices=constants.BLOCKS_CHOICES )
+    no_of_units = models.IntegerField(choices=constants.UNITS_CHOICES)
+    property_type = models.CharField( max_length=20, choices=constants.PROPERTY_TYPE_CHOICES, default=constants.APARTMENT)
+    land_area = models.DecimalField(max_digits=10, decimal_places=2,null=True, blank=True)
+    land_area_unit = models.CharField(max_length=20,choices=constants.AREA_UNIT_CHOICES,default=constants.SQ_FT)
+    land_dm_no = models.CharField(max_length=100, null=True, blank=True)
+    plot_no = models.CharField(max_length=100, null=True, blank=True)
+    makani_no = models.CharField(max_length=100, null=True, blank=True)
+    dewa_no = models.CharField(max_length=100, null=True, blank=True)
+    address_line_1 = models.CharField(max_length=255)
+    address_line_2 = models.CharField(max_length=255)
+    landmark = models.CharField(max_length=255)
+    pincode = models.CharField(max_length=20)
+    latitude = models.DecimalField( max_digits=20, decimal_places=15, null=True, blank=True)
+    longitude = models.DecimalField( max_digits=20, decimal_places=15, null=True, blank=True)
+    map_address = models.TextField(null=True, blank=True)
+    property_pmc = models.ForeignKey(Company, on_delete=models.CASCADE, related_name="pmc_properties" )
 
     def __str__(self):
         return self.property_name or f"Property #{self.id}"
 
 
-class PropertyUnitDetails(Base):
 
-    RENTAL_STATUS_CHOICES = [
-        (constants.AVAILABLE, "Available"),
-        (constants.NOT_AVAILABLE, "Not Available"),
-    ]
-    property_unit_name = models.CharField(max_length=255, null=True, blank=True)
-    land_dm_no = models.CharField(max_length=255, null=True, blank=True)
-    area_of_property = models.FloatField(null=True, blank=True)
-    no_of_parking = models.IntegerField(null=True, blank=True)
-    makani_no = models.CharField(max_length=255, null=True, blank=True)
-    dewa_no = models.CharField(max_length=255, null=True, blank=True)
-    property_type = models.CharField(max_length=50, default="Apartment")
-    land_area = models.CharField(max_length=50, default="1048")
-    apartment_no = models.CharField(max_length=50, default="48")
-    bedrooms = models.CharField(max_length=50, default="Select bedroom")
-    apartment_floor_no = models.CharField(max_length=50, default="3")
-    balcony = models.CharField(max_length=50, default="1")
-    plot_no = models.CharField(max_length=50, default="128")
-    area_unit = models.CharField(max_length=20, default="Sq-ft")
-    land_area_unit = models.CharField(max_length=20, null=True, blank=True)
-    no_of_floors = models.IntegerField(default=1,null=True, blank=True)
-    dimension= models.CharField(max_length=20, null=True, blank=True)
-    address = models.TextField(null=True, blank=True)
-
-    property = models.ForeignKey(
-        Property, on_delete=models.CASCADE, related_name="units",null=True, blank=True
-    )
-    
-    owner = models.ForeignKey(
-        UserProfile,
-        on_delete=models.SET_NULL,
-        limit_choices_to={'user_role': constants.OWNER},
-        related_name="owner_properties",
-        null=True, blank=True
-    )
-
-    company = models.ForeignKey(
-        Company, on_delete=models.CASCADE, related_name="properties",null=True, blank=True
-    )
-    assigned_staff = models.ManyToManyField(CompanyStaff,related_name="assigned_properties")
-
+class UnitDetails(Base):
+    property = models.ForeignKey(Property,on_delete=models.CASCADE,related_name="units")
+    property_block_tower = models.ForeignKey(Property,on_delete=models.CASCADE,related_name="block_towers",null=True, blank=True)
+    owner = models.ForeignKey(UserProfile,on_delete=models.SET_NULL,limit_choices_to={'user_role': constants.OWNER},related_name="owner_properties",null=True, blank=True)
+    company = models.ForeignKey(Company,on_delete=models.CASCADE,related_name="company_units")
+    assigned_staff = models.ManyToManyField(CompanyStaff,related_name="assigned_units")
+    unit_name = models.CharField(max_length=255)
+    property_type = models.CharField(max_length=20,choices=constants.PROPERTY_TYPE_CHOICES,default=constants.APARTMENT)
+    land_area = models.DecimalField( max_digits=10, decimal_places=2, null=True, blank=True)
+    land_area_unit = models.CharField(max_length=20,choices=constants.AREA_UNIT_CHOICES,default=constants.SQ_FT)
+    land_dm_no = models.CharField(max_length=100, null=True, blank=True)
+    no_of_bedrooms = models.IntegerField(choices=constants.BEDROOM_CHOICES, null=True, blank=True)
+    area_of_property = models.DecimalField( max_digits=10, decimal_places=2, null=True, blank=True)
+    area_of_property_unit = models.CharField( max_length=20, choices=constants.AREA_UNIT_CHOICES, default=constants.SQ_FT)
+    floor_no = models.IntegerField(choices=constants.FLOOR_CHOICES,null=True, blank=True)
+    parking_no = models.CharField(max_length=50, null=True, blank=True)
+    no_of_balcony = models.IntegerField(choices=constants.BALCONY_CHOICES,null=True, blank=True)
+    plot_no = models.CharField(max_length=100, null=True, blank=True)
+    makani_no = models.CharField(max_length=100, null=True, blank=True)
+    dewa_no = models.CharField(max_length=100, null=True, blank=True)
     is_occupied = models.BooleanField(default=False)
-    property_code = models.CharField(
-        max_length=255, null=True, blank=True
-    )
-    step_status = models.CharField(
-        max_length=50,
-        choices=constants.STEP_CHOICES,
-        default="BASIC_DETAILS"
-    )
-    rent = models.DecimalField(
-        max_digits=10, decimal_places=2, null=True, blank=True
-    )
-    security_deposit = models.DecimalField(
-        max_digits=10, decimal_places=2, null=True, blank=True
-    )
-    booking_amount = models.DecimalField(
-        max_digits=10, decimal_places=2, null=True, blank=True
-    )
+    property_code = models.CharField(max_length=255, null=True, blank=True)
+    step_status = models.CharField(max_length=50,choices=constants.STEP_CHOICES,default="BASIC_DETAILS")
+    rent = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    security_deposit = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    booking_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     maintenance_charges = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     cycle = models.CharField(max_length=50, null=True, blank=True)
     notice_period = models.CharField(max_length=50, null=True, blank=True)
-    commission_percent = models.DecimalField(
-        max_digits=5, decimal_places=2, null=True, blank=True)
-    
-    def __str__(self):
-        return f"{self.property_unit_name} - {self.id} "
+    commission_percent = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
 
+    def __str__(self):
+        return f"{self.unit_name} - {self.id}"
 
 class PropertyImages(Base):
     property = models.ForeignKey(
-        PropertyUnitDetails,
+        Property,
         on_delete=models.CASCADE,
         related_name="property_images",null=True, blank=True
     )
@@ -229,7 +190,7 @@ class PropertyImages(Base):
 
 class PropertyInterest(Base):
     property_unit = models.ForeignKey(
-        PropertyUnitDetails,
+        Property,
         on_delete=models.CASCADE,
         related_name="interests"
     )
@@ -293,7 +254,7 @@ class PropertyDocumentsMapping(Base):
         (constants.CHEQUE_DOCUMENT, "Cheque Document"),
     )
     property = models.ForeignKey(
-        PropertyUnitDetails,
+        Property,
         on_delete=models.CASCADE,
         related_name="property_documents",null=True, blank=True
     )
@@ -499,7 +460,7 @@ class Lead(Base):
     lead_id = models.CharField(max_length=20, unique=True)
 
     unit = models.ForeignKey(
-    PropertyUnitDetails,
+    UnitDetails,
     on_delete=models.CASCADE,
     related_name="leads"
     )
