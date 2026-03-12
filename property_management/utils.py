@@ -1,15 +1,17 @@
 from user_service.models import (
     UserProfile,
     OwnerDocumentsMapping,
-    StaffDocumentsMapping,
-    CompanyUserDocumentsMapping,
     TenantDocumentsMapping,
-    UnitDetails,
-    Company,
-    PropertyImages,
     CompanyStaff,
 )
-from property_management.models import UserInvitation
+from property_service.models import (
+    Unit,
+    Company,
+    PropertyImages,
+    CompanyUserDocumentsMapping,
+    StaffDocumentsMapping,
+)
+from property_management.models import UserInvitation, AuditLog
 from utilities.helper_functions import send_ses_email, fetch_s3_presigned_url, datetime_to_epoch_millis
 from utilities import status ,  constants
 from django.contrib.auth.models import User
@@ -46,9 +48,9 @@ def get_location_kv(city):
 
 def get_full_property_data(unit_id):
     try:
-        prop = UnitDetails.objects.filter(id=unit_id).first()
+        prop = Unit.objects.filter(id=unit_id).first()
         if not prop:
-            return None, "UnitDetails not found"
+            return None, "Unit not found"
 
         parent_property = None
         if prop.property:
@@ -543,3 +545,13 @@ def get_tenant_detail_by_id(tenant_id):
         "natioanlity":tenant_profile.city.state.country.name if tenant_profile.city else None ,
     
     }
+
+def audit_logs(request, message, action_type):
+    user_profile = request.user
+
+    AuditLog.objects.create(
+        userprofile=user_profile,
+        created_by=user_profile.user,
+        message=message,
+        action_type=action_type
+    )

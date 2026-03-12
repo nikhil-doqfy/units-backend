@@ -9,25 +9,24 @@ from user_service.models import (
 )
 from property_management.models import (
     LeasePropertyDetails, UserInvitation, Template, TemplateFields,
-    TemplateValues,LeaseDocumentsMapping , TermAndCondition
+    TemplateValues, LeaseDocumentsMapping, TermAndCondition
 )
+
 
 # -------------------- User Service Admin --------------------
 class CompanyStaffAdmin(admin.ModelAdmin):
-    list_display = ["id", "staff", "company",  "is_active"]
+    list_display = ["id", "staff", "company", "is_active"]
 
 
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
     list_display = ["id", "user", "user_role", "contact_number"]
 
-@admin.register(Company)
-class CompanyAdmin(admin.ModelAdmin):
-    list_display = ["id", "company_name", "company_code"]
 
 @admin.register(Permission)
 class PermissionAdmin(admin.ModelAdmin):
     list_display = ["id", "codename", "name"]
+
 
 @admin.register(Role)
 class RoleAdmin(admin.ModelAdmin):
@@ -54,29 +53,21 @@ class PropertyUnitImagesAdmin(admin.ModelAdmin):
 class UserVerificationAdmin(admin.ModelAdmin):
     list_display = ["id", "email", "verification_type", "otp", "is_verified"]
 
+
 @admin.register(Documents)
 class DocumentsAdmin(admin.ModelAdmin):
     list_display = ["id", "file_name"]
 
-@admin.register(PropertyDocumentsMapping)
-class PropertyDocumentsMappingAdmin(admin.ModelAdmin):
-    list_display = ["id", "property", "document"]
 
 @admin.register(OwnerDocumentsMapping)
 class OwnerDocumentsMappingAdmin(admin.ModelAdmin):
     list_display = ["id", "owner", "document"]
 
+
 @admin.register(TenantDocumentsMapping)
 class TenantDocumentsMappingAdmin(admin.ModelAdmin):
     list_display = ["id", "tenant", "document"]
 
-@admin.register(CompanyUserDocumentsMapping)
-class CompanyUserDocumentsMappingAdmin(admin.ModelAdmin):
-    list_display = ["id", "company_user", "document"]
-
-@admin.register(StaffDocumentsMapping)
-class StaffDocumentsMappingAdmin(admin.ModelAdmin):
-    list_display = ["id", "staff", "document"]
 
 @admin.register(Complaint)
 class ComplaintAdmin(admin.ModelAdmin):
@@ -92,26 +83,69 @@ class PrivacyPolicyAdmin(admin.ModelAdmin):
 class FAQAdmin(admin.ModelAdmin):
     list_display = ("id", "question")
 
-@admin.register(PropertyInterest)
-class PropertyInterestAdmin(admin.ModelAdmin):
-    list_display = ("tenant", "property_unit") 
+
+@admin.register(Country)
+class CountryAdmin(admin.ModelAdmin):
+    list_display = ["id", "name", "code"]
+    search_fields = ["name", "code"]
+
+
+@admin.register(State)
+class StateAdmin(admin.ModelAdmin):
+    list_display = ["id", "name", "country", "code"]
+    list_filter = ["country"]
+    search_fields = ["name", "code"]
+
+
+@admin.register(City)
+class CityAdmin(admin.ModelAdmin):
+    list_display = ["id", "name", "state", "code"]
+    list_filter = ["state"]
+    search_fields = ["name", "code"]
+
+
+admin.site.register(CompanyStaff, CompanyStaffAdmin)
+
+
+@admin.register(Lead)
+class LeadAdmin(admin.ModelAdmin):
+    list_display = ("lead_id", "name", "get_tenant", "unit", "email", "contact_number", "status", "platform", "lead_type")
+    search_fields = ("lead_id", "name", "email", "contact_number")
+    list_filter = ("status", "platform", "lead_type")
+
+@admin.register(AuditLog)
+class AuditLogAdmin(admin.ModelAdmin):
+    list_display = ["id","userprofile","action_type","message","created"]
+    list_filter = ["action_type","created"]
+    search_fields = ["message","userprofile__user__username"]
+
+    def get_tenant(self, obj):
+        if obj.tenant:
+            return f"{obj.tenant.user.first_name} {obj.tenant.user.last_name}".strip()
+        return "-"
+    get_tenant.short_description = "Tenant"
+
 
 # -------------------- Property Management Admin --------------------
 @admin.register(LeasePropertyDetails)
 class LeasePropertyDetailsAdmin(admin.ModelAdmin):
     list_display = ["id", "lease_property", "tenant", "owner", "lease_status", "lease_start_date", "lease_end_date"]
 
+
 @admin.register(UserInvitation)
 class UserInvitationAdmin(admin.ModelAdmin):
     list_display = ["id", "email", "invited_by", "invitation_type", "status"]
+
 
 @admin.register(Template)
 class TemplateAdmin(admin.ModelAdmin):
     list_display = ["id", "name", "template_path", "is_active"]
 
+
 @admin.register(TemplateFields)
 class TemplateFieldsAdmin(admin.ModelAdmin):
     list_display = ["id", "document_template", "name_attribute", "label_attribute", "html_tag"]
+
 
 @admin.register(TemplateValues)
 class TemplateValuesAdmin(admin.ModelAdmin):
@@ -123,51 +157,6 @@ class LeaseDocumentsMappingAdmin(admin.ModelAdmin):
     list_display = ("id", "lease", "document", "document_choice")
 
 
-
-@admin.register(Country)
-class CountryAdmin(admin.ModelAdmin):
-    list_display = ["id", "name", "code"]
-    search_fields = ["name", "code"] 
-
-@admin.register(State)
-class StateAdmin(admin.ModelAdmin):
-    list_display = ["id", "name", "country", "code"]
-    list_filter = ["country"]          
-    search_fields = ["name", "code"]   #
-
-@admin.register(City)
-class CityAdmin(admin.ModelAdmin):
-    list_display = ["id", "name", "state", "code"]
-    list_filter = ["state"]          
-    search_fields = ["name", "code"]  
-
 @admin.register(TermAndCondition)
 class TermAndConditionAdmin(admin.ModelAdmin):
-    list_display = (
-        "id",
-        "description",
-        "term_type",
-        "lease",
-        "is_predefined",
-    )
-
-admin.site.register(CompanyStaff, CompanyStaffAdmin)
-
-@admin.register(Lead)
-class LeadAdmin(admin.ModelAdmin):
-    list_display = ("lead_id", "name", "get_tenant", "unit", "email", "contact_number", "status", "platform", "lead_type")
-    search_fields = ("lead_id", "name", "email", "contact_number")
-    list_filter = ("status", "platform", "lead_type")
-
-    def get_tenant(self, obj):
-        if obj.tenant:
-            return f"{obj.tenant.user.first_name} {obj.tenant.user.last_name}".strip()
-        return "-"
-    get_tenant.short_description = "Tenant"
-
-@admin.register(UnitDetails)
-class UnitDetailsAdmin(admin.ModelAdmin):
-    list_display = ["id", "unit_name", "property", "property_block_tower", "property_type", "floor_no", "no_of_bedrooms", "is_occupied", "company"]
-    search_fields = ["unit_name", "plot_no", "makani_no", "dewa_no"]
-    list_filter = ["property_type", "is_occupied", "step_status"]
-
+    list_display = ("id", "description", "term_type", "lease", "is_predefined")

@@ -1,8 +1,8 @@
 import json
 from utilities import status, constants
 from utilities.helper_functions import prepare_response ,upload_file_to_s3_base64,datetime_to_epoch_millis,safe_epoch_to_datetime,get_extension_from_base64,get_user_code_prefix,generate_unique_code ,export_to_csv
-from user_service.models import UserProfile,UnitDetails,Property,Documents,OwnerDocumentsMapping,  CompanyUserDocumentsMapping,TenantDocumentsMapping , Company,Country, State, City , Role, Lead
-from user_service.models import CompanyStaff
+from user_service.models import UserProfile, Documents, OwnerDocumentsMapping, TenantDocumentsMapping, Country, State, City, Role, Lead, CompanyStaff
+from property_service.models import Unit, Property, Company, CompanyUserDocumentsMapping
 from django.db import transaction
 from utilities.decorator import is_request_authenticated
 from django.core.paginator import Paginator, EmptyPage
@@ -536,7 +536,7 @@ def staff_view(request):
                 company_staff.roles.set(roles)
 
             if property_ids:
-                properties = UnitDetails.objects.filter(
+                properties = Unit.objects.filter(
                     id__in=property_ids,
                     company=company
                 )
@@ -600,7 +600,7 @@ def staff_view(request):
                 company_staff.roles.set(roles)
             if "properties" in body:
                 property_ids = body["properties"]
-                properties = UnitDetails.objects.filter(id__in=property_ids, company=company)
+                properties = Unit.objects.filter(id__in=property_ids, company=company)
                 for prop in company_staff.assigned_properties.exclude(id__in=property_ids):
                     prop.assigned_staff.remove(company_staff)
                 for prop in properties:
@@ -1065,12 +1065,11 @@ def contact_list_view(request):
         message=constants.METHOD_NOT_ALLOWED,
         status=status.HTTP_405_METHOD_NOT_ALLOWED
     )
+
 @is_request_authenticated
 def create_lead(request):
-
     if request.method == "POST":
         body = json.loads(request.body)
-
         name           = body.get("name")
         email          = body.get("email")
         contact_number = body.get("contact_number")
@@ -1105,7 +1104,7 @@ def create_lead(request):
 
         unit = None
         if unit_id:
-            unit = UnitDetails.objects.filter(id=unit_id,is_active=True ).first()
+            unit = Unit.objects.filter(id=unit_id,is_active=True ).first()
             if not unit:
                 return prepare_response(
                     message=constants.UNIT_NOT_FOUND,
@@ -1170,6 +1169,7 @@ def create_lead(request):
             "status": lead.status,
             "platform": lead.platform,
             "lead_type": lead.lead_type,
+            "created": lead.created.strftime("%m/%d/%Y %H:%M") if lead.created else None,
         } for lead in leads]
 
         return prepare_response(
@@ -1210,7 +1210,7 @@ def create_lead(request):
 
         unit_id = body.get("unit")
         if unit_id:
-            unit = UnitDetails.objects.filter(id=unit_id,is_active=True).first()
+            unit = Unit.objects.filter(id=unit_id,is_active=True).first()
             if not unit:
                 return prepare_response(
                     message=constants.UNIT_NOT_FOUND,

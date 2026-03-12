@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     'django_celery_beat',
     'auth_service',
     'user_service',
+    'property_service',
     'property_management',
     "payment",
     'sslserver',

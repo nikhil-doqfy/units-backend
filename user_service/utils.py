@@ -1,9 +1,9 @@
 import random
-from user_service.models import UserProfile
+import random
 from utilities import status, constants
-from utilities.helper_functions import prepare_response ,upload_file_to_s3_base64,datetime_to_epoch_millis,safe_epoch_to_datetime,get_extension_from_base64,get_user_code_prefix,generate_unique_code
-from user_service.models import UserProfile,Documents,OwnerDocumentsMapping,  CompanyUserDocumentsMapping,TenantDocumentsMapping , Company,Country, State, City , Role, UnitDetails,Permission
-from user_service.models import CompanyStaff
+from utilities.helper_functions import prepare_response, upload_file_to_s3_base64, datetime_to_epoch_millis, safe_epoch_to_datetime, get_extension_from_base64, get_user_code_prefix, generate_unique_code
+from user_service.models import UserProfile, Documents, OwnerDocumentsMapping, TenantDocumentsMapping, Country, State, City, Role, Permission, CompanyStaff
+from property_service.models import Unit, Company, CompanyUserDocumentsMapping, StaffDocumentsMapping
 
 def request_otp_sent():
     otp = random.randint(100000, 999999)

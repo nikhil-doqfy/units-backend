@@ -3,8 +3,9 @@ import json
 import uuid
 from django.contrib.auth.hashers import make_password ,check_password
 from utilities import status, constants
-from utilities.helper_functions import prepare_response , validate_email, send_email, validate_password,send_ses_email
-from user_service.models import UserProfile,Documents,OwnerDocumentsMapping,StaffDocumentsMapping,CompanyUserDocumentsMapping,TenantDocumentsMapping,UserVerification ,Company
+from utilities.helper_functions import prepare_response , validate_email, send_email, validate_password, send_ses_email
+from user_service.models import UserProfile, Documents, OwnerDocumentsMapping, TenantDocumentsMapping, UserVerification
+from property_service.models import Company, CompanyUserDocumentsMapping, StaffDocumentsMapping
 from user_service.utils import request_otp_sent
 from utilities.decorator import is_request_authenticated
 from utilities.jwt_token import create_jwt_token , get_jwt_token, decode_jwt_token
@@ -87,6 +88,7 @@ def send_otp(request):
 
         subject = f"{purpose_text.capitalize()} OTP - DOQFY"
         body_text = f"Your OTP is: {otp}"
+        print(f"Generated OTP for {email} is {otp}")  # Debug log
 
         success = send_ses_email(email, subject, body_text, body_html)
 
@@ -340,8 +342,6 @@ def change_password(request):
             message=constants.INTERNAL_SERVER_ERROR,
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
-
 
 def user_login(request):
     if request.method != "POST":

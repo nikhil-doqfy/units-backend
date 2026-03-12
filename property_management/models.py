@@ -16,7 +16,7 @@ class Base(models.Model):
 class LeasePropertyDetails(Base):
     lease_number = models.CharField(max_length=50, unique=True, null=True, blank=True)
     lease_property = models.ForeignKey(
-        "user_service.UnitDetails", 
+        "property_service.Unit",
         on_delete=models.CASCADE,
         related_name="lease_details",null=True, blank=True
     )
@@ -126,9 +126,6 @@ class LeaseDocumentsMapping(Base):
     def __str__(self):
         return f"Lease {self.lease.id} -> Document {self.document.file_name}"
 
-
-
-
 class UserInvitation(Base):
     INVITATION_TYPE_CHOICES = (
         ("OWNER_TO_PMC", "Owner inviting Property Manager"),
@@ -147,7 +144,7 @@ class UserInvitation(Base):
     )
     token = models.CharField(max_length=255, null=True, blank=True)
     property_unit = models.ForeignKey(
-        "user_service.UnitDetails",
+        "property_service.Unit",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -213,8 +210,6 @@ class TemplateValues(Base):
         return f"Template: {self.document_template.name} | Lease ID: {self.lease.id}"
     
 
-
-
 class TermAndCondition(models.Model):
 
     TERM_TYPE_CHOICES = (
@@ -245,6 +240,28 @@ class TermAndCondition(models.Model):
 
     def __str__(self):
         return f"{self.term_type} | {'Predefined' if self.is_predefined else 'Additional'}"
+
+
+class AuditLog(Base):
+
+    userprofile = models.ForeignKey(
+        "user_service.UserProfile",
+        on_delete=models.CASCADE,
+        related_name="audit_logs"
+    )
+
+    message = models.CharField(max_length=500)
+
+    action_type = models.CharField(
+        max_length=20,
+        choices=constants.AUDIT_ACTION_CHOICES
+    )
+
+    class Meta:
+        ordering = ["-created"]
+
+    def __str__(self):
+        return f"{self.userprofile} - {self.action_type}"
 
 
 #==========================================================
