@@ -15,7 +15,8 @@ urlpatterns = [
     path('user/', include(user_service_urls)),
     path('auth/', include(auth_service_urls)), 
     path('payment/', include(payment_urls)), 
-    
+    path('charges/', include(charges_urls)),
+
     re_path(r"^media/(?P<path>.*)$", views.serve_media), 
     path('options', views.options, name='options'),   
     path('invitation', views.send_invitation, name='send_invitation'),

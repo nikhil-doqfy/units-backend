@@ -4,7 +4,8 @@ from user_service.models import (
     Property, PropertyUnitDetails,  PropertyUnitImages,
     PropertyImages, UserVerification,
     Documents, PropertyDocumentsMapping, OwnerDocumentsMapping,
-    TenantDocumentsMapping, CompanyUserDocumentsMapping, StaffDocumentsMapping,Country, State, City, CompanyStaff ,FAQ ,PrivacyPolicy ,Complaint ,PropertyInterest
+    TenantDocumentsMapping, CompanyUserDocumentsMapping, StaffDocumentsMapping,Country, State, City, CompanyStaff ,FAQ ,PrivacyPolicy ,Complaint ,
+    PropertyInterest, Lead, UnitDetails
 )
 from property_management.models import (
     LeasePropertyDetails, UserInvitation, Template, TemplateFields,
@@ -40,9 +41,6 @@ class RoleAdmin(admin.ModelAdmin):
 class PropertyAdmin(admin.ModelAdmin):
     list_display = ["id", "property_name", "property_code"]
 
-@admin.register(PropertyUnitDetails)
-class PropertyUnitDetailsAdmin(admin.ModelAdmin):
-    list_display = ["id", "property_unit_name", "property", "owner", "is_occupied", "rent","company"]
 
 @admin.register(PropertyImages)
 class PropertyImagesAdmin(admin.ModelAdmin):
@@ -155,5 +153,21 @@ class TermAndConditionAdmin(admin.ModelAdmin):
 
 admin.site.register(CompanyStaff, CompanyStaffAdmin)
 
+@admin.register(Lead)
+class LeadAdmin(admin.ModelAdmin):
+    list_display = ("lead_id", "name", "get_tenant", "unit", "email", "contact_number", "status", "platform", "lead_type")
+    search_fields = ("lead_id", "name", "email", "contact_number")
+    list_filter = ("status", "platform", "lead_type")
 
+    def get_tenant(self, obj):
+        if obj.tenant:
+            return f"{obj.tenant.user.first_name} {obj.tenant.user.last_name}".strip()
+        return "-"
+    get_tenant.short_description = "Tenant"
+
+@admin.register(UnitDetails)
+class UnitDetailsAdmin(admin.ModelAdmin):
+    list_display = ["id", "unit_name", "property", "property_block_tower", "property_type", "floor_no", "no_of_bedrooms", "is_occupied", "company"]
+    search_fields = ["unit_name", "plot_no", "makani_no", "dewa_no"]
+    list_filter = ["property_type", "is_occupied", "step_status"]
 
