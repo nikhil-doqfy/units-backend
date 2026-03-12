@@ -513,6 +513,17 @@ EMIRATES_ID = "emirates_id"
 UAE_RESIDENCE_VISA = "uae_residence_visa"
 DLD_CERTIFICATE = "dld_certificate"
 
+CREATED = "CREATED"
+UPDATED = "UPDATED"
+SUBMITTED = "SUBMITTED"
+DELETED = "DELETED"
+
+AUDIT_ACTION_CHOICES = (
+    (CREATED, "Created"),
+    (UPDATED, "Updated"),
+    (SUBMITTED, "Submitted"),
+    (DELETED, "Deleted"),
+)
 
 
 # Property document constants

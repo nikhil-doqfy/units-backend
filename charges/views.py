@@ -20,7 +20,7 @@ def charges_api(request):
 
     if request.method == "POST":
 
-        data = json.loads(request.body or "{}")
+        data = json.loads(request.body)
 
         description = data.get("description")
         amount = data.get("amount")
@@ -84,7 +84,7 @@ def charges_api(request):
 
     if request.method == "PUT":
 
-        data = json.loads(request.body or "{}")
+        data = json.loads(request.body)
         charge_id = data.get("charge_id")
 
         if not charge_id:
@@ -202,9 +202,9 @@ def toggle_charge_editable(request):
     if charge.is_editable:
         message = "Charge enabled"
     else:
-        message = "Charge deactivate"
+        message = "Charge deactivated"
 
     return prepare_response(
-        message="Charge editable status updated",
+        message=message,
         status=status.HTTP_200_OK
     )

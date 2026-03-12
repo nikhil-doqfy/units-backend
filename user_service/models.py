@@ -3,6 +3,7 @@ from property_management.models import Base
 from utilities import constants
 from django.utils import timezone
 from django.contrib.auth.models import User
+from utilities.helper_functions import datetime_to_epoch_millis
 
 
 class UserProfile(Base):
