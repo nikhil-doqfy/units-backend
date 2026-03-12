@@ -354,6 +354,8 @@ ROLE_DOES_NOT_EXIST = "Role does not exist."
 USER_ROLE_DOES_NOT_EXIST = "You do not have any role assigned. Please contact the administrator."
 PERMISSION_DENIED_SUCCESS = "This API is not accessible. Permission denied."
 PERMISSION_DOES_NOT_EXIST = "Your role does not have the required permission to access this API."
+CONTACTS_FETCH_SUCCESS = "Contacts fetched successfully"
+METHOD_NOT_ALLOWED = "Method not allowed"
 # ── Lead Messages ──────────────────────────────────────────────
 NAME_REQUIRED            = "Name is required."
 PLATFORM_REQUIRED        = "Platform is required."
