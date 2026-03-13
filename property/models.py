@@ -23,9 +23,20 @@ class PropertyManagmentCompany(Base):
         return f"{self.name}"
 
 
+PROPERTY_STATUS_CHOICES = [
+    ('DRAFT', 'Draft'),
+    ('PUBLIC', 'Public'),
+]
+
+
 class Property(Base):
     code = models.CharField(max_length=255, blank=True)
     property_name = models.CharField(max_length=255)
+    status = models.CharField(
+        max_length=20,
+        choices=PROPERTY_STATUS_CHOICES,
+        default='DRAFT'
+    )
     no_of_blocks = models.IntegerField(choices=constants.BLOCKS_CHOICES)
     no_of_units = models.IntegerField(choices=constants.UNITS_CHOICES)
     property_type = models.CharField(
@@ -50,6 +61,7 @@ class Property(Base):
     latitude = models.DecimalField(max_digits=20, decimal_places=15, null=True, blank=True)
     longitude = models.DecimalField(max_digits=20, decimal_places=15, null=True, blank=True)
     map_address = models.TextField(null=True, blank=True)
+    approx_rent = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
     pmc = models.ForeignKey(
         PropertyManagmentCompany,
         on_delete=models.CASCADE,
@@ -111,6 +123,8 @@ class Property(Base):
                 for po in self.property_owners.select_related("owner__user").all()
             ],
             "thumbnail": self._get_thumbnail(),
+            "approx_rent": str(self.approx_rent) if self.approx_rent is not None else None,
+            "status": self.status,
         }
     
 class PropertyOwner(Base):

@@ -67,6 +67,7 @@ def property(request):
             latitude=data.get("latitude"),
             longitude=data.get("longitude"),
             map_address=data.get("map_address"),
+            approx_rent=data.get("approx_rent"),
             pmc=pmc,
         )
 
@@ -126,7 +127,7 @@ def property(request):
         for field in ["property_name", "property_type", "no_of_blocks", "no_of_units",
                       "land_area", "land_area_unit", "land_dm_no", "plot_no", "makani_no",
                       "dewa_no", "address_line_1", "address_line_2", "landmark", "pincode",
-                      "latitude", "longitude", "map_address"]:
+                      "latitude", "longitude", "map_address", "approx_rent"]:
             if field in data and data[field] is not None:
                 setattr(prop, field, data[field])
 
