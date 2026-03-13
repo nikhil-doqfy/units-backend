@@ -133,6 +133,7 @@ class DocumentType(Base):
         (constants.TENANT, "Tenant"),
         (constants.PROPERTY_MANAGER, "Property Manager"),
         (constants.PROPERTY, "Property"),
+        (constants.UNIT, "Unit"),
     )
     name = models.CharField(max_length=255)
     section = models.CharField(max_length=255)

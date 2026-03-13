@@ -1,12 +1,11 @@
 from django.db import models
 from user_service.models import UserProfile
 from property_management.models import Base
-from user_service import constants
+from utilities import constants
 
 # Create your models here.
 class Lead(Base):
-    lead_id = models.CharField(max_length=20, unique=True)
-
+    code = models.CharField(max_length=255, blank=True)
     unit = models.ForeignKey(
         "property.Unit",
         on_delete=models.CASCADE,
@@ -42,27 +41,17 @@ class Lead(Base):
         null=True,
         blank=True
     )
-    company = models.ForeignKey(
+    pmc = models.ForeignKey(
         "property.PropertyManagmentCompany",
         on_delete=models.CASCADE,
         related_name="leads"
     )
 
     def save(self, *args, **kwargs):
-        if not self.lead_id:
-            if self.platform in constants.PORTAL_PLATFORMS:
-                prefix = constants.LP
-            else:
-                prefix = constants.VC
-            last_lead = Lead.objects.filter(
-                lead_id__startswith=prefix
-            ).order_by('-id').first()
-
-            if last_lead:
-                last_number = int(last_lead.lead_id[len(prefix):])
-                new_number = last_number + 1
-            else:
-                new_number = 1
-
-            self.lead_id = f"{prefix}{str(new_number).zfill(4)}"
         super().save(*args, **kwargs)
+        if not self.code:
+            from utilities.helper_functions import generate_lead_code
+            self.code = generate_lead_code()
+            Lead.objects.filter(pk=self.pk).update(code=self.code)
+
+

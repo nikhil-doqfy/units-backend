@@ -107,8 +107,7 @@ def options(request):
                 property_ids = Unit.objects.filter(owner=user).values_list('property_id', flat=True).distinct()
                 properties = Property.objects.filter(id__in=property_ids)
             elif is_pm and pm_profile.company:
-                property_ids = Unit.objects.filter(company=pm_profile.company).values_list('property_id', flat=True).distinct()
-                properties = Property.objects.filter(id__in=property_ids)
+                properties = Property.objects.filter(pmc=pm_profile.company)
             content["property"] = [{"key": prop.id, "value": prop.property_name}for prop in properties]
         elif option_type == "PROPERTY_TYPE":
             content["property_type"] = [
@@ -146,10 +145,10 @@ def options(request):
             elif is_pm:
                 if not pm_profile.company:
                     return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
-                units = Unit.objects.filter(company=pm_profile.company)
+                units = Unit.objects.filter(property_block_tower__property__pmc=pm_profile.company)
             else:
                 units = Unit.objects.none()
-            content["property_unit"] = [{"key": u.id, "value": u.property_unit_name or "Unnamed Unit"} for u in units]
+            content["property_unit"] = [{"key": u.id, "value": u.unit_name or "Unnamed Unit"} for u in units]
         
 
 
@@ -226,18 +225,18 @@ def options(request):
             elif is_pm:
                 if not pm_profile.company:
                     return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
-                units = Unit.objects.filter(company=pm_profile.company, lease_details__isnull=False).distinct()
+                units = Unit.objects.filter(property_block_tower__property__pmc=pm_profile.company, lease_details__isnull=False).distinct()
             else:
                 units = Unit.objects.none()
-            content["property_unit_with_lease"] = [{"key": u.id, "value": u.property_unit_name or "Unnamed Unit"} for u in units]
+            content["property_unit_with_lease"] = [{"key": u.id, "value": u.unit_name or "Unnamed Unit"} for u in units]
 
         elif option_type == "PARENT_PROPERTY_WITH_LEASE":
             if is_owner:
-                properties = Property.objects.filter(units__owner=user, units__lease_details__isnull=False).distinct()
+                properties = Property.objects.filter(property_blocks__block_towers__owner=user, property_blocks__block_towers__lease_details__isnull=False).distinct()
             elif is_pm:
                 if not pm_profile.company:
                     return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
-                properties = Property.objects.filter(units__company=pm_profile.company, units__lease_details__isnull=False).distinct()
+                properties = Property.objects.filter(pmc=pm_profile.company, property_blocks__block_towers__lease_details__isnull=False).distinct()
             else:
                 properties = Property.objects.none()
             content["property_with_lease"] = [{"key": p.id, "value": p.property_name or "Unnamed Property"} for p in properties]
@@ -251,19 +250,19 @@ def options(request):
                 elif is_pm:
                     if not pm_profile.company:
                         return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
-                    units = Unit.objects.filter(company=pm_profile.company, lease_details__isnull=False).distinct()
+                    units = Unit.objects.filter(property_block_tower__property__pmc=pm_profile.company, lease_details__isnull=False).distinct()
                 else:
                     units = Unit.objects.none()
             else:
                 if is_owner:
-                    units = Unit.objects.filter(property_id=parent_property_id, owner=user, lease_details__isnull=False).distinct()
+                    units = Unit.objects.filter(property_block_tower__property_id=parent_property_id, lease_details__isnull=False).distinct()
                 elif is_pm:
                     if not pm_profile.company:
                         return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
-                    units = Unit.objects.filter(property_id=parent_property_id, company=pm_profile.company, lease_details__isnull=False).distinct()
+                    units = Unit.objects.filter(property_block_tower__property_id=parent_property_id, property_block_tower__property__pmc=pm_profile.company, lease_details__isnull=False).distinct()
                 else:
                     units = Unit.objects.none()
-            content["property_unit_with_lease"] = [{"key": u.id, "value": u.property_unit_name or "Unnamed Unit"} for u in units]
+            content["property_unit_with_lease"] = [{"key": u.id, "value": u.unit_name or "Unnamed Unit"} for u in units]
 
         elif option_type == "LEASE_DOCUMENT_CHOICES":
             content["lease_document_choices"] = [{"key": key, "value": value}for key, value in constants.LEASE_DOCUMENT_CHOICES]
@@ -285,8 +284,8 @@ def options(request):
             if not property_id:
                 content["property_unit"] = []
             else:
-                units = Unit.objects.filter(property_id=property_id , is_occupied=False)
-                content["property_unit"] = [{ "key": unit.id,"value": unit.property_unit_name or f"Unit #{unit.id}"}for unit in units]
+                units = Unit.objects.filter(property_block_tower__property_id=property_id)
+                content["property_unit"] = [{ "key": unit.id,"value": unit.unit_name or f"Unit #{unit.id}", "rent": str(unit.rent) if unit.rent else None}for unit in units]
         elif option_type == "COMPLAINT_STATUS":
             content["complaint_status"] = [{"key": constants.IN_PROGRESS, "value": "In Progress"},
         {"key": constants.COMPLETED, "value": "Completed"},
@@ -378,7 +377,7 @@ def property_table_view(request):
         properties_qs = properties_qs.filter(is_occupied=True)
     if search:
         properties_qs = properties_qs.filter(
-            Q(property_unit_name__icontains=search) |
+            Q(unit_name__icontains=search) |
             Q(property__property_name__icontains=search) |
             Q(owner__user__first_name__icontains=search) |
             Q(owner__user__last_name__icontains=search) |
@@ -420,7 +419,7 @@ def property_table_view(request):
         data.append({
             "property_unit_id": prop.id,
             "property_name": prop.property.property_name if prop.property else None,
-            "property_unit_name": prop.property_unit_name,
+            "unit_name": prop.unit_name,
             "property_code":prop.property.Property_code if prop.property else None,
             "tenant_name": tenant_name,
             "tenant_profile_image": tenant_profile_image, 
@@ -678,7 +677,7 @@ def property_documents(request):
             
             audit_logs(
                 request,
-                f"Documents uploaded for property unit '{property_obj.property_unit_name}'",
+                f"Documents uploaded for property unit '{property_obj.unit_name}'",
                 constants.CREATED
             )
 
@@ -752,7 +751,7 @@ def property_documents(request):
                 })
             audit_logs(
                 request,
-                f"Documents updated for property '{property_obj.property.property_name}' unit '{property_obj.property_unit_name}'",
+                f"Documents updated for property '{property_obj.property.property_name}' unit '{property_obj.unit_name}'",
                 constants.UPDATED
             )
 
@@ -839,7 +838,7 @@ def tenant_table_view(request):
             lease_qs = lease_qs.filter(
                 Q(tenant__user__email__icontains=search) |
                 Q(tenant__contact_number__icontains=search) |
-                Q(lease_property__property_unit_name__icontains=search)
+                Q(lease_property__unit_name__icontains=search)
             )
 
         lease_qs = lease_qs.order_by("-id")
@@ -860,7 +859,7 @@ def tenant_table_view(request):
                 "tenant_name": f"{tenant.user.first_name} {tenant.user.last_name}" if tenant.user else None,
                 "tenant_profile_image": tenant.profile_image if tenant else None,
                 "contact_number": tenant.contact_number,
-                "property_assigned": prop_unit.property_unit_name if prop_unit else None,
+                "property_assigned": prop_unit.unit_name if prop_unit else None,
                 "property_id": prop_unit.id if prop_unit else None,
                "owner_name": f"{prop_unit.owner.user.first_name} {prop_unit.owner.user.last_name}" if prop_unit and prop_unit.owner else None,
                 "company_name": prop_unit.company.company_name if prop_unit and prop_unit.company else None,
@@ -891,9 +890,6 @@ def tenant_table_view(request):
             message=f"Error fetching tenant data: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
-
-
 
 # This view is for a logged-in PropertyManagmentCompany User(PMC).
 # It fetches all Owners under the company of the logged-in user
@@ -935,7 +931,7 @@ def company_owners_view(request):
                         pass
                 table_data.append({
                     "property_unit_id": unit.id,
-                    "property_name": unit.property_unit_name,
+                    "property_name": unit.unit_name,
                     "owner_name": f"{owner.user.first_name} {owner.user.last_name}",
                     "tenant_name": (
                         f"{lease.tenant.user.first_name} {lease.tenant.user.last_name}"
@@ -1004,7 +1000,7 @@ def company_owners_view(request):
                 "contact_number": owner.contact_number,
                 "property_count": owner.property_count,
                 "owner_code":owner.user_code,
-                "properties": [{"id": prop.id, "name": prop.property_unit_name,"image": (
+                "properties": [{"id": prop.id, "name": prop.unit_name,"image": (
             get_property_images(prop.id, single=True).get("images")[0]
             if get_property_images(prop.id, single=True).get("images")
             else None
@@ -1110,7 +1106,7 @@ def owner_pmc_view(request):
                 properties_qs = Unit.objects.filter(owner=user,company=company ).select_related("property" ).prefetch_related( "lease_details__tenant__user")
 
                 if search:
-                    properties_qs = properties_qs.filter(Q(property_unit_name__icontains=search) | Q(property__property_name__icontains=search))
+                    properties_qs = properties_qs.filter(Q(unit_name__icontains=search) | Q(property__property_name__icontains=search))
                 paginator = Paginator(properties_qs, limit)
                 try:
                     property_page = paginator.page(page)
@@ -1127,7 +1123,7 @@ def owner_pmc_view(request):
                         tenant_name = f"{tenant_user.first_name} {tenant_user.last_name}".strip()
                         lease_id = lease.id
                         tenancy_status = "Occupied"
-                    properties_data.append({"property_unit_id": prop.id,"property_name": prop.property_unit_name or (
+                    properties_data.append({"property_unit_id": prop.id,"property_name": prop.unit_name or (
                                   prop.property.property_name if prop.property else None
                                    ),"tenant_name": tenant_name,
                                    "tenancy_status": tenancy_status,
@@ -1334,7 +1330,7 @@ def lease_details_view(request):
 
             audit_logs(
                 request,
-                f"Added lease agreement for {property_obj.property.property_name} – Unit {property_obj.property_unit_name}",
+                f"Added lease agreement for {property_obj.property.property_name} – Unit {property_obj.unit_name}",
                 constants.CREATED
             )
 
@@ -1392,7 +1388,7 @@ def lease_details_view(request):
 
             audit_logs(
                 request,
-                f"Updated lease agreement for {lease.lease_property.property.property_name} – Unit {lease.lease_property.property_unit_name}",
+                f"Updated lease agreement for {lease.lease_property.property.property_name} – Unit {lease.lease_property.unit_name}",
                 constants.UPDATED
             )
 
@@ -1521,7 +1517,7 @@ def lease_documents(request):
 
             audit_logs(
                 request,
-                f"Uploaded lease documents for unit '{lease_obj.lease_property.property_unit_name}'",
+                f"Uploaded lease documents for unit '{lease_obj.lease_property.unit_name}'",
                 constants.CREATED
             )
 
@@ -1609,7 +1605,7 @@ def lease_documents(request):
 
             audit_logs(
                 request,
-                f"Updated lease documents for unit '{lease_obj.lease_property.property_unit_name}'",
+                f"Updated lease documents for unit '{lease_obj.lease_property.unit_name}'",
                 constants.UPDATED
             )
 
@@ -1957,7 +1953,7 @@ def generate_contract(request):
 
         audit_logs(
             request,
-            f"Generated lease contract for unit '{lease.lease_property.property_unit_name}'",
+            f"Generated lease contract for unit '{lease.lease_property.unit_name}'",
             constants.CREATED
         )
 
@@ -2201,7 +2197,7 @@ def export_property_table_csv(request):
         ).distinct()
         if search:
             properties_qs = properties_qs.filter(
-                Q(property_unit_name__icontains=search) |
+                Q(unit_name__icontains=search) |
                 Q(property__property_name__icontains=search) |
                 Q(owner__user__first_name__icontains=search) |
                 Q(owner__user__last_name__icontains=search) |
@@ -2386,7 +2382,7 @@ def complaint(request):
                 Q(id__icontains=search) |
                 Q(user__user__first_name__icontains=search) |
                 Q(user__user__last_name__icontains=search) |
-                Q(user__tenant_leases__lease_property__property_unit_name__icontains=search)
+                Q(user__tenant_leases__lease_property__unit_name__icontains=search)
             ).distinct()
 
         complaints_qs = complaints_qs.select_related(
@@ -2418,12 +2414,12 @@ def complaint(request):
                 tenant=tenant
             ).select_related("lease_property").first()
 
-            property_unit_name = None
+            unit_name = None
             property_image = None
 
             if lease and lease.lease_property:
                 property_obj = lease.lease_property
-                property_unit_name = property_obj.property_unit_name
+                unit_name = property_obj.unit_name
 
                 image_data = get_property_images(
                     property_id=property_obj.id,
@@ -2434,7 +2430,7 @@ def complaint(request):
 
             complaint_list.append({
                 "complaint_id": complaint_obj.id,
-                "property_unit_name": property_unit_name,
+                "unit_name": unit_name,
                 "property_unit_id":property_obj.id,
                 "description": complaint_obj.message,
                 "raised_by_email": tenant.user.email,
@@ -2552,7 +2548,7 @@ def export_tenant_csv(request):
             lease_qs = lease_qs.filter(
                 Q(tenant__user__email__icontains=search) |
                 Q(tenant__contact_number__icontains=search) |
-                Q(lease_property__property_unit_name__icontains=search)
+                Q(lease_property__unit_name__icontains=search)
             )
 
         lease_qs = lease_qs.order_by("-id")
@@ -2573,7 +2569,7 @@ def export_tenant_csv(request):
                 "Tenant Name": f"{tenant.user.first_name} {tenant.user.last_name}" if tenant and tenant.user else "",
                 "User Code": tenant.user_code if tenant else "",
                 "Contact Number": tenant.contact_number if tenant else "",
-                "Property Assigned": prop.property_unit_name if prop else "",
+                "Property Assigned": prop.unit_name if prop else "",
             })
         return export_to_csv(
             filename="tenant_simple_export",
@@ -2683,7 +2679,7 @@ def export_owner_pmc_csv(request):
 
             if search:
                 properties_qs = properties_qs.filter(
-                    Q(property_unit_name__icontains=search) |
+                    Q(unit_name__icontains=search) |
                     Q(property__property_name__icontains=search)
                 )
 
@@ -2710,7 +2706,7 @@ def export_owner_pmc_csv(request):
 
                 data_list.append({
                     "Property Code": prop.property_code,
-                    "Property Name": prop.property_unit_name or (
+                    "Property Name": prop.unit_name or (
                         prop.property.property_name if prop.property else ""
                     ),
                     "Tenant Name": tenant_name,
@@ -2913,7 +2909,7 @@ def export_company_owners_csv(request):
 
             data_list.append({
                 "Code": unit.property_code,
-                "Property Name": unit.property_unit_name,
+                "Property Name": unit.unit_name,
                 "Tenant Name": (
                     f"{lease.tenant.user.first_name} {lease.tenant.user.last_name}"
                     if lease and lease.tenant and lease.tenant.user
@@ -2996,7 +2992,7 @@ def toggle_property_interest(request):
             message=constants.INTEREST_UPDATED_SUCCESS,
             status=status.HTTP_200_OK,
             content={
-                "property_unit": property_unit.property_unit_name,
+                "property_unit": property_unit.unit_name,
                 "is_interested": is_interested
             }
         )
@@ -3450,7 +3446,7 @@ def dashboard_cheque_visibility(request):
                 for p in lease.cheque_payments:
                     cheque_list.append({
                         "lease_number": lease.lease_number,
-                        "property_unit_name": property_unit.property_unit_name if property_unit else "",
+                        "unit_name": property_unit.unit_name if property_unit else "",
                         "owner_name": owner_name,
                         "tenant_name": tenant_name,
                         "cheque_number": p.cheque_number,
@@ -3460,7 +3456,7 @@ def dashboard_cheque_visibility(request):
             else:
                 cheque_list.append({
                     "lease_number": lease.lease_number,
-                    "property_unit_name": property_unit.property_unit_name if property_unit else "",
+                    "unit_name": property_unit.unit_name if property_unit else "",
                     "owner_name": owner_name,
                     "tenant_name": tenant_name,
                     "cheque_number": None,
@@ -4115,7 +4111,7 @@ def property_owner_compny_lease(request):
             # ---------------- Property Unit ----------------
             unit_data = {
                 "property_unit_id": unit.id,
-                "property_unit_name": unit.property_unit_name,
+                "unit_name": unit.unit_name,
                 "rent": unit.rent,
                 "security_deposit": unit.security_deposit,
                 "maintenance_charges": unit.maintenance_charges,

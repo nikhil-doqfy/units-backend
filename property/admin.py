@@ -22,12 +22,6 @@ class PropertyAdmin(admin.ModelAdmin):
     list_filter = ["property_type"]
 
 
-@admin.register(Unit)
-class UnitAdmin(admin.ModelAdmin):
-    list_display = ["id", "unit_name", "property", "property_block_tower", "property_type", "floor_no", "no_of_bedrooms", "is_occupied", "company"]
-    search_fields = ["unit_name", "plot_no", "makani_no", "dewa_no"]
-    list_filter = ["property_type", "is_occupied", "step_status"]
-
 
 @admin.register(PropertyInterest)
 class PropertyInterestAdmin(admin.ModelAdmin):

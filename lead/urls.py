@@ -1,8 +1,7 @@
 from django.urls import path
-from user_service import views as user_serviceviews
 from lead import views
 
 urlpatterns = [
-    path('create_lead', views.create_lead, name='create_lead'),
-    path('convert_lead', views.convert_lead_to_tenant, name='convert_lead_to_tenant'),
-] 
+    path('lead', views.lead_view, name='lead_view'),
+    path('lead/bulk-import', views.lead_bulk_import, name='lead_bulk_import'),
+]
