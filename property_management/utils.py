@@ -1,15 +1,12 @@
 from user_service.models import (
     UserProfile,
-    OwnerDocumentsMapping,
-    TenantDocumentsMapping,
-    CompanyStaff,
+    OwnerDocuments,
+    TenantDocuments
 )
-from property_service.models import (
+from property.models import (
     Unit,
-    Company,
-    PropertyImages,
-    CompanyUserDocumentsMapping,
-    StaffDocumentsMapping,
+    PropertyManagmentCompany,
+    PropertyImages
 )
 from property_management.models import UserInvitation, AuditLog
 from utilities.helper_functions import send_ses_email, fetch_s3_presigned_url, datetime_to_epoch_millis
@@ -195,7 +192,7 @@ def get_full_user_data(user_profile_id):
     """
     Returns a dictionary with complete user data including:
     - Basic user info
-    - Company info (if COMPANY_USER)
+    - PropertyManagmentCompany info (if COMPANY_USER)
     - Documents related to the user
     """
 
@@ -233,7 +230,7 @@ def get_full_user_data(user_profile_id):
 
         company_data = None
         if user_profile.user_role == constants.COMPANY_USER:
-            company = Company.objects.filter(company_user=user_profile).first()
+            company = PropertyManagmentCompany.objects.filter(company_user=user_profile).first()
             if company:
                 company_data = {
                     "id": company.id,
@@ -245,9 +242,9 @@ def get_full_user_data(user_profile_id):
         documents = []
 
         if user_profile.user_role == constants.OWNER:
-            docs_qs = OwnerDocumentsMapping.objects.filter(owner=user_profile).select_related('document')
+            docs_qs = OwnerDocuments.objects.filter(owner=user_profile).select_related('document')
         elif user_profile.user_role == constants.TENANT:
-            docs_qs = TenantDocumentsMapping.objects.filter(tenant=user_profile).select_related('document')
+            docs_qs = TenantDocuments.objects.filter(tenant=user_profile).select_related('document')
         elif user_profile.user_role == constants.COMPANY_USER:
             docs_qs = CompanyUserDocumentsMapping.objects.filter(company_user=user_profile).select_related('document')
         elif user_profile.user_role == constants.STAFF:
@@ -469,7 +466,7 @@ def get_lease_status(lease_obj):
 
 
 
-def get_staff_details(company_staff: CompanyStaff, include_password=False):
+def get_staff_details(company_staff, include_password=False):
  
     staff_profile = company_staff.staff
     django_user = staff_profile.user

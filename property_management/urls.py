@@ -8,20 +8,24 @@ from payment import urls as payment_urls
 from property_management import views
 from django.urls import re_path
 from terms import urls as terms_urls
+from charges import urls as charges_urls
+from property import urls as property_urls
+from lead import urls as lead_urls
 
 
-urlpatterns = [ 
+urlpatterns = [
     path('admin/', admin.site.urls),
     path('user/', include(user_service_urls)),
-    path('auth/', include(auth_service_urls)), 
-    path('payment/', include(payment_urls)), 
+    path('auth/', include(auth_service_urls)),
+    path('payment/', include(payment_urls)),
     path('charges/', include(charges_urls)),
+    path('', include(property_urls)),
+    path('', include(lead_urls)),
 
-    re_path(r"^media/(?P<path>.*)$", views.serve_media), 
-    path('options', views.options, name='options'),   
+    re_path(r"^media/(?P<path>.*)$", views.serve_media),
+    path('options', views.options, name='options'),
     path('invitation', views.send_invitation, name='send_invitation'),
     path('property/details', views.property_table_view, name='property_table_view'),
-    path('save/property', views.save_property, name='save_property'),
     path('tenant/table', views.tenant_table_view, name='create_property_basic'), 
     path("property/images", views.property_images, name="property_images"),
     path("property/unit/images", views.property_unit_images, name="property_unit_images"),
@@ -56,6 +60,8 @@ urlpatterns = [
     path('property_owner_compny_lease', views.property_owner_compny_lease, name='property_owner_compny_lease'),
     path('property_lease_payment', views.property_lease_payment, name='lease_payment'),
     path('terms/',  include(terms_urls)),
+    path('companies', views.company_list, name='company_list'),
+
     # path('complaint_list', views.complaint_list, name='complaint_list'),
 
 ] 

@@ -1,15 +1,21 @@
 import json
 from utilities import status, constants
-from utilities.helper_functions import prepare_response ,upload_file_to_s3_base64,datetime_to_epoch_millis,safe_epoch_to_datetime,get_extension_from_base64,get_user_code_prefix,generate_unique_code ,export_to_csv
-from user_service.models import UserProfile, Documents, OwnerDocumentsMapping, TenantDocumentsMapping, Country, State, City, Role, Lead, CompanyStaff
-from property_service.models import Unit, Property, Company, CompanyUserDocumentsMapping
+from utilities.helper_functions import prepare_response, datetime_to_epoch_millis, safe_epoch_to_datetime,get_extension_from_base64,export_to_csv
+from user_service.models import UserProfile, Documents, OwnerDocuments, TenantDocuments, Role, Owner, Tenant, PropertyManager
+from property.models import PropertyManagerDocuments, Unit, Property, PropertyManagmentCompany
 from django.db import transaction
 from utilities.decorator import is_request_authenticated
 from django.core.paginator import Paginator, EmptyPage
 from django.db.models import Q
 from django.contrib.auth.models import User
 from django.db import transaction
-from property_management.utils import get_staff_details,get_property_images
+from property_management.utils import get_staff_details, get_property_images
+from user_service.utils import upload_document
+
+EMIRATES_VISA_DOC_SPECS = [
+    ("emirates_id_doc", "emirates_id", "emirates_id_doc_type"),
+    ("uae_residence_visa_doc", "uae_residence_visa", "visa_doc_type"),
+]
 
 
 def user_sign_up(request):
@@ -18,104 +24,75 @@ def user_sign_up(request):
             message=constants.INVALID_REQUEST,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
-    try:
-        data = json.loads(request.body)
-        with transaction.atomic():  
-            email = data.get("email")
-            password = data.get("password")
-            confirm_password = data.get("confirm_password")
-            user_role = data.get("user_role")
-            first_name = data.get("first_name")
-            last_name = data.get("last_name")
-            if not all([email, password, confirm_password, user_role]):
+    data = json.loads(request.body)
+    email = data.get("email")
+    password = data.get("password")
+    user_role = data.get("user_role")
+
+    if not all([email, password, data.get("confirm_password"), user_role]):
+        return prepare_response(message=constants.FIELD_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
+    if password != data.get("confirm_password"):
+        return prepare_response(message=constants.PASSWORD_MISMATCH, status=status.HTTP_400_BAD_REQUEST)
+    if User.objects.filter(username=email).exists():
+        return prepare_response(message=constants.EMAIL_ALREADY_REGISTERED, status=status.HTTP_400_BAD_REQUEST)
+
+    with transaction.atomic():
+        user = User.objects.create_user(
+            username=email,
+            email=email,
+            password=password,
+            first_name=data.get("first_name"),
+            last_name=data.get("last_name")
+        )
+
+        common_profile_kwargs = dict(
+            user=user,
+            created_by=user,
+            pin_code=data.get("pin_code"),
+            address_line_1=data.get("address_line_1"),
+            address_line_2=data.get("address_line_2"),
+            emirate_id=data.get("emirate_id"),
+            visa_number=data.get("visa_number"),
+            contact_number=data.get("contact_number"),
+        )
+
+        if user_role == constants.OWNER:
+            profile = Owner.objects.create(**common_profile_kwargs, trade_license_number=data.get("trade_license_number") or "")
+        elif user_role == constants.TENANT:
+            profile = Tenant.objects.create(**common_profile_kwargs)
+        elif user_role == constants.COMPANY_USER:
+            company_id = data.get("company_id")
+            if not company_id:
                 return prepare_response(message=constants.FIELD_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
-
-            if password != confirm_password:
-                return prepare_response(message=constants.PASSWORD_MISMATCH, status=status.HTTP_400_BAD_REQUEST)
-            if User.objects.filter(username=email).exists():
-                return prepare_response(message=constants.EMAIL_ALREADY_REGISTERED, status=status.HTTP_400_BAD_REQUEST)
-
-            user = User.objects.create_user(
-                username=email,
-                email=email,
-                password=password,
-                first_name=first_name,
-                last_name=last_name
+            profile = PropertyManager.objects.create(
+                **common_profile_kwargs,
+                company_id=company_id
             )
-            prefix = get_user_code_prefix(user_role)
-            user_code = generate_unique_code(prefix)            
-            profile = UserProfile.objects.create(
-                user=user,
-                user_role=user_role,
-                created_by=user,
-                user_code=user_code, 
-                time_zone=data.get("time_zone"),
-                utc=data.get("utc"),
-                locality=data.get("locality"),
-                pin_code=data.get("pin_code"),
-                address=data.get("address"),
-                additional_address=data.get("additional_address"),
-                emirate_id=data.get("emirate_id"),
-                uae_residence_visa=data.get("uae_residence_visa"),
-                contact_number=data.get("contact_number"),
-                trade_license_number=data.get("trade_license_number"),
-                manage_through=data.get("manage_through") or constants.choices[0][0]
-            )
-            folder_name = f"{user_role.lower()}_documents/{profile.id}"
-            def upload_document(base64_data, file_prefix):
-                if not base64_data:
-                    return None
+        else:
+            return prepare_response(message=constants.INVALID_USER_ROLE, status=status.HTTP_400_BAD_REQUEST)
 
-                extension = get_extension_from_base64(base64_data) or ".png"
-                filename = f"{file_prefix}{extension}"
-                object_name = f"{folder_name}/{filename}"
-                uploaded_url = upload_file_to_s3_base64(base64_data, object_name)
-                if not uploaded_url:
-                    prepare_response(message=constants.DOCUMENT_UPLOAD_FAILED)
-                return Documents.objects.create(
-                    file_name=filename,
-                    file_path=uploaded_url,
-                    created_by=user
-                )
-            emirates_doc = upload_document(data.get("emirates_id_doc"), "emirates_id")
-            visa_doc = upload_document(data.get("uae_residence_visa_doc"), "uae_residence_visa")
-            dld_doc = upload_document(data.get("dld_certificate_doc"), "dld_certificate")
-            def create_mappings(mapping_model, profile, docs, attr_name):
-                for doc in docs:
-                    if doc:
-                        mapping_model.objects.create(
-                            **{attr_name: profile, "document": doc, "created_by": user}
-                        )
+        folder_name = f"{user_role.lower()}_documents/{profile.id}"
 
-            if user_role == constants.OWNER:
-                create_mappings(OwnerDocumentsMapping, profile, [emirates_doc, visa_doc, dld_doc], "owner")
-            if user_role == constants.TENANT:
-                create_mappings(TenantDocumentsMapping, profile, [emirates_doc, visa_doc], "tenant")
-            if user_role == constants.COMPANY_USER:
-                create_mappings(CompanyUserDocumentsMapping, profile, [emirates_doc, visa_doc], "company_user")
-                Company.objects.create(
-                    company_user=profile,
-                    company_code=data.get("company_code"),
-                    company_name=data.get("company_name"),
-                    company_address=data.get("company_address"),
-                    created_by=user
-                )    
-        return prepare_response(
-            message=constants.SIGNUP_SUCCESS,
-            content={
-                "user_id": user.id,
-                "profile_id": profile.id,
-                "email": email,
-                "role": user_role
-            },
-            status=status.HTTP_201_CREATED
-        )
+        if user_role == constants.OWNER:
+            doc_specs = [*EMIRATES_VISA_DOC_SPECS, ("dld_certificate_doc", "dld_certificate", "dld_doc_type")]
+            for data_key, prefix, type_key in doc_specs:
+                upload_document(data.get(data_key), prefix, data.get(type_key), OwnerDocuments, {"owner": profile}, folder_name, user)
+        elif user_role == constants.TENANT:
+            for data_key, prefix, type_key in EMIRATES_VISA_DOC_SPECS:
+                upload_document(data.get(data_key), prefix, data.get(type_key), TenantDocuments, {"tenant": profile}, folder_name, user)
+        elif user_role == constants.COMPANY_USER:
+            for data_key, prefix, type_key in EMIRATES_VISA_DOC_SPECS:
+                doc = upload_document(data.get(data_key), prefix, data.get(type_key), Documents, {}, folder_name, user)
+                if doc:
+                    PropertyManagerDocuments.objects.create(company_user=profile, document=doc, created_by=user)
 
-    except Exception as e:
-        return prepare_response(
-            message=str(e),
-            status=status.HTTP_400_BAD_REQUEST
-        )
+    return prepare_response(
+        message=constants.SIGNUP_SUCCESS,
+        content={"user_id": user.id, "profile_id": profile.id, "email": email, "role": user_role},
+        status=status.HTTP_201_CREATED
+    )
+
+
 
 
 @is_request_authenticated
@@ -417,7 +394,7 @@ def create_role(request):
             )
         user_profile = request.user 
         django_user = user_profile.user
-        company = Company.objects.filter(company_user=user_profile, is_active=True).first()
+        company = PropertyManagmentCompany.objects.filter(company_user=user_profile, is_active=True).first()
         if not company:
             return prepare_response(
                 message=constants.COMPANY_NOT_FOUND,
@@ -495,7 +472,7 @@ def staff_view(request):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            company = Company.objects.filter(
+            company = PropertyManagmentCompany.objects.filter(
                 company_user=user,
                 is_active=True
             ).first()
@@ -560,7 +537,7 @@ def staff_view(request):
             staff_id = body.get("staff_id")
             if not staff_id:
                 return prepare_response(message=constants.STAFF_ID_REQUIRED,status=status.HTTP_400_BAD_REQUEST)
-            company = Company.objects.filter(company_user=user, is_active=True).first()
+            company = PropertyManagmentCompany.objects.filter(company_user=user, is_active=True).first()
             if not company:
                 return prepare_response(message=constants.COMPANY_NOT_FOUND,status=status.HTTP_404_NOT_FOUND)
             company_staff = CompanyStaff.objects.filter(id=staff_id, company=company).first()
@@ -618,7 +595,7 @@ def staff_view(request):
         role_id = request.GET.get("role_id")
         staff_id = request.GET.get("staff_id")
 
-        company = Company.objects.filter(
+        company = PropertyManagmentCompany.objects.filter(
             company_user=user,
             is_active=True
         ).first()
@@ -760,7 +737,7 @@ def role_table_view(request):
         end_epoch = request.GET.get("end_date")
         is_active_param = request.GET.get("is_active", "true").lower()
         is_active = is_active_param == "true"
-        company = Company.objects.filter(company_user=user, is_active=True).first()
+        company = PropertyManagmentCompany.objects.filter(company_user=user, is_active=True).first()
         if not company:
             return prepare_response(
                 message=constants.COMPANY_NOT_FOUND,
@@ -899,7 +876,7 @@ def export_staff_csv(request):
         role_id = request.GET.get("role_id")
         staff_id = request.GET.get("staff_id")
 
-        company = Company.objects.filter(
+        company = PropertyManagmentCompany.objects.filter(
             company_user=user,
             is_active=True
         ).first()
@@ -1065,261 +1042,3 @@ def contact_list_view(request):
         message=constants.METHOD_NOT_ALLOWED,
         status=status.HTTP_405_METHOD_NOT_ALLOWED
     )
-
-@is_request_authenticated
-def create_lead(request):
-    if request.method == "POST":
-        body = json.loads(request.body)
-        name           = body.get("name")
-        email          = body.get("email")
-        contact_number = body.get("contact_number")
-        status_value   = body.get("status")
-        platform       = body.get("platform")
-        lead_type      = body.get("lead_type")
-        unit_id        = body.get("unit")
-        referred_by_id = body.get("referred_by")
-
-        if not name:
-            return prepare_response(
-                message=constants.NAME_REQUIRED,
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        if not platform:
-            return prepare_response(
-                message=constants.PLATFORM_REQUIRED,
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        if not lead_type:
-            return prepare_response(
-                message=constants.LEAD_TYPE_REQUIRED,
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        company = Company.objects.filter(company_user=request.user,is_active=True).first()
-        if not company:
-            return prepare_response(
-                message=constants.COMPANY_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        unit = None
-        if unit_id:
-            unit = Unit.objects.filter(id=unit_id,is_active=True ).first()
-            if not unit:
-                return prepare_response(
-                    message=constants.UNIT_NOT_FOUND,
-                    status=status.HTTP_404_NOT_FOUND
-                )
-
-        tenant = None
-        if email:
-            tenant = UserProfile.objects.filter(user__email=email,is_active=True).first()
-
-        referred_by = None
-        if referred_by_id:
-            referred_by = UserProfile.objects.filter(id=referred_by_id,is_active=True).first()
-            if not referred_by:
-                return prepare_response(
-                    message=constants.REFERRED_USER_NOT_FOUND,
-                    status=status.HTTP_404_NOT_FOUND
-                )
-
-        Lead.objects.create(
-            name=name,
-            email=email,
-            contact_number=contact_number,
-            status=status_value or constants.INTERESTED,
-            platform=platform,
-            lead_type=lead_type,
-            unit=unit,
-            tenant=tenant,
-            referred_by=referred_by,
-            company=company,
-            created_by=request.user.user
-        )
-
-        return prepare_response(
-            message=constants.LEAD_CREATED_SUCCESSFULLY,
-            status=status.HTTP_200_OK
-        )
-
-    elif request.method == "GET":
-
-        company = Company.objects.filter(company_user=request.user,is_active=True).first()
-
-        if not company:
-            return prepare_response(
-                message=constants.COMPANY_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        lead_id = request.GET.get("lead_id")
-
-        if lead_id:
-            leads = Lead.objects.filter(lead_id=lead_id,company=company,is_active=True)
-        else:
-            leads = Lead.objects.filter(company=company,is_active=True)
-
-        data = [{
-            "id": lead.id,
-            "lead_id": lead.lead_id,
-            "name": lead.name,
-            "email": lead.email,
-            "contact_number": lead.contact_number,
-            "status": lead.status,
-            "platform": lead.platform,
-            "lead_type": lead.lead_type,
-            "created": lead.created.strftime("%m/%d/%Y %H:%M") if lead.created else None,
-        } for lead in leads]
-
-        return prepare_response(
-            content=data,
-            message=constants.LEAD_FETCHED_SUCCESSFULLY,
-            status=status.HTTP_200_OK
-        )
-    elif request.method == "PUT":
-        body = json.loads(request.body)
-        lead_id = request.GET.get("lead_id")
-
-        if not lead_id:
-            return prepare_response(
-                message=constants.LEAD_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        company = Company.objects.filter(company_user=request.user,is_active=True).first()
-        if not company:
-            return prepare_response(
-                message=constants.COMPANY_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        lead = Lead.objects.filter(lead_id=lead_id, company=company,is_active=True).first()
-        if not lead:
-            return prepare_response(
-                message=constants.LEAD_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        lead.name = body.get("name", lead.name)
-        lead.email = body.get("email", lead.email)
-        lead.contact_number = body.get("contact_number", lead.contact_number)
-        lead.status = body.get("status", lead.status)
-        lead.platform = body.get("platform", lead.platform)
-        lead.lead_type = body.get("lead_type", lead.lead_type)
-
-        unit_id = body.get("unit")
-        if unit_id:
-            unit = Unit.objects.filter(id=unit_id,is_active=True).first()
-            if not unit:
-                return prepare_response(
-                    message=constants.UNIT_NOT_FOUND,
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            lead.unit = unit
-
-        referred_by_id = body.get("referred_by")
-        if referred_by_id:
-            referred_by = UserProfile.objects.filter(id=referred_by_id,is_active=True).first()
-            if not referred_by:
-                return prepare_response(
-                    message=constants.REFERRED_USER_NOT_FOUND,
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            lead.referred_by = referred_by
-
-        lead.save()
-
-        return prepare_response(
-            message=constants.LEAD_UPDATED_SUCCESSFULLY,
-            status=status.HTTP_200_OK
-        )
-
-    elif request.method == "DELETE":
-
-        lead_id = request.GET.get("lead_id")
-
-        if not lead_id:
-            return prepare_response(
-                message=constants.LEAD_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        company = Company.objects.filter(company_user=request.user,is_active=True).first()
-
-        if not company:
-            return prepare_response(
-                message=constants.COMPANY_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        lead = Lead.objects.filter(lead_id=lead_id,company=company).first()
-
-        if not lead:
-            return prepare_response(
-                message=constants.LEAD_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        lead.delete()
-
-        return prepare_response(
-            message=constants.LEAD_DELETED_SUCCESSFULLY,
-            status=status.HTTP_200_OK
-        )
-
-@is_request_authenticated
-def convert_lead_to_tenant(request):
-    if request.method == "GET":
-        lead_id = request.GET.get("lead_id")
-
-        if not lead_id:
-            return prepare_response(
-                message=constants.LEAD_NOT_FOUND,
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        company = Company.objects.filter(
-            company_user=request.user,
-            is_active=True
-        ).first()
-        if not company:
-            return prepare_response(
-                message=constants.COMPANY_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        lead = Lead.objects.filter(
-            lead_id=lead_id,
-            company=company,
-            is_active=True
-        ).first()
-        if not lead:
-            return prepare_response(
-                message=constants.LEAD_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        data = {
-            "lead_id": lead.lead_id,
-            "platform": lead.platform,
-            "tenant_details": {
-                "name": lead.name,
-                "email": lead.email,
-                "contact": lead.contact_number,
-                "status": lead.get_status_display(),
-            },
-
-            "property_details": {
-                "property_name": lead.unit.property.property_name if lead.unit and lead.unit.property else None,
-                "block_tower": lead.unit.property_block_tower.property_name if lead.unit and lead.unit.property_block_tower else None,
-                "unit": lead.unit.unit_name if lead.unit else None,
-                "rent": f"AED{lead.unit.rent}" if lead.unit and lead.unit.rent else None,
-            } if lead.unit else None,
-        }
-
-        return prepare_response(
-            content=data,
-            message=constants.LEAD_FETCHED_SUCCESSFULLY,
-            status=status.HTTP_200_OK
-        )

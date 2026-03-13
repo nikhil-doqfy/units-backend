@@ -13,10 +13,40 @@ class Base(models.Model):
     class Meta:
         abstract = True
     
+    
+class Country(models.Model):
+    name = models.CharField(max_length=100, null=True, blank=True)
+    code = models.CharField(max_length=10, null=True, blank=True)
+
+    def __str__(self):
+        return self.name
+
+    def _get_country_info(self):
+        return {"id": self.id, "name": self.name, "code": self.code}
+
+
+class State(models.Model):
+    country = models.ForeignKey(Country, on_delete=models.CASCADE, related_name="states")
+    name = models.CharField(max_length=100, null=True, blank=True)
+    code = models.CharField(max_length=10, null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.country.name})"
+
+
+class City(models.Model):
+    state = models.ForeignKey(State, on_delete=models.CASCADE, related_name="cities", null=True, blank=True)
+    code = models.CharField(max_length=10, null=True, blank=True)
+    name = models.CharField(max_length=100, null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.name} ({self.state.name}, {self.state.country.name})"
+
+
 class LeasePropertyDetails(Base):
     lease_number = models.CharField(max_length=50, unique=True, null=True, blank=True)
     lease_property = models.ForeignKey(
-        "property_service.Unit",
+        "property.Unit",
         on_delete=models.CASCADE,
         related_name="lease_details",null=True, blank=True
     )
@@ -144,7 +174,7 @@ class UserInvitation(Base):
     )
     token = models.CharField(max_length=255, null=True, blank=True)
     property_unit = models.ForeignKey(
-        "property_service.Unit",
+        "property.Unit",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,

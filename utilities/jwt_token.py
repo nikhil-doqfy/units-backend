@@ -5,6 +5,7 @@ from utilities import constants
 
 DEFAULT_EXPIRY_MINUTES = 60
 def create_jwt_token(user_profile):
+    from user_service.models import UserProfile
     expiry_time = datetime.utcnow() + timedelta(minutes=constants.JWT_TOKEN_EXPIRY_MINUTES)
     payload = {
         'user_id': user_profile.id,
@@ -12,8 +13,7 @@ def create_jwt_token(user_profile):
         'exp': expiry_time
     }
     token = jwt.encode(payload, JWT_SECRET_KEY, algorithm=JWT_ALGORITHM)
-    user_profile.token = token
-    user_profile.save(update_fields=['token'])
+    UserProfile.objects.filter(pk=user_profile.pk).update(token=token)
     return token
 
 

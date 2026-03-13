@@ -121,6 +121,7 @@ PROPERTY_UPDATE_SUCCESS = "Property details updated successfully."
 PROPERTY_ADDED = "Property added successfully."
 TENANT_LIST_FETCHED_SUCCES="Tenant list fetched successfully"
 PROPERTY_ID_REQUIRED="Property  is required"
+PROPERTY_NAME_REQUIRED="Property name is required"
 DATA_NOT_FOUND='data not found'
 PROPERTY_MANAGER_LIST_FETCHED="property manager list fetch successfully"
 OWNER_LIST_FETCHED_SUCCESS="owner list fetch successfully"
@@ -143,6 +144,9 @@ USER_ID_FULL_NAME_REQUIRED="user_id and full_name are required"
 OWNER = "OWNER"
 COMPANY_USER = "COMPANY_USER"
 TENANT = "TENANT"
+PROPERTY_MANAGER = "PROPERTY_MANAGER"
+PROPERTY = "PROPERTY"
+UNIT = "UNIT"
 STAFF = "STAFF"
 AVAILABLE="AVAILABLE"
 COMPANY="Company"
@@ -299,6 +303,7 @@ NO_PROPERTY_ASSIGNED_TO_TENANAT="No property assigned to this tenant"
 TENANT_DETAIL_FETCHED="teanant data fetched"
 COMPANY_NOT_FOUND="company not found"
 UNAUTHORIZED_TO_CREATE_PROPERTY=""
+NOT_VERIFIED_PROPERTY_MANAGER="You are not a verified property manager"
 
 PARENT_PROPERTY_REQUIRED = "Parent property id or name is required"
 OWNER_TENANCY_FETCH_SUCCESS = "Owner tenancy details fetched successfully"
@@ -484,9 +489,9 @@ Ejari_DOCUMENT_CATEGORY_CHOICES = (
 
 
 IMAGE_TYPE_CHOICES = (
-         ("INTERIOR", "Interior"),
-         ("EXTERIOR", "Exterior"),
-          )
+    ("INTERIOR", "Interior"),
+    ("EXTERIOR", "Exterior"),
+)
 
 
 LEASE_STEP_STATUS = (
@@ -678,6 +683,9 @@ FLOOR_CHOICES = tuple((i, str(i)) for i in range(0, 51))
 # ── Balcony ───────────────────────────────────────────────────
 BALCONY_CHOICES = tuple((i, str(i)) for i in range(0, 11))
 
+# ── Parking ───────────────────────────────────────────────────
+PARKING_CHOICES = tuple((i, str(i)) for i in range(0, 11))
+
 # ── Step Status ───────────────────────────────────────────────
 BASIC_DETAILS   = 'BASIC_DETAILS'
 ADDRESS_DETAILS = 'ADDRESS_DETAILS'
@@ -688,4 +696,19 @@ STEP_CHOICES = (
     (ADDRESS_DETAILS, 'Address Details'),
     (FINANCIAL,       'Financial'),
     (COMPLETED,       'Completed'),
+)
+
+
+TIMEZONE_CHOICES = (
+    ("UTC", "UTC"),
+    ("GMT", "GMT"),
+    ("EST", "EST"),
+    ("CST", "CST"),
+    ("MST", "MST"),
+    ("PST", "PST"),
+    ("IST", "IST"),
+    ("CET", "CET"),
+    ("EET", "EET"),
+    ("JST", "JST"),
+    ("AEST", "AEST")
 )

@@ -1,17 +1,33 @@
 import random
-import random
-from utilities import status, constants
-from utilities.helper_functions import prepare_response, upload_file_to_s3_base64, datetime_to_epoch_millis, safe_epoch_to_datetime, get_extension_from_base64, get_user_code_prefix, generate_unique_code
-from user_service.models import UserProfile, Documents, OwnerDocumentsMapping, TenantDocumentsMapping, Country, State, City, Role, Permission, CompanyStaff
-from property_service.models import Unit, Company, CompanyUserDocumentsMapping, StaffDocumentsMapping
+from datetime import timedelta
+from utilities.helper_functions import upload_file_to_s3_base64, get_extension_from_base64
+from user_service.models import DocumentType
+
 
 def request_otp_sent():
     otp = random.randint(100000, 999999)
     return otp
 
-    
 
-
+def upload_document(base64_data, file_prefix, document_type_id, document_model, extra_kwargs, folder_name, user):
+    if not base64_data or not document_type_id:
+        return None
+    doc_type = DocumentType.objects.filter(id=document_type_id).first()
+    if not doc_type:
+        return None
+    extension = get_extension_from_base64(base64_data) or ".png"
+    filename = f"{file_prefix}{extension}"
+    object_name = f"{folder_name}/{filename}"
+    uploaded_url = upload_file_to_s3_base64(base64_data, object_name)
+    if not uploaded_url:
+        return None
+    return document_model.objects.create(
+        file_name=filename,
+        file_path=uploaded_url,
+        document_type=doc_type,
+        created_by=user,
+        **extra_kwargs
+    )
 
 
 
