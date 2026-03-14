@@ -285,7 +285,7 @@ def options(request):
                 content["property_unit"] = []
             else:
                 units = Unit.objects.filter(property_block_tower__property_id=property_id)
-                content["property_unit"] = [{ "key": unit.id,"value": unit.unit_name or f"Unit #{unit.id}", "rent": str(unit.rent) if unit.rent else None}for unit in units]
+                content["property_unit"] = [{ "key": unit.id,"value": unit.unit_name or f"Unit #{unit.id}"}for unit in units]
         elif option_type == "COMPLAINT_STATUS":
             content["complaint_status"] = [{"key": constants.IN_PROGRESS, "value": "In Progress"},
         {"key": constants.COMPLETED, "value": "Completed"},
