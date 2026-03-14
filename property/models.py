@@ -165,18 +165,17 @@ class Unit(Base):
         related_name="block_towers"
     )
     unit_name = models.CharField(max_length=255)
-    land_area = models.DecimalField(max_digits=10, decimal_places=2)
-    land_area_unit = models.CharField(
-        max_length=20,
-        choices=constants.AREA_UNIT_CHOICES,
-        default=constants.SQ_FT
-    )
-    land_dm_no = models.CharField(max_length=100, null=True, blank=True)
+    unit_size = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    area = models.CharField(max_length=255, null=True, blank=True)
+    dm_no = models.CharField(max_length=100, null=True, blank=True)
     no_of_bedrooms = models.IntegerField(choices=constants.BEDROOM_CHOICES, null=True, blank=True)
     floor_no = models.IntegerField(choices=constants.FLOOR_CHOICES, null=True, blank=True)
     parking_no = models.CharField(max_length=50, null=True, blank=True)
     no_of_balcony = models.IntegerField(choices=constants.BALCONY_CHOICES, null=True, blank=True)
-    plot_no = models.CharField(max_length=100, null=True, blank=True)
+    land_no = models.CharField(max_length=100, null=True, blank=True)
+    unit_usage = models.CharField(max_length=50, choices=constants.UNIT_USAGE_CHOICES, null=True, blank=True)
+    unit_type = models.CharField(max_length=50, choices=constants.UNIT_TYPE_CHOICES, null=True, blank=True)
+    sub_type = models.CharField(max_length=255, null=True, blank=True)
     makani_no = models.CharField(max_length=100, null=True, blank=True)
     dewa_no = models.CharField(max_length=100, null=True, blank=True)
     rent = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
@@ -220,14 +219,17 @@ class Unit(Base):
             "property_address_line_1": self.property_block_tower.property.address_line_1,
             "property_address_line_2": self.property_block_tower.property.address_line_2,
             "property_landmark": self.property_block_tower.property.landmark,
-            "land_area": str(self.land_area) if self.land_area is not None else None,
-            "land_area_unit": self.land_area_unit,
-            "land_dm_no": self.land_dm_no,
+            "unit_size": str(self.unit_size) if self.unit_size is not None else None,
+            "area": self.area,
+            "dm_no": self.dm_no,
             "no_of_bedrooms": self.no_of_bedrooms,
             "floor_no": self.floor_no,
             "parking_no": self.parking_no,
             "no_of_balcony": self.no_of_balcony,
-            "plot_no": self.plot_no,
+            "land_no": self.land_no,
+            "unit_usage": self.unit_usage,
+            "unit_type": self.unit_type,
+            "sub_type": self.sub_type,
             "makani_no": self.makani_no,
             "dewa_no": self.dewa_no,
             "rent": str(self.rent) if self.rent is not None else None,
@@ -244,6 +246,13 @@ class Unit(Base):
                     "email": o.email,
                     "contact_number": o.contact_number,
                     "emirates_id": o.emirates_id,
+                    "owner_number": o.owner_number,
+                    "trade_license_number": o.trade_license_number,
+                    "license_number": o.license_number,
+                    "license_expiry_date": o.license_expiry_date.isoformat() if o.license_expiry_date else None,
+                    "license_issuer": o.license_issuer,
+                    "fax_number": o.fax_number,
+                    "po_box_number": o.po_box_number,
                 }
                 for o in self.unit_owners.all()
             ],
@@ -290,6 +299,13 @@ class UnitOwner(Base):
     email = models.EmailField(null=True, blank=True)
     contact_number = models.CharField(max_length=50, null=True, blank=True)
     emirates_id = models.CharField(max_length=100, null=True, blank=True)
+    owner_number = models.CharField(max_length=20, null=True, blank=True)
+    trade_license_number = models.CharField(max_length=255, null=True, blank=True)
+    license_number = models.CharField(max_length=255, null=True, blank=True)
+    license_expiry_date = models.DateTimeField(null=True, blank=True)
+    license_issuer = models.CharField(max_length=150, null=True, blank=True)
+    fax_number = models.CharField(max_length=20, null=True, blank=True)
+    po_box_number = models.CharField(max_length=20, null=True, blank=True)
 
     def __str__(self):
         return f"{self.name} -> Unit #{self.unit_id}"

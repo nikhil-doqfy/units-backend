@@ -31,6 +31,8 @@ def _serialize_lead(lead):
     unit = lead.unit
     block = unit.property_block_tower
     prop = block.property
+    pmc = prop.pmc
+
     return {
         "id": lead.id,
         "code": lead.code,
@@ -40,12 +42,39 @@ def _serialize_lead(lead):
         "status": lead.status,
         "platform": lead.platform,
         "lead_type": lead.lead_type,
+        # Unit details
         "unit_id": unit.id,
         "unit_name": unit.unit_name,
+        "unit_size": str(unit.unit_size) if unit.unit_size else None,
+        "dm_no": unit.dm_no,
+        "floor_no": unit.floor_no,
+        "makani_no": unit.makani_no,
+        "land_no": unit.land_no,
+        "dewa_no": unit.dewa_no,
         "rent": str(unit.rent) if unit.rent else None,
+        # Block / Property
+        "block_id": block.id,
+        "block_name": block.block_name,
         "property_id": prop.id,
         "property_name": prop.property_name,
         "property_thumbnail": _get_property_thumbnail(prop),
+        # All unit owners
+        "unit_owners": [
+            {
+                "name": o.name,
+                "email": o.email,
+                "contact_number": o.contact_number,
+                "emirates_id": o.emirates_id,
+                "owner_number": o.owner_number,
+                "trade_license_number": o.trade_license_number,
+                "license_number": o.license_number,
+                "license_expiry_date": o.license_expiry_date.strftime("%Y-%m-%d") if o.license_expiry_date else None,
+                "license_issuer": o.license_issuer,
+                "fax_number": o.fax_number,
+                "po_box_number": o.po_box_number,
+            }
+            for o in unit.unit_owners.all()
+        ],
         "created_at": lead.created.strftime("%m/%d/%Y %H:%M") if lead.created else None,
     }
 

@@ -685,6 +685,22 @@ AREA_UNIT_CHOICES = (
     (SQ_YD, 'Sq-yd'),
 )
 
+# ── Unit Usage ─────────────────────────────────────────────────
+RESIDENTIAL = 'RESIDENTIAL'
+COMMERCIAL = 'COMMERCIAL'
+UNIT_USAGE_CHOICES = (
+    (RESIDENTIAL, 'Residential'),
+    (COMMERCIAL, 'Commercial'),
+)
+
+# ── Unit Type ──────────────────────────────────────────────────
+FLAT = 'FLAT'
+UNIT_TYPE_CHOICES = (
+    (FLAT, 'Flat'),
+    (APARTMENT, 'Apartment'),
+    (VILLA, 'Villa'),
+)
+
 # ── No of Blocks ──────────────────────────────────────────────
 BLOCKS_CHOICES = tuple((i, str(i)) for i in range(1, 21))
 
