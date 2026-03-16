@@ -34,3 +34,14 @@ class Lead(Base):
             Lead.objects.filter(pk=self.pk).update(code=self.code)
 
 
+
+class ActivityLog(Base):
+    lead = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name="activity_logs")
+    activity_type = models.CharField(
+        max_length=20,
+        choices=constants.ACTIVITY_TYPE_CHOICES,
+        default=constants.NOTE,
+    )
+    title = models.CharField(max_length=255, blank=True)
+    description = models.TextField(blank=True)
+    scheduled_date = models.DateTimeField(null=True, blank=True)

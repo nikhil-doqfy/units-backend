@@ -2,9 +2,10 @@ import base64
 import csv
 import io
 import json
+from datetime import datetime
 from django.db.models import Q
 from django.http import HttpResponse
-from .models import Lead
+from .models import Lead, ActivityLog
 from property.models import Unit
 from user_service.models import PropertyManager
 
@@ -30,6 +31,8 @@ def _serialize_lead(lead):
     unit = lead.unit
     block = unit.property_block_tower
     prop = block.property
+    pmc = prop.pmc
+
     return {
         "id": lead.id,
         "code": lead.code,
@@ -39,12 +42,39 @@ def _serialize_lead(lead):
         "status": lead.status,
         "platform": lead.platform,
         "lead_type": lead.lead_type,
+        # Unit details
         "unit_id": unit.id,
         "unit_name": unit.unit_name,
+        "unit_size": str(unit.unit_size) if unit.unit_size else None,
+        "dm_no": unit.dm_no,
+        "floor_no": unit.floor_no,
+        "makani_no": unit.makani_no,
+        "land_no": unit.land_no,
+        "dewa_no": unit.dewa_no,
         "rent": str(unit.rent) if unit.rent else None,
+        # Block / Property
+        "block_id": block.id,
+        "block_name": block.block_name,
         "property_id": prop.id,
         "property_name": prop.property_name,
         "property_thumbnail": _get_property_thumbnail(prop),
+        # All unit owners
+        "unit_owners": [
+            {
+                "name": o.name,
+                "email": o.email,
+                "contact_number": o.contact_number,
+                "emirates_id": o.emirates_id,
+                "owner_number": o.owner_number,
+                "trade_license_number": o.trade_license_number,
+                "license_number": o.license_number,
+                "license_expiry_date": o.license_expiry_date.strftime("%Y-%m-%d") if o.license_expiry_date else None,
+                "license_issuer": o.license_issuer,
+                "fax_number": o.fax_number,
+                "po_box_number": o.po_box_number,
+            }
+            for o in unit.unit_owners.all()
+        ],
         "created_at": lead.created.strftime("%m/%d/%Y %H:%M") if lead.created else None,
     }
 
@@ -135,6 +165,13 @@ def lead_view(request):
             created_by=user_profile.user,
         )
 
+        ActivityLog.objects.create(
+            lead=lead,
+            activity_type=constants.NOTE,
+            title="created this lead",
+            created_by=user_profile.user,
+        )
+
         return prepare_response(
             message="Lead created successfully",
             content={"id": lead.id, "code": lead.code},
@@ -151,16 +188,41 @@ def lead_view(request):
         if not lead:
             return prepare_response(message="Lead not found", status=status.HTTP_404_NOT_FOUND)
 
+        STATUS_LABELS = {
+            "INTERESTED": "Interested",
+            "NOT_INTERESTED": "Not Interested",
+            "LEASE_TENANCY": "Lease/Tenancy",
+        }
+        changes = []
         for field in ["name", "email", "contact_number", "status", "platform", "lead_type"]:
             if field in data and data[field] is not None:
-                setattr(lead, field, data[field])
+                old_val = getattr(lead, field)
+                new_val = data[field]
+                if str(old_val) != str(new_val):
+                    if field == "status":
+                        changes.append(f"changed status from {STATUS_LABELS.get(old_val, old_val)} to {STATUS_LABELS.get(new_val, new_val)}")
+                    else:
+                        changes.append(f"updated {field.replace('_', ' ')}")
+                setattr(lead, field, new_val)
 
         if "unit_id" in data:
             unit = Unit.objects.filter(id=data["unit_id"]).first()
-            if unit:
+            if unit and unit.id != lead.unit_id:
+                changes.append(f"changed unit to {unit.unit_name}")
                 lead.unit = unit
 
         lead.save()
+
+        comment = (data.get("comment") or "").strip()
+        title = " and ".join(changes) if changes else "updated this lead"
+        ActivityLog.objects.create(
+            lead=lead,
+            activity_type=constants.STATUS_CHANGE if any("status" in c for c in changes) else constants.NOTE,
+            title=title,
+            description=comment,
+            created_by=user_profile.user,
+        )
+
         return prepare_response(message="Lead updated successfully", content={"id": lead.id}, status=status.HTTP_200_OK)
 
     elif request.method == "DELETE":
@@ -174,6 +236,110 @@ def lead_view(request):
 
         lead.delete()
         return prepare_response(message="Lead deleted successfully", status=status.HTTP_200_OK)
+
+    return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+
+def _parse_scheduled_date(value):
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value
+    try:
+        return datetime.fromisoformat(str(value))
+    except (ValueError, TypeError):
+        return None
+
+
+def _serialize_activity(log):
+    created_by = log.created_by
+    sched = log.scheduled_date
+    if isinstance(sched, str):
+        sched = _parse_scheduled_date(sched)
+    return {
+        "id": log.id,
+        "activity_type": log.activity_type,
+        "title": log.title,
+        "description": log.description,
+        "scheduled_date": sched.strftime("%Y-%m-%dT%H:%M") if sched else None,
+        "created_at": log.created.strftime("%m/%d/%Y %H:%M") if log.created else None,
+        "created_by_name": f"{created_by.first_name} {created_by.last_name}".strip() if created_by else "System",
+    }
+
+
+@is_request_authenticated
+def activity_log_view(request):
+    user_profile = request.user
+    pmc = _get_pmc(user_profile)
+    if not pmc:
+        return prepare_response(message="Company not found for this user", status=status.HTTP_400_BAD_REQUEST)
+
+    if request.method == "GET":
+        lead_id = request.GET.get("lead_id")
+        if not lead_id:
+            return prepare_response(message="lead_id is required", status=status.HTTP_400_BAD_REQUEST)
+
+        lead = Lead.objects.filter(id=lead_id, pmc=pmc).first()
+        if not lead:
+            return prepare_response(message="Lead not found", status=status.HTTP_404_NOT_FOUND)
+
+        logs = ActivityLog.objects.filter(lead=lead).order_by("-created")
+        return prepare_response(content=[_serialize_activity(l) for l in logs], status=status.HTTP_200_OK)
+
+    elif request.method == "POST":
+        data = json.loads(request.body)
+        lead_id = data.get("lead_id")
+        activity_type = data.get("activity_type", constants.NOTE)
+        title = (data.get("title") or "").strip()
+        description = (data.get("description") or "").strip()
+        scheduled_date = data.get("scheduled_date")
+
+        if not lead_id:
+            return prepare_response(message="lead_id is required", status=status.HTTP_400_BAD_REQUEST)
+
+        lead = Lead.objects.filter(id=lead_id, pmc=pmc).first()
+        if not lead:
+            return prepare_response(message="Lead not found", status=status.HTTP_404_NOT_FOUND)
+
+        log = ActivityLog.objects.create(
+            lead=lead,
+            activity_type=activity_type,
+            title=title,
+            description=description,
+            scheduled_date=_parse_scheduled_date(scheduled_date),
+            created_by=user_profile.user,
+        )
+        return prepare_response(content=_serialize_activity(log), status=status.HTTP_201_CREATED)
+
+    elif request.method == "PUT":
+        data = json.loads(request.body)
+        log_id = data.get("log_id")
+        if not log_id:
+            return prepare_response(message="log_id is required", status=status.HTTP_400_BAD_REQUEST)
+
+        log = ActivityLog.objects.filter(id=log_id, lead__pmc=pmc).first()
+        if not log:
+            return prepare_response(message="Activity log not found", status=status.HTTP_404_NOT_FOUND)
+
+        for field in ["activity_type", "title", "description"]:
+            if field in data:
+                setattr(log, field, data[field])
+        if "scheduled_date" in data:
+            log.scheduled_date = _parse_scheduled_date(data["scheduled_date"])
+        log.save()
+        return prepare_response(content=_serialize_activity(log), status=status.HTTP_200_OK)
+
+    elif request.method == "DELETE":
+        log_id = request.GET.get("log_id")
+        if not log_id:
+            return prepare_response(message="log_id is required", status=status.HTTP_400_BAD_REQUEST)
+
+        log = ActivityLog.objects.filter(id=log_id, lead__pmc=pmc).first()
+        if not log:
+            return prepare_response(message="Activity log not found", status=status.HTTP_404_NOT_FOUND)
+
+        log.delete()
+        return prepare_response(message="Activity log deleted successfully", status=status.HTTP_200_OK)
 
     return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 

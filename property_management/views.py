@@ -219,6 +219,27 @@ def options(request):
         elif option_type == "OWNER_DETAILS":
             owners = Owner.objects.select_related('user').filter(user__is_active=True)
             content["owners"] = [{"key": owner.id, "value": f"{owner.user.first_name} {owner.user.last_name}"} for owner in owners]
+
+        elif option_type == "PMC_OWNERS":
+            owners = Owner.objects.select_related('user').filter(user__is_active=True)
+            content["pmc_owners"] = [
+                {
+                    "key": owner.id,
+                    "value": f"{owner.user.first_name} {owner.user.last_name} ({owner.code})" if owner.code else f"{owner.user.first_name} {owner.user.last_name}",
+                    "name": f"{owner.user.first_name} {owner.user.last_name}",
+                    "email": owner.email or owner.user.email,
+                    "contact_number": owner.contact_number,
+                    "emirates_id": owner.emirate_id,
+                    "owner_number": owner.owner_number,
+                    "trade_license_number": owner.trade_license_number,
+                    "license_number": owner.license_number,
+                    "license_expiry_date": owner.license_expiry_date.isoformat() if owner.license_expiry_date else None,
+                    "license_issuer": owner.license_issuer,
+                    "fax_number": owner.fax_number,
+                    "po_box_number": owner.po_box_number,
+                }
+                for owner in owners
+            ]
             
         elif option_type == "PROPERTY_UNIT_WITH_LEASE":
             if is_owner:
@@ -286,7 +307,25 @@ def options(request):
                 content["property_unit"] = []
             else:
                 units = Unit.objects.filter(property_block_tower__property_id=property_id)
-                content["property_unit"] = [{ "key": unit.id,"value": unit.unit_name or f"Unit #{unit.id}", "rent": str(unit.rent) if unit.rent else None}for unit in units]
+                content["property_unit"] = [{ "key": unit.id,"value": unit.unit_name or f"Unit #{unit.id}"}for unit in units]
+
+        elif option_type == "PROPERTY_BLOCK_BY_PROPERTY":
+            property_id = request.GET.get("property_id")
+            if not property_id:
+                content["property_block"] = []
+            else:
+                from property.models import PropertyBlocks
+                blocks = PropertyBlocks.objects.filter(property_id=property_id)
+                content["property_block"] = [{"key": b.id, "value": b.block_name} for b in blocks]
+
+        elif option_type == "PROPERTY_UNIT_BY_BLOCK":
+            block_id = request.GET.get("block_id")
+            if not block_id:
+                content["property_unit"] = []
+            else:
+                units = Unit.objects.filter(property_block_tower_id=block_id)
+                content["property_unit"] = [{"key": unit.id, "value": unit.unit_name or f"Unit #{unit.id}"} for unit in units]
+
         elif option_type == "COMPLAINT_STATUS":
             content["complaint_status"] = [{"key": constants.IN_PROGRESS, "value": "In Progress"},
         {"key": constants.COMPLETED, "value": "Completed"},
@@ -3812,9 +3851,6 @@ def lease_term_and_condition(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
-
-
-
 def property_owner_compny_lease(request):
     try:
         if request.method == "GET":
@@ -3838,9 +3874,7 @@ def property_owner_compny_lease(request):
 
             try:
                 unit = Unit.objects.select_related(
-                    "owner__user",
-                    "company__company_user__user",
-                    "property"
+                    "property_block_tower__property"
                 ).get(id=property_unit_id)
             except Unit.DoesNotExist:
                 return prepare_response(
@@ -3849,94 +3883,69 @@ def property_owner_compny_lease(request):
                 )
 
             # ---------------- Owner Details ----------------
-            owner_data = None
-            if unit.owner:
-                owner_user = unit.owner.user
-                owner_data = {
-                    "user_profile_id": unit.owner.id,
-                    "user_id": owner_user.id,
-                    "name": f"{owner_user.first_name} {owner_user.last_name}",
-                    "email": owner_user.email,
-                    "contact_number": unit.owner.contact_number,
-                    "owner_code": unit.owner.user_code,
-                    "emirate_id":unit.owner.emirate_id,
-                    "trade_license_number":unit.owner.trade_license_number,
-
-                    
-                    
+            owner_data = [
+                {
+                    "name": o.name,
+                    "email": o.email,
+                    "contact_number": o.contact_number,
+                    "emirates_id": o.emirates_id,
+                    "owner_number": o.owner_number,
+                    "trade_license_number": o.trade_license_number,
+                    "license_number": o.license_number,
+                    "license_expiry_date": o.license_expiry_date.strftime("%Y-%m-%d") if o.license_expiry_date else None,
+                    "license_issuer": o.license_issuer,
+                    "fax_number": o.fax_number,
+                    "po_box_number": o.po_box_number,
                 }
-
-            # ---------------- PropertyManagmentCompany & PropertyManagmentCompany User ----------------
-            company_data = None
-            if unit.company:
-                company_user_profile = unit.company.company_user
-                company_user = company_user_profile.user
-
-                company_data = {
-                    "company_id": unit.company.id,
-                    "company_name": unit.company.company_name,
-                    "company_code": unit.company.company_code,
-                    "company_address": unit.company.company_address,
-                    "licence_number": unit.company.licence_number,
-                    "licence_expiry_date":unit.company.licence_expiry_date,
-                    "licence_issuer":unit.company.licence_issuer,
-                    "postal_code":company_user_profile.pin_code, 
-                    "company_user": {
-                        "user_profile_id": company_user_profile.id,
-                        "user_id": company_user.id,
-                        "name": f"{company_user.first_name} {company_user.last_name}",
-                        "email": company_user.email,
-                        "contact_number": company_user_profile.contact_number,
-                        "user_role": company_user_profile.user_role,
-                        
-                        "telephone_number":company_user_profile.telephone_number,
-                        "fax_number":company_user_profile.fax_number,
-                        # "postal_code":company_user_profile.pin_code
-                    }
-                }
+                for o in unit.unit_owners.all()
+            ]
 
             # ---------------- Parent Property ----------------
             property_data = None
-            if unit.property:
+            if unit.property_block_tower and unit.property_block_tower.property:
+                prop = unit.property_block_tower.property
                 property_data = {
-                    "property_id": unit.property.id,
-                    "property_name": unit.property.property_name,
-                    "property_code": unit.property.Property_code,
-                    "property_type": unit.property.property_type_options,
-                    "total_units": unit.property.total_units,
-                    "total_floors": unit.property.total_floors,
+                    "property_id": prop.id,
+                    "property_name": prop.property_name,
+                    "property_code": prop.code,
+                    "property_type": prop.property_type,
+                    "total_units": prop.no_of_units,
+                }
+
+            # ---------------- Block / Tower ----------------
+            block_data = None
+            if unit.property_block_tower:
+                block_data = {
+                    "block_id": unit.property_block_tower.id,
+                    "block_name": unit.property_block_tower.block_name,
                 }
 
             # ---------------- Property Unit ----------------
             unit_data = {
                 "property_unit_id": unit.id,
                 "unit_name": unit.unit_name,
+                "unit_size": str(unit.unit_size) if unit.unit_size is not None else None,
+                "area": unit.area,
+                "dm_no": unit.dm_no,
+                "land_no": unit.land_no,
+                "unit_usage": unit.unit_usage,
+                "unit_type": unit.unit_type,
+                "sub_type": unit.sub_type,
+                "makani_no": unit.makani_no,
+                "dewa_no": unit.dewa_no,
+                "floor_no": unit.floor_no,
                 "rent": unit.rent,
                 "security_deposit": unit.security_deposit,
                 "maintenance_charges": unit.maintenance_charges,
                 "is_occupied": unit.is_occupied,
-                "bedrooms": unit.bedrooms,
-                "address": unit.address,
-                "land_dm_no":unit.land_dm_no,
-                "area_of_property":unit.area_of_property,
-                "makani_no":unit.makani_no,
-                "dewa_no":unit.dewa_no,
-                "land_area":unit.land_area,
-                "no_of_parking":unit.no_of_parking,
-                "bedrooms":unit.bedrooms,
-                "floor_no":unit.apartment_floor_no,
-                "land_area_unit":unit.area_unit,
-                "property_code":unit.property_code,
-                "dimension":unit.dimension,
-                "plot_no":unit.plot_no,
-
+                "no_of_bedrooms": unit.no_of_bedrooms,
             }
 
             response_data = {
                 "property_unit": unit_data,
+                "block": block_data,
                 "parent_property": property_data,
-                "owner": owner_data,
-                "company": company_data
+                "owners": owner_data,
             }
 
             return prepare_response(

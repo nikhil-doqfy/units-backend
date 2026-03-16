@@ -493,10 +493,10 @@ def unit(request):
             response = HttpResponse(content_type="text/csv")
             response["Content-Disposition"] = 'attachment; filename="units.csv"'
             writer = csv.writer(response)
-            writer.writerow(["Unit ID", "Unit Name", "Property", "Block/Tower", "Bedrooms", "Floor No", "Plot No", "Land Area", "Makani No", "Dewa No", "Rent (AED)"])
+            writer.writerow(["Unit ID", "Unit Name", "Property", "Block/Tower", "Bedrooms", "Floor No", "Land No", "Unit Size", "Area", "Makani No", "Dewa No", "Rent (AED)"])
             for u in units:
                 s = u._serialize_unit()
-                writer.writerow([s.get("code"), s.get("unit_name"), s.get("property_name"), s.get("block_name"), s.get("no_of_bedrooms"), s.get("floor_no"), s.get("plot_no"), f"{s.get('land_area') or ''} {s.get('land_area_unit') or ''}".strip(), s.get("makani_no"), s.get("dewa_no"), s.get("rent")])
+                writer.writerow([s.get("code"), s.get("unit_name"), s.get("property_name"), s.get("block_name"), s.get("no_of_bedrooms"), s.get("floor_no"), s.get("land_no"), s.get("unit_size"), f"{s.get('area') or ''} {s.get('land_area_unit') or ''}".strip(), s.get("makani_no"), s.get("dewa_no"), s.get("rent")])
             return response
 
         total = units.count()
@@ -536,14 +536,17 @@ def unit(request):
             created_by=user_profile.user,
             property_block_tower=block,
             unit_name=unit_name,
-            land_area=data.get("land_area") or 0,
-            land_area_unit=data.get("land_area_unit") or constants.SQ_FT,
-            land_dm_no=data.get("land_dm_no"),
+            unit_size=data.get("unit_size"),
+            area=data.get("area"),
+            dm_no=data.get("dm_no"),
             no_of_bedrooms=data.get("no_of_bedrooms"),
             floor_no=data.get("floor_no"),
             parking_no=data.get("parking_no"),
             no_of_balcony=data.get("no_of_balcony"),
-            plot_no=data.get("plot_no"),
+            land_no=data.get("land_no"),
+            unit_usage=data.get("unit_usage"),
+            unit_type=data.get("unit_type"),
+            sub_type=data.get("sub_type"),
             makani_no=data.get("makani_no"),
             dewa_no=data.get("dewa_no"),
             rent=data.get("rent"),
@@ -564,6 +567,13 @@ def unit(request):
                     email=owner.get("email"),
                     contact_number=owner.get("contact_number"),
                     emirates_id=owner.get("emirates_id"),
+                    owner_number=owner.get("owner_number"),
+                    trade_license_number=owner.get("trade_license_number"),
+                    license_number=owner.get("license_number"),
+                    license_expiry_date=owner.get("license_expiry_date"),
+                    license_issuer=owner.get("license_issuer"),
+                    fax_number=owner.get("fax_number"),
+                    po_box_number=owner.get("po_box_number"),
                 )
 
         audit_logs(request, f"Unit '{u.unit_name}' created", constants.CREATED)
@@ -589,9 +599,10 @@ def unit(request):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        for field in ["unit_name", "land_area", "land_area_unit", "land_dm_no",
+        for field in ["unit_name", "unit_size", "area", "dm_no",
                       "no_of_bedrooms", "floor_no", "parking_no", "no_of_balcony",
-                      "plot_no", "makani_no", "dewa_no", "rent", "security_deposit",
+                      "land_no", "unit_usage", "unit_type", "sub_type",
+                      "makani_no", "dewa_no", "rent", "security_deposit",
                       "booking_amount", "maintenance_charges", "cycle",
                       "notice_period", "commission_percent"]:
             if field in data and data[field] is not None:
@@ -615,6 +626,13 @@ def unit(request):
                         email=owner.get("email"),
                         contact_number=owner.get("contact_number"),
                         emirates_id=owner.get("emirates_id"),
+                        owner_number=owner.get("owner_number"),
+                        trade_license_number=owner.get("trade_license_number"),
+                        license_number=owner.get("license_number"),
+                        license_expiry_date=owner.get("license_expiry_date"),
+                        license_issuer=owner.get("license_issuer"),
+                        fax_number=owner.get("fax_number"),
+                        po_box_number=owner.get("po_box_number"),
                     )
 
         audit_logs(request, f"Unit '{u.unit_name}' updated", constants.UPDATED)
