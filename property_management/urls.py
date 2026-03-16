@@ -9,6 +9,7 @@ from . import views
 from django.urls import re_path
 from charges import urls as charges_urls
 from property import urls as property_urls
+from lead import urls as lead_urls
 
 
 urlpatterns = [
@@ -18,6 +19,7 @@ urlpatterns = [
     path('payment/', include(payment_urls)),
     path('charges/', include(charges_urls)),
     path('', include(property_urls)),
+    path('', include(lead_urls)),
 
     re_path(r"^media/(?P<path>.*)$", views.serve_media),
     path('options', views.options, name='options'),

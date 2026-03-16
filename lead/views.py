@@ -1,268 +1,423 @@
+import base64
+import csv
+import io
 import json
-from django.shortcuts import render
+from datetime import datetime
+from django.db.models import Q
+from django.http import HttpResponse
+from .models import Lead, ActivityLog
+from property.models import Unit
+from user_service.models import PropertyManager
+
+def _get_pmc(user_profile):
+    pm = PropertyManager.objects.filter(pk=user_profile.pk).select_related("company").first()
+    return pm.company if pm else None
 from utilities.decorator import is_request_authenticated
 from utilities.helper_functions import prepare_response
-from utilities import constants, status
-from user_service.models import UserProfile
-from property_management.models import PropertyManagmentCompany, Unit
-from lead.models import Lead
-# Create your views here.
+from utilities import status, constants
+
+
+def _get_property_thumbnail(prop):
+    img = prop.property_images.filter(image_type="EXTERIOR").first()
+    if not img:
+        img = prop.property_images.first()
+    if not img:
+        return None
+    from utilities.helper_functions import fetch_s3_presigned_url
+    return fetch_s3_presigned_url(img.image_path, img.file_name)
+
+
+def _serialize_lead(lead):
+    unit = lead.unit
+    block = unit.property_block_tower
+    prop = block.property
+    pmc = prop.pmc
+
+    return {
+        "id": lead.id,
+        "code": lead.code,
+        "name": lead.name,
+        "email": lead.email,
+        "contact_number": lead.contact_number,
+        "status": lead.status,
+        "platform": lead.platform,
+        "lead_type": lead.lead_type,
+        # Unit details
+        "unit_id": unit.id,
+        "unit_name": unit.unit_name,
+        "unit_size": str(unit.unit_size) if unit.unit_size else None,
+        "dm_no": unit.dm_no,
+        "floor_no": unit.floor_no,
+        "makani_no": unit.makani_no,
+        "land_no": unit.land_no,
+        "dewa_no": unit.dewa_no,
+        "rent": str(unit.rent) if unit.rent else None,
+        # Block / Property
+        "block_id": block.id,
+        "block_name": block.block_name,
+        "property_id": prop.id,
+        "property_name": prop.property_name,
+        "property_thumbnail": _get_property_thumbnail(prop),
+        # All unit owners
+        "unit_owners": [
+            {
+                "name": o.name,
+                "email": o.email,
+                "contact_number": o.contact_number,
+                "emirates_id": o.emirates_id,
+                "owner_number": o.owner_number,
+                "trade_license_number": o.trade_license_number,
+                "license_number": o.license_number,
+                "license_expiry_date": o.license_expiry_date.strftime("%Y-%m-%d") if o.license_expiry_date else None,
+                "license_issuer": o.license_issuer,
+                "fax_number": o.fax_number,
+                "po_box_number": o.po_box_number,
+            }
+            for o in unit.unit_owners.all()
+        ],
+        "created_at": lead.created.strftime("%m/%d/%Y %H:%M") if lead.created else None,
+    }
 
 
 @is_request_authenticated
-def create_lead(request):
-    if request.method == "POST":
-        body = json.loads(request.body)
-        name           = body.get("name")
-        email          = body.get("email")
-        contact_number = body.get("contact_number")
-        status_value   = body.get("status")
-        platform       = body.get("platform")
-        lead_type      = body.get("lead_type")
-        unit_id        = body.get("unit")
-        referred_by_id = body.get("referred_by")
+def lead_view(request):
+    user_profile = request.user
 
-        if not name:
+    pmc = _get_pmc(user_profile)
+    if not pmc:
+        return prepare_response(message="Company not found for this user", status=status.HTTP_400_BAD_REQUEST)
+
+    if request.method == "GET":
+        lead_id = request.GET.get("lead_id")
+        if lead_id:
+            lead = Lead.objects.filter(id=lead_id, pmc=pmc).first()
+            if not lead:
+                return prepare_response(message="Lead not found", status=status.HTTP_404_NOT_FOUND)
+            return prepare_response(content=_serialize_lead(lead), status=status.HTTP_200_OK)
+
+        search = request.GET.get("search", "").strip()
+        lead_status = request.GET.get("status", "").strip()
+        platform = request.GET.get("platform", "").strip()
+        lead_type = request.GET.get("lead_type", "").strip()
+        page = int(request.GET.get("page", 1))
+        page_size = int(request.GET.get("page_size", 10))
+
+        leads = Lead.objects.filter(pmc=pmc).order_by("-id")
+        if search:
+            leads = leads.filter(Q(name__icontains=search) | Q(email__icontains=search))
+        if lead_status:
+            leads = leads.filter(status=lead_status)
+        if platform:
+            leads = leads.filter(platform=platform)
+        if lead_type:
+            leads = leads.filter(lead_type=lead_type)
+
+        export = request.GET.get("export", "").strip()
+        if export == "csv":
+            response = HttpResponse(content_type="text/csv")
+            response["Content-Disposition"] = 'attachment; filename="leads.csv"'
+            writer = csv.writer(response)
+            writer.writerow(["Lead ID", "Name", "Email", "Contact", "Status", "Platform", "Lead Type", "Unit", "Property", "Created At"])
+            for l in leads:
+                s = _serialize_lead(l)
+                writer.writerow([s["code"], s["name"], s["email"], s["contact_number"], s["status"], s["platform"], s["lead_type"], s["unit_name"], s["property_name"], s["created_at"]])
+            return response
+
+        total = leads.count()
+        start = (page - 1) * page_size
+        leads = leads[start:start + page_size]
+
+        return prepare_response(
+            content=[_serialize_lead(l) for l in leads],
+            pagination={"total_records": total, "page": page, "page_size": page_size},
+            status=status.HTTP_200_OK,
+        )
+
+    elif request.method == "POST":
+        data = json.loads(request.body)
+        unit_id = data.get("unit_id")
+        name = (data.get("name") or "").strip()
+        email = (data.get("email") or "").strip()
+        contact_number = (data.get("contact_number") or "").strip()
+        lead_status = data.get("status", constants.INTERESTED)
+        platform = data.get("platform")
+        lead_type = data.get("lead_type")
+
+        if not all([unit_id, name, email, contact_number, platform, lead_type]):
             return prepare_response(
-                message=constants.NAME_REQUIRED,
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        if not platform:
-            return prepare_response(
-                message=constants.PLATFORM_REQUIRED,
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        if not lead_type:
-            return prepare_response(
-                message=constants.LEAD_TYPE_REQUIRED,
-                status=status.HTTP_400_BAD_REQUEST
+                message="unit_id, name, email, contact_number, platform, lead_type are required",
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        company = PropertyManagmentCompany.objects.filter(company_user=request.user,is_active=True).first()
-        if not company:
-            return prepare_response(
-                message=constants.COMPANY_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
+        unit = Unit.objects.filter(id=unit_id).first()
+        if not unit:
+            return prepare_response(message="Unit not found", status=status.HTTP_404_NOT_FOUND)
 
-        unit = None
-        if unit_id:
-            unit = Unit.objects.filter(id=unit_id,is_active=True ).first()
-            if not unit:
-                return prepare_response(
-                    message=constants.UNIT_NOT_FOUND,
-                    status=status.HTTP_404_NOT_FOUND
-                )
-
-        tenant = None
-        if email:
-            tenant = UserProfile.objects.filter(user__email=email,is_active=True).first()
-
-        referred_by = None
-        if referred_by_id:
-            referred_by = UserProfile.objects.filter(id=referred_by_id,is_active=True).first()
-            if not referred_by:
-                return prepare_response(
-                    message=constants.REFERRED_USER_NOT_FOUND,
-                    status=status.HTTP_404_NOT_FOUND
-                )
-
-        Lead.objects.create(
+        lead = Lead.objects.create(
+            unit=unit,
             name=name,
             email=email,
             contact_number=contact_number,
-            status=status_value or constants.INTERESTED,
+            status=lead_status,
             platform=platform,
             lead_type=lead_type,
-            unit=unit,
-            tenant=tenant,
-            referred_by=referred_by,
-            company=company,
-            created_by=request.user.user
+            pmc=pmc,
+            created_by=user_profile.user,
+        )
+
+        ActivityLog.objects.create(
+            lead=lead,
+            activity_type=constants.NOTE,
+            title="created this lead",
+            created_by=user_profile.user,
         )
 
         return prepare_response(
-            message=constants.LEAD_CREATED_SUCCESSFULLY,
-            status=status.HTTP_200_OK
+            message="Lead created successfully",
+            content={"id": lead.id, "code": lead.code},
+            status=status.HTTP_201_CREATED,
         )
 
-    elif request.method == "GET":
-
-        company = PropertyManagmentCompany.objects.filter(company_user=request.user,is_active=True).first()
-
-        if not company:
-            return prepare_response(
-                message=constants.COMPANY_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        lead_id = request.GET.get("lead_id")
-
-        if lead_id:
-            leads = Lead.objects.filter(lead_id=lead_id,company=company,is_active=True)
-        else:
-            leads = Lead.objects.filter(company=company,is_active=True)
-
-        data = [{
-            "id": lead.id,
-            "lead_id": lead.lead_id,
-            "name": lead.name,
-            "email": lead.email,
-            "contact_number": lead.contact_number,
-            "status": lead.status,
-            "platform": lead.platform,
-            "lead_type": lead.lead_type,
-            "created": lead.created.strftime("%m/%d/%Y %H:%M") if lead.created else None,
-        } for lead in leads]
-
-        return prepare_response(
-            content=data,
-            message=constants.LEAD_FETCHED_SUCCESSFULLY,
-            status=status.HTTP_200_OK
-        )
     elif request.method == "PUT":
-        body = json.loads(request.body)
-        lead_id = request.GET.get("lead_id")
-
+        data = json.loads(request.body)
+        lead_id = data.get("lead_id")
         if not lead_id:
-            return prepare_response(
-                message=constants.LEAD_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return prepare_response(message="lead_id is required", status=status.HTTP_400_BAD_REQUEST)
 
-        company = PropertyManagmentCompany.objects.filter(company_user=request.user,is_active=True).first()
-        if not company:
-            return prepare_response(
-                message=constants.COMPANY_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        lead = Lead.objects.filter(lead_id=lead_id, company=company,is_active=True).first()
+        lead = Lead.objects.filter(id=lead_id).first()
         if not lead:
-            return prepare_response(
-                message=constants.LEAD_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return prepare_response(message="Lead not found", status=status.HTTP_404_NOT_FOUND)
 
-        lead.name = body.get("name", lead.name)
-        lead.email = body.get("email", lead.email)
-        lead.contact_number = body.get("contact_number", lead.contact_number)
-        lead.status = body.get("status", lead.status)
-        lead.platform = body.get("platform", lead.platform)
-        lead.lead_type = body.get("lead_type", lead.lead_type)
+        STATUS_LABELS = {
+            "INTERESTED": "Interested",
+            "NOT_INTERESTED": "Not Interested",
+            "LEASE_TENANCY": "Lease/Tenancy",
+        }
+        changes = []
+        for field in ["name", "email", "contact_number", "status", "platform", "lead_type"]:
+            if field in data and data[field] is not None:
+                old_val = getattr(lead, field)
+                new_val = data[field]
+                if str(old_val) != str(new_val):
+                    if field == "status":
+                        changes.append(f"changed status from {STATUS_LABELS.get(old_val, old_val)} to {STATUS_LABELS.get(new_val, new_val)}")
+                    else:
+                        changes.append(f"updated {field.replace('_', ' ')}")
+                setattr(lead, field, new_val)
 
-        unit_id = body.get("unit")
-        if unit_id:
-            unit = Unit.objects.filter(id=unit_id,is_active=True).first()
-            if not unit:
-                return prepare_response(
-                    message=constants.UNIT_NOT_FOUND,
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            lead.unit = unit
-
-        referred_by_id = body.get("referred_by")
-        if referred_by_id:
-            referred_by = UserProfile.objects.filter(id=referred_by_id,is_active=True).first()
-            if not referred_by:
-                return prepare_response(
-                    message=constants.REFERRED_USER_NOT_FOUND,
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            lead.referred_by = referred_by
+        if "unit_id" in data:
+            unit = Unit.objects.filter(id=data["unit_id"]).first()
+            if unit and unit.id != lead.unit_id:
+                changes.append(f"changed unit to {unit.unit_name}")
+                lead.unit = unit
 
         lead.save()
 
-        return prepare_response(
-            message=constants.LEAD_UPDATED_SUCCESSFULLY,
-            status=status.HTTP_200_OK
+        comment = (data.get("comment") or "").strip()
+        title = " and ".join(changes) if changes else "updated this lead"
+        ActivityLog.objects.create(
+            lead=lead,
+            activity_type=constants.STATUS_CHANGE if any("status" in c for c in changes) else constants.NOTE,
+            title=title,
+            description=comment,
+            created_by=user_profile.user,
         )
+
+        return prepare_response(message="Lead updated successfully", content={"id": lead.id}, status=status.HTTP_200_OK)
 
     elif request.method == "DELETE":
-
         lead_id = request.GET.get("lead_id")
-
         if not lead_id:
-            return prepare_response(
-                message=constants.LEAD_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return prepare_response(message="lead_id is required", status=status.HTTP_400_BAD_REQUEST)
 
-        company = PropertyManagmentCompany.objects.filter(company_user=request.user,is_active=True).first()
-
-        if not company:
-            return prepare_response(
-                message=constants.COMPANY_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        lead = Lead.objects.filter(lead_id=lead_id,company=company).first()
-
+        lead = Lead.objects.filter(id=lead_id).first()
         if not lead:
-            return prepare_response(
-                message=constants.LEAD_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
+            return prepare_response(message="Lead not found", status=status.HTTP_404_NOT_FOUND)
 
         lead.delete()
+        return prepare_response(message="Lead deleted successfully", status=status.HTTP_200_OK)
 
-        return prepare_response(
-            message=constants.LEAD_DELETED_SUCCESSFULLY,
-            status=status.HTTP_200_OK
-        )
+    return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+
+def _parse_scheduled_date(value):
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value
+    try:
+        return datetime.fromisoformat(str(value))
+    except (ValueError, TypeError):
+        return None
+
+
+def _serialize_activity(log):
+    created_by = log.created_by
+    sched = log.scheduled_date
+    if isinstance(sched, str):
+        sched = _parse_scheduled_date(sched)
+    return {
+        "id": log.id,
+        "activity_type": log.activity_type,
+        "title": log.title,
+        "description": log.description,
+        "scheduled_date": sched.strftime("%Y-%m-%dT%H:%M") if sched else None,
+        "created_at": log.created.strftime("%m/%d/%Y %H:%M") if log.created else None,
+        "created_by_name": f"{created_by.first_name} {created_by.last_name}".strip() if created_by else "System",
+    }
+
 
 @is_request_authenticated
-def convert_lead_to_tenant(request):
+def activity_log_view(request):
+    user_profile = request.user
+    pmc = _get_pmc(user_profile)
+    if not pmc:
+        return prepare_response(message="Company not found for this user", status=status.HTTP_400_BAD_REQUEST)
+
     if request.method == "GET":
         lead_id = request.GET.get("lead_id")
+        if not lead_id:
+            return prepare_response(message="lead_id is required", status=status.HTTP_400_BAD_REQUEST)
+
+        lead = Lead.objects.filter(id=lead_id, pmc=pmc).first()
+        if not lead:
+            return prepare_response(message="Lead not found", status=status.HTTP_404_NOT_FOUND)
+
+        logs = ActivityLog.objects.filter(lead=lead).order_by("-created")
+        return prepare_response(content=[_serialize_activity(l) for l in logs], status=status.HTTP_200_OK)
+
+    elif request.method == "POST":
+        data = json.loads(request.body)
+        lead_id = data.get("lead_id")
+        activity_type = data.get("activity_type", constants.NOTE)
+        title = (data.get("title") or "").strip()
+        description = (data.get("description") or "").strip()
+        scheduled_date = data.get("scheduled_date")
 
         if not lead_id:
-            return prepare_response(
-                message=constants.LEAD_NOT_FOUND,
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return prepare_response(message="lead_id is required", status=status.HTTP_400_BAD_REQUEST)
 
-        company = PropertyManagmentCompany.objects.filter(
-            company_user=request.user,
-            is_active=True
-        ).first()
-        if not company:
-            return prepare_response(
-                message=constants.COMPANY_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        lead = Lead.objects.filter(
-            lead_id=lead_id,
-            company=company,
-            is_active=True
-        ).first()
+        lead = Lead.objects.filter(id=lead_id, pmc=pmc).first()
         if not lead:
+            return prepare_response(message="Lead not found", status=status.HTTP_404_NOT_FOUND)
+
+        log = ActivityLog.objects.create(
+            lead=lead,
+            activity_type=activity_type,
+            title=title,
+            description=description,
+            scheduled_date=_parse_scheduled_date(scheduled_date),
+            created_by=user_profile.user,
+        )
+        return prepare_response(content=_serialize_activity(log), status=status.HTTP_201_CREATED)
+
+    elif request.method == "PUT":
+        data = json.loads(request.body)
+        log_id = data.get("log_id")
+        if not log_id:
+            return prepare_response(message="log_id is required", status=status.HTTP_400_BAD_REQUEST)
+
+        log = ActivityLog.objects.filter(id=log_id, lead__pmc=pmc).first()
+        if not log:
+            return prepare_response(message="Activity log not found", status=status.HTTP_404_NOT_FOUND)
+
+        for field in ["activity_type", "title", "description"]:
+            if field in data:
+                setattr(log, field, data[field])
+        if "scheduled_date" in data:
+            log.scheduled_date = _parse_scheduled_date(data["scheduled_date"])
+        log.save()
+        return prepare_response(content=_serialize_activity(log), status=status.HTTP_200_OK)
+
+    elif request.method == "DELETE":
+        log_id = request.GET.get("log_id")
+        if not log_id:
+            return prepare_response(message="log_id is required", status=status.HTTP_400_BAD_REQUEST)
+
+        log = ActivityLog.objects.filter(id=log_id, lead__pmc=pmc).first()
+        if not log:
+            return prepare_response(message="Activity log not found", status=status.HTTP_404_NOT_FOUND)
+
+        log.delete()
+        return prepare_response(message="Activity log deleted successfully", status=status.HTTP_200_OK)
+
+    return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+
+@is_request_authenticated
+def lead_bulk_import(request):
+    if request.method != "POST":
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    user_profile = request.user
+    pmc = _get_pmc(user_profile)
+    if not pmc:
+        return prepare_response(message="Company not found for this user", status=status.HTTP_400_BAD_REQUEST)
+
+    data = json.loads(request.body)
+    file_b64 = data.get("file", "")
+    if not file_b64:
+        return prepare_response(message="file is required", status=status.HTTP_400_BAD_REQUEST)
+
+    # Strip data URL prefix if present
+    if "," in file_b64:
+        file_b64 = file_b64.split(",", 1)[1]
+
+    try:
+        csv_bytes = base64.b64decode(file_b64)
+        csv_text = csv_bytes.decode("utf-8-sig")
+    except Exception:
+        return prepare_response(message="Invalid file encoding", status=status.HTTP_400_BAD_REQUEST)
+
+    reader = csv.DictReader(io.StringIO(csv_text))
+    required_fields = {"unit_id", "name", "email", "contact_number", "platform", "lead_type"}
+
+    created, skipped = 0, 0
+    errors = []
+
+    for i, row in enumerate(reader, start=2):
+        row = {k.strip().lower(): (v or "").strip() for k, v in row.items()}
+        missing = required_fields - set(row.keys())
+        if missing:
             return prepare_response(
-                message=constants.LEAD_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
+                message=f"CSV missing required columns: {', '.join(missing)}",
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        data = {
-            "lead_id": lead.lead_id,
-            "platform": lead.platform,
-            "tenant_details": {
-                "name": lead.name,
-                "email": lead.email,
-                "contact": lead.contact_number,
-                "status": lead.get_status_display(),
-            },
+        unit_id = row.get("unit_id")
+        name = row.get("name")
+        email = row.get("email")
+        contact_number = row.get("contact_number")
+        platform = row.get("platform", "").upper()
+        lead_type = row.get("lead_type", "").upper()
+        lead_status = row.get("status", constants.INTERESTED).upper() or constants.INTERESTED
 
-            "property_details": {
-                "property_name": lead.unit.property.property_name if lead.unit and lead.unit.property else None,
-                "block_tower": lead.unit.property_block_tower.property_name if lead.unit and lead.unit.property_block_tower else None,
-                "unit": lead.unit.unit_name if lead.unit else None,
-                "rent": f"AED{lead.unit.rent}" if lead.unit and lead.unit.rent else None,
-            } if lead.unit else None,
-        }
+        if not all([unit_id, name, email, contact_number, platform, lead_type]):
+            errors.append(f"Row {i}: missing required values")
+            skipped += 1
+            continue
 
-        return prepare_response(
-            content=data,
-            message=constants.LEAD_FETCHED_SUCCESSFULLY,
-            status=status.HTTP_200_OK
+        unit = Unit.objects.filter(id=unit_id).first()
+        if not unit:
+            errors.append(f"Row {i}: unit_id '{unit_id}' not found")
+            skipped += 1
+            continue
+
+        Lead.objects.create(
+            unit=unit,
+            name=name,
+            email=email,
+            contact_number=contact_number,
+            status=lead_status,
+            platform=platform,
+            lead_type=lead_type,
+            pmc=pmc,
+            created_by=user_profile.user,
         )
+        created += 1
+
+    return prepare_response(
+        message=f"{created} lead(s) imported successfully. {skipped} skipped.",
+        content={"created": created, "skipped": skipped, "errors": errors},
+        status=status.HTTP_201_CREATED,
+    )

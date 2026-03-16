@@ -449,6 +449,16 @@ def generate_property_code():
     return f"PR-{random_str}"
 
 
+def generate_unit_code():
+    random_str = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    return f"UN-{random_str}"
+
+
+def generate_lead_code():
+    random_str = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+    return f"LD-{random_str}"
+
+
 
 
 def generate_unique_code(prefix: str) -> str:

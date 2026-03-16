@@ -35,7 +35,8 @@ INSTALLED_APPS = [
     'property_management',
     "payment",
     'sslserver',
-    'charges'
+    'charges',
+    'lead'
 ]
 
 MIDDLEWARE = [

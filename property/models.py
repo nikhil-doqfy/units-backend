@@ -112,33 +112,11 @@ class Property(Base):
                 "key": self.pmc.id if self.pmc else None,
                 "value": self.pmc.name if self.pmc else None,
             },
-            "property_owners": [
-                {
-                    "id": po.owner.id,
-                    "name": f"{po.owner.user.first_name} {po.owner.user.last_name}".strip(),
-                    "email": po.owner.user.email,
-                    "contact_number": po.owner.contact_number,
-                    "emirates_id": po.owner.emirate_id,
-                }
-                for po in self.property_owners.select_related("owner__user").all()
-            ],
             "thumbnail": self._get_thumbnail(),
             "approx_rent": str(self.approx_rent) if self.approx_rent is not None else None,
             "status": self.status,
         }
     
-class PropertyOwner(Base):
-    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name="property_owners")
-    owner = models.ForeignKey(
-        "user_service.Owner",
-        on_delete=models.CASCADE,
-        related_name="property_owner_mappings"
-    )
-
-    def __str__(self):
-        return f"{self.owner} -> {self.property}"
-    
-
 class PropertyBlocks(Base):
     property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name="property_blocks")
     block_name = models.CharField(max_length=255)
@@ -148,75 +126,7 @@ class PropertyBlocks(Base):
 
     def __str__(self):
         return f"{self.block_name} - {self.property.property_name}"
-
-class Unit(Base):
-    property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name="units")
-    property_block_tower = models.ForeignKey(
-        Property,
-        on_delete=models.CASCADE,
-        related_name="block_towers",
-        null=True,
-        blank=True
-    )
-    owner = models.ForeignKey(
-        "user_service.UserProfile",
-        on_delete=models.SET_NULL,
-        related_name="owner_properties",
-        null=True,
-        blank=True
-    )
-    company = models.ForeignKey(
-        PropertyManagmentCompany,
-        on_delete=models.CASCADE,
-        related_name="company_units",
-        null=True,
-        blank=True
-    )
-    unit_name = models.CharField(max_length=255)
-    property_type = models.CharField(
-        max_length=20,
-        choices=constants.PROPERTY_TYPE_CHOICES,
-        default=constants.APARTMENT
-    )
-    land_area = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    land_area_unit = models.CharField(
-        max_length=20,
-        choices=constants.AREA_UNIT_CHOICES,
-        default=constants.SQ_FT
-    )
-    land_dm_no = models.CharField(max_length=100, null=True, blank=True)
-    no_of_bedrooms = models.IntegerField(choices=constants.BEDROOM_CHOICES, null=True, blank=True)
-    area_of_property = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    area_of_property_unit = models.CharField(
-        max_length=20,
-        choices=constants.AREA_UNIT_CHOICES,
-        default=constants.SQ_FT
-    )
-    floor_no = models.IntegerField(choices=constants.FLOOR_CHOICES, null=True, blank=True)
-    parking_no = models.CharField(max_length=50, null=True, blank=True)
-    no_of_balcony = models.IntegerField(choices=constants.BALCONY_CHOICES, null=True, blank=True)
-    plot_no = models.CharField(max_length=100, null=True, blank=True)
-    makani_no = models.CharField(max_length=100, null=True, blank=True)
-    dewa_no = models.CharField(max_length=100, null=True, blank=True)
-    is_occupied = models.BooleanField(default=False)
-    property_code = models.CharField(max_length=255, null=True, blank=True)
-    step_status = models.CharField(
-        max_length=50,
-        choices=constants.STEP_CHOICES,
-        default="BASIC_DETAILS"
-    )
-    rent = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    security_deposit = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    booking_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    maintenance_charges = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
-    cycle = models.CharField(max_length=50, null=True, blank=True)
-    notice_period = models.CharField(max_length=50, null=True, blank=True)
-    commission_percent = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
-
-    def __str__(self):
-        return f"{self.unit_name} - {self.id}"
-
-
+    
 class PropertyImages(Base):
     property = models.ForeignKey(
         Property,
@@ -237,6 +147,170 @@ class PropertyImages(Base):
         return f"Image for Property #{self.property_id}"
 
 
+class PropertyDocuments(Documents):
+    property = models.ForeignKey(
+        Property,
+        on_delete=models.CASCADE,
+        related_name="property_documents"
+    )
+    def __str__(self):
+        return f"{self.property}"
+
+
+class Unit(Base):
+    code = models.CharField(max_length=255, blank=True)
+    property_block_tower = models.ForeignKey(
+        PropertyBlocks,
+        on_delete=models.CASCADE,
+        related_name="block_towers"
+    )
+    unit_name = models.CharField(max_length=255)
+    unit_size = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    area = models.CharField(max_length=255, null=True, blank=True)
+    dm_no = models.CharField(max_length=100, null=True, blank=True)
+    no_of_bedrooms = models.IntegerField(choices=constants.BEDROOM_CHOICES, null=True, blank=True)
+    floor_no = models.IntegerField(choices=constants.FLOOR_CHOICES, null=True, blank=True)
+    parking_no = models.CharField(max_length=50, null=True, blank=True)
+    no_of_balcony = models.IntegerField(choices=constants.BALCONY_CHOICES, null=True, blank=True)
+    land_no = models.CharField(max_length=100, null=True, blank=True)
+    unit_usage = models.CharField(max_length=50, choices=constants.UNIT_USAGE_CHOICES, null=True, blank=True)
+    unit_type = models.CharField(max_length=50, choices=constants.UNIT_TYPE_CHOICES, null=True, blank=True)
+    sub_type = models.CharField(max_length=255, null=True, blank=True)
+    makani_no = models.CharField(max_length=100, null=True, blank=True)
+    dewa_no = models.CharField(max_length=100, null=True, blank=True)
+    rent = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    security_deposit = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    booking_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    maintenance_charges = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    cycle = models.CharField(max_length=50, null=True, blank=True)
+    notice_period = models.CharField(max_length=50, null=True, blank=True)
+    commission_percent = models.DecimalField(max_digits=5, decimal_places=3, null=True, blank=True)
+    is_occupied = models.BooleanField(default=False)
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if not self.code:
+            from utilities.helper_functions import generate_unit_code
+            self.code = generate_unit_code()
+            Unit.objects.filter(pk=self.pk).update(code=self.code)
+
+    def __str__(self):
+        return f"{self.unit_name} - {self.id}"
+
+    def _get_unit_thumbnail(self):
+        img = self.unit_images.filter(image_type="EXTERIOR").first()
+        if not img:
+            img = self.unit_images.first()
+        if not img:
+            return None
+        from utilities.helper_functions import fetch_s3_presigned_url
+        return fetch_s3_presigned_url(img.image_path, img.file_name)
+
+    def _serialize_unit(self):
+        return {
+            "id": self.id,
+            "code": self.code,
+            "unit_name": self.unit_name,
+            "thumbnail": self._get_unit_thumbnail(),
+            "block_id": self.property_block_tower_id,
+            "block_name": self.property_block_tower.block_name,
+            "property_id": self.property_block_tower.property_id,
+            "property_name": self.property_block_tower.property.property_name,
+            "property_address_line_1": self.property_block_tower.property.address_line_1,
+            "property_address_line_2": self.property_block_tower.property.address_line_2,
+            "property_landmark": self.property_block_tower.property.landmark,
+            "unit_size": str(self.unit_size) if self.unit_size is not None else None,
+            "area": self.area,
+            "dm_no": self.dm_no,
+            "no_of_bedrooms": self.no_of_bedrooms,
+            "floor_no": self.floor_no,
+            "parking_no": self.parking_no,
+            "no_of_balcony": self.no_of_balcony,
+            "land_no": self.land_no,
+            "unit_usage": self.unit_usage,
+            "unit_type": self.unit_type,
+            "sub_type": self.sub_type,
+            "makani_no": self.makani_no,
+            "dewa_no": self.dewa_no,
+            "rent": str(self.rent) if self.rent is not None else None,
+            "security_deposit": str(self.security_deposit) if self.security_deposit is not None else None,
+            "booking_amount": str(self.booking_amount) if self.booking_amount is not None else None,
+            "maintenance_charges": str(self.maintenance_charges) if self.maintenance_charges is not None else None,
+            "cycle": self.cycle,
+            "notice_period": self.notice_period,
+            "commission_percent": str(self.commission_percent) if self.commission_percent is not None else None,
+            "unit_owners": [
+                {
+                    "id": o.id,
+                    "name": o.name,
+                    "email": o.email,
+                    "contact_number": o.contact_number,
+                    "emirates_id": o.emirates_id,
+                    "owner_number": o.owner_number,
+                    "trade_license_number": o.trade_license_number,
+                    "license_number": o.license_number,
+                    "license_expiry_date": o.license_expiry_date.isoformat() if o.license_expiry_date else None,
+                    "license_issuer": o.license_issuer,
+                    "fax_number": o.fax_number,
+                    "po_box_number": o.po_box_number,
+                }
+                for o in self.unit_owners.all()
+            ],
+        }
+
+
+class UnitImages(Base):
+    unit = models.ForeignKey(
+        Unit,
+        on_delete=models.CASCADE,
+        related_name="unit_images",
+        null=True,
+        blank=True
+    )
+    image_path = models.TextField()
+    image_type = models.CharField(
+        max_length=20,
+        choices=constants.IMAGE_TYPE_CHOICES,
+        default="INTERIOR"
+    )
+    file_name = models.CharField(max_length=255)
+
+    def __str__(self):
+        return f"Image for Unit #{self.unit_id}"
+
+
+class UnitDocuments(Documents):
+    unit = models.ForeignKey(
+        Unit,
+        on_delete=models.CASCADE,
+        related_name="unit_documents"
+    )
+    def __str__(self):
+        return f"{self.unit}"
+
+
+class UnitOwner(Base):
+    unit = models.ForeignKey(
+        Unit,
+        on_delete=models.CASCADE,
+        related_name="unit_owners"
+    )
+    name = models.CharField(max_length=255, null=True, blank=True)
+    email = models.EmailField(null=True, blank=True)
+    contact_number = models.CharField(max_length=50, null=True, blank=True)
+    emirates_id = models.CharField(max_length=100, null=True, blank=True)
+    owner_number = models.CharField(max_length=20, null=True, blank=True)
+    trade_license_number = models.CharField(max_length=255, null=True, blank=True)
+    license_number = models.CharField(max_length=255, null=True, blank=True)
+    license_expiry_date = models.DateTimeField(null=True, blank=True)
+    license_issuer = models.CharField(max_length=150, null=True, blank=True)
+    fax_number = models.CharField(max_length=20, null=True, blank=True)
+    po_box_number = models.CharField(max_length=20, null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.name} -> Unit #{self.unit_id}"
+    
+
 class PropertyInterest(Base):
     property_unit = models.ForeignKey(
         Property,
@@ -255,15 +329,6 @@ class PropertyInterest(Base):
     def __str__(self):
         return f"{self.tenant} → {self.property_unit}"
 
-
-class PropertyDocuments(Documents):
-    property = models.ForeignKey(
-        Property,
-        on_delete=models.CASCADE,
-        related_name="property_documents"
-    )
-    def __str__(self):
-        return f"{self.property}"
 
 
 class PropertyManagerDocuments(Documents):

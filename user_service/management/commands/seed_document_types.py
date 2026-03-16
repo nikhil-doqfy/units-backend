@@ -14,6 +14,11 @@ DOCUMENT_TYPES = [
     {"name": "Floor Plan",   "section": constants.PROPERTY},
     {"name": "PMC Document", "section": constants.PROPERTY},
     {"name": "Other",        "section": constants.PROPERTY},
+
+    # ── Unit documents ──────────────────────────────────────────────────
+    {"name": "Floor Plan",   "section": constants.UNIT},
+    {"name": "PMC Document", "section": constants.UNIT},
+    {"name": "Other",        "section": constants.UNIT},
 ]
 
 

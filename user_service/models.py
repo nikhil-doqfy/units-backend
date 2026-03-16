@@ -21,6 +21,7 @@ class UserProfile(Base):
     address_line_1 = models.CharField(max_length=255, null=True, blank=True)
     address_line_2 = models.CharField(max_length=255, null=True, blank=True)
     emirate_id = models.CharField(max_length=255, null=True, blank=True)
+    email = models.EmailField(max_length=255, null=True, blank=True)
     contact_number = models.CharField(max_length=20, null=True, blank=True)
     timezone = models.CharField(max_length=100, choices=constants.TIMEZONE_CHOICES, default=constants.TIMEZONE_CHOICES[0][0])
     passport_number = models.CharField(max_length=50, blank=True, null=True)
@@ -37,10 +38,13 @@ class UserProfile(Base):
 
 class Owner(UserProfile):
     trade_license_number = models.CharField(max_length=255, blank=True, default='')
-    licence_number = models.CharField(max_length=100, blank=True, default='')
-    licence_expiry_date = models.DateTimeField(null=True, blank=True)
-    licence_issuer = models.CharField(max_length=150, blank=True, default='')
-
+    owner_number = models.CharField(max_length=20, null=True, blank=True)
+    license_number = models.CharField(max_length=255, blank=True, default='')
+    license_expiry_date = models.DateTimeField(null=True, blank=True)
+    license_issuer = models.CharField(max_length=150, blank=True, default='')
+    fax_number = models.CharField(max_length=20, null=True, blank=True)
+    po_box_number = models.CharField(max_length=20, null=True, blank=True)
+    
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         if not self.code:
@@ -133,6 +137,7 @@ class DocumentType(Base):
         (constants.TENANT, "Tenant"),
         (constants.PROPERTY_MANAGER, "Property Manager"),
         (constants.PROPERTY, "Property"),
+        (constants.UNIT, "Unit"),
     )
     name = models.CharField(max_length=255)
     section = models.CharField(max_length=255)
