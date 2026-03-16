@@ -4,9 +4,9 @@ import pdfkit
 import json
 import datetime
 from user_service.models import UserProfile, Documents, Role, FAQ, Owner, Tenant, PropertyManager
-from property.models import Unit, Property, PropertyManagmentCompany, PropertyImages, PropertyInterest
+from property.models import Unit, Property, PropertyManagmentCompany, PropertyImages, PropertyInterest, PropertyBlocks
 from property_management.models import LeasePropertyDetails, TemplateFields, TemplateValues, Template, \
-    LeaseDocumentsMapping, TermAndCondition, Country
+    LeaseDocumentsMapping, TermAndCondition, Country ,AuditLog
 from payment.models import Payment, Bank
 from utilities.decorator import is_request_authenticated
 from utilities.helper_functions import (

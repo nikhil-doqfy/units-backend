@@ -3,7 +3,7 @@ from user_service.models import (
     UserProfile, Permission, Role,
     UserVerification, Documents, OwnerDocuments,
     TenantDocuments, \
-        FAQ, PrivacyPolicy
+        FAQ, PrivacyPolicy, Approval
 )
 from property_management.models import (
     LeasePropertyDetails, UserInvitation, Template, TemplateFields,
@@ -97,3 +97,9 @@ class LeaseDocumentsMappingAdmin(admin.ModelAdmin):
 @admin.register(TermAndCondition)
 class TermAndConditionAdmin(admin.ModelAdmin):
     list_display = ("id", "description", "term_type", "lease", "is_predefined")
+
+@admin.register(Approval)
+class ApprovalAdmin(admin.ModelAdmin):
+    list_display = ("tenant","unit","requested_rent","requested_tenure","approved","approved_by",)
+    list_filter = ("approved","approved_at",)
+    search_fields = ("tenant__id","unit__unit_name",)
