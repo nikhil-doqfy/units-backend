@@ -374,7 +374,27 @@ REFERRED_USER_NOT_FOUND  = "Referred user not found."
 LEAD_FETCHED_SUCCESSFULLY = "Leads fetched successfully."
 LEAD_ALREADY_CONVERTED = "Lead already converted to tenant."
 LEAD_CONVERTED_SUCCESSFULLY = "Lead converted to tenant successfully."
+# ── Complaint Status ───────────────────────────────────────────
+PENDING = 'PENDING'
+IN_PROGRESS = 'IN_PROGRESS'
+ASSIGNED_TO_ENGINEER = 'ASSIGNED_TO_ENGINEER'
+COMPLETED = 'COMPLETED'
+REJECTED = 'REJECTED'
 
+COMPLAINT_STATUS_CHOICES = (
+    (PENDING, 'PENDING'),
+    (IN_PROGRESS, 'In Progress'),
+    (ASSIGNED_TO_ENGINEER, 'Assigned to Engineer'),
+    (COMPLETED, 'Completed'),
+    (REJECTED, 'Rejected'),
+)
+
+# ── Complaint Messages ─────────────────────────────────────────
+COMPLAINT_CREATED_SUCCESSFULLY = "Complaint created successfully."
+COMPLAINT_UPDATED_SUCCESSFULLY = "Complaint updated successfully."
+COMPLAINT_DELETED_SUCCESSFULLY = "Complaint deleted successfully."
+COMPLAINT_FETCHED_SUCCESSFULLY = "Complaints fetched successfully."
+COMPLAINT_NOT_FOUND = "Complaint not found."
 
 choices=[("MYSELF", "Myself"), ("PMC", "PMC")]
 
@@ -432,7 +452,7 @@ INVITATION_STATUS_CHOICES = (
         ("rejected", "Rejected"),
     )
 
-PENDING="Pending"
+PENDING="PENDING"
 REJECTED="REJECTED"
 APPROVED="APPROVED"
 

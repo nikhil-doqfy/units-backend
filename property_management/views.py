@@ -6,7 +6,7 @@ import datetime
 from user_service.models import UserProfile, Documents, Role, FAQ, Owner, Tenant, PropertyManager
 from property.models import Unit, Property, PropertyManagmentCompany, PropertyImages, PropertyInterest
 from property_management.models import LeasePropertyDetails, TemplateFields, TemplateValues, Template, \
-    LeaseDocumentsMapping, TermAndCondition, Country
+    LeaseDocumentsMapping, TermAndCondition, Country, State,City, AuditLog
 from payment.models import Payment, Bank
 from utilities.decorator import is_request_authenticated
 from utilities.helper_functions import (
@@ -53,6 +53,7 @@ import calendar
 from datetime import datetime, date
 from calendar import monthrange
 from dateutil.relativedelta import relativedelta
+from user_service.models import Documents
 
 
 @is_request_authenticated
@@ -659,7 +660,7 @@ def property_documents(request):
                     created_by=request.user.user
                 )
 
-                PropertyDocumentsMapping.objects.create(
+                documents.objects.create(
                     property=property_obj,
                     document=doc_obj,
                     document_choice=doc_type,
@@ -713,7 +714,7 @@ def property_documents(request):
                 if not file_name or not base64_data:
                     return prepare_response(message=constants.MISSING_FILE_OR_DATA, status=status.HTTP_400_BAD_REQUEST)
 
-                mapping_obj = PropertyDocumentsMapping.objects.filter(
+                mapping_obj = documents.objects.filter(
                     property=property_obj,
                     document__file_name=file_name
                 ).select_related('document').first()
@@ -728,7 +729,7 @@ def property_documents(request):
                         file_path="",
                         created_by=request.user.user
                     )
-                    mapping_obj = PropertyDocumentsMapping.objects.create(
+                    mapping_obj = documents.objects.create(
                         property=property_obj,
                         document=doc_obj,
                         document_choice=doc_type,
@@ -2278,208 +2279,6 @@ def export_property_table_csv(request):
             message=f"Error exporting CSV: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
-
-
-@is_request_authenticated
-def complaint(request):
-    user_profile = request.user
-
-    if request.method == "POST":
-        try:
-            data = json.loads(request.body)
-            message = data.get("message")
-
-            if not message:
-                return prepare_response(
-                    message=constants.MESSAGE_REQUIRED,
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            complaint = Complaint.objects.create(
-                user=user_profile,
-                message=message,
-                created_by=request.user.user
-            )
-
-            return prepare_response(
-                message=constants.COMPLAINT_RAISED_SUCCESS,
-                status=status.HTTP_201_CREATED,
-                content={
-                    "id": complaint.id,
-                    "message": complaint.message
-                }
-            )
-
-        except Exception as e:
-            return prepare_response(
-                message=str(e),
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-    elif request.method == "GET":
-        login_user = request.user
-        complaints_qs = Complaint.objects.none()
-
-        # ================= ROLE BASED FILTER (UNCHANGED) =================
-        if login_user.user_role == constants.TENANT:
-            complaints_qs = Complaint.objects.filter(user=login_user)
-
-        elif login_user.user_role == constants.OWNER:
-            complaints_qs = Complaint.objects.filter(
-                user__tenant_leases__lease_property__owner=login_user
-            ).distinct()
-
-        elif login_user.user_role == constants.COMPANY_USER:
-            company = PropertyManagmentCompany.objects.filter(company_user=login_user).first()
-            if not company:
-                return prepare_response(
-                    message=constants.COMPANY_NOT_FOUND,
-                    status=status.HTTP_404_NOT_FOUND
-                )
-
-            complaints_qs = Complaint.objects.filter(
-                user__tenant_leases__lease_property__company=company
-            ).distinct()
-
-        else:
-            return prepare_response(
-                message="Invalid user role",
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # ================= STATUS FILTER (UNCHANGED) =================
-        status_param = request.GET.get("status")
-        if status_param:
-            status_list = [s.strip() for s in status_param.split(",")]
-
-            VALID_STATUSES = {
-                constants.IN_PROGRESS,
-                constants.COMPLETED,
-                constants.ASSIGNED_ENGINEER,
-                constants.REJECTED,
-            }
-
-            invalid_status = set(status_list) - VALID_STATUSES
-            if invalid_status:
-                return prepare_response(
-                    message=f"Invalid status value(s): {', '.join(invalid_status)}",
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            complaints_qs = complaints_qs.filter(status__in=status_list)
-        property_unit_id = request.GET.get("property_unit_id")
-        if property_unit_id:
-            if not property_unit_id.isdigit():
-                return prepare_response(message="Invalid property_unit_id",status=status.HTTP_400_BAD_REQUEST)
-            complaints_qs = complaints_qs.filter(user__tenant_leases__lease_property__id=property_unit_id).distinct()
-        
-
-        # ================= SEARCH FILTER (NEW) =================
-        search = request.GET.get("search", "").strip()
-        if search:
-            complaints_qs = complaints_qs.filter(
-                Q(id__icontains=search) |
-                Q(user__user__first_name__icontains=search) |
-                Q(user__user__last_name__icontains=search) |
-                Q(user__tenant_leases__lease_property__unit_name__icontains=search)
-            ).distinct()
-
-        complaints_qs = complaints_qs.select_related(
-            "user", "user__user"
-        ).order_by("-created")
-
-        # ================= SUMMARY COUNTS (UNCHANGED) =================
-        total_complaints = complaints_qs.count()
-        total_completed = complaints_qs.filter(status=constants.COMPLETED).count()
-        total_in_progress = complaints_qs.filter(status=constants.IN_PROGRESS).count()
-        total_rejected = complaints_qs.filter(status=constants.REJECTED).count()
-
-        # ================= PAGINATION (NEW) =================
-        page = int(request.GET.get("page", 1))
-        limit = int(request.GET.get("limit", 10))
-
-        paginator = Paginator(complaints_qs, limit)
-        try:
-            complaints_page = paginator.page(page)
-        except EmptyPage:
-            complaints_page = paginator.page(paginator.num_pages)
-
-        complaint_list = []
-
-        for complaint_obj in complaints_page:
-            tenant = complaint_obj.user
-
-            lease = LeasePropertyDetails.objects.filter(
-                tenant=tenant
-            ).select_related("lease_property").first()
-
-            unit_name = None
-            property_image = None
-
-            if lease and lease.lease_property:
-                property_obj = lease.lease_property
-                unit_name = property_obj.unit_name
-
-                image_data = get_property_images(
-                    property_id=property_obj.id,
-                    single=True
-                )
-                if not image_data.get("error") and image_data.get("images"):
-                    property_image = image_data["images"][0]["data"]
-
-            complaint_list.append({
-                "complaint_id": complaint_obj.id,
-                "unit_name": unit_name,
-                "property_unit_id":property_obj.id,
-                "description": complaint_obj.message,
-                "raised_by_email": tenant.user.email,
-                "raised_by_name": tenant.user.first_name,
-                "status": {
-                    "key": complaint_obj.status,
-                    "value": complaint_obj.get_status_display()
-                },
-                "raised_date": datetime_to_epoch_millis(complaint_obj.created),
-                "property_image": property_image,
-
-                "raised_by_image": tenant.profile_image
-            })
-
-        return prepare_response(
-            content={
-                "summary": {
-                    "total_complaints": total_complaints,
-                    "total_completed": total_completed,
-                    "total_in_progress": total_in_progress,
-                    "total_rejected": total_rejected,
-                },
-                "complaints": complaint_list
-            },
-            pagination={
-                "current_page": complaints_page.number,
-                "limit": limit,
-                "total_records": paginator.count,
-                "total_pages": paginator.num_pages
-            },
-            message="Complaints fetched successfully",
-            status=status.HTTP_200_OK
-        )
-
-    elif request.method == "PUT":
-        pass
-
-    elif request.method == "DELETE":
-        pass
-
-    else:
-        return prepare_response(
-            message=constants.INVALID_REQUEST,
-            status=status.HTTP_405_METHOD_NOT_ALLOWED
-        )
-
-
-
-
 
 def faq_api(request):
 
