@@ -1057,7 +1057,7 @@ def approval(request):
             approval = Approval.objects.select_related(
                 "tenant",
                 "unit",
-                "unit__property"
+                "unit__property_block_tower__property"
             ).filter(id=approval_id).first()
 
             if not approval:
@@ -1070,8 +1070,9 @@ def approval(request):
                 "id": approval.id,
                 "requested_date": approval.created,
                 "tenant": str(approval.tenant),
-                "property": approval.unit.property.property_name if approval.unit.property else None,
-                "block": approval.unit.property_block_tower.property_name if approval.unit.property_block_tower else None,
+                "property": approval.unit.property_block_tower.property.property_name
+                if approval.unit.property_block_tower and approval.unit.property_block_tower.property else None,
+                "block": approval.unit.property_block_tower.block_name if approval.unit.property_block_tower else None,
                 "unit": approval.unit.unit_name,
                 "requested_rent": approval.requested_rent,
                 "requested_tenure": approval.requested_tenure,
@@ -1087,8 +1088,7 @@ def approval(request):
         approvals = Approval.objects.select_related(
             "tenant",
             "unit",
-            "unit__property_block_tower",
-            "unit__property"
+            "unit__property_block_tower__property"
         ).order_by("-id")
 
         content = [
@@ -1096,8 +1096,9 @@ def approval(request):
                 "id": a.id,
                 "requested_date": a.created,
                 "tenant": str(a.tenant),
-                "property": a.unit.property.property_name if a.unit.property else None,
-                "block": a.unit.property_block_tower.property_name if a.unit.property_block_tower else None,
+                "property": a.unit.property_block_tower.property.property_name
+                if a.unit.property_block_tower and a.unit.property_block_tower.property else None,
+                "block": a.unit.property_block_tower.block_name if a.unit.property_block_tower else None,
                 "unit": a.unit.unit_name,
                 "requested_rent": a.requested_rent,
                 "requested_tenure": a.requested_tenure,
