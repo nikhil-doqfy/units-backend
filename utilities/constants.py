@@ -765,3 +765,94 @@ TIMEZONE_CHOICES = (
     ("JST", "JST"),
     ("AEST", "AEST")
 )
+
+# =====================================================
+# Complaint Status
+# =====================================================
+
+PENDING = "PENDING"
+ASSIGNED = "ASSIGNED"
+IN_PROGRESS = "IN_PROGRESS"
+RESOLVED = "RESOLVED"
+CLOSED = "CLOSED"
+REOPENED = "REOPENED"
+CANCELLED = "CANCELLED"
+
+COMPLAINT_STATUS_CHOICES = (
+    (PENDING, "Pending"),
+    (ASSIGNED, "Assigned"),
+    (IN_PROGRESS, "In Progress"),
+    (RESOLVED, "Resolved"),
+    (CLOSED, "Closed"),
+    (REOPENED, "Reopened"),
+    (CANCELLED, "Cancelled"),
+)
+
+
+# =====================================================
+# Complaint Timeline Status
+# =====================================================
+
+CREATED = "CREATED"
+ASSIGNED_TIMELINE = "ASSIGNED"
+WORK_STARTED = "WORK_STARTED"
+WORK_COMPLETED = "WORK_COMPLETED"
+COMPLAINT_CLOSED = "CLOSED"
+
+COMPLAINT_TIMELINE_STATUS_CHOICES = (
+    (CREATED, "Complaint Created"),
+    (ASSIGNED_TIMELINE, "Complaint Assigned"),
+    (WORK_STARTED, "Work Started"),
+    (WORK_COMPLETED, "Work Completed"),
+    (COMPLAINT_CLOSED, "Complaint Closed"),
+)
+
+
+# =====================================================
+# Service Provider Types
+# =====================================================
+
+AC_TECH = "AC_TECH"
+PLUMBER = "PLUMBER"
+ELECTRICIAN = "ELECTRICIAN"
+CARPENTER = "CARPENTER"
+CLEANING = "CLEANING"
+INTERNET_TECH = "INTERNET_TECH"
+LIFT_TECH = "LIFT_TECH"
+PAINTER = "PAINTER"
+GARDENER = "GARDENER"
+SECURITY = "SECURITY"
+PEST_CONTROL = "PEST_CONTROL"
+OTHER = "OTHER"
+
+SERVICE_TYPE_CHOICES = (
+    (AC_TECH, "AC Technician"),
+    (PLUMBER, "Plumber"),
+    (ELECTRICIAN, "Electrician"),
+    (CARPENTER, "Carpenter"),
+    (CLEANING, "Cleaning"),
+    (INTERNET_TECH, "Internet Technician"),
+    (LIFT_TECH, "Lift Technician"),
+    (PAINTER, "Painter"),
+    (GARDENER, "Gardener"),
+    (SECURITY, "Security"),
+    (PEST_CONTROL, "Pest Control"),
+    (OTHER, "Other"),
+)
+
+
+# =====================================================
+# Complaint Priority
+# =====================================================
+
+LOW = "LOW"
+MEDIUM = "MEDIUM"
+HIGH = "HIGH"
+URGENT = "URGENT"
+
+COMPLAINT_PRIORITY_CHOICES = (
+    (LOW, "Low"),
+    (MEDIUM, "Medium"),
+    (HIGH, "High"),
+    (URGENT, "Urgent"),
+)
