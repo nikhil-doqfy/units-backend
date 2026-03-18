@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 """
 Django settings for property_management project.
 
@@ -124,7 +123,6 @@ EMAIL_HOST = ""
 EMAIL_HOST_USER = ''
 EMAIL_HOST_PASSWORD = ''
 EMAIL_PORT = 587
-=======
 """
 Django settings for property_management project.
 
@@ -249,5 +247,4 @@ EMAIL_HOST = ""
 EMAIL_HOST_USER = ''
 EMAIL_HOST_PASSWORD = ''
 EMAIL_PORT = 587
->>>>>>> 423bda91a0a360024650501095d24b4480723958
 # --------------------------------------------------------------------------------------------------------------------------------------------
