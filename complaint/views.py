@@ -305,6 +305,7 @@
 #         status=status.HTTP_405_METHOD_NOT_ALLOWED
 #     )
 
+
 import json
 import uuid
 from django.utils import timezone
@@ -313,11 +314,26 @@ from utilities.decorator import is_request_authenticated
 from utilities import constants, status
 from complaint.models import (
     Complaint, ComplaintImages, ComplaintTimeline,
-    ComplaintActivityHistory, ServiceProvider, ComplaintBroadcast
+    ComplaintActivityHistory, ServiceProvider, ComplaintBroadcast,
+    Appointment, AppointmentSlot, ComplaintRating,
+    ServiceType, ServiceLocality
+)
+from complaint.email_service import (
+    email_complaint_created,
+    email_complaint_broadcasted,
+    email_complaint_accepted,
+    email_complaint_declined,
+    email_no_technician_available,
+    email_work_started,
+    email_work_completed,
+    email_complaint_closed,
 )
 from property.models import PropertyManagmentCompany, Unit
-from user_service.models import UserProfile
 
+
+# =====================================================
+# HELPERS
+# =====================================================
 
 def get_ticket_aging(created):
     delta = timezone.now() - created
@@ -326,6 +342,10 @@ def get_ticket_aging(created):
     minutes = (delta.seconds % 3600) // 60
     seconds = delta.seconds % 60
     return f"{days}d, {hours}hr, {minutes}min, {seconds}sec"
+
+
+def get_broadcast_expiry():
+    return timezone.now() + timezone.timedelta(hours=2)
 
 
 def serialize_complaint(c):
@@ -342,12 +362,15 @@ def serialize_complaint(c):
             "name": f"{c.raised_by.user.first_name} {c.raised_by.user.last_name}".strip(),
             "profile_image": c.raised_by.profile_image,
         },
-        "assigned_to": {
-            "id": c.assigned_to.id,
-            "name": c.assigned_to.name,
-            "phone": c.assigned_to.phone,
-            "service_type": c.assigned_to.service_type,
-        } if c.assigned_to else None,
+        "assigned_to": [
+            {
+                "id": sp.id,
+                "name": sp.name,
+                "phone": sp.phone,
+                "avg_rating": str(sp.avg_rating),
+            }
+            for sp in c.assigned_to.all()
+        ],
         "service_type": {
             "key": c.service_type,
             "value": c.get_service_type_display()
@@ -364,6 +387,22 @@ def serialize_complaint(c):
         },
         "is_broadcasted": c.is_broadcasted,
         "broadcasted_at": c.broadcasted_at,
+        "broadcast_expiry": c.broadcast_expiry,
+        "attempt_count": c.attempt_count,
+        "current_appointment": {
+            "id": c.current_appointment.id,
+            "status": c.current_appointment.status,
+            "note": c.current_appointment.note,
+            "slots": [
+                {
+                    "id": s.id,
+                    "proposed_time": s.proposed_time,
+                    "is_selected": s.is_selected,
+                    "selected_at": s.selected_at,
+                }
+                for s in c.current_appointment.slots.all()
+            ]
+        } if c.current_appointment else None,
         "work_started_at": c.work_started_at,
         "work_completed_at": c.work_completed_at,
         "work_duration": str(c.work_duration()) if c.work_duration() else None,
@@ -378,14 +417,73 @@ def serialize_complaint(c):
             for img in c.complaint_images.all()
         ],
         "images_count": c.complaint_images.count(),
+        "rating": {
+            "rating": c.rating.rating,
+            "feedback": c.rating.feedback,
+        } if hasattr(c, 'rating') and c.rating else None,
         "created": c.created,
     }
 
 
+def auto_broadcast(complaint, company, exclude_provider_id=None):
+    # ── Delete old unaccepted broadcasts ───────────────────────
+    ComplaintBroadcast.objects.filter(
+        complaint=complaint,
+        is_accepted=False
+    ).delete()
+
+    # ── Find providers in same locality first ──────────────────
+    providers = ServiceProvider.objects.filter(
+        company=company,
+        service_types__name=complaint.service_type,
+        localities__locality=complaint.locality,
+        is_available=True,
+        is_active=True
+    ).distinct()
+
+    # ── If no providers in locality → broadcast to all ─────────
+    if not providers.exists():
+        providers = ServiceProvider.objects.filter(
+            company=company,
+            service_types__name=complaint.service_type,
+            is_available=True,
+            is_active=True
+        ).distinct()
+
+    if exclude_provider_id:
+        providers = providers.exclude(id=exclude_provider_id)
+
+    if not providers.exists():
+        return 0
+
+    expiry = get_broadcast_expiry()
+
+    for provider in providers:
+        ComplaintBroadcast.objects.create(
+            complaint=complaint,
+            service_provider=provider,
+            is_priority=provider.avg_rating >= 4.0,
+            priority_score=provider.avg_rating,
+            expires_at=expiry,
+            created_by=complaint.created_by
+        )
+
+    complaint.is_broadcasted = True
+    complaint.broadcasted_at = timezone.now()
+    complaint.broadcast_expiry = expiry
+    complaint.attempt_count += 1
+    complaint.save()
+
+    return providers.count()
+
+
+# =====================================================
+# STEP 1 - complaint_api
+# =====================================================
+
 @is_request_authenticated
 def complaint_api(request):
 
-    # ===================== GET ALL =====================
     if request.method == "GET":
         company = PropertyManagmentCompany.objects.filter(
             company_staff=request.user,
@@ -410,7 +508,6 @@ def complaint_api(request):
             status=status.HTTP_200_OK
         )
 
-    # ===================== POST - Create =====================
     elif request.method == "POST":
         body = json.loads(request.body)
 
@@ -451,27 +548,32 @@ def complaint_api(request):
             raised_by=request.user,
             company=company,
             description=description,
-            locality=body.get("locality"),
             service_type=service_type,
             priority=body.get("priority", constants.MEDIUM),
             status=constants.PENDING,
             created_by=request.user.user
         )
 
+        providers_count = auto_broadcast(complaint, company)
+
         ComplaintTimeline.objects.create(
             complaint=complaint,
             user=request.user,
             timeline_status=constants.CREATED,
-            note="Complaint created.",
+            note=f"Complaint created. Broadcasted to {providers_count} providers.",
             created_by=request.user.user
         )
 
         ComplaintActivityHistory.objects.create(
             complaint=complaint,
             user=request.user,
-            message=f"{request.user.user.first_name} raised a complaint.",
+            message=f"{request.user.user.first_name} raised a {complaint.get_service_type_display()} complaint.",
             created_by=request.user.user
         )
+
+        email_complaint_created(complaint)
+        if providers_count > 0:
+            email_complaint_broadcasted(complaint, providers_count)
 
         return prepare_response(
             content={"code": complaint.code},
@@ -484,6 +586,10 @@ def complaint_api(request):
         status=status.HTTP_405_METHOD_NOT_ALLOWED
     )
 
+
+# =====================================================
+# complaint_detail_api
+# =====================================================
 
 @is_request_authenticated
 def complaint_detail_api(request, code):
@@ -509,7 +615,6 @@ def complaint_detail_api(request, code):
             status=status.HTTP_404_NOT_FOUND
         )
 
-    # ===================== GET SINGLE =====================
     if request.method == "GET":
         data = serialize_complaint(complaint)
         data["timeline"] = [
@@ -547,12 +652,38 @@ def complaint_detail_api(request, code):
                     "id": b.service_provider.id,
                     "name": b.service_provider.name,
                     "phone": b.service_provider.phone,
+                    "avg_rating": str(b.service_provider.avg_rating),
                 },
+                "is_priority": b.is_priority,
+                "priority_score": str(b.priority_score),
                 "is_accepted": b.is_accepted,
                 "is_rejected": b.is_rejected,
+                "is_expired": b.is_expired,
+                "expires_at": b.expires_at,
                 "accepted_at": b.accepted_at,
             }
-            for b in complaint.broadcasts.all()
+            for b in complaint.broadcasts.all().order_by('-priority_score')
+        ]
+        data["appointments"] = [
+            {
+                "id": a.id,
+                "service_provider": {
+                    "id": a.service_provider.id,
+                    "name": a.service_provider.name,
+                },
+                "status": a.status,
+                "note": a.note,
+                "slots": [
+                    {
+                        "id": s.id,
+                        "proposed_time": s.proposed_time,
+                        "is_selected": s.is_selected,
+                        "selected_at": s.selected_at,
+                    }
+                    for s in a.slots.all()
+                ]
+            }
+            for a in complaint.appointments.all().order_by('-created')
         ]
 
         return prepare_response(
@@ -561,12 +692,10 @@ def complaint_detail_api(request, code):
             status=status.HTTP_200_OK
         )
 
-    # ===================== PUT - Update =====================
     elif request.method == "PUT":
         body = json.loads(request.body)
 
         complaint.description = body.get("description", complaint.description)
-        complaint.locality = body.get("locality", complaint.locality)
         complaint.service_type = body.get("service_type", complaint.service_type)
         complaint.priority = body.get("priority", complaint.priority)
         complaint.save()
@@ -583,7 +712,6 @@ def complaint_detail_api(request, code):
             status=status.HTTP_200_OK
         )
 
-    # ===================== DELETE =====================
     elif request.method == "DELETE":
         complaint.is_active = False
         complaint.save()
@@ -599,90 +727,9 @@ def complaint_detail_api(request, code):
     )
 
 
-@is_request_authenticated
-def broadcast_complaint(request, code):
-
-    if request.method == "POST":
-        company = PropertyManagmentCompany.objects.filter(
-            company_staff=request.user,
-            is_active=True
-        ).first()
-        if not company:
-            return prepare_response(
-                message=constants.COMPANY_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        complaint = Complaint.objects.filter(
-            code=code,
-            company=company,
-            is_active=True
-        ).first()
-        if not complaint:
-            return prepare_response(
-                message=constants.COMPLAINT_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        providers = ServiceProvider.objects.filter(
-            company=company,
-            service_type=complaint.service_type,
-            is_available=True,
-            is_active=True
-        )
-
-        if not providers.exists():
-            return prepare_response(
-                message="No available service providers found.",
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        # ── Delete old unaccepted broadcasts ───────────────────────
-        ComplaintBroadcast.objects.filter(
-            complaint=complaint,
-            is_accepted=False
-        ).delete()
-
-        # ── Create new broadcasts ──────────────────────────────────
-        for provider in providers:
-            ComplaintBroadcast.objects.create(
-                complaint=complaint,
-                service_provider=provider,
-                created_by=request.user.user
-            )
-
-        complaint.is_broadcasted = True
-        complaint.broadcasted_at = timezone.now()
-        complaint.status = constants.PENDING
-        complaint.assigned_to = None
-        complaint.save()
-
-        ComplaintTimeline.objects.create(
-            complaint=complaint,
-            user=request.user,
-            timeline_status=constants.CREATED,
-            note=f"Broadcasted to {providers.count()} service providers.",
-            created_by=request.user.user
-        )
-
-        ComplaintActivityHistory.objects.create(
-            complaint=complaint,
-            user=request.user,
-            message=f"{request.user.user.first_name} broadcasted to {providers.count()} providers.",
-            created_by=request.user.user
-        )
-
-        return prepare_response(
-            content={"broadcasted_to": providers.count()},
-            message="Complaint broadcasted successfully.",
-            status=status.HTTP_200_OK
-        )
-
-    return prepare_response(
-        message=constants.METHOD_NOT_ALLOWED,
-        status=status.HTTP_405_METHOD_NOT_ALLOWED
-    )
-
+# =====================================================
+# STEP 2A - accept_complaint
+# =====================================================
 
 @is_request_authenticated
 def accept_complaint(request, code):
@@ -711,13 +758,22 @@ def accept_complaint(request, code):
             complaint=complaint,
             service_provider_id=service_provider_id,
             is_accepted=False,
-            is_rejected=False
+            is_rejected=False,
+            is_expired=False
         ).first()
 
         if not broadcast:
             return prepare_response(
-                message="Broadcast not found.",
-                status=status.HTTP_404_NOT_FOUND
+                message="COMPLAINT_NOT_ASSIGNED_TO_YOU",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if broadcast.expires_at and timezone.now() > broadcast.expires_at:
+            broadcast.is_expired = True
+            broadcast.save()
+            return prepare_response(
+                message="Broadcast has expired.",
+                status=status.HTTP_400_BAD_REQUEST
             )
 
         broadcast.is_accepted = True
@@ -727,9 +783,9 @@ def accept_complaint(request, code):
         ComplaintBroadcast.objects.filter(
             complaint=complaint,
             is_accepted=False
-        ).update(is_rejected=True)
+        ).update(is_rejected=True, rejected_at=timezone.now())
 
-        complaint.assigned_to = broadcast.service_provider
+        complaint.assigned_to.add(broadcast.service_provider)
         complaint.status = constants.ASSIGNED
         complaint.save()
 
@@ -737,16 +793,18 @@ def accept_complaint(request, code):
             complaint=complaint,
             user=request.user,
             timeline_status=constants.ASSIGNED_TIMELINE,
-            note=f"{broadcast.service_provider.name} accepted the job.",
+            note=f"{broadcast.service_provider.name} accepted.",
             created_by=request.user.user
         )
 
         ComplaintActivityHistory.objects.create(
             complaint=complaint,
             user=request.user,
-            message=f"{broadcast.service_provider.name} accepted the complaint.",
+            message=f"{broadcast.service_provider.name} accepted your complaint.",
             created_by=request.user.user
         )
+
+        email_complaint_accepted(complaint, broadcast.service_provider)
 
         return prepare_response(
             message="Job accepted successfully.",
@@ -758,6 +816,305 @@ def accept_complaint(request, code):
         status=status.HTTP_405_METHOD_NOT_ALLOWED
     )
 
+
+# =====================================================
+# STEP 2B - decline_complaint
+# =====================================================
+
+@is_request_authenticated
+@is_request_authenticated
+def decline_complaint(request, code):
+
+    if request.method == "PATCH":
+        complaint = Complaint.objects.filter(
+            code=code,
+            is_active=True
+        ).first()
+        if not complaint:
+            return prepare_response(
+                message=constants.COMPLAINT_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        body = json.loads(request.body)
+        service_provider_id = body.get("service_provider_id")
+
+        broadcast = ComplaintBroadcast.objects.filter(
+            complaint=complaint,
+            service_provider_id=service_provider_id,
+            is_rejected=False
+        ).first()
+
+        if not broadcast:
+            return prepare_response(
+                message=constants.COMPLAINT_NOT_ASSIGNED_TO_YOU,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        service_provider = broadcast.service_provider
+
+        # =====================================================
+        # CASE 1 - Provider who ACCEPTED is now declining
+        # =====================================================
+        if broadcast.is_accepted:
+
+            broadcast.is_accepted = False
+            broadcast.is_rejected = True
+            broadcast.rejected_at = timezone.now()
+            broadcast.save()
+
+            complaint.assigned_to.remove(service_provider)
+            complaint.status = constants.PENDING
+            complaint.save()
+
+            ComplaintActivityHistory.objects.create(
+                complaint=complaint,
+                user=request.user,
+                message=f"{service_provider.name} declined after accepting. Re-broadcasting.",
+                created_by=request.user.user
+            )
+
+            # ── Step 1: Re-broadcast first ─────────────────────────
+            company = complaint.company
+            providers_count = auto_broadcast(
+                complaint, company,
+                exclude_provider_id=service_provider_id
+            )
+
+            if providers_count > 0:
+                ComplaintActivityHistory.objects.create(
+                    complaint=complaint,
+                    user=request.user,
+                    message=f"Re-broadcasted to {providers_count} providers. Attempt #{complaint.attempt_count}",
+                    created_by=request.user.user
+                )
+                # ── Step 2: Email after broadcast ──────────────────
+                email_complaint_declined(complaint, service_provider)
+            else:
+                ComplaintActivityHistory.objects.create(
+                    complaint=complaint,
+                    user=request.user,
+                    message="No technicians available. Please contact PMC.",
+                    created_by=request.user.user
+                )
+                email_no_technician_available(complaint)
+
+        # =====================================================
+        # CASE 2 - Normal decline (before accepting)
+        # =====================================================
+        else:
+
+            broadcast.is_rejected = True
+            broadcast.rejected_at = timezone.now()
+            broadcast.save()
+
+            ComplaintActivityHistory.objects.create(
+                complaint=complaint,
+                user=request.user,
+                message=f"{service_provider.name} declined the complaint.",
+                created_by=request.user.user
+            )
+
+            # ── Check if all declined ──────────────────────────────
+            pending = ComplaintBroadcast.objects.filter(
+                complaint=complaint,
+                is_accepted=False,
+                is_rejected=False,
+                is_expired=False
+            )
+
+            if not pending.exists():
+                company = complaint.company
+
+                # ── Step 1: Re-broadcast first ─────────────────────
+                providers_count = auto_broadcast(
+                    complaint, company,
+                    exclude_provider_id=service_provider_id
+                )
+
+                if providers_count > 0:
+                    ComplaintActivityHistory.objects.create(
+                        complaint=complaint,
+                        user=request.user,
+                        message=f"All declined. Re-broadcasted to {providers_count} providers. Attempt #{complaint.attempt_count}",
+                        created_by=request.user.user
+                    )
+                    # ── Step 2: Email after broadcast ──────────────
+                    email_complaint_declined(complaint, service_provider)
+                else:
+                    ComplaintActivityHistory.objects.create(
+                        complaint=complaint,
+                        user=request.user,
+                        message="No technicians available. Please contact PMC.",
+                        created_by=request.user.user
+                    )
+                    email_no_technician_available(complaint)
+
+        return prepare_response(
+            message="Complaint declined.",
+            status=status.HTTP_200_OK
+        )
+
+    return prepare_response(
+        message=constants.METHOD_NOT_ALLOWED,
+        status=status.HTTP_405_METHOD_NOT_ALLOWED
+    )
+# =====================================================
+# STEP 3 - propose_slots (Owner proposes multiple slots)
+# =====================================================
+
+@is_request_authenticated
+def propose_slots(request, code):
+
+    if request.method == "POST":
+        complaint = Complaint.objects.filter(
+            code=code,
+            is_active=True
+        ).first()
+        if not complaint:
+            return prepare_response(
+                message=constants.COMPLAINT_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if complaint.status != constants.ASSIGNED:
+            return prepare_response(
+                message="Complaint must be assigned before proposing slots.",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        body = json.loads(request.body)
+        slots = body.get("slots", [])
+
+        if not slots:
+            return prepare_response(
+                message="At least one slot is required.",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        service_provider = complaint.assigned_to.first()
+        if not service_provider:
+            return prepare_response(
+                message="No service provider assigned.",
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        appointment = Appointment.objects.create(
+            complaint=complaint,
+            service_provider=service_provider,
+            status=constants.APPOINTMENT_PROPOSED,
+            note=body.get("note"),
+            created_by=request.user.user
+        )
+
+        for slot_time in slots:
+            AppointmentSlot.objects.create(
+                appointment=appointment,
+                proposed_time=slot_time,
+                created_by=request.user.user
+            )
+
+        complaint.current_appointment = appointment
+        complaint.save()
+
+        ComplaintActivityHistory.objects.create(
+            complaint=complaint,
+            user=request.user,
+            message=f"Owner proposed {len(slots)} time slots.",
+            created_by=request.user.user
+        )
+
+        return prepare_response(
+            content={"appointment_id": appointment.id},
+            message="Slots proposed successfully.",
+            status=status.HTTP_201_CREATED
+        )
+
+    return prepare_response(
+        message=constants.METHOD_NOT_ALLOWED,
+        status=status.HTTP_405_METHOD_NOT_ALLOWED
+    )
+
+
+# =====================================================
+# STEP 4 - select_slot (Technician selects a slot)
+# =====================================================
+
+@is_request_authenticated
+def select_slot(request, code):
+
+    if request.method == "PATCH":
+        complaint = Complaint.objects.filter(
+            code=code,
+            is_active=True
+        ).first()
+        if not complaint:
+            return prepare_response(
+                message=constants.COMPLAINT_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        body = json.loads(request.body)
+        slot_id = body.get("slot_id")
+        feedback = body.get("feedback")
+
+        if not slot_id:
+            return prepare_response(
+                message="Slot ID is required.",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        slot = AppointmentSlot.objects.filter(
+            id=slot_id,
+            appointment=complaint.current_appointment
+        ).first()
+
+        if not slot:
+            return prepare_response(
+                message="Slot not found.",
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        slot.is_selected = True
+        slot.selected_at = timezone.now()
+        slot.save()
+
+        appointment = complaint.current_appointment
+        appointment.status = constants.APPOINTMENT_CONFIRMED
+        if feedback:
+            appointment.note = feedback
+        appointment.save()
+
+        ComplaintTimeline.objects.create(
+            complaint=complaint,
+            user=request.user,
+            timeline_status=constants.ASSIGNED_TIMELINE,
+            note=f"Appointment finalized: {slot.proposed_time}",
+            created_by=request.user.user
+        )
+
+        ComplaintActivityHistory.objects.create(
+            complaint=complaint,
+            user=request.user,
+            message=f"Technician confirmed slot: {slot.proposed_time}. {f'Feedback: {feedback}' if feedback else ''}",
+            created_by=request.user.user
+        )
+
+        return prepare_response(
+            content={"confirmed_time": slot.proposed_time},
+            message="Appointment finalized successfully.",
+            status=status.HTTP_200_OK
+        )
+
+    return prepare_response(
+        message=constants.METHOD_NOT_ALLOWED,
+        status=status.HTTP_405_METHOD_NOT_ALLOWED
+    )
+
+
+# =====================================================
+# STEP 5 - start_work
+# =====================================================
 
 @is_request_authenticated
 def start_work(request, code):
@@ -783,6 +1140,8 @@ def start_work(request, code):
         complaint.work_started_at = timezone.now()
         complaint.save()
 
+        service_provider = complaint.assigned_to.first()
+
         ComplaintTimeline.objects.create(
             complaint=complaint,
             user=request.user,
@@ -794,9 +1153,11 @@ def start_work(request, code):
         ComplaintActivityHistory.objects.create(
             complaint=complaint,
             user=request.user,
-            message=f"{request.user.user.first_name} started work on complaint.",
+            message=f"{service_provider.name if service_provider else 'Technician'} started work.",
             created_by=request.user.user
         )
+
+        email_work_started(complaint)
 
         return prepare_response(
             message="Work started successfully.",
@@ -808,6 +1169,10 @@ def start_work(request, code):
         status=status.HTTP_405_METHOD_NOT_ALLOWED
     )
 
+
+# =====================================================
+# STEP 6 - complete_work
+# =====================================================
 
 @is_request_authenticated
 def complete_work(request, code):
@@ -833,6 +1198,8 @@ def complete_work(request, code):
         complaint.work_completed_at = timezone.now()
         complaint.save()
 
+        service_provider = complaint.assigned_to.first()
+
         ComplaintTimeline.objects.create(
             complaint=complaint,
             user=request.user,
@@ -844,9 +1211,11 @@ def complete_work(request, code):
         ComplaintActivityHistory.objects.create(
             complaint=complaint,
             user=request.user,
-            message=f"{request.user.user.first_name} completed work. Duration: {complaint.work_duration()}",
+            message=f"{service_provider.name if service_provider else 'Technician'} completed work. Duration: {complaint.work_duration()}",
             created_by=request.user.user
         )
+
+        email_work_completed(complaint)
 
         return prepare_response(
             content={"work_duration": str(complaint.work_duration())},
@@ -859,6 +1228,10 @@ def complete_work(request, code):
         status=status.HTTP_405_METHOD_NOT_ALLOWED
     )
 
+
+# =====================================================
+# STEP 7 - verify_complaint (Owner verifies + rating)
+# =====================================================
 
 @is_request_authenticated
 def verify_complaint(request, code):
@@ -880,24 +1253,49 @@ def verify_complaint(request, code):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+        body = json.loads(request.body)
+        rating = body.get("rating")
+        feedback = body.get("feedback")
+
         complaint.status = constants.CLOSED
         complaint.issue_closed_on = timezone.now()
         complaint.save()
+
+        if rating:
+            service_provider = complaint.assigned_to.first()
+            if service_provider:
+                ComplaintRating.objects.create(
+                    complaint=complaint,
+                    rated_by=request.user,
+                    service_provider=service_provider,
+                    rating=rating,
+                    feedback=feedback,
+                    created_by=request.user.user
+                )
+
+                all_ratings = ComplaintRating.objects.filter(
+                    service_provider=service_provider
+                )
+                avg = sum([r.rating for r in all_ratings]) / all_ratings.count()
+                service_provider.avg_rating = round(avg, 2)
+                service_provider.save()
 
         ComplaintTimeline.objects.create(
             complaint=complaint,
             user=request.user,
             timeline_status=constants.COMPLAINT_CLOSED,
-            note="Owner verified and closed the complaint.",
+            note=f"Closed. {f'Rating: {rating}⭐' if rating else ''}",
             created_by=request.user.user
         )
 
         ComplaintActivityHistory.objects.create(
             complaint=complaint,
             user=request.user,
-            message=f"{request.user.user.first_name} verified and closed the complaint.",
+            message=f"{request.user.user.first_name} verified and closed. {f'Rating: {rating}⭐' if rating else ''}",
             created_by=request.user.user
         )
+
+        email_complaint_closed(complaint)
 
         return prepare_response(
             message="Complaint verified and closed successfully.",
@@ -909,6 +1307,68 @@ def verify_complaint(request, code):
         status=status.HTTP_405_METHOD_NOT_ALLOWED
     )
 
+
+# =====================================================
+# MANUAL BROADCAST
+# =====================================================
+
+@is_request_authenticated
+def broadcast_complaint(request, code):
+
+    if request.method == "POST":
+        company = PropertyManagmentCompany.objects.filter(
+            company_staff=request.user,
+            is_active=True
+        ).first()
+        if not company:
+            return prepare_response(
+                message=constants.COMPANY_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        complaint = Complaint.objects.filter(
+            code=code,
+            company=company,
+            is_active=True
+        ).first()
+        if not complaint:
+            return prepare_response(
+                message=constants.COMPLAINT_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        providers_count = auto_broadcast(complaint, company)
+
+        if providers_count == 0:
+            return prepare_response(
+                message="No available service providers found.",
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        ComplaintActivityHistory.objects.create(
+            complaint=complaint,
+            user=request.user,
+            message=f"Manually re-broadcasted to {providers_count} providers. Attempt #{complaint.attempt_count}",
+            created_by=request.user.user
+        )
+
+        email_complaint_broadcasted(complaint, providers_count)
+
+        return prepare_response(
+            content={"broadcasted_to": providers_count},
+            message="Complaint broadcasted successfully.",
+            status=status.HTTP_200_OK
+        )
+
+    return prepare_response(
+        message=constants.METHOD_NOT_ALLOWED,
+        status=status.HTTP_405_METHOD_NOT_ALLOWED
+    )
+
+
+# =====================================================
+# UPLOAD IMAGES
+# =====================================================
 
 @is_request_authenticated
 def upload_complaint_images(request):
@@ -937,7 +1397,7 @@ def upload_complaint_images(request):
 
         if not images:
             return prepare_response(
-                message="COMPLAINT_IMAGES_REQUIRED",
+                message=constants.COMPLAINT_IMAGES_REQUIRED,
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -972,7 +1432,7 @@ def upload_complaint_images(request):
 
         return prepare_response(
             content=uploaded_images,
-            message="COMPLAINT_IMAGES_UPLOADED_SUCCESSFULLY",
+            message=constants.COMPLAINT_IMAGES_UPLOADED_SUCCESSFULLY,
             status=status.HTTP_201_CREATED
         )
 

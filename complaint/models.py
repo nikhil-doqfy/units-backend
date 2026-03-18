@@ -4,25 +4,76 @@ from property_management.models import Base
 from utilities import constants
 
 
+# =====================================================
+# SERVICE TYPE
+# =====================================================
+
+class ServiceType(Base):
+    name = models.CharField(
+        max_length=50,
+        choices=constants.SERVICE_TYPE_CHOICES,
+        unique=True
+    )
+
+    def __str__(self):
+        return self.name
+
+
+# =====================================================
+# SERVICE LOCALITY
+# =====================================================
+
+class ServiceLocality(Base):
+    locality = models.CharField(max_length=255)
+
+    def __str__(self):
+        return self.locality
+
+
+# =====================================================
+# SERVICE PROVIDER
+# =====================================================
+
 class ServiceProvider(Base):
 
     # ── Details ────────────────────────────────────────────────────
     name = models.CharField(max_length=255)
     phone = models.CharField(max_length=20)
-    service_type = models.CharField(
-        max_length=50,
-        choices=constants.SERVICE_TYPE_CHOICES
-    )
+    email = models.EmailField(null=True, blank=True)
     company = models.ForeignKey(
         'property.PropertyManagmentCompany',
         on_delete=models.CASCADE,
         related_name='service_providers'
     )
+
+    # ── Multiple Service Types ─────────────────────────────────────
+    service_types = models.ManyToManyField(
+        ServiceType,
+        related_name='service_providers'
+    )
+
+    # ── Multiple Localities ────────────────────────────────────────
+    localities = models.ManyToManyField(
+        ServiceLocality,
+        related_name='service_providers'
+    )
+
+    # ── Rating ─────────────────────────────────────────────────────
+    avg_rating = models.DecimalField(
+        max_digits=3,
+        decimal_places=2,
+        default=0.00
+    )
+
     is_available = models.BooleanField(default=True)
 
     def __str__(self):
-        return f"{self.name} - {self.service_type}"
+        return f"{self.name}"
 
+
+# =====================================================
+# COMPLAINT
+# =====================================================
 
 class Complaint(Base):
 
@@ -42,14 +93,13 @@ class Complaint(Base):
         on_delete=models.CASCADE,
         related_name='complaints'
     )
-    assigned_to = models.ForeignKey(
+    assigned_to = models.ManyToManyField(
         ServiceProvider,
-        on_delete=models.SET_NULL,
         related_name='assigned_complaints',
-        null=True, blank=True
+        blank=True
     )
 
-    # ── Complaint Details ──────────────────────────────────────────
+    # ── Complaint Info ─────────────────────────────────────────────
     code = models.CharField(max_length=50, blank=True)
     service_type = models.CharField(
         max_length=50,
@@ -61,23 +111,43 @@ class Complaint(Base):
         default=constants.MEDIUM
     )
     description = models.TextField()
-    locality = models.CharField(max_length=255, null=True, blank=True)
     status = models.CharField(
         max_length=30,
         choices=constants.COMPLAINT_STATUS_CHOICES,
         default=constants.PENDING
     )
 
-    # ── Broadcast ─────────────────────────────────────────────────
+    # ── Location (auto filled from property) ──────────────────────
+    locality = models.CharField(max_length=255, null=True, blank=True)
+
+    # ── Broadcast Control ──────────────────────────────────────────
     is_broadcasted = models.BooleanField(default=False)
     broadcasted_at = models.DateTimeField(null=True, blank=True)
+    broadcast_expiry = models.DateTimeField(null=True, blank=True)
+    attempt_count = models.IntegerField(default=0)
 
-    # ── Work Details ───────────────────────────────────────────────
+    # ── Appointment ────────────────────────────────────────────────
+    current_appointment = models.ForeignKey(
+        'Appointment',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='+'
+    )
+
+    # ── Work Lifecycle ─────────────────────────────────────────────
     work_started_at = models.DateTimeField(null=True, blank=True)
     work_completed_at = models.DateTimeField(null=True, blank=True)
     issue_closed_on = models.DateTimeField(null=True, blank=True)
 
     def save(self, *args, **kwargs):
+        # ── Auto fill locality from property map_address ───────────
+        if self.unit and self.unit.property_block_tower and self.unit.property_block_tower.property:
+            prop = self.unit.property_block_tower.property
+            if prop.map_address and not self.locality:
+                parts = [part.strip() for part in prop.map_address.split(',')]
+                if len(parts) > 1:
+                    self.locality = parts[1]
+
         super().save(*args, **kwargs)
         if not self.code:
             self.code = f"CP{self.pk:04d}"
@@ -92,9 +162,30 @@ class Complaint(Base):
         return f"{self.code} - {self.status}"
 
 
+# =====================================================
+# COMPLAINT IMAGES
+# =====================================================
+
+class ComplaintImages(Base):
+
+    complaint = models.ForeignKey(
+        Complaint,
+        on_delete=models.CASCADE,
+        related_name='complaint_images'
+    )
+    image_path = models.TextField()
+    file_name = models.CharField(max_length=255)
+
+    def __str__(self):
+        return f"{self.complaint.code} - {self.file_name}"
+
+
+# =====================================================
+# BROADCAST
+# =====================================================
+
 class ComplaintBroadcast(Base):
 
-    # ── Relations ─────────────────────────────────────────────────
     complaint = models.ForeignKey(
         Complaint,
         on_delete=models.CASCADE,
@@ -106,35 +197,112 @@ class ComplaintBroadcast(Base):
         related_name='broadcast_complaints'
     )
 
-    # ── Status ────────────────────────────────────────────────────
+    # ── Priority ───────────────────────────────────────────────────
+    is_priority = models.BooleanField(default=False)
+    priority_score = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        default=0.00,
+        help_text="Score based on rating + proximity"
+    )
+
+    # ── Response ───────────────────────────────────────────────────
     is_accepted = models.BooleanField(default=False)
     accepted_at = models.DateTimeField(null=True, blank=True)
     is_rejected = models.BooleanField(default=False)
+    rejected_at = models.DateTimeField(null=True, blank=True)
+
+    # ── Expiry ─────────────────────────────────────────────────────
+    expires_at = models.DateTimeField(null=True, blank=True)
+    is_expired = models.BooleanField(default=False)
 
     def __str__(self):
         return f"{self.complaint.code} -> {self.service_provider.name}"
 
 
-class ComplaintImages(Base):
+# =====================================================
+# APPOINTMENT
+# =====================================================
 
-    # ── Relations ─────────────────────────────────────────────────
+class Appointment(Base):
+
     complaint = models.ForeignKey(
         Complaint,
         on_delete=models.CASCADE,
-        related_name='complaint_images'
+        related_name='appointments'
     )
-
-    # ── Image Details ──────────────────────────────────────────────
-    image_path = models.TextField()
-    file_name = models.CharField(max_length=255)
+    service_provider = models.ForeignKey(
+        ServiceProvider,
+        on_delete=models.CASCADE,
+        related_name='appointments'
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=constants.APPOINTMENT_STATUS_CHOICES,
+        default=constants.APPOINTMENT_PROPOSED
+    )
+    note = models.TextField(null=True, blank=True)
+    is_active = models.BooleanField(default=True)
 
     def __str__(self):
-        return f"{self.complaint.code} - {self.file_name}"
+        return f"{self.complaint.code} - {self.status}"
 
+
+# =====================================================
+# APPOINTMENT SLOTS
+# =====================================================
+
+class AppointmentSlot(Base):
+
+    appointment = models.ForeignKey(
+        Appointment,
+        on_delete=models.CASCADE,
+        related_name='slots'
+    )
+    proposed_time = models.DateTimeField()
+    is_selected = models.BooleanField(default=False)
+    selected_at = models.DateTimeField(null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.appointment.complaint.code} - {self.proposed_time}"
+
+
+# =====================================================
+# COMPLAINT RATING
+# =====================================================
+
+class ComplaintRating(Base):
+
+    complaint = models.OneToOneField(
+        Complaint,
+        on_delete=models.CASCADE,
+        related_name='rating'
+    )
+    rated_by = models.ForeignKey(
+        'user_service.UserProfile',
+        on_delete=models.CASCADE,
+        related_name='complaint_ratings'
+    )
+    service_provider = models.ForeignKey(
+        ServiceProvider,
+        on_delete=models.CASCADE,
+        related_name='ratings'
+    )
+    rating = models.IntegerField(
+        choices=[(i, str(i)) for i in range(1, 6)]
+    )
+    feedback = models.TextField(null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.complaint.code} - {self.rating}⭐"
+
+
+# =====================================================
+# TIMELINE
+# =====================================================
 
 class ComplaintTimeline(Base):
 
-    # ── Relations ─────────────────────────────────────────────────
     complaint = models.ForeignKey(
         Complaint,
         on_delete=models.CASCADE,
@@ -146,8 +314,6 @@ class ComplaintTimeline(Base):
         null=True, blank=True,
         related_name='complaint_timeline'
     )
-
-    # ── Timeline Details ───────────────────────────────────────────
     timeline_status = models.CharField(
         max_length=30,
         choices=constants.COMPLAINT_TIMELINE_STATUS_CHOICES
@@ -159,9 +325,12 @@ class ComplaintTimeline(Base):
         return f"{self.complaint.code} - {self.timeline_status}"
 
 
+# =====================================================
+# ACTIVITY HISTORY
+# =====================================================
+
 class ComplaintActivityHistory(Base):
 
-    # ── Relations ─────────────────────────────────────────────────
     complaint = models.ForeignKey(
         Complaint,
         on_delete=models.CASCADE,
@@ -172,8 +341,6 @@ class ComplaintActivityHistory(Base):
         on_delete=models.CASCADE,
         related_name='complaint_activities'
     )
-
-    # ── Activity Details ───────────────────────────────────────────
     message = models.CharField(max_length=500)
 
     def __str__(self):

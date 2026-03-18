@@ -765,7 +765,6 @@ TIMEZONE_CHOICES = (
     ("JST", "JST"),
     ("AEST", "AEST")
 )
-
 # =====================================================
 # Complaint Status
 # =====================================================
@@ -799,9 +798,23 @@ WORK_STARTED = "WORK_STARTED"
 WORK_COMPLETED = "WORK_COMPLETED"
 COMPLAINT_CLOSED = "CLOSED"
 
+# 🔥 NEW (FOR WORKFLOW VISIBILITY)
+BROADCASTED = "BROADCASTED"
+TECH_DECLINED = "TECH_DECLINED"
+APPOINTMENT_PROPOSED = "APPOINTMENT_PROPOSED"
+APPOINTMENT_APPROVED = "APPOINTMENT_APPROVED"
+APPOINTMENT_RESCHEDULED = "APPOINTMENT_RESCHEDULED"
+APPOINTMENT_CONFIRMED = "APPOINTMENT_CONFIRMED"
+
 COMPLAINT_TIMELINE_STATUS_CHOICES = (
     (CREATED, "Complaint Created"),
+    (BROADCASTED, "Broadcasted to Technicians"),
     (ASSIGNED_TIMELINE, "Complaint Assigned"),
+    (TECH_DECLINED, "Technician Declined"),
+    (APPOINTMENT_PROPOSED, "Appointment Proposed"),
+    (APPOINTMENT_APPROVED, "Appointment Approved"),
+    (APPOINTMENT_RESCHEDULED, "Appointment Rescheduled"),
+    (APPOINTMENT_CONFIRMED, "Appointment Confirmed"),
     (WORK_STARTED, "Work Started"),
     (WORK_COMPLETED, "Work Completed"),
     (COMPLAINT_CLOSED, "Complaint Closed"),
@@ -855,4 +868,23 @@ COMPLAINT_PRIORITY_CHOICES = (
     (MEDIUM, "Medium"),
     (HIGH, "High"),
     (URGENT, "Urgent"),
+)
+
+
+# =====================================================
+# 🔥 NEW: Appointment Status (VERY IMPORTANT)
+# =====================================================
+
+APPOINTMENT_PROPOSED_STATUS = "PROPOSED"
+APPOINTMENT_APPROVED_STATUS = "APPROVED"
+APPOINTMENT_RESCHEDULED_STATUS = "RESCHEDULED"
+APPOINTMENT_CONFIRMED_STATUS = "CONFIRMED"
+APPOINTMENT_DECLINED_STATUS = "DECLINED"
+
+APPOINTMENT_STATUS_CHOICES = (
+    (APPOINTMENT_PROPOSED_STATUS, "Proposed"),
+    (APPOINTMENT_APPROVED_STATUS, "Approved"),
+    (APPOINTMENT_RESCHEDULED_STATUS, "Rescheduled"),
+    (APPOINTMENT_CONFIRMED_STATUS, "Confirmed"),
+    (APPOINTMENT_DECLINED_STATUS, "Declined"),
 )
