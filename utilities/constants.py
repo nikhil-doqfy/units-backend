@@ -696,9 +696,11 @@ AREA_UNIT_CHOICES = (
 # ── Unit Usage ─────────────────────────────────────────────────
 RESIDENTIAL = 'RESIDENTIAL'
 COMMERCIAL = 'COMMERCIAL'
+INDUSTRIAL = 'INDUSTRIAL'
 UNIT_USAGE_CHOICES = (
     (RESIDENTIAL, 'Residential'),
     (COMMERCIAL, 'Commercial'),
+    (INDUSTRIAL, 'Industrial'),
 )
 
 # ── Unit Type ──────────────────────────────────────────────────

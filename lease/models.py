@@ -14,7 +14,7 @@ class Template(Base):
         return self.name
 
 
-class TemplateFields(Base):
+class TemplateField(Base):
     FIELD_TYPE_CHOICES = (
         (constants.NUMBER, "Number"),
         (constants.DATE, "Date"),
@@ -23,7 +23,7 @@ class TemplateFields(Base):
         (constants.CHOICE, "Choice"),
         (constants.CHECKBOX, "Check Box"),
     )
-    document_template = models.ForeignKey(Template, on_delete=models.CASCADE, null=True, blank=True)
+    template = models.ForeignKey(Template, on_delete=models.CASCADE, null=True, blank=True)
     name_attribute = models.CharField(max_length=150, null=True, blank=True)
     id_attribute = models.CharField(max_length=150, null=True, blank=True)
     value_attribute = models.CharField(max_length=150, null=True, blank=True)
@@ -39,20 +39,19 @@ class TemplateFields(Base):
     predefined_value = models.CharField(max_length=200, null=True, blank=True)
 
     def __str__(self):
-        return f"{self.label_attribute} - {self.document_template.name}"
+        return f"{self.label_attribute} - {self.template.name}"
 
 
-class TemplateValues(Base):
-    document_template = models.ForeignKey(Template, on_delete=models.CASCADE, null=True, blank=True)
-    value = models.JSONField(default=dict, blank=True)
+class TemplateValue(Base):
+    template_field = models.ForeignKey(TemplateField, on_delete=models.CASCADE, null=True, blank=True)
+    value = models.TextField(blank=True, default="")
     lease = models.ForeignKey(
         "Lease",
-        on_delete=models.CASCADE,
-        related_name="template_values", null=True, blank=True
+        on_delete=models.CASCADE, null=True, blank=True
     )
 
     def __str__(self):
-        return f"Template: {self.document_template.name} | Lease ID: {self.lease.id}"
+        return f"Field: {self.template_field} | Lease ID: {self.lease.id}"
 
 
 class Lease(Base):

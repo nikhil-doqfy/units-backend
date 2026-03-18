@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Lease, Template, TemplateFields, TemplateValues
+from .models import Lease, Template, TemplateField, TemplateValue
 
 
 @admin.register(Lease)
@@ -21,11 +21,11 @@ class TemplateAdmin(admin.ModelAdmin):
     list_display = ["id", "name", "template_path", "is_active"]
 
 
-@admin.register(TemplateFields)
-class TemplateFieldsAdmin(admin.ModelAdmin):
-    list_display = ["id", "document_template", "name_attribute", "label_attribute", "html_tag"]
+@admin.register(TemplateField)
+class TemplateFieldAdmin(admin.ModelAdmin):
+    list_display = ["id", "template", "name_attribute", "label_attribute", "html_tag"]
 
 
-@admin.register(TemplateValues)
-class TemplateValuesAdmin(admin.ModelAdmin):
-    list_display = ["id", "document_template", "lease"]
+@admin.register(TemplateValue)
+class TemplateValueAdmin(admin.ModelAdmin):
+    list_display = ["id", "template_field", "lease"]

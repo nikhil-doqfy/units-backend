@@ -1,12 +1,11 @@
 import os
 import datetime
-import pdfkit
 import json
 import datetime
 from user_service.models import UserProfile, Documents, Role, FAQ, Owner, Tenant, PropertyManager, DocumentType
 from property.models import Unit, Property, PropertyManagmentCompany, PropertyImages, PropertyInterest
 from property_management.models import TermAndCondition, Country
-from lease.models import Template, TemplateFields, TemplateValues
+from lease.models import Template, TemplateField, TemplateValue
 from payment.models import Payment, Bank
 from utilities.decorator import is_request_authenticated
 from utilities.helper_functions import (
@@ -17,7 +16,6 @@ from utilities.helper_functions import (
     fetch_s3_presigned_url,
     export_to_csv,
     datetime_to_epoch_millis,
-    get_pdfkit_config,
     generate_property_code,
     fetch_s3_presigned_url_for_download,translate_to_arabic,
     base64_to_image,
