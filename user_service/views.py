@@ -1221,3 +1221,174 @@ def approval(request):
             message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
+
+@is_request_authenticated
+def property_assign(request):
+    user_profile = request.user
+
+    if request.method == "GET":
+
+        pm_id = request.GET.get("pm_id")
+
+        if pm_id:
+            pm = PropertyManager.objects.prefetch_related(
+                "roles",
+                "assigned_units__unit"
+            ).filter(id=pm_id).first()
+
+            if not pm:
+                return prepare_response(
+                    message="Property manager not found",
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            assignments = pm.assigned_units.all()
+            units = [a.unit for a in assignments]
+
+            total_units = len(units)
+            occupied_units = sum(1 for u in units if u.is_occupied)
+
+            tenancy_ratio = f"{occupied_units}:{total_units}" if total_units else "0:0"
+
+            content = {
+                "id": pm.id,
+                "name": pm.name,
+                "code": pm.code,
+                "contact": pm.contact_number,
+                "roles": [role.name for role in pm.roles.all()],
+                "unit_assigned": total_units,
+                "tenancy_ratio": tenancy_ratio,
+            }
+
+            return prepare_response(
+                content=content,
+                status=status.HTTP_200_OK
+            )
+
+        pms = PropertyManager.objects.prefetch_related(
+            "roles",
+            "assigned_units__unit"
+        ).order_by("-id")
+
+        content = []
+
+        for pm in pms:
+            assignments = pm.assigned_units.all()
+            units = [a.unit for a in assignments]
+
+            total_units = len(units)
+            occupied_units = sum(1 for u in units if u.is_occupied)
+
+            tenancy_ratio = f"{occupied_units}:{total_units}" if total_units else "0:0"
+
+            content.append({
+                "id": pm.id,
+                "name": pm.name,
+                "code": pm.code,
+                "contact": pm.contact_number,
+                "roles": [role.name for role in pm.roles.all()],
+                "unit_assigned": total_units,
+                "tenancy_ratio": tenancy_ratio,
+            })
+
+        return prepare_response(
+            content=content,
+            status=status.HTTP_200_OK
+        )
+
+    elif request.method == "POST":
+
+        data = json.loads(request.body)
+
+        pm_id = data.get("property_manager_id")
+        unit_id = data.get("unit_id")
+
+        if not pm_id:
+            return prepare_response(
+                message="property_manager_id is required",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not unit_id:
+            return prepare_response(
+                message="unit_id is required",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        pm = PropertyManager.objects.filter(id=pm_id).first()
+        if not pm:
+            return prepare_response(
+                message="Property manager not found",
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        unit = Unit.objects.filter(id=unit_id).first()
+        if not unit:
+            return prepare_response(
+                message="Unit not found",
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        exists = PropertyManagerUnit.objects.filter(
+            property_manager=pm,
+            unit=unit
+        ).exists()
+
+        if exists:
+            return prepare_response(
+                message="Unit already assigned",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        assignment = PropertyManagerUnit.objects.create(
+            property_manager=pm,
+            unit=unit
+        )
+
+        return prepare_response(
+            message="Unit assigned successfully",
+            content={"id": assignment.id},
+            status=status.HTTP_201_CREATED
+        )
+
+    elif request.method == "DELETE":
+
+        data = json.loads(request.body)
+
+        pm_id = data.get("property_manager_id")
+        unit_id = data.get("unit_id")
+
+        if not pm_id:
+            return prepare_response(
+                message="property_manager_id is required",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not unit_id:
+            return prepare_response(
+                message="unit_id is required",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        assignment = PropertyManagerUnit.objects.filter(
+            property_manager_id=pm_id,
+            unit_id=unit_id
+        ).first()
+
+        if not assignment:
+            return prepare_response(
+                message="Assignment not found",
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        assignment.delete()
+
+        return prepare_response(
+            message="Unit removed successfully",
+            status=status.HTTP_200_OK
+        )
+
+    return prepare_response(
+        message="Invalid request method",
+        status=status.HTTP_405_METHOD_NOT_ALLOWED
+    )
