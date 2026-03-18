@@ -8,4 +8,5 @@ urlpatterns = [
     path("api/lease/templates", views.get_templates, name="lease_get_templates"),
     path("api/lease/template-fields", views.get_template_fields, name="lease_get_template_fields"),
     path("api/lease/generate-contract", views.generate_contract, name="lease_generate_contract"),
+    path("api/lease/send-negotiation", views.send_negotiation, name="lease_send_negotiation"),
 ]

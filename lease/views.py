@@ -2,7 +2,7 @@ import csv
 import json
 import os
 import uuid
-import pdfkit
+from weasyprint import HTML as WeasyprintHTML
 from datetime import datetime, date
 
 from django.core.paginator import Paginator
@@ -12,17 +12,19 @@ from django.db import transaction
 from django.http import HttpResponse
 
 from utilities.decorator import is_request_authenticated
+from django.template.loader import render_to_string
+
 from utilities.helper_functions import (
     prepare_response, fetch_s3_presigned_url,
     upload_file_to_s3_base64, get_extension_from_base64,
-    replace_placeholders, get_pdfkit_config,
+    replace_placeholders, send_ses_email,
 )
 from utilities import status, constants
 from property.models import Unit
 from user_service.models import Tenant, TenantDocuments, DocumentType
 from property_management import settings
 from property_management.utils import audit_logs
-from .models import Lease, LeaseDocuments, Template, TemplateFields, TemplateValues
+from .models import Lease, LeaseDocuments, Template, TemplateField, TemplateValue
 
 
 def _parse_date(value):
@@ -656,6 +658,7 @@ def get_template_fields(request):
     if request.method == "GET":
         try:
             template_id = request.GET.get("template_id")
+            lease_id    = request.GET.get("lease_id")
             if not template_id:
                 return prepare_response(
                     message=constants.TEMPLATE_ID_REQUIRED,
@@ -663,21 +666,21 @@ def get_template_fields(request):
                 )
 
             template = Template.objects.get(id=template_id)
-            fields = TemplateFields.objects.filter(document_template=template)
+            fields = TemplateField.objects.filter(template=template)
 
             field_list = []
             for field in fields:
                 field_list.append({
-                    "id_attribute": field.id_attribute,
-                    "name_attribute": field.name_attribute,
-                    "label": field.label_attribute,
-                    "html_tag": field.html_tag,
-                    "required": field.required,
-                    "min_value": field.min_value,
-                    "max_value": field.max_value,
-                    "min_length": field.min_length,
-                    "max_length": field.max_length,
-                    "pattern": field.pattern,
+                    "id_attribute":    field.id_attribute,
+                    "name_attribute":  field.name_attribute,
+                    "label":           field.label_attribute,
+                    "html_tag":        field.html_tag,
+                    "required":        field.required,
+                    "min_value":       field.min_value,
+                    "max_value":       field.max_value,
+                    "min_length":      field.min_length,
+                    "max_length":      field.max_length,
+                    "pattern":         field.pattern,
                     "predefined_value": field.predefined_value,
                 })
 
@@ -686,13 +689,83 @@ def get_template_fields(request):
                 with open(template.template_path, "r", encoding="utf-8") as f:
                     html_content = f.read()
 
+            # ── Saved values (previously submitted for this lease) ─────────
+            saved_values = {}
+            if lease_id:
+                tvs = TemplateValue.objects.filter(
+                    template_field__template=template, lease_id=lease_id
+                ).select_related("template_field")
+                for tv in tvs:
+                    saved_values[tv.template_field.name_attribute] = str(tv.value) if tv.value is not None else ""
+
+            # ── Lease-derived defaults (pre-populate on first open) ────────
+            lease_defaults = {}
+            if lease_id:
+                try:
+                    lease = Lease.objects.select_related(
+                        "tenant__user",
+                        "unit__property_block_tower__property",
+                    ).prefetch_related("unit__unit_owners__owner__user").get(id=lease_id)
+
+                    t    = lease.tenant
+                    unit = lease.unit
+                    pb   = unit.property_block_tower if unit else None
+                    prop = pb.property if pb else None
+                    owner = unit.unit_owners.select_related("owner__user").first() if unit else None
+                    o = owner.owner if owner else None
+
+                    def _str(v):
+                        return str(v) if v is not None else ""
+
+                    usage = unit.unit_usage if unit else ""
+                    lease_defaults = {
+                        # Tenant
+                        "tenant_name":       f"{t.user.first_name} {t.user.last_name}".strip() if t and t.user else "",
+                        "tenant_email":      t.user.email if t and t.user else "",
+                        "tenant_phone":      _str(t.contact_number) if t else "",
+                        "tenant_emirates_id": _str(t.emirate_id) if t else "",
+                        # Owner / Lessor (first owner)
+                        "owner_name":        f"{o.user.first_name} {o.user.last_name}".strip() if o and o.user else "",
+                        "lessor_name":       f"{o.user.first_name} {o.user.last_name}".strip() if o and o.user else "",
+                        "lessor_email":      _str(o.email) if o else "",
+                        "lessor_phone":      _str(o.contact_number) if o else "",
+                        "lessor_emirates_id": _str(o.emirate_id) if o else "",
+                        "lessor_license_no": _str(o.trade_license_number) if o else "",
+                        "lessor_licensing_authority": _str(o.license_issuer) if o else "",
+                        # Property / Unit
+                        "building_name":  prop.property_name if prop else "",
+                        "property_no":    _str(unit.unit_name) if unit else "",
+                        "property_type":  _str(unit.unit_type) if unit else "",
+                        "property_area":  _str(unit.unit_size) if unit and unit.unit_size else "",
+                        "location":       pb.block_name if pb else (prop.property_name if prop else ""),
+                        "makani_no":      _str(unit.makani_no) if unit else "",
+                        "plot_no":        _str(unit.land_no) if unit else "",
+                        "dewa_premises_no": _str(unit.dm_no) if unit else "",
+                        # Property usage radio (used as CSS class in template)
+                        "property_usage_residential": "filled" if usage == "RESIDENTIAL" else "",
+                        "property_usage_commercial":  "filled" if usage == "COMMERCIAL" else "",
+                        "property_usage_industrial":  "filled" if usage == "INDUSTRIAL" else "",
+                        # Contract
+                        "contract_start_date": _str(lease.start_date)[:10] if lease.start_date else "",
+                        "contract_end_date":   _str(lease.end_date)[:10] if lease.end_date else "",
+                        "annual_rent":         _str(lease.annual_amount) if lease.annual_amount else "",
+                        "security_deposit":    _str(lease.security_deposit) if lease.security_deposit else "",
+                        "contract_value":      _str(lease.contract_amount) if lease.contract_amount else "",
+                        "contract_date":       _str(lease.start_date)[:10] if lease.start_date else "",
+                        "mode_of_payment":     "Cheque",
+                    }
+                except Lease.DoesNotExist:
+                    pass
+
             return prepare_response(
                 content={
-                    "template_id": template.id,
-                    "template_name": template.name,
-                    "template_path": template.template_path,
-                    "html_content": html_content,
-                    "fields": field_list,
+                    "template_id":    template.id,
+                    "template_name":  template.name,
+                    "template_path":  template.template_path,
+                    "html_content":   html_content,
+                    "fields":         field_list,
+                    "saved_values":   saved_values,
+                    "lease_defaults": lease_defaults,
                 },
                 message=constants.TEMPLATE_FIELDS_FETCHED,
                 status=status.HTTP_200_OK,
@@ -733,12 +806,17 @@ def generate_contract(request):
         if not lease:
             return prepare_response(message=constants.INVALID_LAESE_ID, status=status.HTTP_404_NOT_FOUND)
 
-        TemplateValues.objects.create(
-            document_template=template,
-            lease=lease,
-            value=values_dict,
-            created_by=request.user.user,
-        )
+        fields = TemplateField.objects.filter(template=template, is_active=True)
+        for field in fields:
+            val = str(values_dict.get(field.name_attribute, ""))
+            tv, created = TemplateValue.objects.get_or_create(
+                template_field=field,
+                lease=lease,
+                defaults={"value": val, "created_by": request.user.user},
+            )
+            if not created:
+                tv.value = val
+                tv.save(update_fields=["value"])
 
         template_path = template.template_path
         if not template_path or not os.path.exists(template_path):
@@ -751,7 +829,7 @@ def generate_contract(request):
             html_content = f.read()
 
         mapping = {}
-        fields = TemplateFields.objects.filter(document_template=template, is_active=True)
+        fields = TemplateField.objects.filter(template=template, is_active=True)
         for field in fields:
             key = field.id_attribute or field.name_attribute
             if key and key in values_dict:
@@ -768,8 +846,7 @@ def generate_contract(request):
             f.write(html_content)
 
         pdf_filename = f"lease_{timestamp}.pdf"
-        config = get_pdfkit_config()
-        pdf_bytes = pdfkit.from_string(html_content, False, configuration=config)
+        pdf_bytes = WeasyprintHTML(string=html_content).write_pdf()
 
         s3_object_name = f"generated_templates/{pdf_filename}"
         pdf_s3_url = upload_file_to_s3_base64(pdf_bytes, s3_object_name)
@@ -785,5 +862,85 @@ def generate_contract(request):
             status=status.HTTP_200_OK,
         )
 
+    except Exception as e:
+        return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@is_request_authenticated
+def send_negotiation(request):
+    if request.method != "POST":
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    try:
+        body     = json.loads(request.body)
+        lease_id = body.get("lease_id")
+        if not lease_id:
+            return prepare_response(message="lease_id is required", status=status.HTTP_400_BAD_REQUEST)
+
+        lease = Lease.objects.select_related(
+            "tenant__user",
+            "unit__property_block_tower__property",
+        ).prefetch_related(
+            "unit__unit_owners__owner__user"
+        ).get(id=lease_id)
+
+        t    = lease.tenant
+        unit = lease.unit
+        pb   = unit.property_block_tower if unit else None
+        prop = pb.property if pb else None
+
+        tenant_name  = f"{t.user.first_name} {t.user.last_name}".strip() if t and t.user else "Tenant"
+        tenant_email = t.user.email if t and t.user else None
+
+        owner_emails = []
+        if unit:
+            for o in unit.unit_owners.select_related("owner__user").all():
+                if o.owner and o.owner.email:
+                    owner_emails.append({
+                        "email": o.owner.email,
+                        "name":  f"{o.owner.user.first_name} {o.owner.user.last_name}".strip() if o.owner.user else "Owner",
+                    })
+
+        recipients = []
+        if tenant_email:
+            recipients.append({"email": tenant_email, "name": tenant_name})
+        recipients.extend(owner_emails)
+
+        if not recipients:
+            return prepare_response(message="No recipient emails found for this lease", status=status.HTTP_400_BAD_REQUEST)
+
+        ctx = {
+            "lease_code":    lease.code,
+            "tenant_name":   tenant_name,
+            "property_name": prop.property_name if prop else "",
+            "unit_name":     unit.unit_name if unit else "",
+            "pdf_url":       fetch_s3_presigned_url(lease.pdf_path) if lease.pdf_path else "",
+        }
+
+        subject = f"Lease Negotiation Document – {lease.code}"
+        failed  = []
+        sent    = []
+        for r in recipients:
+            ctx["recipient_name"] = r["name"]
+            body_html = render_to_string("email_templates/lease_negotiation.html", ctx)
+            body_text = (
+                f"Dear {r['name']},\n\n"
+                f"A lease negotiation document has been prepared for lease {lease.code}.\n"
+                f"Tenant: {tenant_name} | Property: {ctx['property_name']} | Unit: {ctx['unit_name']}\n"
+                + (f"View document: {ctx['pdf_url']}\n" if ctx["pdf_url"] else "")
+                + "\nThank you,\nThe Doqfy Team"
+            )
+            ok = send_ses_email(r["email"], subject, body_text, body_html)
+            (sent if ok else failed).append(r["email"])
+
+        audit_logs(request, f"Sent negotiation email for lease '{lease.code}' to {sent}", constants.CREATED)
+
+        return prepare_response(
+            message="Negotiation email sent successfully",
+            content={"sent": sent, "failed": failed},
+            status=status.HTTP_200_OK,
+        )
+
+    except Lease.DoesNotExist:
+        return prepare_response(message=constants.INVALID_LAESE_ID, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
         return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)

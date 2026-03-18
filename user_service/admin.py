@@ -5,7 +5,7 @@ from user_service.models import (
     TenantDocuments, FAQ, PrivacyPolicy, Owner, Tenant, PropertyManager
 )
 from property_management.models import UserInvitation, TermAndCondition
-from lease.models import Template, TemplateFields, TemplateValues
+from lease.models import Template, TemplateField, TemplateValue
 
 
 # -------------------- User Service Admin --------------------
