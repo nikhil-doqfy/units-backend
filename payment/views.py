@@ -1,4 +1,4 @@
-from property_management.models import LeasePropertyDetails
+from lease.models import Lease
 from payment.models import Payment,ChargeDetails
 from utilities.helper_functions import prepare_response ,datetime_to_epoch_millis
 from utilities import status, constants
@@ -20,7 +20,7 @@ def access_rental_account(request):
         if lease_id:
             kwargs["id"] = lease_id
         
-        leases = LeasePropertyDetails.objects.filter(**kwargs)
+        leases = Lease.objects.filter(**kwargs)
 
         lease_details = [
             lease._get_lease_details_info()

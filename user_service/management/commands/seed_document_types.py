@@ -19,11 +19,20 @@ DOCUMENT_TYPES = [
     {"name": "Floor Plan",   "section": constants.UNIT},
     {"name": "PMC Document", "section": constants.UNIT},
     {"name": "Other",        "section": constants.UNIT},
+
+    # ── Tenant documents ────────────────────────────────────────────────
+    {"name": "Emirates ID",        "section": constants.TENANT},
+    {"name": "UAE Residence Visa", "section": constants.TENANT},
+    {"name": "Passport",           "section": constants.TENANT},
+    {"name": "Bank Statement",     "section": constants.TENANT},
+    {"name": "Employment Proof",   "section": constants.TENANT},
+    {"name": "Visa",               "section": constants.TENANT},
+    {"name": "Other",              "section": constants.TENANT},
 ]
 
 
 class Command(BaseCommand):
-    help = "Seed DocumentType records for Property Manager and Property sections"
+    help = "Seed DocumentType records for Property Manager, Property, Unit and Tenant sections"
 
     def add_arguments(self, parser):
         parser.add_argument(

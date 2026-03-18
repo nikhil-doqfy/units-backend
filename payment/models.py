@@ -2,7 +2,8 @@ from django.db import models
 from django.forms.models import model_to_dict
 from utilities.helper_functions import datetime_to_epoch
 from utilities import constants
-from property_management.models import Base, LeasePropertyDetails, City
+from property_management.models import Base, City
+from lease.models import Lease
 
 #========================================
 #PROPERTY MANAGEMENT PAYMENT FLOW MODELS
@@ -53,7 +54,7 @@ class ChargeType(Base):
 
 
 class ChargeDetails(Base):
-    lease = models.ForeignKey(LeasePropertyDetails, on_delete=models.CASCADE)
+    lease = models.ForeignKey(Lease, on_delete=models.CASCADE)
     description = models.ForeignKey(ChargeType, on_delete=models.CASCADE)
     tax_code = models.CharField(max_length=20)
     amount = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
@@ -100,7 +101,7 @@ class Payment(Base):
         (constants.PAYMENT_BOUNCED, "Payment Bounced"),
     )
          
-    rental_account = models.ForeignKey(LeasePropertyDetails, related_name='payments', on_delete=models.CASCADE)
+    rental_account = models.ForeignKey(Lease, related_name='payments', on_delete=models.CASCADE)
     bank = models.ForeignKey(Bank, on_delete=models.CASCADE, null=True, blank=True)
     method = models.CharField(max_length=20, choices=PAYMENT_METHODS_CHOICES, default=constants.CHEQUE)
     reason_type = models.CharField(max_length=20, choices=REASONS_TYPE_CHOICES, default=constants.RENT)
