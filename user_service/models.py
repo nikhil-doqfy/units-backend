@@ -21,7 +21,6 @@ class UserProfile(Base):
     address_line_1 = models.CharField(max_length=255, null=True, blank=True)
     address_line_2 = models.CharField(max_length=255, null=True, blank=True)
     emirate_id = models.CharField(max_length=255, null=True, blank=True)
-    email = models.EmailField(max_length=255, null=True, blank=True)
     contact_number = models.CharField(max_length=20, null=True, blank=True)
     timezone = models.CharField(max_length=100, choices=constants.TIMEZONE_CHOICES, default=constants.TIMEZONE_CHOICES[0][0])
     passport_number = models.CharField(max_length=50, blank=True, null=True)
@@ -38,13 +37,10 @@ class UserProfile(Base):
 
 class Owner(UserProfile):
     trade_license_number = models.CharField(max_length=255, blank=True, default='')
-    owner_number = models.CharField(max_length=20, null=True, blank=True)
-    license_number = models.CharField(max_length=255, blank=True, default='')
-    license_expiry_date = models.DateTimeField(null=True, blank=True)
-    license_issuer = models.CharField(max_length=150, blank=True, default='')
-    fax_number = models.CharField(max_length=20, null=True, blank=True)
-    po_box_number = models.CharField(max_length=20, null=True, blank=True)
-    
+    licence_number = models.CharField(max_length=100, blank=True, default='')
+    licence_expiry_date = models.DateTimeField(null=True, blank=True)
+    licence_issuer = models.CharField(max_length=150, blank=True, default='')
+
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         if not self.code:
@@ -88,6 +84,22 @@ class Role(Base):
     permissions = models.ManyToManyField(Permission, blank=True)
 
     def __str__(self):
+        return f"{self.property_unit_name} - {self.id}"
+
+class PropertyImages(Base):
+    property = models.ForeignKey('Property', on_delete=models.CASCADE, related_name="property_images")
+    image = models.ImageField(upload_to="property_images/", null=True, blank=True)
+    image_type = models.CharField(max_length=20, default="EXTERIOR")
+    file_name = models.CharField(max_length=255, null=True, blank=True)
+
+    def __str__(self):
+        return f"{self.property.property_name} Image"
+
+class PropertyUnitImages(Base):
+    property_unit = models.ForeignKey('PropertyUnitDetails', on_delete=models.CASCADE, related_name="unit_images")
+    image = models.ImageField(upload_to="property_unit_images/", null=True, blank=True)
+    image_type = models.CharField(max_length=20, default="INTERIOR")
+    file_name = models.CharField(max_length=255, null=True, blank=True)
         return self.name
 
 

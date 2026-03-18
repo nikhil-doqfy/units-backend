@@ -51,6 +51,9 @@ import calendar
 from datetime import datetime, date
 from calendar import monthrange
 from dateutil.relativedelta import relativedelta
+import base64
+import uuid
+from django.core.files.base import ContentFile
 
 
 @is_request_authenticated
@@ -497,222 +500,233 @@ def property_images(request):
             if not property_id:
                 return prepare_response(message=constants.PROPERTY_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
 
-            try:
-                property_obj = Unit.objects.get(id=property_id)
-            except Unit.DoesNotExist:
-                return prepare_response(message=constants.INVALID_PROPERTY_ID, status=status.HTTP_404_NOT_FOUND)
+            owner = None
 
-            images_qs = PropertyImages.objects.filter(property=property_obj).order_by("-id")
-            final_images = []
-
-            for img in images_qs:
-                base64_data = fetch_s3_presigned_url(img.image_path, file_name=img.file_name)
-                final_images.append({
-                    "id": img.id,
-                    "file_name": img.file_name,
-                    "data": base64_data,
-                    "type": img.image_type
-                })
-
+        else:
             return prepare_response(
-                message=constants.DATA_FETCHED_SUCCESSFULLY,
-                content={
-                    "images": final_images,
-                    "id": property_id,
-                    "step_status": property_obj.step_status
-                },
-                status=status.HTTP_200_OK
+                message=constants.UNAUTHORIZED_TO_CREATE_PROPERTY,
+                status=status.HTTP_403_FORBIDDEN
             )
+
+        parent_property_id = data.get("parent_property_id")
+
+        parent_property = Property.objects.filter(id=parent_property_id).first()
+
+        if not parent_property:
+            return prepare_response(
+                message=constants.INVALID_PROPERTY_ID,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        try:
+
+            new_property_unit = PropertyUnitDetails.objects.create(
+                created_by=user_profile.user,
+                property=parent_property,
+                owner=owner,
+                company=company,
+                property_code=property_code,
+
+                property_block=data.get("property_block"),
+                property_unit_name=data.get("property_unit_name"),
+                property_type=data.get("property_type"),
+
+                land_area=data.get("land_area"),
+                land_area_unit=data.get("land_area_unit"),
+                land_dm_no=data.get("land_dm_no"),
+
+                bedrooms=data.get("bedrooms"),
+                area_of_property=data.get("area_of_property"),
+                area_unit=data.get("area_unit"),
+
+                apartment_floor_no=data.get("apartment_floor_no"),
+                no_of_parking=data.get("no_of_parking"),
+                balcony=data.get("balcony"),
+
+                plot_no=data.get("plot_no"),
+                makani_no=data.get("makani_no"),
+                dewa_no=data.get("dewa_no"),
+
+                step_status=constants.BASIC_DETAILS
+            )
+
+        except Exception as e:
+            return prepare_response(
+                message={"error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        return prepare_response(
+            message=constants.PROPERTY_ADDED,
+            content={"property_unit_id": new_property_unit.id},
+            status=status.HTTP_201_CREATED
+        )
+
+    return prepare_response(
+        message=constants.INVALID_REQUEST_METHOD,
+        status=status.HTTP_405_METHOD_NOT_ALLOWED
+    )
+    
+def save_local_base64(base64_data, original_name):
+    try:
+        if "," in base64_data:
+            base64_str = base64_data.split(",")[1]
+        else:
+            base64_str = base64_data
+
         
-        if request.method == "POST":
-            body = json.loads(request.body)
-            property_id = body.get("property_unit_id")
-            images = body.get("images", [])
+        decoded_file = base64.b64decode(base64_str)
+        extension = original_name.split('.')[-1] if '.' in original_name else 'jpg'
+        unique_name = f"{uuid.uuid4()}.{extension}"
+        return ContentFile(decoded_file, name=unique_name)
+    except:
+        return None
 
-            if not property_id:
-                return prepare_response(message=constants.PROPERTY_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
-            if not isinstance(images, list) or not images:
-                return prepare_response(message="Images must be a list", status=status.HTTP_400_BAD_REQUEST)
+def handle_image_upload(images_data, object_id, model_class, id_field, user):   #Generic function to handle image uploads for both property and property unit
 
-            try:
-                property_obj = Unit.objects.get(id=property_id)
-            except Unit.DoesNotExist:
-                return prepare_response(message=constants.PROPERTY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+    uploaded = []
 
-            uploaded_files = []
-            for img in images:
-                file_name = img.get("file_name")
-                base64_data = img.get("data")
-                img_type = img.get("type", "INTERIOR").upper()
+    for img in images_data:
+        image_data = img.get("data")
+        file_name = img.get("file_name")
+        image_type = img.get("type", "INTERIOR").upper()
 
-                if not file_name or not base64_data:
-                    return prepare_response(message=constants.MISSING_FILE_OR_DATA, status=status.HTTP_400_BAD_REQUEST)
+        if not image_data or not file_name:
+            continue
 
-                object_name = f"property_images/{property_id}/{file_name}"
-                image_url = upload_file_to_s3_base64(base64_data, object_name)
+        image_file = save_local_base64(image_data, file_name)
+        if not image_file:
+            continue
 
-                PropertyImages.objects.create(
-                    property=property_obj,
-                    file_name=file_name,
-                    image_path=image_url,
-                    image_type=img_type,
-                    created_by = request.user.user
+        kwargs = {
+            id_field: object_id,
+            "image": image_file,
+            "file_name": file_name,
+            "image_type": image_type,
+            "created_by": user
+        }
 
-                )
+        instance = model_class.objects.create(**kwargs)
+        uploaded.append({"image_id": instance.id, "url": instance.image.url})
 
-                uploaded_files.append({
-                    "file_name": file_name,
-                    "image_url": image_url,
-                    "image_type": img_type
-                })
-            property_obj.step_status = "PROPERTY_IMAGES_DETAILS"
-            property_obj.save()
+    return uploaded
 
+@is_request_authenticated
+def property_images(request):
+    if request.method == "GET":
+        property_id = request.GET.get("property_id")
+        if not property_id:
             return prepare_response(
-                message=constants.IMAGE_UPLOADED_SUCCESS,
-                content={"uploaded": uploaded_files},
-                status=status.HTTP_201_CREATED
+                message="Property ID is required",
+                status=400
             )
-        
-        if request.method == "PUT":
+
+        images = PropertyImages.objects.filter(property_id=property_id).order_by("-id")
+        final_images = [
+            {
+                "id": img.id,
+                "file_name": img.file_name,
+                "url": img.image.url if img.image else None,
+                "type": img.image_type
+            } for img in images
+        ]
+        return prepare_response(message="Success", content={"images": final_images}, status=200)
+
+    elif request.method == "POST":
+        try:
             body = json.loads(request.body)
-            property_id = body.get("property_unit_id")
-            images = body.get("images", [])
+        except json.JSONDecodeError:
+            return prepare_response(message="Invalid JSON", status=400)
 
-            if not property_id:
-                return prepare_response(message=constants.PROPERTY_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
-            if not isinstance(images, list):
-                return prepare_response(message="Images must be a list", status=status.HTTP_400_BAD_REQUEST)
+        property_id = body.get("property_unit_id") or body.get("property_id")
+        if not property_id:
+            return prepare_response(message="Property ID is required", status=400)
 
-            try:
-                property_obj = Unit.objects.get(id=property_id)
-            except Unit.DoesNotExist:
-                return prepare_response(message=constants.PROPERTY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+        images_data = body.get("images", [])
+        if not images_data:
+            return prepare_response(message="No images provided", status=400)
 
-            updated_files = []
-            for img in images:
-                file_name = img.get("file_name")
-                base64_data = img.get("data")
-                img_type = img.get("type", "INTERIOR").upper()
+        uploaded = handle_image_upload(images_data, property_id, PropertyImages, "property_id", request.user.user)
 
-                if not file_name or not base64_data:
-                    return prepare_response(message=constants.MISSING_FILE_OR_DATA, status=status.HTTP_400_BAD_REQUEST)
+        if not uploaded:
+            return prepare_response(message="No valid images uploaded", status=400)
 
-                img_obj, created = PropertyImages.objects.update_or_create(
-                    property=property_obj,
-                    file_name=file_name,
-                    defaults={"image_type": img_type ,"created_by": request.user.user}
-                )
-
-                object_name = f"property_images/{property_id}/{file_name}"
-                image_url = upload_file_to_s3_base64(base64_data, object_name)
-                img_obj.image_path = image_url
-                img_obj.save()
-
-                updated_files.append({
-                    "file_name": file_name,
-                    "image_url": image_url,
-                    "image_type": img_type,
-                    "status": "created" if created else "updated"
-                })
-
-            return prepare_response(
-                message=constants.IMAGE_UPLOADED_SUCCESS,
-                content={"updated": updated_files},
-                status=status.HTTP_200_OK
-            )
-    except Exception as e:
-        return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+        return prepare_response(message="Uploaded Successfully", content={"uploaded": uploaded}, status=201)
 
 
 @is_request_authenticated
-def property_documents(request):
-    try:
-    
-        if request.method == "GET":
-            property_id = request.GET.get("property_unit_id")
-            if not property_id:
-                return prepare_response(message=constants.PROPERTY_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
+def property_unit_images(request):
+    if request.method == "GET":
+        unit_id = request.GET.get("property_unit_id")
+        if not unit_id:
+            return prepare_response(message="Property Unit ID is required", status=400)
 
-            try:
-                property_obj = Unit.objects.get(id=property_id)
-            except Unit.DoesNotExist:
-                return prepare_response(message=constants.INVALID_PROPERTY_ID, status=status.HTTP_404_NOT_FOUND)
+        images = UnitImages.objects.filter(property_unit_id=unit_id).order_by("-id")
+        final_images = [
+            {
+                "id": img.id,
+                "file_name": img.file_name,
+                "url": img.image.url if img.image else None,
+                "type": img.image_type
+            } for img in images
+        ]
+        return prepare_response(message="Success", content={"images": final_images}, status=200)
 
-            docs_qs = property_obj.property_documents.select_related('document').order_by("-id")
-            final_docs = []
-
-            for mapping in docs_qs:
-                doc = mapping.document
-                base64_data = fetch_s3_presigned_url(doc.file_path, file_name=doc.file_name)
-                final_docs.append({
-                    "id": mapping.id,
-                    "file_name": doc.file_name,
-                    "data": base64_data,
-                    "type": mapping.document_choice
-                })
-
-            return prepare_response(
-                message=constants.DATA_FETCHED_SUCCESSFULLY,
-                content={
-                    "documents": final_docs,
-                    "property_id": property_id,
-                    "step_status": property_obj.step_status
-                },
-                status=status.HTTP_200_OK
-            )
-
-   
-        if request.method == "POST":
+    elif request.method == "POST":
+        try:
             body = json.loads(request.body)
-            property_id = body.get("property_unit_id")
-            documents = body.get("documents", [])
+        except json.JSONDecodeError:
+            return prepare_response(message="Invalid JSON", status=400)
 
-            if not property_id:
-                return prepare_response(message=constants.PROPERTY_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
-            if not isinstance(documents, list) or not documents:
-                return prepare_response(message=constants.DOCUMENTS_MUST_BE_LIST, status=status.HTTP_400_BAD_REQUEST)
+        unit_id = body.get("property_unit_id")
+        if not unit_id:
+            return prepare_response(message="Property Unit ID is required", status=400)
 
-            try:
-                property_obj = Unit.objects.get(id=property_id)
-            except Unit.DoesNotExist:
-                return prepare_response(message=constants.PROPERTY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+        images_data = body.get("images", [])
+        if not images_data:
+            return prepare_response(message="No images provided", status=400)
 
-            uploaded_files = []
+        uploaded = handle_image_upload(images_data, unit_id, UnitImages, "property_unit_id", request.user.user)
 
-            for doc in documents:
-                file_name = doc.get("file_name")
-                base64_data = doc.get("data")
-            
-                doc_type = doc.get("type", constants.FLOOR_PLAN).upper()
+        if not uploaded:
+            return prepare_response(message="No valid images uploaded", status=400)
 
-                if not file_name or not base64_data:
-                    return prepare_response(message=constants.MISSING_FILE_OR_DATA, status=status.HTTP_400_BAD_REQUEST)
+        return prepare_response(message="Uploaded Successfully", content={"uploaded": uploaded}, status=201)
+    
+@is_request_authenticated
+def property_documents(request):
+    if request.method == "GET":
+        property_id = request.GET.get("property_unit_id")
+        if not property_id:
+            return prepare_response(message=constants.PROPERTY_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
 
-                object_name = f"property_documents/{property_id}/{file_name}"
-                file_url = upload_file_to_s3_base64(base64_data, object_name)
+        try:
+            property_obj = UnitDetails.objects.get(id=property_id)
+        except UnitDetails.DoesNotExist:
+            return prepare_response(message=constants.INVALID_PROPERTY_ID, status=status.HTTP_404_NOT_FOUND)
 
-         
-                doc_obj = Documents.objects.create(
-                    file_name=file_name,
-                    file_path=file_url,
-                    created_by=request.user.user
-                )
+        docs_qs = property_obj.property_documents.select_related('document').order_by("-id")
+        final_docs = []
 
-                PropertyDocumentsMapping.objects.create(
-                    property=property_obj,
-                    document=doc_obj,
-                    document_choice=doc_type,
-                    created_by=request.user.user
-                )
+        for mapping in docs_qs:
+            doc = mapping.document
+            base64_data = fetch_s3_presigned_url(doc.file_path, file_name=doc.file_name)
+            final_docs.append({
+                "id": mapping.id,
+                "file_name": doc.file_name,
+                "data": base64_data,
+                "type": mapping.document_choice
+            })
 
-                uploaded_files.append({
-                    "file_name": file_name,
-                    "file_url": file_url,
-                    "type": doc_type
-                })
-
+        return prepare_response(
+            message=constants.DATA_FETCHED_SUCCESSFULLY,
+            content={
+                "documents": final_docs,
+                "property_id": property_id,
+                "step_status": property_obj.step_status
+            },
+            status=status.HTTP_200_OK
+        )
             property_obj.step_status = "DOCUMENTS_DETAILS"
             property_obj.save()
             
@@ -722,30 +736,29 @@ def property_documents(request):
                 constants.CREATED
             )
 
-
-            return prepare_response(
-                message=constants.DOCUMENTS_UPLOAD_SUCCESS,
-                content={"uploaded": uploaded_files},
-                status=status.HTTP_201_CREATED
-            )
-
-        if request.method == "PUT":
+    elif request.method in ["POST", "PUT"]:
+        try:
             body = json.loads(request.body)
-            property_id = body.get("property_unit_id")
-            documents = body.get("documents", [])
+        except json.JSONDecodeError:
+            return prepare_response(message="Invalid JSON", status=status.HTTP_400_BAD_REQUEST)
 
-            if not property_id:
-                return prepare_response(message=constants.PROPERTY_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
-            if not isinstance(documents, list):
-                return prepare_response(message=constants.DOCUMENTS_MUST_BE_LIST, status=status.HTTP_400_BAD_REQUEST)
+        property_id = body.get("property_unit_id")
+        documents = body.get("documents", [])
 
-            try:
-                property_obj = Unit.objects.get(id=property_id)
-            except Unit.DoesNotExist:
-                return prepare_response(message=constants.PROPERTY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+        if not property_id:
+            return prepare_response(message=constants.PROPERTY_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
 
-            updated_files = []
+        if not isinstance(documents, list) or (request.method == "POST" and not documents):
+            return prepare_response(message=constants.DOCUMENTS_MUST_BE_LIST, status=status.HTTP_400_BAD_REQUEST)
 
+        try:
+            property_obj =UnitDetails.objects.get(id=property_id)
+        except UnitDetails.DoesNotExist:
+            return prepare_response(message=constants.PROPERTY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+
+        updated_files = []
+
+        with transaction.atomic():
             for doc in documents:
                 file_name = doc.get("file_name")
                 base64_data = doc.get("data")
@@ -777,8 +790,11 @@ def property_documents(request):
                     )
                     status_text = "created"
 
-                object_name = f"property_documents/{property_id}/{file_name}"
-                file_url = upload_file_to_s3_base64(base64_data, object_name)
+                try:
+                    object_name = f"property_documents/{property_id}/{file_name}"
+                    file_url = upload_file_to_s3_base64(base64_data, object_name)
+                except Exception as e:
+                    return prepare_response(message=f"Failed to upload {file_name}: {str(e)}", status=500)
 
                 doc_obj.file_path = file_url
                 doc_obj.save()
@@ -796,24 +812,27 @@ def property_documents(request):
                 constants.UPDATED
             )
 
-            return prepare_response(
-                message=constants.DOCUMENTS_UPLOAD_SUCCESS,
-                content={"updated": updated_files},
-                status=status.HTTP_200_OK
-            )
+            if request.method == "POST":
+                property_obj.step_status = "DOCUMENTS_DETAILS"
+                property_obj.save()
+                return prepare_response(
+                    message=constants.DOCUMENTS_UPLOAD_SUCCESS,
+                    content={"uploaded": updated_files},
+                    status=status.HTTP_201_CREATED
+                )
+            else:
+                return prepare_response(
+                    message=constants.DOCUMENTS_UPLOAD_SUCCESS,
+                    content={"updated": updated_files},
+                    status=status.HTTP_200_OK
+                )
 
+    else:
         return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
-
-    except Exception as e:
-        return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-
-
-
 # - If `tenant_id` is provided, returns detailed info for that specific tenant along with their leases.
 # - If logged-in user is an OWNER, returns leases for properties owned by them.
 # - If logged-in user is a COMPANY_USER(pmc), returns leases for properties under their company.
+
 @is_request_authenticated
 def tenant_table_view(request):
 
