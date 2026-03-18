@@ -6,8 +6,7 @@ from django.conf import settings
 # Load environment-specific .env file based on APP_ENV (default: dev)
 # Looks for: .env.dev / .env.uat / .env.prod in the units-architecture directory
 # If the file doesn't exist, load_dotenv silently skips it — no crash
-_env_dir = Path(__file__).resolve().parents[2]
-print(_env_dir)
+_env_dir = Path(__file__).resolve().parents[3]
 _app_env = os.getenv("APP_ENV", "dev")
 _env_file = _env_dir / f".env.{_app_env}"
 load_dotenv(dotenv_path=_env_file)
@@ -34,4 +33,3 @@ AWS_PRESIGNED_EXPIRATION = int(os.getenv("AWS_PRESIGNED_EXPIRATION", 3600))
 S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
 
 OTP_VALID_TIME = int(os.getenv("OTP_VALID_TIME", 300))  # Default to 5 minutes (300 seconds)
-print("AWS REGION:", os.getenv("AWS_REGION"))

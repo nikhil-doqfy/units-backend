@@ -1,12 +1,11 @@
 import os
 import datetime
-import pdfkit
 import json
 import datetime
-from user_service.models import UserProfile, Documents, Role, FAQ, Owner, Tenant, PropertyManager
+from user_service.models import UserProfile, Documents, Role, FAQ, Owner, Tenant, PropertyManager, DocumentType
 from property.models import Unit, Property, PropertyManagmentCompany, PropertyImages, PropertyInterest
-from property_management.models import LeasePropertyDetails, TemplateFields, TemplateValues, Template, \
-    LeaseDocumentsMapping, TermAndCondition, Country, State,City, AuditLog
+from property_management.models import TermAndCondition, Country, AuditLog
+from lease.models import Template, TemplateField, TemplateValue
 from payment.models import Payment, Bank
 from utilities.decorator import is_request_authenticated
 from utilities.helper_functions import (
@@ -17,7 +16,6 @@ from utilities.helper_functions import (
     fetch_s3_presigned_url,
     export_to_csv,
     datetime_to_epoch_millis,
-    get_pdfkit_config,
     generate_property_code,
     fetch_s3_presigned_url_for_download,translate_to_arabic,
     base64_to_image,
@@ -53,7 +51,6 @@ import calendar
 from datetime import datetime, date
 from calendar import monthrange
 from dateutil.relativedelta import relativedelta
-from user_service.models import Documents
 
 
 @is_request_authenticated
@@ -332,6 +329,10 @@ def options(request):
         {"key": constants.ASSIGNED_ENGINEER, "value": "Assigned to Engineer"},
         {"key": constants.REJECTED, "value": "Rejected"},]
         
+        elif option_type == "TENANT_DOCUMENT_TYPE":
+            doc_types = DocumentType.objects.filter(section=constants.TENANT).order_by("id")
+            content["tenant_document_type"] = [{"key": dt.id, "value": dt.name} for dt in doc_types]
+
         elif option_type == "TENANT_BY_COMPANY": #for creating lease we get that tenants
             if not is_pm or not pm_profile.company:
                 content["tenant"] = []
@@ -699,7 +700,7 @@ def property_documents(request):
                     created_by=request.user.user
                 )
 
-                documents.objects.create(
+                PropertyDocumentsMapping.objects.create(
                     property=property_obj,
                     document=doc_obj,
                     document_choice=doc_type,
@@ -753,7 +754,7 @@ def property_documents(request):
                 if not file_name or not base64_data:
                     return prepare_response(message=constants.MISSING_FILE_OR_DATA, status=status.HTTP_400_BAD_REQUEST)
 
-                mapping_obj = documents.objects.filter(
+                mapping_obj = PropertyDocumentsMapping.objects.filter(
                     property=property_obj,
                     document__file_name=file_name
                 ).select_related('document').first()
@@ -768,7 +769,7 @@ def property_documents(request):
                         file_path="",
                         created_by=request.user.user
                     )
-                    mapping_obj = documents.objects.create(
+                    mapping_obj = PropertyDocumentsMapping.objects.create(
                         property=property_obj,
                         document=doc_obj,
                         document_choice=doc_type,
@@ -1904,173 +1905,6 @@ def dashboard_overview(request):
         )
 
 
-@is_request_authenticated
-def generate_contract(request):
-    if request.method != "POST":
-        return prepare_response(
-            message=constants.INVALID_REQUEST_METHOD,
-            status=status.HTTP_405_METHOD_NOT_ALLOWED
-        )
-    try:
-        body = json.loads(request.body)
-        template_id = body.get("template_id")
-        lease_id = body.get("lease_id")
-        values_dict = body.get("values")
-
-        if not template_id or not lease_id or not values_dict:
-            return prepare_response(
-                message=constants.TEMPLATE_LEASE_VALUES_REQUIRED,
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        template = Template.objects.filter(id=template_id, is_active=True).first()
-        if not template:
-            return prepare_response(
-                message=constants.INVALID_TEMPLATE_ID,
-                status=status.HTTP_404_NOT_FOUND
-            )
-        lease = LeasePropertyDetails.objects.filter(id=lease_id).first()
-        if not lease:
-            return prepare_response(
-                message=constants.INVALID_LAESE_ID,
-                status=status.HTTP_404_NOT_FOUND
-            )
-        TemplateValues.objects.create(
-            document_template=template,
-            lease=lease,
-            value=values_dict,
-            created_by=request.user.user 
-        )
-
-        template_path = template.template_path
-
-        if not template_path or not os.path.exists(template_path):
-            return prepare_response(
-                message=f"Template not found: {template_path}",
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        if os.path.isdir(template_path):
-            return prepare_response(
-                message="Template path must be a file",
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        with open(template_path, "r", encoding="utf-8") as f:
-            html_content = f.read()
-        mapping = {}
-        fields = TemplateFields.objects.filter(document_template=template, is_active=True)
-
-        for field in fields:
-            key = field.id_attribute or field.name_attribute
-            if key and key in values_dict:
-                mapping[key] = values_dict[key]
-
-        html_content = replace_placeholders(html_content, mapping)
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        filename = f"lease_{timestamp}.html"
-
-        save_dir = os.path.join(settings.MEDIA_ROOT, "generated_templates")
-        os.makedirs(save_dir, exist_ok=True)
-
-        save_path = os.path.join(save_dir, filename)
-
-        with open(save_path, "w", encoding="utf-8") as f:
-            f.write(html_content)
-        pdf_filename = f"lease_{timestamp}.pdf"
-        config = get_pdfkit_config()
-
-        pdf_bytes = pdfkit.from_string(
-            html_content,
-            False,
-            configuration=config
-        )
-
-        s3_object_name = f"generated_templates/{pdf_filename}"
-        pdf_s3_url = upload_file_to_s3_base64(pdf_bytes, s3_object_name)
-
-        lease.pdf_path = pdf_s3_url
-        lease.save(update_fields=["pdf_path"])
-
-        audit_logs(
-            request,
-            f"Generated lease contract for unit '{lease.lease_property.unit_name}'",
-            constants.CREATED
-        )
-
-        return prepare_response(
-            message=constants.CONTRACT_GENERATED_SUCCESS,
-            content={
-                "file_name": filename,
-                "pdf_url": pdf_s3_url
-            },
-            status=status.HTTP_200_OK
-        )
-
-    except Exception as e:
-        return prepare_response(
-            message=str(e),
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-
-
-def get_template_fields(request):
-    if request.method == "GET":
-        try:
-            template_id = request.GET.get("template_id")
-            if not template_id:
-                return prepare_response(
-                    message=constants.TEMPLATE_ID_REQUIRED,
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            template = Template.objects.get(id=template_id)
-            fields = TemplateFields.objects.filter(document_template=template)
-
-            field_list = []
-            for field in fields:
-                field_list.append({
-                    "id_attribute": field.id_attribute,
-                    "name_attribute": field.name_attribute,
-                    "label": field.label_attribute,
-                    "html_tag": field.html_tag,
-                    "required": field.required,
-                    "min_value": field.min_value,
-                    "max_value": field.max_value,
-                    "min_length": field.min_length,
-                    "max_length": field.max_length,
-                    "pattern": field.pattern,
-                    "predefined_value": field.predefined_value,
-                })
-
-            return prepare_response(
-                content={
-                    "template_id": template.id,
-                    "template_name": template.name,
-                    "template_path": template.template_path,
-                    "fields": field_list
-                },
-                message=constants.TEMPLATE_FIELDS_FETCHED,
-                status=status.HTTP_200_OK
-            )
-
-        except Template.DoesNotExist:
-            return prepare_response(
-                message=constants.INVALID_TEMPLATE_ID,
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        except Exception as e:
-            return prepare_response(
-                message=str(e),
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-    else:
-        return prepare_response(
-            message=constants.INVALID_REQUEST_METHOD,
-            status=status.HTTP_405_METHOD_NOT_ALLOWED
-        )
 
 
 
@@ -2318,6 +2152,208 @@ def export_property_table_csv(request):
             message=f"Error exporting CSV: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+
+@is_request_authenticated
+def complaint(request):
+    user_profile = request.user
+
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+            message = data.get("message")
+
+            if not message:
+                return prepare_response(
+                    message=constants.MESSAGE_REQUIRED,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            complaint = Complaint.objects.create(
+                user=user_profile,
+                message=message,
+                created_by=request.user.user
+            )
+
+            return prepare_response(
+                message=constants.COMPLAINT_RAISED_SUCCESS,
+                status=status.HTTP_201_CREATED,
+                content={
+                    "id": complaint.id,
+                    "message": complaint.message
+                }
+            )
+
+        except Exception as e:
+            return prepare_response(
+                message=str(e),
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    elif request.method == "GET":
+        login_user = request.user
+        complaints_qs = Complaint.objects.none()
+
+        # ================= ROLE BASED FILTER (UNCHANGED) =================
+        if login_user.user_role == constants.TENANT:
+            complaints_qs = Complaint.objects.filter(user=login_user)
+
+        elif login_user.user_role == constants.OWNER:
+            complaints_qs = Complaint.objects.filter(
+                user__tenant_leases__lease_property__owner=login_user
+            ).distinct()
+
+        elif login_user.user_role == constants.COMPANY_USER:
+            company = PropertyManagmentCompany.objects.filter(company_user=login_user).first()
+            if not company:
+                return prepare_response(
+                    message=constants.COMPANY_NOT_FOUND,
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            complaints_qs = Complaint.objects.filter(
+                user__tenant_leases__lease_property__company=company
+            ).distinct()
+
+        else:
+            return prepare_response(
+                message="Invalid user role",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # ================= STATUS FILTER (UNCHANGED) =================
+        status_param = request.GET.get("status")
+        if status_param:
+            status_list = [s.strip() for s in status_param.split(",")]
+
+            VALID_STATUSES = {
+                constants.IN_PROGRESS,
+                constants.COMPLETED,
+                constants.ASSIGNED_ENGINEER,
+                constants.REJECTED,
+            }
+
+            invalid_status = set(status_list) - VALID_STATUSES
+            if invalid_status:
+                return prepare_response(
+                    message=f"Invalid status value(s): {', '.join(invalid_status)}",
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            complaints_qs = complaints_qs.filter(status__in=status_list)
+        property_unit_id = request.GET.get("property_unit_id")
+        if property_unit_id:
+            if not property_unit_id.isdigit():
+                return prepare_response(message="Invalid property_unit_id",status=status.HTTP_400_BAD_REQUEST)
+            complaints_qs = complaints_qs.filter(user__tenant_leases__lease_property__id=property_unit_id).distinct()
+        
+
+        # ================= SEARCH FILTER (NEW) =================
+        search = request.GET.get("search", "").strip()
+        if search:
+            complaints_qs = complaints_qs.filter(
+                Q(id__icontains=search) |
+                Q(user__user__first_name__icontains=search) |
+                Q(user__user__last_name__icontains=search) |
+                Q(user__tenant_leases__lease_property__unit_name__icontains=search)
+            ).distinct()
+
+        complaints_qs = complaints_qs.select_related(
+            "user", "user__user"
+        ).order_by("-created")
+
+        # ================= SUMMARY COUNTS (UNCHANGED) =================
+        total_complaints = complaints_qs.count()
+        total_completed = complaints_qs.filter(status=constants.COMPLETED).count()
+        total_in_progress = complaints_qs.filter(status=constants.IN_PROGRESS).count()
+        total_rejected = complaints_qs.filter(status=constants.REJECTED).count()
+
+        # ================= PAGINATION (NEW) =================
+        page = int(request.GET.get("page", 1))
+        limit = int(request.GET.get("limit", 10))
+
+        paginator = Paginator(complaints_qs, limit)
+        try:
+            complaints_page = paginator.page(page)
+        except EmptyPage:
+            complaints_page = paginator.page(paginator.num_pages)
+
+        complaint_list = []
+
+        for complaint_obj in complaints_page:
+            tenant = complaint_obj.user
+
+            lease = LeasePropertyDetails.objects.filter(
+                tenant=tenant
+            ).select_related("lease_property").first()
+
+            unit_name = None
+            property_image = None
+
+            if lease and lease.lease_property:
+                property_obj = lease.lease_property
+                unit_name = property_obj.unit_name
+
+                image_data = get_property_images(
+                    property_id=property_obj.id,
+                    single=True
+                )
+                if not image_data.get("error") and image_data.get("images"):
+                    property_image = image_data["images"][0]["data"]
+
+            complaint_list.append({
+                "complaint_id": complaint_obj.id,
+                "unit_name": unit_name,
+                "property_unit_id":property_obj.id,
+                "description": complaint_obj.message,
+                "raised_by_email": tenant.user.email,
+                "raised_by_name": tenant.user.first_name,
+                "status": {
+                    "key": complaint_obj.status,
+                    "value": complaint_obj.get_status_display()
+                },
+                "raised_date": datetime_to_epoch_millis(complaint_obj.created),
+                "property_image": property_image,
+
+                "raised_by_image": tenant.profile_image
+            })
+
+        return prepare_response(
+            content={
+                "summary": {
+                    "total_complaints": total_complaints,
+                    "total_completed": total_completed,
+                    "total_in_progress": total_in_progress,
+                    "total_rejected": total_rejected,
+                },
+                "complaints": complaint_list
+            },
+            pagination={
+                "current_page": complaints_page.number,
+                "limit": limit,
+                "total_records": paginator.count,
+                "total_pages": paginator.num_pages
+            },
+            message="Complaints fetched successfully",
+            status=status.HTTP_200_OK
+        )
+
+    elif request.method == "PUT":
+        pass
+
+    elif request.method == "DELETE":
+        pass
+
+    else:
+        return prepare_response(
+            message=constants.INVALID_REQUEST,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+
+
+
 
 def faq_api(request):
 
