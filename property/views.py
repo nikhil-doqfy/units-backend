@@ -1,13 +1,110 @@
 import csv
 import json
 import uuid
+from django.contrib.auth.models import User
 from django.http import HttpResponse
 from .models import Unit, UnitImages, UnitDocuments, UnitOwner, Property, PropertyBlocks, PropertyImages, PropertyDocuments
-from user_service.models import PropertyManager, DocumentType
+from user_service.models import PropertyManager, DocumentType, Owner
 from utilities.decorator import is_request_authenticated
 from utilities.helper_functions import prepare_response, generate_property_code, upload_file_to_s3_base64, fetch_s3_presigned_url, get_extension_from_base64
 from utilities import status, constants
 from property_management.utils import audit_logs
+
+
+def _parse_date(value):
+    if not value:
+        return None
+    from datetime import datetime
+    for fmt in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f"):
+        try:
+            return datetime.strptime(str(value)[:26], fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _apply_owner_fields(owner_obj, owner_data):
+    """Update owner fields with any non-empty values from owner_data."""
+    name = owner_data.get("owner_name") or owner_data.get("name") or ""
+    if name:
+        first_name, _, last_name = name.partition(" ")
+        owner_obj.user.first_name = first_name
+        owner_obj.user.last_name = last_name
+        owner_obj.user.save(update_fields=["first_name", "last_name"])
+
+    field_map = {
+        "email": "email",
+        "contact_number": "contact_number",
+        "emirates_id": "emirate_id",
+        "owner_number": "owner_number",
+        "trade_license_number": "trade_license_number",
+        "license_number": "license_number",
+        "license_issuer": "license_issuer",
+        "fax_number": "fax_number",
+        "po_box_number": "po_box_number",
+    }
+    update_fields = []
+    for data_key, model_field in field_map.items():
+        val = owner_data.get(data_key)
+        if val:
+            setattr(owner_obj, model_field, val)
+            update_fields.append(model_field)
+
+    expiry = _parse_date(owner_data.get("license_expiry_date"))
+    if expiry:
+        owner_obj.license_expiry_date = expiry
+        update_fields.append("license_expiry_date")
+
+    if update_fields:
+        Owner.objects.filter(pk=owner_obj.pk).update(
+            **{f: getattr(owner_obj, f) for f in update_fields}
+        )
+    return owner_obj
+
+
+def _get_or_create_owner(owner_data, created_by):
+    owner_id = owner_data.get("owner_id")
+    email = owner_data.get("email") or ""
+
+    # 1. Look up by owner_id
+    if owner_id:
+        owner_obj = Owner.objects.select_related("user").filter(id=owner_id).first()
+        if owner_obj:
+            return _apply_owner_fields(owner_obj, owner_data)
+
+    # 2. Look up by email
+    if email:
+        owner_obj = Owner.objects.select_related("user").filter(email=email).first()
+        if owner_obj:
+            return _apply_owner_fields(owner_obj, owner_data)
+
+    # 3. Create new owner
+    name = owner_data.get("owner_name") or owner_data.get("name") or ""
+    if not name and not email:
+        return None
+
+    first_name, _, last_name = name.partition(" ")
+    django_user = User.objects.create(
+        username=f"owner_{uuid.uuid4().hex[:8]}",
+        email=email or f"owner_{uuid.uuid4().hex[:8]}@units.local",
+        first_name=first_name,
+        last_name=last_name,
+    )
+    owner_obj = Owner.objects.create(
+        created_by=created_by,
+        user=django_user,
+        email=email,
+        contact_number=owner_data.get("contact_number") or "",
+        emirate_id=owner_data.get("emirates_id") or "",
+        owner_number=owner_data.get("owner_number") or "",
+        trade_license_number=owner_data.get("trade_license_number") or "",
+        license_number=owner_data.get("license_number") or "",
+        license_expiry_date=_parse_date(owner_data.get("license_expiry_date")),
+        license_issuer=owner_data.get("license_issuer") or "",
+        fax_number=owner_data.get("fax_number") or "",
+        po_box_number=owner_data.get("po_box_number") or "",
+    )
+    return owner_obj
 
 
 @is_request_authenticated
@@ -493,10 +590,10 @@ def unit(request):
             response = HttpResponse(content_type="text/csv")
             response["Content-Disposition"] = 'attachment; filename="units.csv"'
             writer = csv.writer(response)
-            writer.writerow(["Unit ID", "Unit Name", "Property", "Block/Tower", "Bedrooms", "Floor No", "Plot No", "Land Area", "Makani No", "Dewa No", "Rent (AED)"])
+            writer.writerow(["Unit ID", "Unit Name", "Property", "Block/Tower", "Bedrooms", "Floor No", "Land No", "Unit Size", "Area", "Makani No", "Dewa No", "Rent (AED)"])
             for u in units:
                 s = u._serialize_unit()
-                writer.writerow([s.get("code"), s.get("unit_name"), s.get("property_name"), s.get("block_name"), s.get("no_of_bedrooms"), s.get("floor_no"), s.get("plot_no"), f"{s.get('land_area') or ''} {s.get('land_area_unit') or ''}".strip(), s.get("makani_no"), s.get("dewa_no"), s.get("rent")])
+                writer.writerow([s.get("code"), s.get("unit_name"), s.get("property_name"), s.get("block_name"), s.get("no_of_bedrooms"), s.get("floor_no"), s.get("land_no"), s.get("unit_size"), f"{s.get('area') or ''} {s.get('land_area_unit') or ''}".strip(), s.get("makani_no"), s.get("dewa_no"), s.get("rent")])
             return response
 
         total = units.count()
@@ -536,14 +633,17 @@ def unit(request):
             created_by=user_profile.user,
             property_block_tower=block,
             unit_name=unit_name,
-            land_area=data.get("land_area") or 0,
-            land_area_unit=data.get("land_area_unit") or constants.SQ_FT,
-            land_dm_no=data.get("land_dm_no"),
+            unit_size=data.get("unit_size"),
+            area=data.get("area"),
+            dm_no=data.get("dm_no"),
             no_of_bedrooms=data.get("no_of_bedrooms"),
             floor_no=data.get("floor_no"),
             parking_no=data.get("parking_no"),
             no_of_balcony=data.get("no_of_balcony"),
-            plot_no=data.get("plot_no"),
+            land_no=data.get("land_no"),
+            unit_usage=data.get("unit_usage"),
+            unit_type=data.get("unit_type"),
+            sub_type=data.get("sub_type"),
             makani_no=data.get("makani_no"),
             dewa_no=data.get("dewa_no"),
             rent=data.get("rent"),
@@ -556,14 +656,12 @@ def unit(request):
         )
 
         for owner in data.get("unit_owners", []):
-            if owner.get("email"):
+            owner_obj = _get_or_create_owner(owner, user_profile.user)
+            if owner_obj:
                 UnitOwner.objects.create(
                     created_by=user_profile.user,
                     unit=u,
-                    name=owner.get("owner_name"),
-                    email=owner.get("email"),
-                    contact_number=owner.get("contact_number"),
-                    emirates_id=owner.get("emirates_id"),
+                    owner=owner_obj,
                 )
 
         audit_logs(request, f"Unit '{u.unit_name}' created", constants.CREATED)
@@ -589,9 +687,10 @@ def unit(request):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        for field in ["unit_name", "land_area", "land_area_unit", "land_dm_no",
+        for field in ["unit_name", "unit_size", "area", "dm_no",
                       "no_of_bedrooms", "floor_no", "parking_no", "no_of_balcony",
-                      "plot_no", "makani_no", "dewa_no", "rent", "security_deposit",
+                      "land_no", "unit_usage", "unit_type", "sub_type",
+                      "makani_no", "dewa_no", "rent", "security_deposit",
                       "booking_amount", "maintenance_charges", "cycle",
                       "notice_period", "commission_percent"]:
             if field in data and data[field] is not None:
@@ -607,14 +706,12 @@ def unit(request):
         if "unit_owners" in data:
             u.unit_owners.all().delete()
             for owner in data["unit_owners"]:
-                if owner.get("email"):
+                owner_obj = _get_or_create_owner(owner, user_profile.user)
+                if owner_obj:
                     UnitOwner.objects.create(
                         created_by=user_profile.user,
                         unit=u,
-                        name=owner.get("owner_name"),
-                        email=owner.get("email"),
-                        contact_number=owner.get("contact_number"),
-                        emirates_id=owner.get("emirates_id"),
+                        owner=owner_obj,
                     )
 
         audit_logs(request, f"Unit '{u.unit_name}' updated", constants.UPDATED)

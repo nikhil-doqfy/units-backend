@@ -383,7 +383,23 @@ LEASE_STATUS_CHOICES = [
     ("ACTIVE", "Active"),
     ("INACTIVE", "In Active"),
     ("EXPIRED", "Expired"),
+    ("REJECTED", "Rejected"),
 ]
+
+# ── Lease Onboarding Stage ─────────────────────────────────────
+INVITE      = "INVITE"
+ONBOARDING  = "ONBOARDING"
+AGREEMENT   = "AGREEMENT"
+EJARI       = "EJARI"
+ACTIVATED   = "ACTIVATED"
+
+LEASE_STAGE_CHOICES = (
+    (INVITE,     "Invite"),
+    (ONBOARDING, "Onboarding"),
+    (AGREEMENT,  "Agreement"),
+    (EJARI,      "Ejari"),
+    (ACTIVATED,  "Activated"),
+)
 
 LAYOUT_CHOICES = [
         ("AI_GENERATED", "Create Layout by AI"),
@@ -494,14 +510,6 @@ IMAGE_TYPE_CHOICES = (
 )
 
 
-LEASE_STEP_STATUS = (
-    ("LEASE_DETAILS", "Lease Details"),
-    ("LEASE_COMMERCIALS", "Lease Commercials"),
-    ("DOCUMENTS_LAYOUT", "Documents Layout"),
-    ("NEGOTIATION", "Negotiation"),
-    ("UPLOAD_EJARI", "Upload Ejari"),
-)
-
 DOCUMENTS_STATUS_CHOICES = (
         ("PENDING", "Pending"),
         ("APPROVED", "Approved"),
@@ -598,6 +606,23 @@ DELETE = "DELETE"
 TERMINATED = "TERMINATED"
 
 
+# ── Activity Log ───────────────────────────────────────────────
+NOTE     = 'NOTE'
+CALL_LOG = 'CALL_LOG'
+EMAIL_LOG= 'EMAIL_LOG'
+MEETING  = 'MEETING'
+WHATSAPP_LOG = 'WHATSAPP_LOG'
+STATUS_CHANGE = 'STATUS_CHANGE'
+
+ACTIVITY_TYPE_CHOICES = (
+    (NOTE,          'Note'),
+    (CALL_LOG,      'Call'),
+    (EMAIL_LOG,     'Email'),
+    (MEETING,       'Meeting'),
+    (WHATSAPP_LOG,  'WhatsApp'),
+    (STATUS_CHANGE, 'Status Change'),
+)
+
 # ── Lead Choices ───────────────────────────────────────────────
 INTERESTED     = 'INTERESTED'
 NOT_INTERESTED = 'NOT_INTERESTED'
@@ -666,6 +691,22 @@ AREA_UNIT_CHOICES = (
     (SQ_FT, 'Sq-ft'),
     (SQ_MT, 'Sq-mt'),
     (SQ_YD, 'Sq-yd'),
+)
+
+# ── Unit Usage ─────────────────────────────────────────────────
+RESIDENTIAL = 'RESIDENTIAL'
+COMMERCIAL = 'COMMERCIAL'
+UNIT_USAGE_CHOICES = (
+    (RESIDENTIAL, 'Residential'),
+    (COMMERCIAL, 'Commercial'),
+)
+
+# ── Unit Type ──────────────────────────────────────────────────
+FLAT = 'FLAT'
+UNIT_TYPE_CHOICES = (
+    (FLAT, 'Flat'),
+    (APARTMENT, 'Apartment'),
+    (VILLA, 'Villa'),
 )
 
 # ── No of Blocks ──────────────────────────────────────────────

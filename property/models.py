@@ -165,18 +165,17 @@ class Unit(Base):
         related_name="block_towers"
     )
     unit_name = models.CharField(max_length=255)
-    land_area = models.DecimalField(max_digits=10, decimal_places=2)
-    land_area_unit = models.CharField(
-        max_length=20,
-        choices=constants.AREA_UNIT_CHOICES,
-        default=constants.SQ_FT
-    )
-    land_dm_no = models.CharField(max_length=100, null=True, blank=True)
+    unit_size = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    area = models.CharField(max_length=255, null=True, blank=True)
+    dm_no = models.CharField(max_length=100, null=True, blank=True)
     no_of_bedrooms = models.IntegerField(choices=constants.BEDROOM_CHOICES, null=True, blank=True)
     floor_no = models.IntegerField(choices=constants.FLOOR_CHOICES, null=True, blank=True)
     parking_no = models.CharField(max_length=50, null=True, blank=True)
     no_of_balcony = models.IntegerField(choices=constants.BALCONY_CHOICES, null=True, blank=True)
-    plot_no = models.CharField(max_length=100, null=True, blank=True)
+    land_no = models.CharField(max_length=100, null=True, blank=True)
+    unit_usage = models.CharField(max_length=50, choices=constants.UNIT_USAGE_CHOICES, null=True, blank=True)
+    unit_type = models.CharField(max_length=50, choices=constants.UNIT_TYPE_CHOICES, null=True, blank=True)
+    sub_type = models.CharField(max_length=255, null=True, blank=True)
     makani_no = models.CharField(max_length=100, null=True, blank=True)
     dewa_no = models.CharField(max_length=100, null=True, blank=True)
     rent = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
@@ -220,14 +219,17 @@ class Unit(Base):
             "property_address_line_1": self.property_block_tower.property.address_line_1,
             "property_address_line_2": self.property_block_tower.property.address_line_2,
             "property_landmark": self.property_block_tower.property.landmark,
-            "land_area": str(self.land_area) if self.land_area is not None else None,
-            "land_area_unit": self.land_area_unit,
-            "land_dm_no": self.land_dm_no,
+            "unit_size": str(self.unit_size) if self.unit_size is not None else None,
+            "area": self.area,
+            "dm_no": self.dm_no,
             "no_of_bedrooms": self.no_of_bedrooms,
             "floor_no": self.floor_no,
             "parking_no": self.parking_no,
             "no_of_balcony": self.no_of_balcony,
-            "plot_no": self.plot_no,
+            "land_no": self.land_no,
+            "unit_usage": self.unit_usage,
+            "unit_type": self.unit_type,
+            "sub_type": self.sub_type,
             "makani_no": self.makani_no,
             "dewa_no": self.dewa_no,
             "rent": str(self.rent) if self.rent is not None else None,
@@ -240,12 +242,20 @@ class Unit(Base):
             "unit_owners": [
                 {
                     "id": o.id,
-                    "name": o.name,
-                    "email": o.email,
-                    "contact_number": o.contact_number,
-                    "emirates_id": o.emirates_id,
+                    "owner_id": o.owner_id,
+                    "name": f"{o.owner.user.first_name} {o.owner.user.last_name}".strip() if o.owner else None,
+                    "email": o.owner.email if o.owner else None,
+                    "contact_number": o.owner.contact_number if o.owner else None,
+                    "emirates_id": o.owner.emirate_id if o.owner else None,
+                    "owner_number": o.owner.owner_number if o.owner else None,
+                    "trade_license_number": o.owner.trade_license_number if o.owner else None,
+                    "license_number": o.owner.license_number if o.owner else None,
+                    "license_expiry_date": o.owner.license_expiry_date.isoformat() if o.owner and o.owner.license_expiry_date else None,
+                    "license_issuer": o.owner.license_issuer if o.owner else None,
+                    "fax_number": o.owner.fax_number if o.owner else None,
+                    "po_box_number": o.owner.po_box_number if o.owner else None,
                 }
-                for o in self.unit_owners.all()
+                for o in self.unit_owners.select_related("owner__user").all()
             ],
         }
 
@@ -286,13 +296,16 @@ class UnitOwner(Base):
         on_delete=models.CASCADE,
         related_name="unit_owners"
     )
-    name = models.CharField(max_length=255, null=True, blank=True)
-    email = models.EmailField(null=True, blank=True)
-    contact_number = models.CharField(max_length=50, null=True, blank=True)
-    emirates_id = models.CharField(max_length=100, null=True, blank=True)
+    owner = models.ForeignKey(
+        "user_service.Owner",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="unit_owner_links"
+    )
 
     def __str__(self):
-        return f"{self.name} -> Unit #{self.unit_id}"
+        return f"Owner #{self.owner_id} -> Unit #{self.unit_id}"
     
 
 class PropertyInterest(Base):
