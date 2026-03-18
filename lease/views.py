@@ -757,6 +757,15 @@ def get_template_fields(request):
                 except Lease.DoesNotExist:
                     pass
 
+            pdf_url = ""
+            if lease_id:
+                try:
+                    lease_obj = Lease.objects.get(id=lease_id)
+                    if lease_obj.pdf_path:
+                        pdf_url = fetch_s3_presigned_url(lease_obj.pdf_path)
+                except Lease.DoesNotExist:
+                    pass
+
             return prepare_response(
                 content={
                     "template_id":    template.id,
@@ -766,6 +775,7 @@ def get_template_fields(request):
                     "fields":         field_list,
                     "saved_values":   saved_values,
                     "lease_defaults": lease_defaults,
+                    "pdf_url":        pdf_url,
                 },
                 message=constants.TEMPLATE_FIELDS_FETCHED,
                 status=status.HTTP_200_OK,
@@ -858,7 +868,7 @@ def generate_contract(request):
 
         return prepare_response(
             message=constants.CONTRACT_GENERATED_SUCCESS,
-            content={"file_name": filename, "pdf_url": pdf_s3_url},
+            content={"file_name": filename, "pdf_url": fetch_s3_presigned_url(pdf_s3_url)},
             status=status.HTTP_200_OK,
         )
 

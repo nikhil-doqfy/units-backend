@@ -6,14 +6,14 @@
   <style>
     @page {
       size: A4;
-      margin: 5mm 7mm;
+      margin: 4mm 6mm;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
     body {
       font-family: Arial, sans-serif;
-      font-size: 10px;
+      font-size: 9px;
       color: #000;
       background: #fff;
       padding: 0;
@@ -21,15 +21,14 @@
 
     /* ── Header ── */
     .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
+      display: -webkit-flex; display: flex;
+      -webkit-justify-content: space-between; justify-content: space-between;
+      -webkit-align-items: flex-start; align-items: flex-start;
       margin-bottom: 5px;
     }
-    .header img { height: 50px; }
+    .header > div { -webkit-flex: 1; flex: 1; }
     .header-center {
       text-align: center;
-      flex: 1;
       padding: 0 10px;
     }
     .header-center .arabic-title {
@@ -44,8 +43,8 @@
       margin-top: 1px;
     }
     .date-row {
-      display: flex;
-      justify-content: space-between;
+      display: -webkit-flex; display: flex;
+      -webkit-justify-content: space-between; justify-content: space-between;
       margin: 4px 0 6px 0;
       font-size: 10px;
     }
@@ -55,11 +54,12 @@
     .section {
       border: 1px solid #333;
       margin-bottom: 5px;
+      overflow: hidden;
     }
     .section-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
+      display: -webkit-flex; display: flex;
+      -webkit-justify-content: space-between; justify-content: space-between;
+      -webkit-align-items: center; align-items: center;
       background: #2b4d8e;
       color: #fff;
       padding: 3px 8px;
@@ -70,22 +70,22 @@
 
     /* ── Field rows ── */
     .field-row {
-      display: flex;
-      gap: 8px;
+      display: -webkit-flex; display: flex;
+      -webkit-align-items: flex-end; align-items: flex-end;
       margin-bottom: 4px;
-      align-items: flex-end;
     }
-    .field-row.two-col > .field-group { flex: 1; }
+    .field-row.two-col > .field-group { -webkit-flex: 1; flex: 1; }
+    .field-row.two-col > .field-group:first-child { margin-right: 8px; }
     .field-group {
-      display: flex;
-      flex-direction: column;
-      gap: 1px;
+      display: -webkit-flex; display: flex;
+      -webkit-flex-direction: column; flex-direction: column;
     }
     .field-group .labels {
-      display: flex;
-      justify-content: space-between;
+      display: -webkit-flex; display: flex;
+      -webkit-justify-content: space-between; justify-content: space-between;
       font-size: 9px;
       color: #444;
+      margin-bottom: 1px;
     }
     .field-group .value-line {
       border-bottom: 1px solid #000;
@@ -102,21 +102,26 @@
 
     /* ── Two-column company row ── */
     .company-row {
-      display: flex;
-      gap: 12px;
+      display: -webkit-flex; display: flex;
       margin-bottom: 4px;
     }
-    .company-row .field-group { flex: 1; }
+    .company-row .field-group { -webkit-flex: 1; flex: 1; }
+    .company-row .field-group:first-child { margin-right: 12px; }
 
     /* ── Property Usage radio ── */
     .usage-row {
-      display: flex;
-      align-items: center;
-      gap: 16px;
+      display: -webkit-flex; display: flex;
+      -webkit-align-items: center; align-items: center;
       margin-bottom: 4px;
     }
     .usage-row .label-ar { margin-left: auto; font-size: 9px; color: #444; }
-    .radio-item { display: flex; align-items: center; gap: 4px; font-size: 10px; }
+    .radio-item {
+      display: -webkit-flex; display: flex;
+      -webkit-align-items: center; align-items: center;
+      font-size: 10px;
+      margin-right: 16px;
+    }
+    .radio-item .radio-circle { margin-right: 4px; }
     .radio-circle {
       width: 10px; height: 10px;
       border-radius: 50%;
@@ -127,55 +132,52 @@
 
     /* ── Contract Info two columns ── */
     .contract-grid {
-      display: flex;
-      gap: 12px;
+      display: -webkit-flex; display: flex;
     }
-    .contract-grid > .col { flex: 1; }
+    .contract-grid > .col { -webkit-flex: 1; flex: 1; }
+    .contract-grid > .col:first-child { margin-right: 12px; }
 
     /* ── Period row ── */
     .period-row {
-      display: flex;
-      align-items: flex-end;
-      gap: 6px;
+      display: -webkit-flex; display: flex;
+      -webkit-align-items: flex-end; align-items: flex-end;
       margin-bottom: 4px;
     }
     .period-row .field-line {
       border-bottom: 1px solid #000;
-      flex: 1;
+      -webkit-flex: 1; flex: 1;
       min-height: 14px;
     }
-    .period-row span { font-size: 9px; color: #444; white-space: nowrap; }
+    .period-row span { font-size: 9px; color: #444; white-space: nowrap; margin: 0 3px; }
 
     /* ── T&C ── */
     .tc-wrap {
-      display: flex;
-      gap: 0;
+      display: -webkit-flex; display: flex;
+      overflow: hidden;
     }
     .tc-col {
-      flex: 1;
+      -webkit-flex: 1; flex: 1;
       min-width: 0;
       padding: 5px 8px;
       border-right: 1px solid #ddd;
-      overflow: hidden;
       word-break: break-word;
       overflow-wrap: break-word;
     }
     .tc-col:last-child { border-right: none; }
     .tc-col ol { padding-left: 12px; }
-    .tc-col ol li { margin-bottom: 2px; line-height: 1.25; font-size: 9px; word-break: break-word; overflow-wrap: break-word; }
+    .tc-col ol li { margin-bottom: 2px; line-height: 1.25; font-size: 9px; word-break: break-word; }
     .tc-col.rtl { direction: rtl; text-align: right; }
     .tc-col.rtl ol { padding-left: 0; padding-right: 12px; }
 
     /* ── Know your rights / attachments ── */
     .info-wrap {
-      display: flex;
-      gap: 0;
+      display: -webkit-flex; display: flex;
+      overflow: hidden;
     }
     .info-col {
-      flex: 1;
+      -webkit-flex: 1; flex: 1;
       min-width: 0;
       padding: 5px 8px;
-      overflow: hidden;
       word-break: break-word;
       overflow-wrap: break-word;
     }
@@ -190,31 +192,35 @@
     /* ── Additional terms ── */
     .additional-grid { padding: 5px 8px; }
     .additional-row {
-      display: flex;
-      justify-content: space-between;
+      display: -webkit-flex; display: flex;
+      -webkit-justify-content: space-between; justify-content: space-between;
       margin-bottom: 3px;
-      gap: 12px;
     }
     .additional-row .field-line {
-      flex: 1;
+      -webkit-flex: 1; flex: 1;
       border-bottom: 1px solid #aaa;
       min-height: 12px;
+      margin: 0 6px;
     }
     .additional-row .num { font-size: 10px; min-width: 14px; }
 
     /* ── Signatures ── */
     .signatures {
-      display: flex;
-      gap: 0;
+      display: -webkit-flex; display: flex;
+      overflow: hidden;
     }
     .sig-col {
-      flex: 1;
+      -webkit-flex: 1; flex: 1;
       padding: 8px 10px 5px;
       border-right: 1px solid #ddd;
     }
     .sig-col:last-child { border-right: none; }
     .sig-line { border-bottom: 1px solid #000; margin: 14px 0 4px; }
-    .sig-labels { display: flex; justify-content: space-between; font-size: 9px; }
+    .sig-labels {
+      display: -webkit-flex; display: flex;
+      -webkit-justify-content: space-between; justify-content: space-between;
+      font-size: 9px;
+    }
     .sig-col.rtl { direction: rtl; text-align: right; }
 
     /* ── Footer contact ── */
