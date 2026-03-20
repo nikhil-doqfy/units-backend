@@ -1,8 +1,8 @@
 from django.db import models
-from user_service.models import Country
+from property_management.models import Country, Base
 
 
-class TermCategory(models.Model):
+class TermCategory(Base):
     name = models.CharField(max_length=100)
     code = models.CharField(max_length=50, unique=True)
 
@@ -10,8 +10,7 @@ class TermCategory(models.Model):
         return self.name
 
 
-
-class TermsAndConditions(models.Model):
+class TermsAndConditions(Base):
     key = models.CharField(max_length=100)
     title = models.CharField(max_length=255)
     description = models.TextField()
