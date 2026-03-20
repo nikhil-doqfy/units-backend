@@ -61,19 +61,20 @@ def _serialize_lead(lead):
         # All unit owners
         "unit_owners": [
             {
-                "name": o.name,
-                "email": o.email,
-                "contact_number": o.contact_number,
-                "emirates_id": o.emirates_id,
-                "owner_number": o.owner_number,
-                "trade_license_number": o.trade_license_number,
-                "license_number": o.license_number,
-                "license_expiry_date": o.license_expiry_date.strftime("%Y-%m-%d") if o.license_expiry_date else None,
-                "license_issuer": o.license_issuer,
-                "fax_number": o.fax_number,
-                "po_box_number": o.po_box_number,
+                "owner_id": o.owner_id,
+                "name": f"{o.owner.user.first_name} {o.owner.user.last_name}".strip() if o.owner else None,
+                "email": o.owner.email if o.owner else None,
+                "contact_number": o.owner.contact_number if o.owner else None,
+                "emirates_id": o.owner.emirate_id if o.owner else None,
+                "owner_number": o.owner.owner_number if o.owner else None,
+                "trade_license_number": o.owner.trade_license_number if o.owner else None,
+                "license_number": o.owner.license_number if o.owner else None,
+                "license_expiry_date": o.owner.license_expiry_date.strftime("%Y-%m-%d") if o.owner and o.owner.license_expiry_date else None,
+                "license_issuer": o.owner.license_issuer if o.owner else None,
+                "fax_number": o.owner.fax_number if o.owner else None,
+                "po_box_number": o.owner.po_box_number if o.owner else None,
             }
-            for o in unit.unit_owners.all()
+            for o in unit.unit_owners.select_related("owner__user").all()
         ],
         "created_at": lead.created.strftime("%m/%d/%Y %H:%M") if lead.created else None,
     }

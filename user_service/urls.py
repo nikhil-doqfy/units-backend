@@ -12,4 +12,9 @@ urlpatterns = [
     path('users_csv', views.export_users_csv, name='export_users_csv'),
     path('staff_csv', views.export_staff_csv, name='export_staff_csv'),
     path("search_details", views.contact_list_view, name="contact_list"),
-] 
+
+    path('owner', views.owner_crud, name='owner_crud'),
+    path('tenant', views.tenant_crud, name='tenant_crud'),
+
+    # New endpoints for user management
+]

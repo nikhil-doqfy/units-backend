@@ -1,42 +1,637 @@
 <!DOCTYPE html>
-<html>
+<html lang="en" dir="ltr">
 <head>
-    <meta charset="UTF-8">
-    <title>Lease Agreement</title>
+  <meta charset="UTF-8" />
+  <title>Unified Ejari Tenancy Contract</title>
+  <style>
+    @page {
+      size: A4;
+      margin: 4mm 6mm;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: Arial, sans-serif;
+      font-size: 9px;
+      color: #000;
+      background: #fff;
+      padding: 0;
+    }
+
+    /* ── Header ── */
+    .header {
+      display: -webkit-flex; display: flex;
+      -webkit-justify-content: space-between; justify-content: space-between;
+      -webkit-align-items: flex-start; align-items: flex-start;
+      margin-bottom: 3px;
+    }
+    .header > div { -webkit-flex: 1; flex: 1; }
+    .header-center {
+      text-align: center;
+      padding: 0 8px;
+    }
+    .header-center .arabic-title {
+      font-size: 13px;
+      font-weight: bold;
+      letter-spacing: 4px;
+      color: #000;
+    }
+    .header-center .eng-title {
+      font-size: 11px;
+      font-weight: bold;
+      margin-top: 1px;
+    }
+    .date-row {
+      display: -webkit-flex; display: flex;
+      -webkit-justify-content: space-between; justify-content: space-between;
+      margin: 2px 0 4px 0;
+      font-size: 9px;
+    }
+    .date-row .field-line { border-bottom: 1px solid #000; width: 160px; display: inline-block; }
+
+    /* ── Sections ── */
+    .section {
+      border: 1px solid #333;
+      margin-bottom: 3px;
+      overflow: hidden;
+    }
+    .section-header {
+      display: -webkit-flex; display: flex;
+      -webkit-justify-content: space-between; justify-content: space-between;
+      -webkit-align-items: center; align-items: center;
+      background: #2b4d8e;
+      color: #fff;
+      padding: 2px 6px;
+      font-weight: bold;
+      font-size: 9.5px;
+    }
+    .section-body { padding: 3px 6px; }
+
+    /* ── Field rows ── */
+    .field-row {
+      display: -webkit-flex; display: flex;
+      -webkit-align-items: flex-end; align-items: flex-end;
+      margin-bottom: 3px;
+    }
+    .field-row.two-col > .field-group { -webkit-flex: 1; flex: 1; }
+    .field-row.two-col > .field-group:first-child { margin-right: 8px; }
+    .field-group {
+      display: -webkit-flex; display: flex;
+      -webkit-flex-direction: column; flex-direction: column;
+    }
+    .field-group .labels {
+      display: -webkit-flex; display: flex;
+      -webkit-justify-content: space-between; justify-content: space-between;
+      font-size: 8px;
+      color: #444;
+      margin-bottom: 1px;
+    }
+    .field-group .value-line {
+      border-bottom: 1px solid #000;
+      min-height: 12px;
+      font-size: 9px;
+      padding: 0 2px;
+      word-break: break-word;
+    }
+    .field-group .sub-label {
+      font-size: 7px;
+      color: #666;
+      text-align: center;
+    }
+
+    /* ── Two-column company row ── */
+    .company-row {
+      display: -webkit-flex; display: flex;
+      margin-bottom: 3px;
+    }
+    .company-row .field-group { -webkit-flex: 1; flex: 1; }
+    .company-row .field-group:first-child { margin-right: 12px; }
+
+    /* ── Property Usage radio ── */
+    .usage-row {
+      display: -webkit-flex; display: flex;
+      -webkit-align-items: center; align-items: center;
+      margin-bottom: 3px;
+    }
+    .usage-row .label-ar { margin-left: auto; font-size: 8px; color: #444; }
+    .radio-item {
+      display: -webkit-flex; display: flex;
+      -webkit-align-items: center; align-items: center;
+      font-size: 9px;
+      margin-right: 12px;
+    }
+    .radio-item .radio-circle { margin-right: 3px; }
+    .radio-circle {
+      width: 9px; height: 9px;
+      border-radius: 50%;
+      border: 1px solid #000;
+      display: inline-block;
+    }
+    .radio-circle.filled { background: #000; }
+
+    /* ── Contract Info two columns ── */
+    .contract-grid {
+      display: -webkit-flex; display: flex;
+    }
+    .contract-grid > .col { -webkit-flex: 1; flex: 1; }
+    .contract-grid > .col:first-child { margin-right: 12px; }
+
+    /* ── Period row ── */
+    .period-row {
+      display: -webkit-flex; display: flex;
+      -webkit-align-items: flex-end; align-items: flex-end;
+      margin-bottom: 3px;
+    }
+    .period-row .field-line {
+      border-bottom: 1px solid #000;
+      -webkit-flex: 1; flex: 1;
+      min-height: 12px;
+    }
+    .period-row span { font-size: 8px; color: #444; white-space: nowrap; margin: 0 3px; }
+
+    /* ── T&C ── */
+    .tc-wrap {
+      display: -webkit-flex; display: flex;
+      overflow: hidden;
+    }
+    .tc-col {
+      -webkit-flex: 1; flex: 1;
+      min-width: 0;
+      padding: 3px 6px;
+      border-right: 1px solid #ddd;
+      word-break: break-word;
+      overflow-wrap: break-word;
+    }
+    .tc-col:last-child { border-right: none; }
+    .tc-col ol { padding-left: 10px; }
+    .tc-col ol li { margin-bottom: 1px; line-height: 1.2; font-size: 8px; word-break: break-word; }
+    .tc-col.rtl { direction: rtl; text-align: right; }
+    .tc-col.rtl ol { padding-left: 0; padding-right: 10px; }
+
+    /* ── Know your rights / attachments ── */
+    .info-wrap {
+      display: -webkit-flex; display: flex;
+      overflow: hidden;
+    }
+    .info-col {
+      -webkit-flex: 1; flex: 1;
+      min-width: 0;
+      padding: 3px 6px;
+      word-break: break-word;
+      overflow-wrap: break-word;
+    }
+    .info-col ul { padding-left: 10px; }
+    .info-col ul li { margin-bottom: 1px; font-size: 8px; line-height: 1.2; word-break: break-word; }
+    .info-col.rtl { direction: rtl; text-align: right; }
+    .info-col.rtl ul { padding-left: 0; padding-right: 10px; }
+    .info-col.rtl ol { padding-left: 0; padding-right: 10px; }
+    .info-col ol { padding-left: 10px; }
+    .info-col ol li { margin-bottom: 1px; font-size: 8px; word-break: break-word; }
+
+    /* ── Additional terms ── */
+    .additional-grid { padding: 3px 6px; }
+    .additional-row {
+      display: -webkit-flex; display: flex;
+      -webkit-justify-content: space-between; justify-content: space-between;
+      margin-bottom: 2px;
+    }
+    .additional-row .field-line {
+      -webkit-flex: 1; flex: 1;
+      border-bottom: 1px solid #aaa;
+      min-height: 10px;
+      margin: 0 4px;
+    }
+    .additional-row .num { font-size: 8px; min-width: 12px; }
+
+    /* ── Signatures ── */
+    .signatures {
+      display: -webkit-flex; display: flex;
+      overflow: hidden;
+    }
+    .sig-col {
+      -webkit-flex: 1; flex: 1;
+      padding: 4px 8px 3px;
+      border-right: 1px solid #ddd;
+    }
+    .sig-col:last-child { border-right: none; }
+    .sig-line { border-bottom: 1px solid #000; margin: 10px 0 3px; }
+    .sig-labels {
+      display: -webkit-flex; display: flex;
+      -webkit-justify-content: space-between; justify-content: space-between;
+      font-size: 8px;
+    }
+    .sig-col.rtl { direction: rtl; text-align: right; }
+
+    /* ── Footer contact ── */
+    .footer-contact {
+      text-align: center;
+      font-size: 7.5px;
+      color: #333;
+      margin-top: 2px;
+      padding-top: 2px;
+      border-top: 1px solid #ccc;
+    }
+  </style>
 </head>
 <body>
 
-    <h1 style="text-align:center;">LEASE AGREEMENT</h1>
+  <!-- ══ HEADER ══════════════════════════════════════════════════════════ -->
+  <div class="header">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+      <div style="font-size:11px;font-weight:bold;text-align:center;">حكومة دبي<br><span style="font-size:9px;">GOVERNMENT OF DUBAI</span></div>
+    </div>
+    <div class="header-center">
+      <div class="arabic-title">عـقـد إيـجـار</div>
+      <div class="eng-title">TENANCY CONTRACT</div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:4px">
+      <div style="font-size:11px;font-weight:bold;text-align:center;">دائرة الأراضي والأملاك<br><span style="font-size:9px;">Land Department</span></div>
+    </div>
+  </div>
 
-    <p>
-        This lease agreement is made on <strong>${agreement_date}</strong> 
-        between <strong>${landlord_name}</strong> 
-        (Landlord) and <strong>${tenant_name}</strong> (Tenant).
-    </p>
+  <div class="date-row">
+    <span>Date <span class="field-line">&nbsp;${contract_date}&nbsp;</span></span>
+    <span>التاريخ <span class="field-line">&nbsp;${contract_date}&nbsp;</span></span>
+  </div>
 
-    <p>
-        The property located at <strong>${property_address}</strong> 
-        will be rented for a monthly rent of 
-        <strong>${monthly_rent}</strong> INR, starting from 
-        <strong>${start_date}</strong> to <strong>${end_date}</strong>.
-    </p>
+  <!-- ══ OWNER / LESSOR INFORMATION ══════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <span>Owner / Lessor Information</span>
+      <span>معلومات المالك/ المؤجر</span>
+    </div>
+    <div class="section-body">
 
-    <p>
-        Tenant’s mobile number is <strong>${tenant_mobile}</strong> and 
-        email is <strong>${tenant_email}</strong>.
-    </p>
+      <div class="field-row two-col">
+        <div class="field-group">
+          <div class="labels"><span>Owner's Name</span><span>اسم المالك</span></div>
+          <div class="value-line">${owner_name}</div>
+        </div>
+      </div>
 
-    <h3>Terms & Conditions:</h3>
-    <ul>
-        <li>Security Deposit: <strong>${security_deposit}</strong> INR</li>
-        <li>Late Fee After Due Date: <strong>${late_fee}</strong> INR</li>
-        <li>Maintenance Charges: <strong>${maintenance_charges}</strong> INR</li>
-    </ul>
+      <div class="field-row two-col">
+        <div class="field-group">
+          <div class="labels"><span>Lessor's Name</span><span>اسم المؤجر</span></div>
+          <div class="value-line">${lessor_name}</div>
+        </div>
+      </div>
 
-    <br>
-    <h3>Signatures</h3>
-    <p>Landlord: __________________________</p>
-    <p>Tenant: _____________________________</p>
+      <div class="field-row two-col">
+        <div class="field-group">
+          <div class="labels"><span>Lessor's Emirates ID</span><span>الهوية الإماراتية للمؤجر</span></div>
+          <div class="value-line">${lessor_emirates_id}</div>
+        </div>
+      </div>
+
+      <div class="company-row">
+        <div class="field-group">
+          <div class="labels"><span>License No.</span><span>رقم الرخصة</span></div>
+          <div class="value-line">${lessor_license_no}</div>
+          <div class="sub-label">Incase of a Company &nbsp;|&nbsp; في حال كانت شركة</div>
+        </div>
+        <div class="field-group">
+          <div class="labels"><span>Licensing Authority</span><span>سلطة الترخيص</span></div>
+          <div class="value-line">${lessor_licensing_authority}</div>
+          <div class="sub-label">Incase of a Company &nbsp;|&nbsp; في حال كانت شركة</div>
+        </div>
+      </div>
+
+      <div class="field-row two-col">
+        <div class="field-group">
+          <div class="labels"><span>Lessor's Email</span><span>البريد الإلكتروني للمؤجر</span></div>
+          <div class="value-line">${lessor_email}</div>
+        </div>
+      </div>
+
+      <div class="field-row two-col">
+        <div class="field-group">
+          <div class="labels"><span>Lessor's Phone</span><span>رقم هاتف المؤجر</span></div>
+          <div class="value-line">${lessor_phone}</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══ TENANT INFORMATION ════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <span>Owner / Lessor Information</span>
+      <span>معلومات المستأجر</span>
+    </div>
+    <div class="section-body">
+
+      <div class="field-row two-col">
+        <div class="field-group">
+          <div class="labels"><span>Tenant's Name</span><span>اسم المستأجر</span></div>
+          <div class="value-line">${tenant_name}</div>
+        </div>
+      </div>
+
+      <div class="field-row two-col">
+        <div class="field-group">
+          <div class="labels"><span>Tenant's Emirates ID</span><span>الهوية الإماراتية للمستأجر</span></div>
+          <div class="value-line">${tenant_emirates_id}</div>
+        </div>
+      </div>
+
+      <div class="company-row">
+        <div class="field-group">
+          <div class="labels"><span>License No.</span><span>رقم الرخصة</span></div>
+          <div class="value-line">${tenant_license_no}</div>
+          <div class="sub-label">Incase of a Company &nbsp;|&nbsp; في حال كانت شركة</div>
+        </div>
+        <div class="field-group">
+          <div class="labels"><span>Licensing Authority</span><span>سلطة الترخيص</span></div>
+          <div class="value-line">${tenant_licensing_authority}</div>
+          <div class="sub-label">Incase of a Company &nbsp;|&nbsp; في حال كانت شركة</div>
+        </div>
+      </div>
+
+      <div class="field-row two-col">
+        <div class="field-group">
+          <div class="labels"><span>Tenant's Email</span><span>البريد الإلكتروني للمستأجر</span></div>
+          <div class="value-line">${tenant_email}</div>
+        </div>
+      </div>
+
+      <div class="field-row two-col">
+        <div class="field-group">
+          <div class="labels"><span>Tenant's Phone</span><span>رقم هاتف المستأجر</span></div>
+          <div class="value-line">${tenant_phone}</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══ PROPERTY INFORMATION ══════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <span>Property Information</span>
+      <span>معلومات العقار</span>
+    </div>
+    <div class="section-body">
+
+      <div class="usage-row">
+        <span>Property Usage</span>
+        <div class="radio-item">
+          <span class="radio-circle ${property_usage_residential}"></span> Residential سكني
+        </div>
+        <div class="radio-item">
+          <span class="radio-circle ${property_usage_commercial}"></span> Commercial تجاري
+        </div>
+        <div class="radio-item">
+          <span class="radio-circle ${property_usage_industrial}"></span> Industrial صناعي
+        </div>
+        <span class="label-ar">استخدام العقار</span>
+      </div>
+
+      <div class="field-row two-col">
+        <div class="field-group">
+          <div class="labels"><span>Plot No.</span><span>رقم الأرض</span></div>
+          <div class="value-line">${plot_no}</div>
+        </div>
+        <div class="field-group">
+          <div class="labels"><span>Makani No.</span><span>رقم مكاني</span></div>
+          <div class="value-line">${makani_no}</div>
+        </div>
+      </div>
+
+      <div class="field-row two-col">
+        <div class="field-group">
+          <div class="labels"><span>Building Name</span><span>اسم المبنى</span></div>
+          <div class="value-line">${building_name}</div>
+        </div>
+        <div class="field-group">
+          <div class="labels"><span>Property No.</span><span>رقم العقار</span></div>
+          <div class="value-line">${property_no}</div>
+        </div>
+      </div>
+
+      <div class="field-row two-col">
+        <div class="field-group">
+          <div class="labels"><span>Property Type</span><span>نوع الوحدة</span></div>
+          <div class="value-line">${property_type}</div>
+        </div>
+        <div class="field-group">
+          <div class="labels"><span>Property Area (s.m)</span><span>مساحة العقار (متر.مربع)</span></div>
+          <div class="value-line">${property_area}</div>
+        </div>
+      </div>
+
+      <div class="field-row two-col">
+        <div class="field-group">
+          <div class="labels"><span>Location</span><span>الموقع</span></div>
+          <div class="value-line">${location}</div>
+        </div>
+        <div class="field-group">
+          <div class="labels"><span>Premises No. (DEWA)</span><span>رقم المبنى (ديوا)</span></div>
+          <div class="value-line">${dewa_premises_no}</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══ CONTRACT INFORMATION ══════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <span>Contract Information</span>
+      <span>معلومات العقد</span>
+    </div>
+    <div class="section-body">
+
+      <div class="contract-grid">
+        <div class="col">
+          <div class="field-group" style="margin-bottom:7px">
+            <div class="labels"><span>Contract Value</span><span>قيمة العقد</span></div>
+            <div class="value-line">${contract_value} AED</div>
+          </div>
+          <div class="field-group" style="margin-bottom:7px">
+            <div class="labels"><span>Security Deposit Amount</span><span>مبلغ التأمين</span></div>
+            <div class="value-line">${security_deposit} AED</div>
+          </div>
+        </div>
+        <div class="col">
+          <div class="field-group" style="margin-bottom:7px">
+            <div class="labels"><span>Contract Period</span><span>فترة العقد</span></div>
+            <div class="period-row">
+              <span>From من</span>
+              <div class="field-line">${contract_start_date}</div>
+              <span>To إلى</span>
+              <div class="field-line">${contract_end_date}</div>
+            </div>
+          </div>
+          <div class="field-group" style="margin-bottom:7px">
+            <div class="labels"><span>Annual Rent</span><span>الايجار السنوي</span></div>
+            <div class="value-line">${annual_rent} AED</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="field-group">
+        <div class="labels"><span>Mode of Payment</span><span>طريقة الدفع</span></div>
+        <div class="value-line">${mode_of_payment}</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ══ TERMS AND CONDITIONS ═══════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <span>Terms and Conditions</span>
+      <span>الأحكام و الشروط</span>
+    </div>
+    <div class="tc-wrap">
+      <div class="tc-col">
+        <ol>
+          <li>The tenant has inspected the premises and agreed to lease the unit on its current condition.</li>
+          <li>Tenant undertakes to use the premises for designated purpose, tenant has no rights to transfer or relinquish the tenancy contract either with or without counterpart to any without landlord written approval. Also, tenant is not allowed to sublease the premises or any part thereof to third party in whole or in part unless it is legally permitted.</li>
+          <li>The tenant undertakes not to make any amendments, modifications or addendums to the premises subject of the contract without obtaining the landlord written approval. Tenant shall be liable for any damages or failure due to that.</li>
+          <li>The tenant shall be responsible for payment of all electricity, water, cooling and gas charges resulting of occupying leased unit unless other condition agreed in written.</li>
+          <li>The tenant must pay the rent amount in the manner and dates agreed with the landlord.</li>
+          <li>The tenant fully undertakes to comply with all the regulations and instructions related to the management of the property and the use of the premises and of common areas such (parking, swimming pools, gymnasium, etc…).</li>
+          <li>Tenancy contract parties declare all mentioned emails addresses and phone numbers are correct, all formal and legal notifications will be sent to those addresses in case of dispute between parties.</li>
+          <li>The landlord undertakes to enable the tenant of the full use of the premises including its facilities (swimming pool, gym, parking lot, etc) and do the regular maintenance as intended unless other condition agreed in written, and not to do any act that would detract from the premises benefit.</li>
+          <li>By signing this agreement from the first party, the "Landlord" hereby confirms and undertakes that he is the current owner of the property or his legal representative under legal power of attorney duly entitled by the competent authorities.</li>
+          <li>Any disagreement or dispute may arise from execution or interpretation of this contract shall be settled by the Rental Dispute Center.</li>
+          <li>This contract is subject to all provisions of Law No (26) of 2007 regulating the relation between landlords and tenants in the emirate of Dubai as amended, and as it will be changed or amended from time to time, as long with any related legislations and regulations applied in the emirate of Dubai.</li>
+          <li>Any additional condition will not be considered in case it conflicts with law.</li>
+          <li>In case of discrepancy occurs between Arabic and non Arabic texts with regards to the interpretation of this agreement or the scope of its application, the Arabic text shall prevail.</li>
+          <li>The landlord undertakes to register this tenancy contract on EJARI affiliated to Dubai Land Department and provide with all required documents.</li>
+        </ol>
+      </div>
+      <div class="tc-col rtl">
+        <ol>
+          <li>عاين المستأجر الوحدة موضوع الايجار ووافق على إستئجار العقار على حالته الحالية</li>
+          <li>يتعهد المستأجر باستعمال المأجور للغرض المخصص له، و لا يجوز للمستأجر تحويل أو التنازل عن عقد الايجار للغير بمقابل أو دون مقابل دون موافقة المالك خطيا، كما لا يجوز للمستأجر تأجير المأجور أو أي جزء منه من الباطن مالم يسمح بذلك قانونا</li>
+          <li>يتعهد المستأجر بعدم إجراء أي تعديلات أو إضافات على العقار موضوع العقد دون موافقة المالك الخطية، و يكون المستأجر مسؤولا عن أي أضرار أو نقص أو تلف يلحق بالعقار</li>
+          <li>يكون المستأجر مسؤولا عن سداد كافة فواتير الكهرباء و المياه و التبريد و الغاز المترتبة عن اشغاله المأجور مالم يتم الاتفاق على غير ذلك كتابيا</li>
+          <li>يتعهد المستأجر بسداد مبلغ الايجار المتفق عليه في هذا العقد في التواريخ و الطريقة المتفق عليها</li>
+          <li>يلتزم المستأجر التقيد التام بالانظمة و التعليمات المتعلقة باستخدام المأجور و المنافع المشتركة (كمواقف السيارات، أحواض السباحة، النادي الصحي، الخ)</li>
+          <li>يقر أطراف التعاقد بصحة العناوين و أرقام الهواتف المذكورة أعلاه، و تكون تلك العناوين هي المعتمدة رسميا للإخطارات و الأعلانات القضائية في حال نشوء أي نزاع بين أطراف العقد</li>
+          <li>يتعهد المؤجر بتمكين المستأجر من الانتفاع التام بالعقار للغرض المؤجر لأجله و المرافق الخاصة به (حوض سباحة، نادي صحي، مواقف سيارات.... إلخ) كما يكون مسؤولا عن أعمال الصيانة مالم يتم الاتفاق على غير ذلك، و عدم التعرض له في منفعة العقار</li>
+          <li>يعتبر توقيع المؤجر على هذا العقد إقرار منه بأنه المالك الحالي للعقار أو الوكيل القانوني للمالك بموجب وكالة قانونية موثقة وفق الأصول لدى الجهات المختصة</li>
+          <li>أي خلاف أو نزاع قد ينشأ عن تنفيذ أو تفسير هذا العقد يعود البت فيه لمركز فض المنازعات الإيجارية</li>
+          <li>يخضع هذا العقد لكافة أحكام القانون رقم ( 26 ) لسنة 2007 بشأن تنظيم العلاقة بين مؤجري و مستأجري العقارات في إماراة دبي، و تعديلاته و أي تغيير أو تعديل يطرأ عليه من وقت لآخر، كما يخضع للتشريعات و اللوائح الأخرى ذات العلاقة النافذة في دبي</li>
+          <li>لا يعتد بأي شرط تم إضافته إلى هذا العقد في حال تعارضه مع القانون</li>
+          <li>في حال حدوث أي تعارض أو اختلاف في التفسير بين النص العربي و النص الأجنبي يعتمد النص العربي</li>
+          <li>يتعهد المؤجر بتسجيل عقد الايجار في نظام إيجاري التابع لدائرة الأراضي و الأملاك و توفير كافة المستندات اللازمة لذلك</li>
+        </ol>
+      </div>
+    </div>
+
+    <!-- Signatures after T&C -->
+    <div class="signatures" style="border-top:1px solid #ccc;">
+      <div class="sig-col">
+        <div class="sig-line"></div>
+        <div class="sig-labels">
+          <span>Lessor's Signature &nbsp; توقيع المؤجر</span>
+          <span>Date التاريخ ___________</span>
+        </div>
+      </div>
+      <div class="sig-col rtl">
+        <div class="sig-line"></div>
+        <div class="sig-labels">
+          <span>Date التاريخ ___________</span>
+          <span>Tenant Signature &nbsp; توقيع المستأجر</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ KNOW YOUR RIGHTS / ATTACHMENTS ════════════════════════════════ -->
+  <div class="section">
+    <div class="info-wrap">
+      <div class="info-col">
+        <div style="font-weight:bold;margin-bottom:5px;font-size:11px;">Know your Rights</div>
+        <ul>
+          <li>You may visit Rental Dispute Center website through www.dubailand.gov.ae in case of any rental dispute between parties.</li>
+          <li>Law No 26 of 2007 regulating relationship between landlords and tenants.</li>
+          <li>Law No 33 of 2008 amending law 26 of year 2007.</li>
+          <li>Law No 43 of 2013 determining rent increases for properties.</li>
+        </ul>
+      </div>
+      <div class="info-col" style="border-left:1px solid #ddd;">
+        <div style="font-weight:bold;margin-bottom:5px;font-size:11px;">Attachments for Ejari Registration</div>
+        <ol>
+          <li>Original unified tenancy contract</li>
+          <li>Original emirates ID of applicant</li>
+        </ol>
+      </div>
+      <div class="info-col rtl" style="border-left:1px solid #ddd;">
+        <div style="font-weight:bold;margin-bottom:5px;font-size:11px;">لمعرفة حقوق الأطراف</div>
+        <ul>
+          <li>يمكنكم زيارة موقع مركز فض المنازعات الإيجارية من خلال www.dubailand.gov.ae في حال نشوء أي نزاع إيجاري بين الأطراف</li>
+          <li>الإطلاع على قانون رقم 26 لسنة 2007 بشأن تنظيم العلاقة بين المؤجرين والمستأجرين</li>
+          <li>الإطلاع على قانون رقم 33 لسنة 2008 الخاص بتعديل بعض أحكام قانون 26 لعام 2007</li>
+          <li>الإطلاع على قانون رقم 43 لسنة 2013 بشأن تحديد زيادة بدل الإيجار</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ ADDITIONAL TERMS ═══════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-header">
+      <span>Additional Terms</span>
+      <span>شروط إضافية</span>
+    </div>
+    <div class="additional-grid">
+      <div class="additional-row">
+        <span class="num">1.</span><div class="field-line">${additional_term_1}</div>
+        <span class="num" style="direction:rtl;">.١</span><div class="field-line">${additional_term_1}</div>
+      </div>
+      <div class="additional-row">
+        <span class="num">2.</span><div class="field-line">${additional_term_2}</div>
+        <span class="num" style="direction:rtl;">.٢</span><div class="field-line">${additional_term_2}</div>
+      </div>
+      <div class="additional-row">
+        <span class="num">3.</span><div class="field-line">${additional_term_3}</div>
+        <span class="num" style="direction:rtl;">.٣</span><div class="field-line">${additional_term_3}</div>
+      </div>
+      <div class="additional-row">
+        <span class="num">4.</span><div class="field-line">${additional_term_4}</div>
+        <span class="num" style="direction:rtl;">.٤</span><div class="field-line">${additional_term_4}</div>
+      </div>
+      <div class="additional-row">
+        <span class="num">5.</span><div class="field-line">${additional_term_5}</div>
+        <span class="num" style="direction:rtl;">.٥</span><div class="field-line">${additional_term_5}</div>
+      </div>
+      <p style="font-size:9.5px;margin-top:6px;color:#444;">
+        Note: You may add addendum to this tenancy contract in case you have additional terms while it needs to be signed by all parties &nbsp;|&nbsp;
+        ملاحظة: يمكن إضافة ملحق إلى هذا العقد في حال وجود أي شروط إضافية، على أن يوقع من أطراف التعاقد
+      </p>
+    </div>
+
+    <!-- Signatures -->
+    <div class="signatures" style="border-top:1px solid #ccc;">
+      <div class="sig-col">
+        <div class="sig-line"></div>
+        <div class="sig-labels">
+          <span>Lessor's Signature &nbsp; توقيع المؤجر</span>
+          <span>Date التاريخ ___________</span>
+        </div>
+      </div>
+      <div class="sig-col rtl">
+        <div class="sig-line"></div>
+        <div class="sig-labels">
+          <span>Date التاريخ ___________</span>
+          <span>Tenant Signature &nbsp; توقيع المستأجر</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ FOOTER ═════════════════════════════════════════════════════════ -->
+  <div class="footer-contact">
+    هاتف: ٨٠٠٤٤٨٨ فاكس: ٠٤٩٧١٤٢٢٢٢٥١+ صب: ١١٦٦، دبي، الإمارات العربية المتحدة &nbsp;|&nbsp;
+    Tel: 8004488 Fax: +971 4 222 2251 P.O.Box 1166, Dubai, U.A.E.<br/>
+    E-mail: support@dubailand.gov.ae &nbsp;&nbsp; Website: www.dubailand.gov.ae
+  </div>
 
 </body>
 </html>
