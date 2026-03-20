@@ -36,8 +36,6 @@ urlpatterns = [
     path('owner/pmc', views.owner_pmc_view, name='owner_pmc_view'),
     path('save/lease', views.lease_details_view, name='lease_details_view'),
     path('audit_log', views.audit_log, name='audit_log'),
-
-    path('lease_documents', views.lease_documents, name='lease_documents'),
     path('lease/tenancy', views.lease_tenancy, name='lease_tenancy'),
     path("complaint", views.complaint, name="complaint_api"), 
     path("faq_api", views.faq_api, name="faq_api"),
