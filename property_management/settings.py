@@ -37,7 +37,8 @@ INSTALLED_APPS = [
     'sslserver',
     'charges',
     'lead',
-    'lease'
+    'lease',
+    'terms'
 ]
 
 MIDDLEWARE = [

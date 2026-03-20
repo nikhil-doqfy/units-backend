@@ -25,6 +25,7 @@ from user_service.models import Tenant, TenantDocuments, DocumentType
 from property_management import settings
 from property_management.utils import audit_logs
 from .models import Lease, LeaseDocuments, Template, TemplateField, TemplateValue
+from .serializers import serialize_lease, serialize_tenant_lease
 
 
 def _parse_date(value):
@@ -36,111 +37,6 @@ def _parse_date(value):
         except ValueError:
             continue
     return None
-
-
-def _get_tenant_photo(tenant):
-    if not tenant or not tenant.profile_image:
-        return None
-    try:
-        return fetch_s3_presigned_url(tenant.profile_image)
-    except Exception:
-        return None
-
-
-def _get_property_thumbnail(unit):
-    if not unit:
-        return None
-    try:
-        pb = unit.property_block_tower
-        return pb.property._get_thumbnail() if pb and pb.property else None
-    except Exception:
-        return None
-
-
-def _serialize_lease(lease):
-    t    = lease.tenant
-    unit = lease.unit
-    pb   = unit.property_block_tower if unit else None
-    prop = pb.property if pb else None
-
-    unit_owners = []
-    if unit:
-        for o in unit.unit_owners.select_related("owner__user").all():
-            unit_owners.append({
-                "id":                   o.id,
-                "owner_id":             o.owner_id,
-                "name":                 f"{o.owner.user.first_name} {o.owner.user.last_name}".strip() if o.owner and o.owner.user else None,
-                "email":                o.owner.email if o.owner else None,
-                "contact_number":       o.owner.contact_number if o.owner else None,
-                "emirates_id":          o.owner.emirate_id if o.owner else None,
-                "owner_number":         o.owner.owner_number if o.owner else None,
-                "trade_license_number": o.owner.trade_license_number if o.owner else None,
-                "license_number":       o.owner.license_number if o.owner else None,
-                "license_expiry_date":  o.owner.license_expiry_date.isoformat() if o.owner and o.owner.license_expiry_date else None,
-                "license_issuer":       o.owner.license_issuer if o.owner else None,
-                "fax_number":           o.owner.fax_number if o.owner else None,
-                "po_box_number":        o.owner.po_box_number if o.owner else None,
-            })
-
-    return {
-        "id": lease.id,
-        "code": lease.code,
-        # property / block
-        "property_id":         prop.id if prop else None,
-        "property_name":       prop.property_name if prop else None,
-        "property_thumbnail":  _get_property_thumbnail(unit),
-        "property_block_id":   pb.id if pb else None,
-        "property_block_name": pb.block_name if pb else None,
-        # unit
-        "unit_id":    unit.id if unit else None,
-        "unit_name":  unit.unit_name if unit else None,
-        "unit_size":  str(unit.unit_size) if unit and unit.unit_size else None,
-        "land_no":    unit.land_no if unit else None,
-        "dm_no":      unit.dm_no if unit else None,
-        "unit_usage": unit.unit_usage if unit else None,
-        "unit_type":  unit.unit_type if unit else None,
-        "sub_type":   unit.sub_type if unit else None,
-        "makani_no":  unit.makani_no if unit else None,
-        "floor_no":   unit.floor_no if unit else None,
-        "unit_owners": unit_owners,
-        # tenant basics
-        "tenant_id":    t.id if t else None,
-        "tenant_code":  t.code if t else None,
-        "tenant_name":  (
-            f"{t.user.first_name} {t.user.last_name}".strip()
-            if t and t.user else None
-        ),
-        "tenant_email":   t.user.email if t and t.user else None,
-        "tenant_contact": t.contact_number if t else None,
-        "emirates_id":    t.emirate_id if t else None,
-        "address_line_1": t.address_line_1 if t else None,
-        "address_line_2": t.address_line_2 if t else None,
-        "passport_number": t.passport_number if t else None,
-        "passport_expiry": str(t.passport_expiry_datetime)[:10] if t and t.passport_expiry_datetime else None,
-        "visa_number":     t.visa_number if t else None,
-        "visa_expiry":     str(t.visa_expiry_datetime)[:10] if t and t.visa_expiry_datetime else None,
-        # lease dates & financials
-        "lease_status":         lease.lease_status,
-        "lease_stage":          lease.lease_stage,
-        "start_date":           str(lease.start_date)[:10] if lease.start_date else None,
-        "end_date":             str(lease.end_date)[:10] if lease.end_date else None,
-        "grace_start_date":     str(lease.grace_start_date)[:10] if lease.grace_start_date else None,
-        "grace_end_date":       str(lease.grace_end_date)[:10] if lease.grace_end_date else None,
-        "annual_amount":        lease.annual_amount,
-        "actual_annual_amount": lease.actual_annual_amount,
-        "booking_amount":       lease.booking_amount,
-        "maintenance_charges":  lease.maintenance_charges,
-        "rent":                 lease.rent,
-        "security_deposit":     lease.security_deposit,
-        "commission":           lease.commission,
-        "notice_period":        lease.notice_period,
-        "discount":             lease.discount,
-        "contract_amount":      lease.contract_amount,
-        "payment_count":        lease.payment_count,
-        "shell_and_core":       lease.shell_and_core,
-        "remarks":              lease.remarks,
-        "pdf_path":             lease.pdf_path,
-    }
 
 
 def _update_tenant_fields(tenant_obj, data):
@@ -156,6 +52,7 @@ def _update_tenant_fields(tenant_obj, data):
     for src, dest in [
         ("contact_number", "contact_number"),
         ("emirates_id", "emirate_id"),
+        ("nationality", "nationality"),
         ("address_line_1", "address_line_1"),
         ("address_line_2", "address_line_2"),
         ("passport_number", "passport_number"),
@@ -187,6 +84,7 @@ def _create_tenant(email, data, created_by):
             email=email,
             contact_number=data.get("contact_number") or "",
             emirate_id=data.get("emirates_id") or "",
+            nationality=data.get("nationality") or "",
             address_line_1=data.get("address_line_1") or "",
             address_line_2=data.get("address_line_2") or "",
             passport_number=data.get("passport_number") or "",
@@ -219,7 +117,7 @@ def lease_view(request):
                         message="Lease not found",
                         status=status.HTTP_404_NOT_FOUND,
                     )
-                return prepare_response(content=_serialize_lease(lease))
+                return prepare_response(content=serialize_lease(lease))
 
             # List with optional filters + pagination
             qs = Lease.objects.select_related("unit__property_block_tower__property", "tenant__user").filter(is_active=True)
@@ -249,7 +147,7 @@ def lease_view(request):
             page_obj = paginator.get_page(page)
 
             return prepare_response(
-                content=[_serialize_lease(l) for l in page_obj],
+                content=[serialize_lease(l) for l in page_obj],
                 paginator=page_obj,
                 total_records=paginator.count,
             )
@@ -320,10 +218,11 @@ def lease_view(request):
                 remarks=body.get("remarks") or "",
                 lease_status=body.get("lease_status") or constants.LEASE_STATUS_CHOICES[0][0],
                 lease_stage=body.get("lease_stage") or constants.INVITE,
+                platform=body.get("platform") or None,
             )
 
             return prepare_response(
-                content=_serialize_lease(lease),
+                content=serialize_lease(lease),
                 message="Lease created successfully",
                 status=status.HTTP_201_CREATED,
             )
@@ -365,6 +264,7 @@ def lease_view(request):
                 "remarks": body.get("remarks"),
                 "lease_status": body.get("lease_status"),
                 "lease_stage":  body.get("lease_stage"),
+                "platform":     body.get("platform"),
             }
 
             if "shell_and_core" in body:
@@ -377,7 +277,7 @@ def lease_view(request):
             lease.save()
 
             return prepare_response(
-                content=_serialize_lease(lease),
+                content=serialize_lease(lease),
                 message="Lease updated successfully",
             )
 
@@ -412,37 +312,6 @@ def lease_view(request):
             message=str(e),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
-
-
-def _serialize_tenant_lease(lease):
-    t    = lease.tenant
-    unit = lease.unit
-    pb   = unit.property_block_tower if unit else None
-    prop = pb.property if pb else None
-    return {
-        "lease_id":            lease.id,
-        "lease_code":          lease.code,
-        "lease_status":        lease.lease_status,
-        "lease_stage":         lease.lease_stage,
-        "start_date":          str(lease.start_date)[:10] if lease.start_date else None,
-        "end_date":            str(lease.end_date)[:10] if lease.end_date else None,
-        "rent":                lease.rent,
-        "annual_amount":       lease.annual_amount,
-        "tenant_id":           t.id if t else None,
-        "tenant_code":         t.code if t else None,
-        "tenant_name":         f"{t.user.first_name} {t.user.last_name}".strip() if t and t.user else None,
-        "tenant_photo":        _get_tenant_photo(t),
-        "email":               t.email if t else None,
-        "contact_number":      t.contact_number if t else None,
-        "emirates_id":         t.emirate_id if t else None,
-        "unit_id":             unit.id if unit else None,
-        "unit_name":           unit.unit_name if unit else None,
-        "property_id":         prop.id if prop else None,
-        "property_block_id":   pb.id if pb else None,
-        "property_block_name": pb.block_name if pb else None,
-        "property_name":       prop.property_name if prop else None,
-        "property_thumbnail":  _get_property_thumbnail(unit),
-    }
 
 
 @is_request_authenticated
@@ -500,12 +369,16 @@ def tenant_leases_view(request):
                 "Start Date", "End Date", "Rent", "Status",
             ])
             for l in qs:
-                row = _serialize_tenant_lease(l)
+                row = serialize_tenant_lease(l)
+                t   = row.get("tenant", {})
+                p   = row.get("property", {})
+                d   = row.get("dates", {})
+                f   = row.get("financials", {})
                 writer.writerow([
-                    row["lease_code"], row["tenant_code"], row["tenant_name"],
-                    row["email"], row["contact_number"], row["emirates_id"],
-                    row["property_name"], row["property_block_name"],
-                    row["start_date"], row["end_date"], row["rent"], row["lease_status"],
+                    row["code"], t.get("code"), t.get("name"),
+                    t.get("email"), t.get("contact_number"), t.get("emirates_id"),
+                    p.get("name"), p.get("block_name"),
+                    d.get("start_date"), d.get("end_date"), f.get("rent"), row["lease_status"],
                 ])
             return response
 
@@ -513,7 +386,7 @@ def tenant_leases_view(request):
         page_obj  = paginator.get_page(page)
 
         return prepare_response(
-            content=[_serialize_tenant_lease(l) for l in page_obj],
+            content=[serialize_tenant_lease(l) for l in page_obj],
             pagination={
                 "total_records": paginator.count,
                 "total_pages":   paginator.num_pages,
@@ -757,6 +630,15 @@ def get_template_fields(request):
                 except Lease.DoesNotExist:
                     pass
 
+            pdf_url = ""
+            if lease_id:
+                try:
+                    lease_obj = Lease.objects.get(id=lease_id)
+                    if lease_obj.pdf_path:
+                        pdf_url = fetch_s3_presigned_url(lease_obj.pdf_path)
+                except Lease.DoesNotExist:
+                    pass
+
             return prepare_response(
                 content={
                     "template_id":    template.id,
@@ -766,6 +648,7 @@ def get_template_fields(request):
                     "fields":         field_list,
                     "saved_values":   saved_values,
                     "lease_defaults": lease_defaults,
+                    "pdf_url":        pdf_url,
                 },
                 message=constants.TEMPLATE_FIELDS_FETCHED,
                 status=status.HTTP_200_OK,
@@ -858,10 +741,81 @@ def generate_contract(request):
 
         return prepare_response(
             message=constants.CONTRACT_GENERATED_SUCCESS,
-            content={"file_name": filename, "pdf_url": pdf_s3_url},
+            content={"file_name": filename, "pdf_url": fetch_s3_presigned_url(pdf_s3_url)},
             status=status.HTTP_200_OK,
         )
 
+    except Exception as e:
+        return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@is_request_authenticated
+def send_lease_invite(request):
+    if request.method != "POST":
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    try:
+        body     = json.loads(request.body)
+        lease_id = body.get("lease_id")
+        if not lease_id:
+            return prepare_response(message="lease_id is required", status=status.HTTP_400_BAD_REQUEST)
+
+        lease = Lease.objects.select_related(
+            "tenant__user",
+            "unit__property_block_tower__property",
+        ).get(id=lease_id)
+
+        t    = lease.tenant
+        unit = lease.unit
+        pb   = unit.property_block_tower if unit else None
+        prop = pb.property if pb else None
+
+        tenant_name  = f"{t.user.first_name} {t.user.last_name}".strip() if t and t.user else "Tenant"
+        tenant_email = t.user.email if t and t.user else None
+
+        if not tenant_email:
+            return prepare_response(message="Tenant email not found", status=status.HTTP_400_BAD_REQUEST)
+
+        from utilities.config import FRONTEND_URL
+        from urllib.parse import urlencode
+        first_name = t.user.first_name if t and t.user else ""
+        last_name  = t.user.last_name  if t and t.user else ""
+        contact    = t.contact_number  if t else ""
+        qs = urlencode({
+            "role":            "tenant",
+            "email":           tenant_email,
+            "first_name":      first_name,
+            "last_name":       last_name,
+            "contact_number":  contact,
+        })
+        signup_url = f"{FRONTEND_URL}/auth/new-user?{qs}"
+
+        ctx = {
+            "tenant_name":   tenant_name,
+            "lease_code":    lease.code,
+            "property_name": prop.property_name if prop else "",
+            "unit_name":     unit.unit_name if unit else "",
+            "signup_url":    signup_url,
+        }
+        body_html = render_to_string("email_templates/lease_invite_tenant.html", ctx)
+        body_text = (
+            f"Dear {tenant_name},\n\n"
+            f"Your lease {lease.code} is currently being processed.\n"
+            f"Please sign up and complete your profile at: {signup_url}\n\n"
+            f"Thank you,\nThe Doqfy Team"
+        )
+
+        ok = send_ses_email(tenant_email, f"Your Lease is in Progress – {lease.code}", body_text, body_html)
+
+        audit_logs(request, f"Sent invite email for lease '{lease.code}' to {tenant_email}", constants.CREATED)
+
+        return prepare_response(
+            message="Invite email sent successfully",
+            content={"sent": tenant_email, "success": ok},
+            status=status.HTTP_200_OK,
+        )
+
+    except Lease.DoesNotExist:
+        return prepare_response(message=constants.INVALID_LAESE_ID, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
         return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

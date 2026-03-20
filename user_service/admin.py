@@ -1,16 +1,10 @@
 from django.contrib import admin
 from user_service.models import (
-    UserProfile, Permission, Role,
-    UserVerification, Documents, OwnerDocuments,
-    TenantDocuments, FAQ, PrivacyPolicy, Owner, Tenant, PropertyManager, Approval
+    UserProfile, Permission, Role, UserVerification,
+    Documents, OwnerDocuments, TenantDocuments,
+    Owner, Tenant, PropertyManager,
+    FAQ, PrivacyPolicy, Approval
 )
-from property_management.models import UserInvitation, TermAndCondition
-from lease.models import Template, TemplateField, TemplateValue
-
-
-# -------------------- User Service Admin --------------------
-class CompanyStaffAdmin(admin.ModelAdmin):
-    list_display = ["id", "staff", "company", "is_active"]
 
 
 @admin.register(UserProfile)
@@ -48,17 +42,6 @@ class TenantDocumentsAdmin(admin.ModelAdmin):
     list_display = ["id", "tenant"]
 
 
-
-@admin.register(PrivacyPolicy)
-class PrivacyPolicyAdmin(admin.ModelAdmin):
-    list_display = ("id", "title")
-
-
-@admin.register(FAQ)
-class FAQAdmin(admin.ModelAdmin):
-    list_display = ("id", "question")
-
-
 @admin.register(Owner)
 class OwnerAdmin(admin.ModelAdmin):
     list_display = ["id", "get_full_name", "code", "email", "contact_number",
@@ -93,15 +76,16 @@ class PropertyManagerAdmin(admin.ModelAdmin):
         return f"{obj.user.first_name} {obj.user.last_name}".strip()
 
 
-@admin.register(UserInvitation)
-class UserInvitationAdmin(admin.ModelAdmin):
-    list_display = ["id", "email", "invited_by", "invitation_type", "status"]
+
+@admin.register(PrivacyPolicy)
+class PrivacyPolicyAdmin(admin.ModelAdmin):
+    list_display = ("id", "title")
 
 
-@admin.register(TermAndCondition)
-class TermAndConditionAdmin(admin.ModelAdmin):
-    list_display = ("id", "description", "term_type", "lease", "is_predefined")
-
+@admin.register(FAQ)
+class FAQAdmin(admin.ModelAdmin):
+    list_display = ("id", "question")
+   
 @admin.register(Approval)
 class ApprovalAdmin(admin.ModelAdmin):
     list_display = ("tenant","unit","requested_rent","requested_tenure","approved","approved_by",)
