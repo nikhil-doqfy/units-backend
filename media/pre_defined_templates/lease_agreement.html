@@ -24,36 +24,36 @@
       display: -webkit-flex; display: flex;
       -webkit-justify-content: space-between; justify-content: space-between;
       -webkit-align-items: flex-start; align-items: flex-start;
-      margin-bottom: 5px;
+      margin-bottom: 3px;
     }
     .header > div { -webkit-flex: 1; flex: 1; }
     .header-center {
       text-align: center;
-      padding: 0 10px;
+      padding: 0 8px;
     }
     .header-center .arabic-title {
-      font-size: 15px;
+      font-size: 13px;
       font-weight: bold;
-      letter-spacing: 5px;
+      letter-spacing: 4px;
       color: #000;
     }
     .header-center .eng-title {
-      font-size: 13px;
+      font-size: 11px;
       font-weight: bold;
       margin-top: 1px;
     }
     .date-row {
       display: -webkit-flex; display: flex;
       -webkit-justify-content: space-between; justify-content: space-between;
-      margin: 4px 0 6px 0;
-      font-size: 10px;
+      margin: 2px 0 4px 0;
+      font-size: 9px;
     }
-    .date-row .field-line { border-bottom: 1px solid #000; width: 180px; display: inline-block; }
+    .date-row .field-line { border-bottom: 1px solid #000; width: 160px; display: inline-block; }
 
     /* ── Sections ── */
     .section {
       border: 1px solid #333;
-      margin-bottom: 5px;
+      margin-bottom: 3px;
       overflow: hidden;
     }
     .section-header {
@@ -62,17 +62,17 @@
       -webkit-align-items: center; align-items: center;
       background: #2b4d8e;
       color: #fff;
-      padding: 3px 8px;
+      padding: 2px 6px;
       font-weight: bold;
-      font-size: 10.5px;
+      font-size: 9.5px;
     }
-    .section-body { padding: 5px 8px; }
+    .section-body { padding: 3px 6px; }
 
     /* ── Field rows ── */
     .field-row {
       display: -webkit-flex; display: flex;
       -webkit-align-items: flex-end; align-items: flex-end;
-      margin-bottom: 4px;
+      margin-bottom: 3px;
     }
     .field-row.two-col > .field-group { -webkit-flex: 1; flex: 1; }
     .field-row.two-col > .field-group:first-child { margin-right: 8px; }
@@ -83,19 +83,19 @@
     .field-group .labels {
       display: -webkit-flex; display: flex;
       -webkit-justify-content: space-between; justify-content: space-between;
-      font-size: 9px;
+      font-size: 8px;
       color: #444;
       margin-bottom: 1px;
     }
     .field-group .value-line {
       border-bottom: 1px solid #000;
-      min-height: 14px;
-      font-size: 10px;
-      padding: 1px 2px;
+      min-height: 12px;
+      font-size: 9px;
+      padding: 0 2px;
       word-break: break-word;
     }
     .field-group .sub-label {
-      font-size: 8px;
+      font-size: 7px;
       color: #666;
       text-align: center;
     }
@@ -103,7 +103,7 @@
     /* ── Two-column company row ── */
     .company-row {
       display: -webkit-flex; display: flex;
-      margin-bottom: 4px;
+      margin-bottom: 3px;
     }
     .company-row .field-group { -webkit-flex: 1; flex: 1; }
     .company-row .field-group:first-child { margin-right: 12px; }
@@ -112,18 +112,18 @@
     .usage-row {
       display: -webkit-flex; display: flex;
       -webkit-align-items: center; align-items: center;
-      margin-bottom: 4px;
+      margin-bottom: 3px;
     }
-    .usage-row .label-ar { margin-left: auto; font-size: 9px; color: #444; }
+    .usage-row .label-ar { margin-left: auto; font-size: 8px; color: #444; }
     .radio-item {
       display: -webkit-flex; display: flex;
       -webkit-align-items: center; align-items: center;
-      font-size: 10px;
-      margin-right: 16px;
+      font-size: 9px;
+      margin-right: 12px;
     }
-    .radio-item .radio-circle { margin-right: 4px; }
+    .radio-item .radio-circle { margin-right: 3px; }
     .radio-circle {
-      width: 10px; height: 10px;
+      width: 9px; height: 9px;
       border-radius: 50%;
       border: 1px solid #000;
       display: inline-block;
@@ -141,14 +141,14 @@
     .period-row {
       display: -webkit-flex; display: flex;
       -webkit-align-items: flex-end; align-items: flex-end;
-      margin-bottom: 4px;
+      margin-bottom: 3px;
     }
     .period-row .field-line {
       border-bottom: 1px solid #000;
       -webkit-flex: 1; flex: 1;
-      min-height: 14px;
+      min-height: 12px;
     }
-    .period-row span { font-size: 9px; color: #444; white-space: nowrap; margin: 0 3px; }
+    .period-row span { font-size: 8px; color: #444; white-space: nowrap; margin: 0 3px; }
 
     /* ── T&C ── */
     .tc-wrap {
@@ -158,16 +158,16 @@
     .tc-col {
       -webkit-flex: 1; flex: 1;
       min-width: 0;
-      padding: 5px 8px;
+      padding: 3px 6px;
       border-right: 1px solid #ddd;
       word-break: break-word;
       overflow-wrap: break-word;
     }
     .tc-col:last-child { border-right: none; }
-    .tc-col ol { padding-left: 12px; }
-    .tc-col ol li { margin-bottom: 2px; line-height: 1.25; font-size: 9px; word-break: break-word; }
+    .tc-col ol { padding-left: 10px; }
+    .tc-col ol li { margin-bottom: 1px; line-height: 1.2; font-size: 8px; word-break: break-word; }
     .tc-col.rtl { direction: rtl; text-align: right; }
-    .tc-col.rtl ol { padding-left: 0; padding-right: 12px; }
+    .tc-col.rtl ol { padding-left: 0; padding-right: 10px; }
 
     /* ── Know your rights / attachments ── */
     .info-wrap {
@@ -177,32 +177,32 @@
     .info-col {
       -webkit-flex: 1; flex: 1;
       min-width: 0;
-      padding: 5px 8px;
+      padding: 3px 6px;
       word-break: break-word;
       overflow-wrap: break-word;
     }
-    .info-col ul { padding-left: 12px; }
-    .info-col ul li { margin-bottom: 2px; font-size: 9px; line-height: 1.25; word-break: break-word; }
+    .info-col ul { padding-left: 10px; }
+    .info-col ul li { margin-bottom: 1px; font-size: 8px; line-height: 1.2; word-break: break-word; }
     .info-col.rtl { direction: rtl; text-align: right; }
-    .info-col.rtl ul { padding-left: 0; padding-right: 12px; }
-    .info-col.rtl ol { padding-left: 0; padding-right: 12px; }
-    .info-col ol { padding-left: 12px; }
-    .info-col ol li { margin-bottom: 2px; font-size: 9px; word-break: break-word; }
+    .info-col.rtl ul { padding-left: 0; padding-right: 10px; }
+    .info-col.rtl ol { padding-left: 0; padding-right: 10px; }
+    .info-col ol { padding-left: 10px; }
+    .info-col ol li { margin-bottom: 1px; font-size: 8px; word-break: break-word; }
 
     /* ── Additional terms ── */
-    .additional-grid { padding: 5px 8px; }
+    .additional-grid { padding: 3px 6px; }
     .additional-row {
       display: -webkit-flex; display: flex;
       -webkit-justify-content: space-between; justify-content: space-between;
-      margin-bottom: 3px;
+      margin-bottom: 2px;
     }
     .additional-row .field-line {
       -webkit-flex: 1; flex: 1;
       border-bottom: 1px solid #aaa;
-      min-height: 12px;
-      margin: 0 6px;
+      min-height: 10px;
+      margin: 0 4px;
     }
-    .additional-row .num { font-size: 10px; min-width: 14px; }
+    .additional-row .num { font-size: 8px; min-width: 12px; }
 
     /* ── Signatures ── */
     .signatures {
@@ -211,25 +211,25 @@
     }
     .sig-col {
       -webkit-flex: 1; flex: 1;
-      padding: 8px 10px 5px;
+      padding: 4px 8px 3px;
       border-right: 1px solid #ddd;
     }
     .sig-col:last-child { border-right: none; }
-    .sig-line { border-bottom: 1px solid #000; margin: 14px 0 4px; }
+    .sig-line { border-bottom: 1px solid #000; margin: 10px 0 3px; }
     .sig-labels {
       display: -webkit-flex; display: flex;
       -webkit-justify-content: space-between; justify-content: space-between;
-      font-size: 9px;
+      font-size: 8px;
     }
     .sig-col.rtl { direction: rtl; text-align: right; }
 
     /* ── Footer contact ── */
     .footer-contact {
       text-align: center;
-      font-size: 8.5px;
+      font-size: 7.5px;
       color: #333;
-      margin-top: 4px;
-      padding-top: 3px;
+      margin-top: 2px;
+      padding-top: 2px;
       border-top: 1px solid #ccc;
     }
   </style>
