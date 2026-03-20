@@ -242,19 +242,20 @@ class Unit(Base):
             "unit_owners": [
                 {
                     "id": o.id,
-                    "name": o.name,
-                    "email": o.email,
-                    "contact_number": o.contact_number,
-                    "emirates_id": o.emirates_id,
-                    "owner_number": o.owner_number,
-                    "trade_license_number": o.trade_license_number,
-                    "license_number": o.license_number,
-                    "license_expiry_date": o.license_expiry_date.isoformat() if o.license_expiry_date else None,
-                    "license_issuer": o.license_issuer,
-                    "fax_number": o.fax_number,
-                    "po_box_number": o.po_box_number,
+                    "owner_id": o.owner_id,
+                    "name": f"{o.owner.user.first_name} {o.owner.user.last_name}".strip() if o.owner else None,
+                    "email": o.owner.email if o.owner else None,
+                    "contact_number": o.owner.contact_number if o.owner else None,
+                    "emirates_id": o.owner.emirate_id if o.owner else None,
+                    "owner_number": o.owner.owner_number if o.owner else None,
+                    "trade_license_number": o.owner.trade_license_number if o.owner else None,
+                    "license_number": o.owner.license_number if o.owner else None,
+                    "license_expiry_date": o.owner.license_expiry_date.isoformat() if o.owner and o.owner.license_expiry_date else None,
+                    "license_issuer": o.owner.license_issuer if o.owner else None,
+                    "fax_number": o.owner.fax_number if o.owner else None,
+                    "po_box_number": o.owner.po_box_number if o.owner else None,
                 }
-                for o in self.unit_owners.all()
+                for o in self.unit_owners.select_related("owner__user").all()
             ],
         }
 
@@ -295,20 +296,16 @@ class UnitOwner(Base):
         on_delete=models.CASCADE,
         related_name="unit_owners"
     )
-    name = models.CharField(max_length=255, null=True, blank=True)
-    email = models.EmailField(null=True, blank=True)
-    contact_number = models.CharField(max_length=50, null=True, blank=True)
-    emirates_id = models.CharField(max_length=100, null=True, blank=True)
-    owner_number = models.CharField(max_length=20, null=True, blank=True)
-    trade_license_number = models.CharField(max_length=255, null=True, blank=True)
-    license_number = models.CharField(max_length=255, null=True, blank=True)
-    license_expiry_date = models.DateTimeField(null=True, blank=True)
-    license_issuer = models.CharField(max_length=150, null=True, blank=True)
-    fax_number = models.CharField(max_length=20, null=True, blank=True)
-    po_box_number = models.CharField(max_length=20, null=True, blank=True)
+    owner = models.ForeignKey(
+        "user_service.Owner",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="unit_owner_links"
+    )
 
     def __str__(self):
-        return f"{self.name} -> Unit #{self.unit_id}"
+        return f"Owner #{self.owner_id} -> Unit #{self.unit_id}"
     
 
 class PropertyInterest(Base):

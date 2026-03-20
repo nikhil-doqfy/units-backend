@@ -1,12 +1,11 @@
 import os
 import datetime
-import pdfkit
 import json
 import datetime
-from user_service.models import UserProfile, Documents, Role, FAQ, Owner, Tenant, PropertyManager
-from property.models import Unit, Property, PropertyManagmentCompany, PropertyImages, PropertyInterest, PropertyBlocks
-from property_management.models import LeasePropertyDetails, TemplateFields, TemplateValues, Template, \
-    LeaseDocumentsMapping, TermAndCondition, Country ,AuditLog
+from user_service.models import UserProfile, Documents, Role, FAQ, Owner, Tenant, PropertyManager, DocumentType
+from property.models import Unit, Property, PropertyManagmentCompany, PropertyImages, PropertyInterest
+from property_management.models import TermAndCondition, Country, AuditLog
+from lease.models import Template, TemplateField, TemplateValue
 from payment.models import Payment, Bank
 from utilities.decorator import is_request_authenticated
 from utilities.helper_functions import (
@@ -17,7 +16,6 @@ from utilities.helper_functions import (
     fetch_s3_presigned_url,
     export_to_csv,
     datetime_to_epoch_millis,
-    get_pdfkit_config,
     generate_property_code,
     fetch_s3_presigned_url_for_download,translate_to_arabic,
     base64_to_image,
@@ -331,6 +329,10 @@ def options(request):
         {"key": constants.ASSIGNED_ENGINEER, "value": "Assigned to Engineer"},
         {"key": constants.REJECTED, "value": "Rejected"},]
         
+        elif option_type == "TENANT_DOCUMENT_TYPE":
+            doc_types = DocumentType.objects.filter(section=constants.TENANT).order_by("id")
+            content["tenant_document_type"] = [{"key": dt.id, "value": dt.name} for dt in doc_types]
+
         elif option_type == "TENANT_BY_COMPANY": #for creating lease we get that tenants
             if not is_pm or not pm_profile.company:
                 content["tenant"] = []
@@ -1903,173 +1905,6 @@ def dashboard_overview(request):
         )
 
 
-@is_request_authenticated
-def generate_contract(request):
-    if request.method != "POST":
-        return prepare_response(
-            message=constants.INVALID_REQUEST_METHOD,
-            status=status.HTTP_405_METHOD_NOT_ALLOWED
-        )
-    try:
-        body = json.loads(request.body)
-        template_id = body.get("template_id")
-        lease_id = body.get("lease_id")
-        values_dict = body.get("values")
-
-        if not template_id or not lease_id or not values_dict:
-            return prepare_response(
-                message=constants.TEMPLATE_LEASE_VALUES_REQUIRED,
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        template = Template.objects.filter(id=template_id, is_active=True).first()
-        if not template:
-            return prepare_response(
-                message=constants.INVALID_TEMPLATE_ID,
-                status=status.HTTP_404_NOT_FOUND
-            )
-        lease = LeasePropertyDetails.objects.filter(id=lease_id).first()
-        if not lease:
-            return prepare_response(
-                message=constants.INVALID_LAESE_ID,
-                status=status.HTTP_404_NOT_FOUND
-            )
-        TemplateValues.objects.create(
-            document_template=template,
-            lease=lease,
-            value=values_dict,
-            created_by=request.user.user 
-        )
-
-        template_path = template.template_path
-
-        if not template_path or not os.path.exists(template_path):
-            return prepare_response(
-                message=f"Template not found: {template_path}",
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        if os.path.isdir(template_path):
-            return prepare_response(
-                message="Template path must be a file",
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        with open(template_path, "r", encoding="utf-8") as f:
-            html_content = f.read()
-        mapping = {}
-        fields = TemplateFields.objects.filter(document_template=template, is_active=True)
-
-        for field in fields:
-            key = field.id_attribute or field.name_attribute
-            if key and key in values_dict:
-                mapping[key] = values_dict[key]
-
-        html_content = replace_placeholders(html_content, mapping)
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        filename = f"lease_{timestamp}.html"
-
-        save_dir = os.path.join(settings.MEDIA_ROOT, "generated_templates")
-        os.makedirs(save_dir, exist_ok=True)
-
-        save_path = os.path.join(save_dir, filename)
-
-        with open(save_path, "w", encoding="utf-8") as f:
-            f.write(html_content)
-        pdf_filename = f"lease_{timestamp}.pdf"
-        config = get_pdfkit_config()
-
-        pdf_bytes = pdfkit.from_string(
-            html_content,
-            False,
-            configuration=config
-        )
-
-        s3_object_name = f"generated_templates/{pdf_filename}"
-        pdf_s3_url = upload_file_to_s3_base64(pdf_bytes, s3_object_name)
-
-        lease.pdf_path = pdf_s3_url
-        lease.save(update_fields=["pdf_path"])
-
-        audit_logs(
-            request,
-            f"Generated lease contract for unit '{lease.lease_property.unit_name}'",
-            constants.CREATED
-        )
-
-        return prepare_response(
-            message=constants.CONTRACT_GENERATED_SUCCESS,
-            content={
-                "file_name": filename,
-                "pdf_url": pdf_s3_url
-            },
-            status=status.HTTP_200_OK
-        )
-
-    except Exception as e:
-        return prepare_response(
-            message=str(e),
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-
-
-def get_template_fields(request):
-    if request.method == "GET":
-        try:
-            template_id = request.GET.get("template_id")
-            if not template_id:
-                return prepare_response(
-                    message=constants.TEMPLATE_ID_REQUIRED,
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            template = Template.objects.get(id=template_id)
-            fields = TemplateFields.objects.filter(document_template=template)
-
-            field_list = []
-            for field in fields:
-                field_list.append({
-                    "id_attribute": field.id_attribute,
-                    "name_attribute": field.name_attribute,
-                    "label": field.label_attribute,
-                    "html_tag": field.html_tag,
-                    "required": field.required,
-                    "min_value": field.min_value,
-                    "max_value": field.max_value,
-                    "min_length": field.min_length,
-                    "max_length": field.max_length,
-                    "pattern": field.pattern,
-                    "predefined_value": field.predefined_value,
-                })
-
-            return prepare_response(
-                content={
-                    "template_id": template.id,
-                    "template_name": template.name,
-                    "template_path": template.template_path,
-                    "fields": field_list
-                },
-                message=constants.TEMPLATE_FIELDS_FETCHED,
-                status=status.HTTP_200_OK
-            )
-
-        except Template.DoesNotExist:
-            return prepare_response(
-                message=constants.INVALID_TEMPLATE_ID,
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        except Exception as e:
-            return prepare_response(
-                message=str(e),
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-    else:
-        return prepare_response(
-            message=constants.INVALID_REQUEST_METHOD,
-            status=status.HTTP_405_METHOD_NOT_ALLOWED
-        )
 
 
 

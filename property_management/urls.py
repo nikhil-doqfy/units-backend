@@ -10,6 +10,7 @@ from django.urls import re_path
 from charges import urls as charges_urls
 from property import urls as property_urls
 from lead import urls as lead_urls
+from lease import urls as lease_urls
 
 
 urlpatterns = [
@@ -20,6 +21,7 @@ urlpatterns = [
     path('charges/', include(charges_urls)),
     path('', include(property_urls)),
     path('', include(lead_urls)),
+    path('', include(lease_urls)),
 
     re_path(r"^media/(?P<path>.*)$", views.serve_media),
     path('options', views.options, name='options'),
@@ -33,11 +35,9 @@ urlpatterns = [
     path('company/owners', views.company_owners_view, name='company_owners_view'),
     path('owner/pmc', views.owner_pmc_view, name='owner_pmc_view'),
     path('save/lease', views.lease_details_view, name='lease_details_view'),
-    path('generate/contract', views.generate_contract, name='generate_contract'), 
     path('audit_log', views.audit_log, name='audit_log'),
 
-    path('lease_documents', views.lease_documents, name='lease_documents'), 
-    path('get_template_fields', views.get_template_fields, name='get_template_fields'),
+    path('lease_documents', views.lease_documents, name='lease_documents'),
     path('lease/tenancy', views.lease_tenancy, name='lease_tenancy'),
     path("complaint", views.complaint, name="complaint_api"), 
     path("faq_api", views.faq_api, name="faq_api"),

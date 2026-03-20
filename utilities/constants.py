@@ -383,7 +383,23 @@ LEASE_STATUS_CHOICES = [
     ("ACTIVE", "Active"),
     ("INACTIVE", "In Active"),
     ("EXPIRED", "Expired"),
+    ("REJECTED", "Rejected"),
 ]
+
+# ── Lease Onboarding Stage ─────────────────────────────────────
+INVITE      = "INVITE"
+ONBOARDING  = "ONBOARDING"
+AGREEMENT   = "AGREEMENT"
+EJARI       = "EJARI"
+ACTIVATED   = "ACTIVATED"
+
+LEASE_STAGE_CHOICES = (
+    (INVITE,     "Invite"),
+    (ONBOARDING, "Onboarding"),
+    (AGREEMENT,  "Agreement"),
+    (EJARI,      "Ejari"),
+    (ACTIVATED,  "Activated"),
+)
 
 LAYOUT_CHOICES = [
         ("AI_GENERATED", "Create Layout by AI"),
@@ -493,14 +509,6 @@ IMAGE_TYPE_CHOICES = (
     ("EXTERIOR", "Exterior"),
 )
 
-
-LEASE_STEP_STATUS = (
-    ("LEASE_DETAILS", "Lease Details"),
-    ("LEASE_COMMERCIALS", "Lease Commercials"),
-    ("DOCUMENTS_LAYOUT", "Documents Layout"),
-    ("NEGOTIATION", "Negotiation"),
-    ("UPLOAD_EJARI", "Upload Ejari"),
-)
 
 DOCUMENTS_STATUS_CHOICES = (
         ("PENDING", "Pending"),
@@ -688,9 +696,11 @@ AREA_UNIT_CHOICES = (
 # ── Unit Usage ─────────────────────────────────────────────────
 RESIDENTIAL = 'RESIDENTIAL'
 COMMERCIAL = 'COMMERCIAL'
+INDUSTRIAL = 'INDUSTRIAL'
 UNIT_USAGE_CHOICES = (
     (RESIDENTIAL, 'Residential'),
     (COMMERCIAL, 'Commercial'),
+    (INDUSTRIAL, 'Industrial'),
 )
 
 # ── Unit Type ──────────────────────────────────────────────────

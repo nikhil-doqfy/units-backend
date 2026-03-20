@@ -2,13 +2,10 @@ from django.contrib import admin
 from user_service.models import (
     UserProfile, Permission, Role,
     UserVerification, Documents, OwnerDocuments,
-    TenantDocuments, \
-        FAQ, PrivacyPolicy, Approval
+    TenantDocuments, FAQ, PrivacyPolicy, Owner, Tenant, PropertyManager, Approval
 )
-from property_management.models import (
-    LeasePropertyDetails, UserInvitation, Template, TemplateFields,
-    TemplateValues, LeaseDocumentsMapping, TermAndCondition
-)
+from property_management.models import UserInvitation, TermAndCondition
+from lease.models import Template, TemplateField, TemplateValue
 
 
 # -------------------- User Service Admin --------------------
@@ -62,36 +59,43 @@ class FAQAdmin(admin.ModelAdmin):
     list_display = ("id", "question")
 
 
+@admin.register(Owner)
+class OwnerAdmin(admin.ModelAdmin):
+    list_display = ["id", "get_full_name", "code", "email", "contact_number",
+                    "owner_number", "trade_license_number", "license_number",
+                    "license_expiry_date", "license_issuer", "fax_number", "po_box_number"]
+    search_fields = ["user__first_name", "user__last_name", "email", "code", "owner_number"]
+    list_filter = ["license_issuer"]
 
-# -------------------- Property Management Admin --------------------
-@admin.register(LeasePropertyDetails)
-class LeasePropertyDetailsAdmin(admin.ModelAdmin):
-    list_display = ["id", "lease_property", "tenant", "owner", "lease_status", "lease_start_date", "lease_end_date"]
+    @admin.display(description="Full Name")
+    def get_full_name(self, obj):
+        return f"{obj.user.first_name} {obj.user.last_name}".strip()
+
+
+@admin.register(Tenant)
+class TenantAdmin(admin.ModelAdmin):
+    list_display = ["id", "get_full_name", "code", "email", "contact_number", "emirate_id"]
+    search_fields = ["user__first_name", "user__last_name", "email", "code"]
+
+    @admin.display(description="Full Name")
+    def get_full_name(self, obj):
+        return f"{obj.user.first_name} {obj.user.last_name}".strip()
+
+
+@admin.register(PropertyManager)
+class PropertyManagerAdmin(admin.ModelAdmin):
+    list_display = ["id", "get_full_name", "code", "email", "contact_number", "company"]
+    search_fields = ["user__first_name", "user__last_name", "email", "code"]
+    list_filter = ["company"]
+
+    @admin.display(description="Full Name")
+    def get_full_name(self, obj):
+        return f"{obj.user.first_name} {obj.user.last_name}".strip()
 
 
 @admin.register(UserInvitation)
 class UserInvitationAdmin(admin.ModelAdmin):
     list_display = ["id", "email", "invited_by", "invitation_type", "status"]
-
-
-@admin.register(Template)
-class TemplateAdmin(admin.ModelAdmin):
-    list_display = ["id", "name", "template_path", "is_active"]
-
-
-@admin.register(TemplateFields)
-class TemplateFieldsAdmin(admin.ModelAdmin):
-    list_display = ["id", "document_template", "name_attribute", "label_attribute", "html_tag"]
-
-
-@admin.register(TemplateValues)
-class TemplateValuesAdmin(admin.ModelAdmin):
-    list_display = ["id", "document_template", "lease"]
-
-
-@admin.register(LeaseDocumentsMapping)
-class LeaseDocumentsMappingAdmin(admin.ModelAdmin):
-    list_display = ("id", "lease", "document", "document_choice")
 
 
 @admin.register(TermAndCondition)

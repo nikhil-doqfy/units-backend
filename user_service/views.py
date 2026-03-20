@@ -1043,6 +1043,383 @@ def contact_list_view(request):
         status=status.HTTP_405_METHOD_NOT_ALLOWED
     )
 
+# ─────────────────────────────────────────────────────────────
+#  Owner CRUD
+# ─────────────────────────────────────────────────────────────
+
+def _serialize_owner(owner):
+    return {
+        "id": owner.id,
+        "code": owner.code or "",
+        "name": f"{owner.user.first_name} {owner.user.last_name}".strip(),
+        "first_name": owner.user.first_name or "",
+        "last_name": owner.user.last_name or "",
+        "email": owner.email or owner.user.email or "",
+        "contact_number": owner.contact_number or "",
+        "emirates_id": owner.emirate_id or "",
+        "address_line_1": owner.address_line_1 or "",
+        "address_line_2": owner.address_line_2 or "",
+        "pin_code": owner.pin_code or "",
+        "passport_number": owner.passport_number or "",
+        "passport_expiry_date": owner.passport_expiry_datetime.strftime("%Y-%m-%d") if owner.passport_expiry_datetime else "",
+        "visa_number": owner.visa_number or "",
+        "visa_expiry_date": owner.visa_expiry_datetime.strftime("%Y-%m-%d") if owner.visa_expiry_datetime else "",
+        "owner_number": owner.owner_number or "",
+        "trade_license_number": owner.trade_license_number or "",
+        "license_number": owner.license_number or "",
+        "license_expiry_date": owner.license_expiry_date.strftime("%Y-%m-%d") if owner.license_expiry_date else "",
+        "license_issuer": owner.license_issuer or "",
+        "fax_number": owner.fax_number or "",
+        "po_box_number": owner.po_box_number or "",
+        "profile_image": owner.profile_image or "",
+    }
+
+
+@is_request_authenticated
+def owner_crud(request):
+    if request.method == "GET":
+        owner_id = request.GET.get("owner_id", "").strip()
+
+        if owner_id:
+            owner = Owner.objects.select_related("user").filter(id=owner_id, user__is_active=True).first()
+            if not owner:
+                return prepare_response(message="Owner not found", status=status.HTTP_404_NOT_FOUND)
+            return prepare_response(content=_serialize_owner(owner), message="Owner fetched", status=status.HTTP_200_OK)
+
+        search = request.GET.get("search", "").strip()
+        page = int(request.GET.get("page", 1))
+        page_size = int(request.GET.get("page_size", 10))
+        export = request.GET.get("export", "").strip()
+
+        # Filter owners created by any staff member of the logged-in user's PMC
+        user_profile = request.user
+        pm = PropertyManager.objects.filter(id=user_profile.id).select_related("company").first()
+        company = pm.company if pm else None
+        if company:
+            pmc_staff_user_ids = PropertyManager.objects.filter(
+                company=company
+            ).values_list("user_id", flat=True)
+            owners = Owner.objects.select_related("user").filter(
+                user__is_active=True,
+                created_by__in=pmc_staff_user_ids,
+            ).order_by("-id")
+        else:
+            owners = Owner.objects.select_related("user").filter(user__is_active=True).order_by("-id")
+
+        if search:
+            owners = owners.filter(
+                Q(user__first_name__icontains=search) |
+                Q(user__last_name__icontains=search) |
+                Q(email__icontains=search) |
+                Q(user__email__icontains=search) |
+                Q(contact_number__icontains=search) |
+                Q(owner_number__icontains=search) |
+                Q(code__icontains=search)
+            )
+
+        if export == "csv":
+            rows = [_serialize_owner(o) for o in owners]
+            fields = ["code", "name", "owner_number", "email", "contact_number", "emirates_id",
+                      "trade_license_number", "license_number", "license_expiry_date",
+                      "license_issuer", "fax_number", "po_box_number"]
+            return export_to_csv("owners", fields, rows)
+
+        paginator = Paginator(owners, page_size)
+        try:
+            page_obj = paginator.page(page)
+        except EmptyPage:
+            page_obj = paginator.page(paginator.num_pages)
+
+        return prepare_response(
+            content=[_serialize_owner(o) for o in page_obj.object_list],
+            message="Owners fetched",
+            status=status.HTTP_200_OK,
+            pagination={
+                "total_records": paginator.count,
+                "total_pages": paginator.num_pages,
+                "current_page": page,
+                "page_size": page_size,
+            }
+        )
+
+    elif request.method == "POST":
+        from datetime import datetime as dt
+        data = json.loads(request.body)
+        first_name = data.get("first_name", "")
+        last_name = data.get("last_name", "")
+        email = data.get("email", "").strip()
+
+        if not email:
+            return prepare_response(message="Email is required", status=status.HTTP_400_BAD_REQUEST)
+        if User.objects.filter(username=email).exists():
+            return prepare_response(message="Email already registered", status=status.HTTP_400_BAD_REQUEST)
+
+        expiry_raw = data.get("license_expiry_date")
+        expiry_date = None
+        if expiry_raw:
+            try:
+                expiry_date = dt.strptime(expiry_raw[:10], "%Y-%m-%d")
+            except ValueError:
+                pass
+
+        with transaction.atomic():
+            user = User.objects.create_user(
+                username=email, email=email,
+                first_name=first_name, last_name=last_name,
+                password=User.objects.make_random_password()
+            )
+            def _parse_dt(val):
+                if not val:
+                    return None
+                try:
+                    return dt.strptime(str(val)[:10], "%Y-%m-%d")
+                except ValueError:
+                    return None
+
+            owner = Owner.objects.create(
+                user=user,
+                created_by=request.user.user,
+                email=email,
+                contact_number=data.get("contact_number", ""),
+                emirate_id=data.get("emirates_id", ""),
+                address_line_1=data.get("address_line_1", ""),
+                address_line_2=data.get("address_line_2", ""),
+                pin_code=data.get("pin_code", ""),
+                passport_number=data.get("passport_number", ""),
+                passport_expiry_datetime=_parse_dt(data.get("passport_expiry_date")),
+                visa_number=data.get("visa_number", ""),
+                visa_expiry_datetime=_parse_dt(data.get("visa_expiry_date")),
+                trade_license_number=data.get("trade_license_number", ""),
+                owner_number=data.get("owner_number", ""),
+                license_number=data.get("license_number", ""),
+                license_expiry_date=expiry_date,
+                license_issuer=data.get("license_issuer", ""),
+                fax_number=data.get("fax_number", ""),
+                po_box_number=data.get("po_box_number", ""),
+            )
+
+        return prepare_response(content=_serialize_owner(owner), message="Owner created", status=status.HTTP_201_CREATED)
+
+    elif request.method == "PUT":
+        from datetime import datetime as dt
+        data = json.loads(request.body)
+        owner_id = data.get("owner_id")
+        if not owner_id:
+            return prepare_response(message="owner_id is required", status=status.HTTP_400_BAD_REQUEST)
+
+        owner = Owner.objects.select_related("user").filter(id=owner_id).first()
+        if not owner:
+            return prepare_response(message="Owner not found", status=status.HTTP_404_NOT_FOUND)
+
+        user = owner.user
+        if "first_name" in data:
+            user.first_name = data["first_name"]
+        if "last_name" in data:
+            user.last_name = data["last_name"]
+        user.save()
+
+        simple_fields = {
+            "contact_number": "contact_number",
+            "emirates_id": "emirate_id",
+            "address_line_1": "address_line_1",
+            "address_line_2": "address_line_2",
+            "pin_code": "pin_code",
+            "passport_number": "passport_number",
+            "visa_number": "visa_number",
+            "trade_license_number": "trade_license_number",
+            "owner_number": "owner_number",
+            "license_number": "license_number",
+            "license_issuer": "license_issuer",
+            "fax_number": "fax_number",
+            "po_box_number": "po_box_number",
+        }
+        for src, dest in simple_fields.items():
+            if src in data:
+                setattr(owner, dest, data[src] or "")
+
+        def _parse_dt(val):
+            if not val:
+                return None
+            try:
+                return dt.strptime(str(val)[:10], "%Y-%m-%d")
+            except ValueError:
+                return None
+
+        if "license_expiry_date" in data:
+            owner.license_expiry_date = _parse_dt(data["license_expiry_date"])
+        if "passport_expiry_date" in data:
+            owner.passport_expiry_datetime = _parse_dt(data["passport_expiry_date"])
+        if "visa_expiry_date" in data:
+            owner.visa_expiry_datetime = _parse_dt(data["visa_expiry_date"])
+
+        owner.save()
+        return prepare_response(content=_serialize_owner(owner), message="Owner updated", status=status.HTTP_200_OK)
+
+    elif request.method == "DELETE":
+        owner_id = request.GET.get("owner_id", "").strip()
+        if not owner_id:
+            return prepare_response(message="owner_id is required", status=status.HTTP_400_BAD_REQUEST)
+
+        owner = Owner.objects.select_related("user").filter(id=owner_id).first()
+        if not owner:
+            return prepare_response(message="Owner not found", status=status.HTTP_404_NOT_FOUND)
+
+        owner.user.is_active = False
+        owner.user.save()
+        return prepare_response(message="Owner deleted", status=status.HTTP_200_OK)
+
+    return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+
+def _serialize_tenant(tenant):
+    return {
+        "id": tenant.id,
+        "code": tenant.code or "",
+        "name": f"{tenant.user.first_name} {tenant.user.last_name}".strip(),
+        "first_name": tenant.user.first_name or "",
+        "last_name": tenant.user.last_name or "",
+        "email": tenant.email or tenant.user.email or "",
+        "contact_number": tenant.contact_number or "",
+        "emirates_id": tenant.emirate_id or "",
+        "address_line_1": tenant.address_line_1 or "",
+        "address_line_2": tenant.address_line_2 or "",
+        "pin_code": tenant.pin_code or "",
+        "passport_number": tenant.passport_number or "",
+        "passport_expiry_date": tenant.passport_expiry_datetime.strftime("%Y-%m-%d") if tenant.passport_expiry_datetime else "",
+        "visa_number": tenant.visa_number or "",
+        "visa_expiry_date": tenant.visa_expiry_datetime.strftime("%Y-%m-%d") if tenant.visa_expiry_datetime else "",
+    }
+
+
+@is_request_authenticated
+def tenant_crud(request):
+    from datetime import datetime as dt
+
+    def _parse_dt(val):
+        if not val:
+            return None
+        try:
+            return dt.strptime(str(val)[:10], "%Y-%m-%d")
+        except ValueError:
+            return None
+
+    def _apply_tenant_fields(tenant, data):
+        user = tenant.user
+        first_name = data.get("first_name", "")
+        last_name = data.get("last_name", "")
+        if not first_name and not last_name:
+            name = data.get("name", "").strip()
+            if name:
+                first_name, _, last_name = name.partition(" ")
+        if first_name:
+            user.first_name = first_name
+        if last_name:
+            user.last_name = last_name
+        user.save()
+
+        for src, dest in [
+            ("contact_number", "contact_number"),
+            ("emirates_id", "emirate_id"),
+            ("address_line_1", "address_line_1"),
+            ("address_line_2", "address_line_2"),
+            ("pin_code", "pin_code"),
+            ("passport_number", "passport_number"),
+            ("visa_number", "visa_number"),
+        ]:
+            if src in data:
+                setattr(tenant, dest, data[src] or "")
+
+        if "passport_expiry_date" in data:
+            tenant.passport_expiry_datetime = _parse_dt(data["passport_expiry_date"])
+        if "visa_expiry_date" in data:
+            tenant.visa_expiry_datetime = _parse_dt(data["visa_expiry_date"])
+
+        tenant.save()
+        return tenant
+
+    # ── GET ──────────────────────────────────────────────────────────────────
+    if request.method == "GET":
+        tenant_id = request.GET.get("tenant_id", "").strip()
+        email = request.GET.get("email", "").strip()
+
+        if tenant_id:
+            tenant = Tenant.objects.select_related("user").filter(id=tenant_id, user__is_active=True).first()
+            if not tenant:
+                return prepare_response(message="Tenant not found", status=status.HTTP_404_NOT_FOUND)
+            return prepare_response(content=_serialize_tenant(tenant))
+
+        if email:
+            tenant = Tenant.objects.select_related("user").filter(
+                Q(email__iexact=email) | Q(user__email__iexact=email),
+                user__is_active=True,
+            ).first()
+            if not tenant:
+                return prepare_response(message="Tenant not found", status=status.HTTP_404_NOT_FOUND)
+            return prepare_response(content=_serialize_tenant(tenant))
+
+        return prepare_response(message="tenant_id or email is required", status=status.HTTP_400_BAD_REQUEST)
+
+    # ── POST (create or find-and-update by email) ─────────────────────────────
+    elif request.method == "POST":
+        data = json.loads(request.body)
+        email = (data.get("email") or "").strip()
+
+        if not email:
+            return prepare_response(message="email is required", status=status.HTTP_400_BAD_REQUEST)
+
+        # Check if tenant with this email already exists
+        existing = Tenant.objects.select_related("user").filter(
+            Q(email__iexact=email) | Q(user__email__iexact=email),
+            user__is_active=True,
+        ).first()
+
+        if existing:
+            _apply_tenant_fields(existing, data)
+            return prepare_response(content=_serialize_tenant(existing), message="Tenant updated")
+
+        # Create new tenant
+        name = data.get("name", "").strip()
+        first_name = data.get("first_name", "") or (name.partition(" ")[0] if name else "")
+        last_name = data.get("last_name", "") or (name.partition(" ")[2] if name else "")
+
+        with transaction.atomic():
+            user = User.objects.create_user(
+                username=email, email=email,
+                first_name=first_name, last_name=last_name,
+                password=User.objects.make_random_password(),
+            )
+            tenant = Tenant.objects.create(
+                user=user,
+                created_by=request.user.user,
+                email=email,
+                contact_number=data.get("contact_number", ""),
+                emirate_id=data.get("emirates_id", ""),
+                address_line_1=data.get("address_line_1", ""),
+                address_line_2=data.get("address_line_2", ""),
+                pin_code=data.get("pin_code", ""),
+                passport_number=data.get("passport_number", ""),
+                passport_expiry_datetime=_parse_dt(data.get("passport_expiry_date")),
+                visa_number=data.get("visa_number", ""),
+                visa_expiry_datetime=_parse_dt(data.get("visa_expiry_date")),
+            )
+
+        return prepare_response(content=_serialize_tenant(tenant), message="Tenant created", status=status.HTTP_201_CREATED)
+
+    # ── PUT ───────────────────────────────────────────────────────────────────
+    elif request.method == "PUT":
+        data = json.loads(request.body)
+        tenant_id = data.get("tenant_id")
+        if not tenant_id:
+            return prepare_response(message="tenant_id is required", status=status.HTTP_400_BAD_REQUEST)
+
+        tenant = Tenant.objects.select_related("user").filter(id=tenant_id, user__is_active=True).first()
+        if not tenant:
+            return prepare_response(message="Tenant not found", status=status.HTTP_404_NOT_FOUND)
+
+        _apply_tenant_fields(tenant, data)
+        return prepare_response(content=_serialize_tenant(tenant), message="Tenant updated")
+
+    return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
 @is_request_authenticated
 def approval(request):
@@ -1222,173 +1599,3 @@ def approval(request):
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
 
-@is_request_authenticated
-def property_assign(request):
-    user_profile = request.user
-
-    if request.method == "GET":
-
-        pm_id = request.GET.get("pm_id")
-
-        if pm_id:
-            pm = PropertyManager.objects.prefetch_related(
-                "roles",
-                "assigned_units__unit"
-            ).filter(id=pm_id).first()
-
-            if not pm:
-                return prepare_response(
-                    message="Property manager not found",
-                    status=status.HTTP_404_NOT_FOUND
-                )
-
-            assignments = pm.assigned_units.all()
-            units = [a.unit for a in assignments]
-
-            total_units = len(units)
-            occupied_units = sum(1 for u in units if u.is_occupied)
-
-            tenancy_ratio = f"{occupied_units}:{total_units}" if total_units else "0:0"
-
-            content = {
-                "id": pm.id,
-                "name": pm.name,
-                "code": pm.code,
-                "contact": pm.contact_number,
-                "roles": [role.name for role in pm.roles.all()],
-                "unit_assigned": total_units,
-                "tenancy_ratio": tenancy_ratio,
-            }
-
-            return prepare_response(
-                content=content,
-                status=status.HTTP_200_OK
-            )
-
-        pms = PropertyManager.objects.prefetch_related(
-            "roles",
-            "assigned_units__unit"
-        ).order_by("-id")
-
-        content = []
-
-        for pm in pms:
-            assignments = pm.assigned_units.all()
-            units = [a.unit for a in assignments]
-
-            total_units = len(units)
-            occupied_units = sum(1 for u in units if u.is_occupied)
-
-            tenancy_ratio = f"{occupied_units}:{total_units}" if total_units else "0:0"
-
-            content.append({
-                "id": pm.id,
-                "name": pm.name,
-                "code": pm.code,
-                "contact": pm.contact_number,
-                "roles": [role.name for role in pm.roles.all()],
-                "unit_assigned": total_units,
-                "tenancy_ratio": tenancy_ratio,
-            })
-
-        return prepare_response(
-            content=content,
-            status=status.HTTP_200_OK
-        )
-
-    elif request.method == "POST":
-
-        data = json.loads(request.body)
-
-        pm_id = data.get("property_manager_id")
-        unit_id = data.get("unit_id")
-
-        if not pm_id:
-            return prepare_response(
-                message="property_manager_id is required",
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        if not unit_id:
-            return prepare_response(
-                message="unit_id is required",
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        pm = PropertyManager.objects.filter(id=pm_id).first()
-        if not pm:
-            return prepare_response(
-                message="Property manager not found",
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        unit = Unit.objects.filter(id=unit_id).first()
-        if not unit:
-            return prepare_response(
-                message="Unit not found",
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        exists = PropertyManagerUnit.objects.filter(
-            property_manager=pm,
-            unit=unit
-        ).exists()
-
-        if exists:
-            return prepare_response(
-                message="Unit already assigned",
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        assignment = PropertyManagerUnit.objects.create(
-            property_manager=pm,
-            unit=unit
-        )
-
-        return prepare_response(
-            message="Unit assigned successfully",
-            content={"id": assignment.id},
-            status=status.HTTP_201_CREATED
-        )
-
-    elif request.method == "DELETE":
-
-        data = json.loads(request.body)
-
-        pm_id = data.get("property_manager_id")
-        unit_id = data.get("unit_id")
-
-        if not pm_id:
-            return prepare_response(
-                message="property_manager_id is required",
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        if not unit_id:
-            return prepare_response(
-                message="unit_id is required",
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        assignment = PropertyManagerUnit.objects.filter(
-            property_manager_id=pm_id,
-            unit_id=unit_id
-        ).first()
-
-        if not assignment:
-            return prepare_response(
-                message="Assignment not found",
-                status=status.HTTP_404_NOT_FOUND
-            )
-
-        assignment.delete()
-
-        return prepare_response(
-            message="Unit removed successfully",
-            status=status.HTTP_200_OK
-        )
-
-    return prepare_response(
-        message="Invalid request method",
-        status=status.HTTP_405_METHOD_NOT_ALLOWED
-    )
