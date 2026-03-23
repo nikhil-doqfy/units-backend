@@ -147,6 +147,7 @@ TENANT = "TENANT"
 PROPERTY_MANAGER = "PROPERTY_MANAGER"
 PROPERTY = "PROPERTY"
 UNIT = "UNIT"
+LEASE_CHEQUE = "LEASE_CHEQUE"
 STAFF = "STAFF"
 AVAILABLE="AVAILABLE"
 COMPANY="Company"
@@ -387,18 +388,59 @@ LEASE_STATUS_CHOICES = [
 ]
 
 # ── Lease Onboarding Stage ─────────────────────────────────────
-INVITE      = "INVITE"
-ONBOARDING  = "ONBOARDING"
-AGREEMENT   = "AGREEMENT"
-EJARI       = "EJARI"
-ACTIVATED   = "ACTIVATED"
+INVITE              = "INVITE"
+ONBOARDING          = "ONBOARDING"
+NEGOTIATION_SENT    = "NEGOTIATION_SENT"
+PENDING_APPROVAL    = "PENDING_APPROVAL"    # kept for backward compat
+OWNER_APPROVED      = "OWNER_APPROVED"
+TENANT_APPROVED     = "TENANT_APPROVED"
+# Cheque type choices
+RENT_CHEQUE       = "RENT_CHEQUE"
+ADDITIONAL_CHEQUE = "ADDITIONAL_CHEQUE"
+
+CHEQUE_TYPE_CHOICES = (
+    (RENT_CHEQUE,       "Rent Cheque"),
+    (ADDITIONAL_CHEQUE, "Additional Cheque"),
+)
+
+# Payment type choices
+PAYMENT_TYPE_CHEQUE  = "CHEQUE"
+PAYMENT_TYPE_CASH    = "CASH"
+PAYMENT_TYPE_BANK_TRANSFER = "BANK_TRANSFER"
+PAYMENT_TYPE_PDC     = "PDC"
+
+PAYMENT_TYPE_CHOICES = (
+    (PAYMENT_TYPE_CHEQUE,         "Cheque"),
+    (PAYMENT_TYPE_CASH,           "Cash"),
+    (PAYMENT_TYPE_BANK_TRANSFER,  "Bank Transfer"),
+    (PAYMENT_TYPE_PDC,            "PDC"),
+)
+
+WAITING_CHEQUE      = "WAITING_CHEQUE"
+CHEQUE_REQUESTED    = "CHEQUE_REQUESTED"
+CHEQUE_COLLECTED    = "CHEQUE_COLLECTED"
+AGREEMENT           = "AGREEMENT"
+AGREEMENT_SIGNING   = "AGREEMENT_SIGNING"
+AGREEMENT_SIGNED    = "AGREEMENT_SIGNED"
+EJARI               = "EJARI"
+EJARI_SIGNING       = "EJARI_SIGNING"
+ACTIVATED           = "ACTIVATED"
 
 LEASE_STAGE_CHOICES = (
-    (INVITE,     "Invite"),
-    (ONBOARDING, "Onboarding"),
-    (AGREEMENT,  "Agreement"),
-    (EJARI,      "Ejari"),
-    (ACTIVATED,  "Activated"),
+    (INVITE,            "Invite"),
+    (ONBOARDING,        "Onboarding"),
+    (NEGOTIATION_SENT,  "Negotiation Sent"),
+    (OWNER_APPROVED,    "Owner Approved"),
+    (TENANT_APPROVED,   "Tenant Approved"),
+    (WAITING_CHEQUE,    "Waiting for Cheque"),
+    (CHEQUE_REQUESTED,  "Cheque Requested"),
+    (CHEQUE_COLLECTED,  "Cheque Collected"),
+    (AGREEMENT,         "Agreement"),
+    (AGREEMENT_SIGNING, "Agreement Signing"),
+    (AGREEMENT_SIGNED,  "Agreement Signed"),
+    (EJARI,             "Ejari"),
+    (EJARI_SIGNING,     "Ejari Signing"),
+    (ACTIVATED,         "Activated"),
 )
 
 LAYOUT_CHOICES = [
