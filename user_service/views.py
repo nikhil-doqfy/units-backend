@@ -1,7 +1,7 @@
 import json
 from utilities import status, constants
 from utilities.helper_functions import prepare_response, datetime_to_epoch_millis, safe_epoch_to_datetime,get_extension_from_base64,export_to_csv
-from user_service.models import UserProfile, Documents, OwnerDocuments, TenantDocuments, Role, Owner, Tenant, PropertyManager
+from user_service.models import UserProfile, Documents, OwnerDocuments, TenantDocuments, Role, Owner, Tenant, PropertyManager ,Approval
 from property.models import PropertyManagerDocuments, Unit, Property, PropertyManagmentCompany
 from django.db import transaction
 from utilities.decorator import is_request_authenticated
@@ -10,7 +10,7 @@ from django.db.models import Q
 from django.contrib.auth.models import User
 from django.db import transaction
 from property_management.utils import get_staff_details, get_property_images
-from user_service.utils import upload_document
+from user_service.utils import upload_document, process_rent_approval
 
 EMIRATES_VISA_DOC_SPECS = [
     ("emirates_id_doc", "emirates_id", "emirates_id_doc_type"),
@@ -1426,3 +1426,182 @@ def tenant_crud(request):
         return prepare_response(content=_serialize_tenant(tenant), message="Tenant updated")
 
     return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+@is_request_authenticated
+def approval(request):
+    user_profile = request.user
+
+    if request.method == "GET":
+
+        approval_id = request.GET.get("approval_id")
+
+        if approval_id:
+
+            approval = Approval.objects.select_related(
+                "tenant",
+                "unit",
+                "unit__property_block_tower__property"
+            ).filter(id=approval_id).first()
+
+            if not approval:
+                return prepare_response(
+                    message="Approval request not found",
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            content = {
+                "id": approval.id,
+                "requested_date": approval.created,
+                "tenant": str(approval.tenant),
+                "property": approval.unit.property_block_tower.property.property_name
+                if approval.unit.property_block_tower and approval.unit.property_block_tower.property else None,
+                "block": approval.unit.property_block_tower.block_name if approval.unit.property_block_tower else None,
+                "unit": approval.unit.unit_name,
+                "requested_rent": approval.requested_rent,
+                "requested_tenure": approval.requested_tenure,
+                "actual_rent": approval.unit.rent,
+                "actual_tenure": approval.unit.cycle,
+                "approved": approval.approved,
+                "approved_by": str(approval.approved_by) if approval.approved_by else None,
+                "approved_at": approval.approved_at
+            }
+
+            return prepare_response(content=content, status=status.HTTP_200_OK)
+
+        approvals = Approval.objects.select_related(
+            "tenant",
+            "unit",
+            "unit__property_block_tower__property"
+        ).order_by("-id")
+
+        content = [
+            {
+                "id": a.id,
+                "requested_date": a.created,
+                "tenant": str(a.tenant),
+                "property": a.unit.property_block_tower.property.property_name
+                if a.unit.property_block_tower and a.unit.property_block_tower.property else None,
+                "block": a.unit.property_block_tower.block_name if a.unit.property_block_tower else None,
+                "unit": a.unit.unit_name,
+                "requested_rent": a.requested_rent,
+                "requested_tenure": a.requested_tenure,
+                "actual_rent": a.unit.rent,
+                "actual_tenure": a.unit.cycle,
+                "approved": a.approved
+            }
+            for a in approvals
+        ]
+
+        return prepare_response(content=content, status=status.HTTP_200_OK)
+
+
+    elif request.method == "POST":
+
+        if not PropertyManager.objects.filter(user=user_profile.user).exists():
+            return prepare_response(
+                message="Only COMPANY_USER can create approval requests",
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        data = json.loads(request.body)
+
+        tenant_id = data.get("tenant_id")
+        unit_id = data.get("unit_id")
+        requested_rent = data.get("requested_rent")
+        requested_tenure = data.get("requested_tenure")
+
+        if not tenant_id:
+            return prepare_response(
+                message="tenant_id is required",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not unit_id:
+            return prepare_response(
+                message="unit_id is required",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not requested_rent:
+            return prepare_response(
+                message="requested_rent is required",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        tenant = Tenant.objects.filter(id=tenant_id).first()
+
+        if not tenant:
+            return prepare_response(
+                message="Tenant not found",
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        unit = Unit.objects.filter(id=unit_id).first()
+
+        if not unit:
+            return prepare_response(
+                message="Unit not found",
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        approval = Approval.objects.create(
+            created_by=user_profile.user,
+            tenant=tenant,
+            unit=unit,
+            requested_rent=requested_rent,
+            requested_tenure=requested_tenure
+        )
+
+        return prepare_response(
+            message="Rent approval request created",
+            content={"id": approval.id},
+            status=status.HTTP_201_CREATED
+        )
+
+
+    elif request.method == "PUT":
+
+        if not PropertyManager.objects.filter(user=user_profile.user).exists():
+            return prepare_response(
+                message="Only COMPANY_USER can approve requests",
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        data = json.loads(request.body)
+
+        approval_id = data.get("approval_id")
+        rent = data.get("rent")
+        tenure = data.get("tenure")
+        action = data.get("action")
+
+        if not approval_id:
+            return prepare_response(
+                message="approval_id is required",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        approval, message = process_rent_approval(
+            approval_id,
+            user_profile,
+            rent,
+            tenure,
+            action
+        )
+
+        if not approval:
+            return prepare_response(
+                message=message,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        return prepare_response(
+            message=message,
+            status=status.HTTP_200_OK
+        )
+
+    else:
+        return prepare_response(
+            message=constants.INVALID_REQUEST_METHOD,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+

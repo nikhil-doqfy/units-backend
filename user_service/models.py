@@ -188,3 +188,15 @@ class FAQ(models.Model):
     def __str__(self):
         return self.question
 
+class Approval(Base):
+
+    tenant = models.ForeignKey("user_service.Tenant",on_delete=models.CASCADE,related_name="tenant_rent_requests")
+    unit = models.ForeignKey("property.Unit",on_delete=models.CASCADE,related_name="rent_approvals")
+    requested_rent = models.DecimalField(max_digits=10,decimal_places=2)
+    requested_tenure = models.CharField(max_length=50,null=True,blank=True)
+    approved = models.BooleanField(default=False)
+    approved_by = models.ForeignKey("user_service.UserProfile",on_delete=models.SET_NULL,null=True,blank=True,related_name="approved_rent_requests")
+    approved_at = models.DateTimeField(null=True, blank=True)
+    def __str__(self):
+        return f"{self.unit} - {self.tenant}"
+
