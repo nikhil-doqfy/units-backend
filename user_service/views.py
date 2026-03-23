@@ -11,6 +11,7 @@ from django.contrib.auth.models import User
 from django.db import transaction
 from property_management.utils import get_staff_details, get_property_images
 from user_service.utils import upload_document
+from property_management.models import City
 
 EMIRATES_VISA_DOC_SPECS = [
     ("emirates_id_doc", "emirates_id", "emirates_id_doc_type"),
@@ -503,7 +504,7 @@ def staff_view(request):
                 pin_code=pin_code,
                 created_by=user.user
             )
-            company_staff = CompanyStaff.objects.create(
+            company_staff = PropertyManager.objects.create(
                 staff=staff_profile,
                 company=company,
                 created_by=user.user
@@ -540,7 +541,7 @@ def staff_view(request):
             company = PropertyManagmentCompany.objects.filter(company_user=user, is_active=True).first()
             if not company:
                 return prepare_response(message=constants.COMPANY_NOT_FOUND,status=status.HTTP_404_NOT_FOUND)
-            company_staff = CompanyStaff.objects.filter(id=staff_id, company=company).first()
+            company_staff = PropertyManager.objects.filter(id=staff_id, company=company).first()
             if not company_staff:
                 return prepare_response(message=constants.STAFF_NOT_FOUND,status=status.HTTP_404_NOT_FOUND)
             staff_profile = company_staff.staff
@@ -606,7 +607,7 @@ def staff_view(request):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        staff_qs = CompanyStaff.objects.filter(
+        staff_qs = PropertyManager.objects.filter(
             company=company,
             staff__is_active=True
         ).select_related(
@@ -617,7 +618,7 @@ def staff_view(request):
         )
 
         if staff_id:
-            company_staff = CompanyStaff.objects.filter(
+            company_staff = PropertyManager.objects.filter(
                               id=staff_id,
                              company=company
                               ).select_related(
@@ -889,7 +890,7 @@ def export_staff_csv(request):
 
  
         if staff_id:
-            staff = CompanyStaff.objects.filter(
+            staff = PropertyManager.objects.filter(
                 id=staff_id,
                 company=company
             ).select_related(
@@ -943,7 +944,7 @@ def export_staff_csv(request):
             )
 
 
-        staff_qs = CompanyStaff.objects.filter(
+        staff_qs = PropertyManager.objects.filter(
             company=company,
             staff__is_active=True
         ).select_related(

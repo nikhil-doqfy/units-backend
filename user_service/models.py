@@ -83,25 +83,8 @@ class Role(Base):
     company = models.ForeignKey("property.PropertyManagmentCompany", on_delete=models.CASCADE, related_name="staff_roles")
     permissions = models.ManyToManyField(Permission, blank=True)
 
-    def __str__(self):
-        return f"{self.property_unit_name} - {self.id}"
-
-class PropertyImages(Base):
-    property = models.ForeignKey('Property', on_delete=models.CASCADE, related_name="property_images")
-    image = models.ImageField(upload_to="property_images/", null=True, blank=True)
-    image_type = models.CharField(max_length=20, default="EXTERIOR")
-    file_name = models.CharField(max_length=255, null=True, blank=True)
-
-    def __str__(self):
-        return f"{self.property.property_name} Image"
-
-class PropertyUnitImages(Base):
-    property_unit = models.ForeignKey('PropertyUnitDetails', on_delete=models.CASCADE, related_name="unit_images")
-    image = models.ImageField(upload_to="property_unit_images/", null=True, blank=True)
-    image_type = models.CharField(max_length=20, default="INTERIOR")
-    file_name = models.CharField(max_length=255, null=True, blank=True)
-        return self.name
-
+    def __str__(self):  
+        return f"{self.name} - {self.company.name}"
 
 class UserVerification(models.Model):
     VERIFICATION_TYPE_CHOICES = (

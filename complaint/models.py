@@ -1,7 +1,7 @@
 from django.db import models
 from user_service.models import UserProfile
 from property_management.models import Base
-from user_service import constants
+from utilities import constants
 
 # Create your models here.
 

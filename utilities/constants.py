@@ -755,3 +755,101 @@ TIMEZONE_CHOICES = (
     ("JST", "JST"),
     ("AEST", "AEST")
 )
+
+DRAFT = "DRAFT"
+SCHEDULED = "SCHEDULED"
+SENT = "SENT"
+DELETED = "DELETED"
+
+ANNOUNCEMENT_STATUS = [
+    (DRAFT, "Draft"),
+    (SCHEDULED, "Scheduled"),
+    (SENT, "Sent"),
+    (DELETED, "Deleted"),
+]
+
+
+APP = "APP"
+EMAIL = "EMAIL"
+SMS = "SMS"
+WHATSAPP = "WHATSAPP"
+
+APP_EMAIL = "APP_EMAIL"
+APP_SMS = "APP_SMS"
+APP_EMAIL_SMS = "APP_EMAIL_SMS"
+APP_WHATSAPP = "APP_WHATSAPP"
+APP_EMAIL_WHATSAPP = "APP_EMAIL_WHATSAPP"
+APP_SMS_WHATSAPP = "APP_SMS_WHATSAPP"
+APP_EMAIL_SMS_WHATSAPP = "APP_EMAIL_SMS_WHATSAPP"
+
+CHANNEL_CHOICES = [
+    (APP, "App"),
+    (EMAIL, "Email"),
+    (SMS, "SMS"),
+    (WHATSAPP, "WhatsApp"),
+    (APP_EMAIL, "App/Email"),
+    (APP_SMS, "App/SMS"),
+    (APP_EMAIL_SMS, "App/Email/SMS"),
+    (APP_WHATSAPP, "App/WhatsApp"),
+    (APP_EMAIL_WHATSAPP, "App/Email/WhatsApp"),
+    (APP_SMS_WHATSAPP, "App/SMS/WhatsApp"),
+    (APP_EMAIL_SMS_WHATSAPP, "App/Email/SMS/WhatsApp"),
+]
+
+
+ALL = "ALL"
+PROPERTY = "PROPERTY"
+BLOCK = "BLOCK"
+UNIT = "UNIT"
+
+SCOPE_CHOICES = [
+    (ALL, "All Properties"),
+    (PROPERTY, "Property"),
+    (BLOCK, "Block/Tower"),
+    (UNIT, "Unit"),
+]
+
+PENDING = "PENDING"
+DELIVERED = "DELIVERED"
+FAILED = "FAILED"
+
+RECIPIENT_STATUS = [
+    (PENDING, "Pending"),
+    (DELIVERED, "Delivered"),
+    (FAILED, "Failed"),
+]
+# ===================== PRIORITY =====================
+
+NORMAL = "normal"
+IMPORTANT = "important"
+URGENT = "urgent"
+
+PRIORITY_CHOICES = [
+    (NORMAL, "Normal"),
+    (IMPORTANT, "Important"),
+    (URGENT, "Urgent"),
+]
+
+
+# ===================== STATUS =====================
+
+DRAFT = "draft"
+SENT = "sent"
+
+ANNOUNCEMENT_STATUS_CHOICES = [
+    (DRAFT, "Draft"),
+    (SENT, "Sent"),
+]
+
+
+# ===================== MESSAGES =====================
+
+ANNOUNCEMENT_NOT_FOUND = "Announcement not found."
+ANNOUNCEMENT_CREATED = "Announcement created successfully."
+ANNOUNCEMENT_UPDATED = "Announcement updated successfully."
+ANNOUNCEMENT_DELETED = "Announcement deleted successfully."
+ANNOUNCEMENT_SENT = "Announcement sent successfully."
+
+ANNOUNCEMENT_TITLE_REQUIRED = "Title is required."
+ANNOUNCEMENT_DESCRIPTION_REQUIRED = "Description is required."
+ANNOUNCEMENT_ID_REQUIRED = "Announcement ID is required."

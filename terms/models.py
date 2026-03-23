@@ -1,5 +1,5 @@
 from django.db import models
-from user_service.models import Country
+from property_management.models import Country
 
 
 class TermCategory(models.Model):
