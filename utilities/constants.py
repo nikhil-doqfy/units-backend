@@ -755,7 +755,6 @@ TIMEZONE_CHOICES = (
     ("JST", "JST"),
     ("AEST", "AEST")
 )
-
 DRAFT = "DRAFT"
 SCHEDULED = "SCHEDULED"
 SENT = "SENT"

@@ -48,10 +48,19 @@ def send_otp(request):
                 )
 
         elif purpose_text == "signup":
-            if UserProfile.objects.filter(user__email=email).exists():
+            existing = UserProfile.objects.select_related("user").filter(user__email=email).first()
+            if existing:
                 return prepare_response(
-                    message=constants.EMAIL_ALREADY_REGISTERED,
-                    status=status.HTTP_400_BAD_REQUEST
+                    message="User already registered. Please log in to continue.",
+                    content={
+                        "already_registered": True,
+                        "id":         existing.id,
+                        "email":      existing.user.email,
+                        "first_name": existing.user.first_name,
+                        "last_name":  existing.user.last_name,
+                        "name":       f"{existing.user.first_name} {existing.user.last_name}".strip(),
+                    },
+                    status=status.HTTP_200_OK
                 )
 
         elif purpose_text in ["forget_password", "reset_password"]:

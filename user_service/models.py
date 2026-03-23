@@ -18,11 +18,14 @@ class UserProfile(Base):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="profile")
     profile_image = models.TextField(null=True, blank=True)
     pin_code = models.CharField(max_length=20, null=True, blank=True)
+    
     address_line_1 = models.CharField(max_length=255, null=True, blank=True)
     address_line_2 = models.CharField(max_length=255, null=True, blank=True)
     emirate_id = models.CharField(max_length=255, null=True, blank=True)
+    email = models.EmailField(max_length=255, null=True, blank=True)
     contact_number = models.CharField(max_length=20, null=True, blank=True)
     timezone = models.CharField(max_length=100, choices=constants.TIMEZONE_CHOICES, default=constants.TIMEZONE_CHOICES[0][0])
+    nationality = models.CharField(max_length=100, blank=True, null=True)
     passport_number = models.CharField(max_length=50, blank=True, null=True)
     passport_expiry_datetime = models.DateTimeField(blank=True, null=True)
     visa_number = models.CharField(max_length=50, blank=True, null=True)
@@ -37,10 +40,13 @@ class UserProfile(Base):
 
 class Owner(UserProfile):
     trade_license_number = models.CharField(max_length=255, blank=True, default='')
-    licence_number = models.CharField(max_length=100, blank=True, default='')
-    licence_expiry_date = models.DateTimeField(null=True, blank=True)
-    licence_issuer = models.CharField(max_length=150, blank=True, default='')
-
+    owner_number = models.CharField(max_length=20, null=True, blank=True)
+    license_number = models.CharField(max_length=255, blank=True, default='')
+    license_expiry_date = models.DateTimeField(null=True, blank=True)
+    license_issuer = models.CharField(max_length=150, blank=True, default='')
+    fax_number = models.CharField(max_length=20, null=True, blank=True)
+    po_box_number = models.CharField(max_length=20, null=True, blank=True)
+    
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         if not self.code:
@@ -60,6 +66,7 @@ class PropertyManager(UserProfile):
 
 
 class Tenant(UserProfile):
+    is_onboarding = models.BooleanField(default=False)
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         if not self.code:
@@ -83,8 +90,9 @@ class Role(Base):
     company = models.ForeignKey("property.PropertyManagmentCompany", on_delete=models.CASCADE, related_name="staff_roles")
     permissions = models.ManyToManyField(Permission, blank=True)
 
-    def __str__(self):  
-        return f"{self.name} - {self.company.name}"
+    def __str__(self):
+        return self.name
+
 
 class UserVerification(models.Model):
     VERIFICATION_TYPE_CHOICES = (
@@ -179,4 +187,16 @@ class FAQ(models.Model):
 
     def __str__(self):
         return self.question
+
+class Approval(Base):
+
+    tenant = models.ForeignKey("user_service.Tenant",on_delete=models.CASCADE,related_name="tenant_rent_requests")
+    unit = models.ForeignKey("property.Unit",on_delete=models.CASCADE,related_name="rent_approvals")
+    requested_rent = models.DecimalField(max_digits=10,decimal_places=2)
+    requested_tenure = models.CharField(max_length=50,null=True,blank=True)
+    approved = models.BooleanField(default=False)
+    approved_by = models.ForeignKey("user_service.UserProfile",on_delete=models.SET_NULL,null=True,blank=True,related_name="approved_rent_requests")
+    approved_at = models.DateTimeField(null=True, blank=True)
+    def __str__(self):
+        return f"{self.unit} - {self.tenant}"
 

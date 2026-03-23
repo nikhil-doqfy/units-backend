@@ -3,9 +3,9 @@ import datetime
 import json
 import datetime
 from user_service.models import UserProfile, Documents, Role, FAQ, Owner, Tenant, PropertyManager, DocumentType
-from property.models import Unit, Property, PropertyManagmentCompany, PropertyImages, PropertyInterest, UnitImages, PropertyDocuments
-from property_management.models import TermAndCondition, Country, State, City, AuditLog
-from lease.models import Template, TemplateField, TemplateValue, Lease, LeaseDocuments
+from property.models import Unit, Property, PropertyManagmentCompany, PropertyImages, PropertyInterest
+from property_management.models import TermAndCondition, Country,State,City, AuditLog
+from lease.models import Template, TemplateField, TemplateValue
 from payment.models import Payment, Bank
 from complaint.models import Complaint
 from utilities.decorator import is_request_authenticated
@@ -56,6 +56,8 @@ import base64
 import uuid
 from django.core.files.base import ContentFile
 
+from lease.models import  Lease, LeaseDocuments
+from property.models import PropertyDocuments, Unit, UnitImages
 
 @is_request_authenticated
 def serve_media(request, path):
@@ -1678,13 +1680,6 @@ def lease_documents(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
-
-
-
-
-
-
-
 @is_request_authenticated
 def lease_tenancy(request):
     try:
@@ -1786,10 +1781,6 @@ def lease_tenancy(request):
             message=str(e),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
-
-
-
-
 
 
 @is_request_authenticated
@@ -2386,9 +2377,6 @@ def faq_api(request):
             message=constants.INVALID_REQUEST,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
-
-
-
 
 
 @is_request_authenticated
@@ -3097,10 +3085,6 @@ def lease_pdf_view(request):
 
 
 #--------------------------------------------> Dashboard API<------------------------------------------------------------------
-
-
-
-
 
 @is_request_authenticated
 def dashboard_monthly_revenue(request):
