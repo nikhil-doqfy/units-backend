@@ -10,4 +10,9 @@ urlpatterns = [
     path("api/lease/generate-contract", views.generate_contract, name="lease_generate_contract"),
     path("api/lease/send-negotiation", views.send_negotiation, name="lease_send_negotiation"),
     path("api/lease/send-invite", views.send_lease_invite, name="lease_send_invite"),
+    path("api/lease/approval-otp",        views.lease_approval_otp,         name="lease_approval_otp"),
+    path("api/lease/approval-otp-verify", views.lease_approval_verify_otp,  name="lease_approval_verify_otp"),
+    path("api/lease/approve",             views.approve_lease_view,          name="approve_lease_view"),
+    path("api/lease/cheques",             views.lease_cheque_view,            name="lease_cheque_view"),
+    path("api/lease/cheque-status",       views.lease_cheque_status,          name="lease_cheque_status"),
 ]

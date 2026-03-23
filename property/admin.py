@@ -46,8 +46,26 @@ class UnitAdmin(admin.ModelAdmin):
 
 @admin.register(UnitOwner)
 class UnitOwnerAdmin(admin.ModelAdmin):
-    list_display = ["id", "unit", "name", "email", "contact_number", "emirates_id"]
-    search_fields = ["name", "email"]
+    list_display = ["id", "unit", "get_name", "get_email", "get_contact_number", "get_emirates_id"]
+    search_fields = ["owner__user__first_name", "owner__user__last_name", "owner__user__email"]
+
+    @admin.display(description="Name")
+    def get_name(self, obj):
+        if obj.owner and obj.owner.user:
+            return f"{obj.owner.user.first_name} {obj.owner.user.last_name}".strip()
+        return "—"
+
+    @admin.display(description="Email")
+    def get_email(self, obj):
+        return obj.owner.user.email if obj.owner and obj.owner.user else "—"
+
+    @admin.display(description="Contact Number")
+    def get_contact_number(self, obj):
+        return obj.owner.contact_number if obj.owner else "—"
+
+    @admin.display(description="Emirates ID")
+    def get_emirates_id(self, obj):
+        return obj.owner.emirate_id if obj.owner else "—"
 
 
 @admin.register(PropertyInterest)

@@ -10,6 +10,7 @@ from django.db.models import Q
 from django.contrib.auth.models import User
 from django.db import transaction
 from django.http import HttpResponse
+from django.views.decorators.csrf import csrf_exempt
 
 from utilities.decorator import is_request_authenticated
 from django.template.loader import render_to_string
@@ -24,8 +25,8 @@ from property.models import Unit
 from user_service.models import Tenant, TenantDocuments, DocumentType
 from property_management import settings
 from property_management.utils import audit_logs
-from .models import Lease, LeaseDocuments, Template, TemplateField, TemplateValue
-from .serializers import serialize_lease, serialize_tenant_lease
+from .models import Lease, LeaseDocuments, LeaseCheque, Template, TemplateField, TemplateValue
+from .serializers import serialize_lease, serialize_tenant_lease, group_lease_cheques
 
 
 def _parse_date(value):
@@ -852,11 +853,12 @@ def send_negotiation(request):
                     owner_emails.append({
                         "email": o.owner.email,
                         "name":  f"{o.owner.user.first_name} {o.owner.user.last_name}".strip() if o.owner.user else "Owner",
+                        "role":  "owner",
                     })
 
         recipients = []
         if tenant_email:
-            recipients.append({"email": tenant_email, "name": tenant_name})
+            recipients.append({"email": tenant_email, "name": tenant_name, "role": "tenant"})
         recipients.extend(owner_emails)
 
         if not recipients:
@@ -870,11 +872,20 @@ def send_negotiation(request):
             "pdf_url":       fetch_s3_presigned_url(lease.pdf_path) if lease.pdf_path else "",
         }
 
+        from utilities.config import FRONTEND_URL
+
+        lease.lease_stage = constants.NEGOTIATION_SENT
+        lease.save(update_fields=["lease_stage"])
+
         subject = f"Lease Negotiation Document – {lease.code}"
         failed  = []
         sent    = []
         for r in recipients:
             ctx["recipient_name"] = r["name"]
+            ctx["approval_url"] = (
+                f"{FRONTEND_URL}/lease-approval"
+                f"?lease={lease.id}&role={r['role']}&email={r['email']}"
+            )
             body_html = render_to_string("email_templates/lease_negotiation.html", ctx)
             body_text = (
                 f"Dear {r['name']},\n\n"
@@ -898,3 +909,292 @@ def send_negotiation(request):
         return prepare_response(message=constants.INVALID_LAESE_ID, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
         return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@csrf_exempt
+def lease_approval_otp(request):
+    """Send OTP to owner/tenant for lease approval. No auth required."""
+    if request.method != "POST":
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    try:
+        from user_service.utils import request_otp_sent
+        from django.core.cache import cache
+        body     = json.loads(request.body)
+        lease_id = body.get("lease_id")
+        role     = body.get("role")        # "owner" or "tenant"
+        email    = body.get("email", "").strip().lower()
+        if not lease_id or not role or not email:
+            return prepare_response(message="lease_id, role and email are required", status=status.HTTP_400_BAD_REQUEST)
+        lease = Lease.objects.select_related(
+            "tenant__user",
+            "unit__unit_owners__owner__user",
+        ).get(id=lease_id)
+
+        # ── Security: verify the email actually belongs to this lease ──────
+        if role == "tenant":
+            expected = lease.tenant.user.email.strip().lower() if lease.tenant and lease.tenant.user else None
+            if not expected or expected != email:
+                return prepare_response(message="Email does not match the tenant for this lease.", status=status.HTTP_403_FORBIDDEN)
+        elif role == "owner":
+            owner_emails = set()
+            if lease.unit:
+                for uo in lease.unit.unit_owners.all():
+                    if uo.owner and uo.owner.user:
+                        owner_emails.add(uo.owner.user.email.strip().lower())
+            if email not in owner_emails:
+                return prepare_response(message="Email does not match any owner for this lease.", status=status.HTTP_403_FORBIDDEN)
+        else:
+            return prepare_response(message="Invalid role.", status=status.HTTP_400_BAD_REQUEST)
+
+        otp = request_otp_sent()
+        cache_key = f"otp_lease_approval_{lease_id}_{role}_{email}"
+        cache.set(cache_key, otp, timeout=600)
+        role_label    = "Owner" if role == "owner" else "Tenant"
+        role_label_ar = "المالك" if role == "owner" else "المستأجر"
+        ctx = {
+            "otp":           otp,
+            "recipient_name": email,
+            "lease_code":    lease.code,
+            "role_label":    role_label,
+            "role_label_ar": role_label_ar,
+        }
+        subject   = f"OTP for Lease Approval – {lease.code}"
+        body_text = f"Your OTP for lease approval ({lease.code}) is: {otp}\nThis OTP expires in 10 minutes."
+        body_html = render_to_string("email_templates/lease_approval_otp.html", ctx)
+        send_ses_email(email, subject, body_text, body_html)
+        return prepare_response(message="OTP sent successfully", status=status.HTTP_200_OK)
+    except Lease.DoesNotExist:
+        return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@csrf_exempt
+def lease_approval_verify_otp(request):
+    """Verify OTP and return lease PDF + details. No auth required."""
+    if request.method != "POST":
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    try:
+        from django.core.cache import cache
+        body     = json.loads(request.body)
+        lease_id = body.get("lease_id")
+        role     = body.get("role")
+        email    = body.get("email", "").strip().lower()
+        otp      = body.get("otp")
+        if not lease_id or not role or not email or not otp:
+            return prepare_response(message="lease_id, role, email and otp are required", status=status.HTTP_400_BAD_REQUEST)
+        cache_key = f"otp_lease_approval_{lease_id}_{role}_{email}"
+        stored    = cache.get(cache_key)
+        if not stored or str(stored) != str(otp):
+            return prepare_response(message="Invalid or expired OTP", status=status.HTTP_400_BAD_REQUEST)
+        # OTP verified — store a verified flag (don't delete yet, needed for approve step)
+        verified_key = f"otp_lease_approval_verified_{lease_id}_{role}_{email}"
+        cache.set(verified_key, True, timeout=600)
+        lease = Lease.objects.select_related(
+            "tenant__user",
+            "unit__property_block_tower__property",
+        ).get(id=lease_id)
+        unit = lease.unit
+        pb   = unit.property_block_tower if unit else None
+        prop = pb.property if pb else None
+        pdf_url = fetch_s3_presigned_url(lease.pdf_path, file_name="agreement.pdf") if lease.pdf_path else ""
+        return prepare_response(
+            message="OTP verified",
+            content={
+                "pdf_url":       pdf_url,
+                "lease_code":    lease.code,
+                "tenant_name":   f"{lease.tenant.user.first_name} {lease.tenant.user.last_name}".strip() if lease.tenant and lease.tenant.user else "",
+                "property_name": prop.property_name if prop else "",
+                "unit_name":     unit.unit_name if unit else "",
+            },
+            status=status.HTTP_200_OK,
+        )
+    except Lease.DoesNotExist:
+        return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@csrf_exempt
+def approve_lease_view(request):
+    """Mark owner or tenant approval. No auth required."""
+    if request.method != "POST":
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    try:
+        from django.core.cache import cache
+        body     = json.loads(request.body)
+        lease_id = body.get("lease_id")
+        role     = body.get("role")
+        email    = body.get("email", "").strip().lower()
+        if not lease_id or not role or not email:
+            return prepare_response(message="lease_id, role and email are required", status=status.HTTP_400_BAD_REQUEST)
+        verified_key = f"otp_lease_approval_verified_{lease_id}_{role}_{email}"
+        if not cache.get(verified_key):
+            return prepare_response(message="OTP not verified. Please verify OTP first.", status=status.HTTP_400_BAD_REQUEST)
+        lease = Lease.objects.get(id=lease_id)
+        current = lease.lease_stage
+        if role == "tenant":
+            if current == constants.OWNER_APPROVED:
+                lease.lease_stage = constants.WAITING_CHEQUE
+            else:
+                lease.lease_stage = constants.TENANT_APPROVED
+        elif role == "owner":
+            if current == constants.TENANT_APPROVED:
+                lease.lease_stage = constants.WAITING_CHEQUE
+            else:
+                lease.lease_stage = constants.OWNER_APPROVED
+        else:
+            return prepare_response(message="Invalid role", status=status.HTTP_400_BAD_REQUEST)
+        lease.save(update_fields=["lease_stage"])
+        cache.delete(verified_key)
+        return prepare_response(
+            message="Lease approved successfully",
+            content={"lease_stage": lease.lease_stage},
+            status=status.HTTP_200_OK,
+        )
+    except Lease.DoesNotExist:
+        return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@is_request_authenticated
+@csrf_exempt
+@is_request_authenticated
+def lease_cheque_view(request):
+    """CRUD for LeaseCheque. GET ?lease_id=X, POST/PUT body JSON, DELETE ?cheque_id=X"""
+
+    # ── GET list ──────────────────────────────────────────────────────────────
+    if request.method == "GET":
+        lease_id = request.GET.get("lease_id")
+        if not lease_id:
+            return prepare_response(message="lease_id is required", status=status.HTTP_400_BAD_REQUEST)
+        cheques = LeaseCheque.objects.filter(lease_id=lease_id).select_related(
+            "origin_bank", "selltlement_bank", "document_type"
+        )
+        return prepare_response(content=group_lease_cheques(cheques), status=status.HTTP_200_OK)
+
+    # ── POST create ───────────────────────────────────────────────────────────
+    elif request.method == "POST":
+        try:
+            data = json.loads(request.body)
+        except (json.JSONDecodeError, TypeError):
+            return prepare_response(message=constants.INVALID_JSON_BODY, status=status.HTTP_400_BAD_REQUEST)
+
+        lease_id = data.get("lease_id")
+        if not lease_id:
+            return prepare_response(message="lease_id is required", status=status.HTTP_400_BAD_REQUEST)
+        try:
+            lease = Lease.objects.get(id=lease_id)
+        except Lease.DoesNotExist:
+            return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
+
+        from user_service.models import DocumentType
+        document_type_id = data.get("document_type_id")
+        try:
+            doc_type = DocumentType.objects.get(id=document_type_id) if document_type_id else DocumentType.objects.first()
+        except DocumentType.DoesNotExist:
+            return prepare_response(message="Document type not found", status=status.HTTP_404_NOT_FOUND)
+
+        from payment.models import Bank
+        origin_bank_id      = data.get("origin_bank_id")
+        settlement_bank_id  = data.get("selltlement_bank_id")
+        try:
+            origin_bank     = Bank.objects.get(id=origin_bank_id)     if origin_bank_id     else None
+            settlement_bank = Bank.objects.get(id=settlement_bank_id) if settlement_bank_id else None
+        except Bank.DoesNotExist:
+            return prepare_response(message="Bank not found", status=status.HTTP_404_NOT_FOUND)
+
+        file_path = ""
+        file_name = data.get("file_name", "")
+        if data.get("file_data") and data.get("file_name"):
+            ext = get_extension_from_base64(data["file_data"])
+            file_path = upload_file_to_s3_base64(
+                data["file_data"],
+                f"lease_cheques/{lease_id}/{uuid.uuid4()}.{ext}",
+            ) or ""
+            file_name = data["file_name"]
+
+        cheque = LeaseCheque.objects.create(
+            lease=lease,
+            document_type=doc_type,
+            file_name=file_name,
+            file_path=file_path,
+            cheque_type=data.get("cheque_type", constants.RENT_CHEQUE),
+            payment_type=data.get("payment_type", constants.PAYMENT_TYPE_CHEQUE),
+            start_date=_parse_date(data.get("start_date")),
+            end_date=_parse_date(data.get("end_date")),
+            cheque_date=_parse_date(data.get("cheque_date")) or date.today(),
+            origin_bank=origin_bank,
+            selltlement_bank=settlement_bank,
+            origin_account_number=data.get("origin_account_number", 0),
+            settlement_account_number=data.get("settlement_account_number", 0),
+            amount=data.get("amount", 0),
+        )
+        return prepare_response(
+            message="Cheque created successfully",
+            content={"id": cheque.id},
+            status=status.HTTP_201_CREATED,
+        )
+
+    # ── PUT update ────────────────────────────────────────────────────────────
+    elif request.method == "PUT":
+        try:
+            data = json.loads(request.body)
+        except (json.JSONDecodeError, TypeError):
+            return prepare_response(message=constants.INVALID_JSON_BODY, status=status.HTTP_400_BAD_REQUEST)
+
+        cheque_id = data.get("cheque_id")
+        if not cheque_id:
+            return prepare_response(message="cheque_id is required", status=status.HTTP_400_BAD_REQUEST)
+        try:
+            cheque = LeaseCheque.objects.get(id=cheque_id)
+        except LeaseCheque.DoesNotExist:
+            return prepare_response(message="Cheque not found", status=status.HTTP_404_NOT_FOUND)
+
+        from payment.models import Bank
+        updatable = ["cheque_type", "payment_type", "origin_account_number",
+                     "settlement_account_number", "amount"]
+        for field in updatable:
+            if field in data:
+                setattr(cheque, field, data[field])
+
+        for date_field in ["start_date", "end_date", "cheque_date"]:
+            if date_field in data:
+                setattr(cheque, date_field, _parse_date(data[date_field]))
+
+        for bank_field, attr in [("origin_bank_id", "origin_bank"), ("selltlement_bank_id", "selltlement_bank")]:
+            if bank_field in data and data[bank_field]:
+                try:
+                    setattr(cheque, attr, Bank.objects.get(id=data[bank_field]))
+                except Bank.DoesNotExist:
+                    pass
+
+        if data.get("file_data") and data.get("file_name"):
+            ext = get_extension_from_base64(data["file_data"])
+            cheque.file_path = upload_file_to_s3_base64(
+                data["file_data"],
+                f"lease_cheques/{cheque.lease_id}/{uuid.uuid4()}.{ext}",
+            ) or cheque.file_path
+            cheque.file_name = data["file_name"]
+
+        cheque.save()
+        return prepare_response(message="Cheque updated successfully", status=status.HTTP_200_OK)
+
+    # ── DELETE ────────────────────────────────────────────────────────────────
+    elif request.method == "DELETE":
+        cheque_id = request.GET.get("cheque_id")
+        if not cheque_id:
+            return prepare_response(message="cheque_id is required", status=status.HTTP_400_BAD_REQUEST)
+        try:
+            LeaseCheque.objects.get(id=cheque_id).delete()
+        except LeaseCheque.DoesNotExist:
+            return prepare_response(message="Cheque not found", status=status.HTTP_404_NOT_FOUND)
+        return prepare_response(message="Cheque deleted successfully", status=status.HTTP_200_OK)
+
+    return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+
+def lease_cheque_status(request):
+    """Legacy — kept for backward compat. Delegates to lease_cheque_view."""
+    return lease_cheque_view(request)

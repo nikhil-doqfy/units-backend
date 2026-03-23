@@ -1,4 +1,5 @@
 from utilities.helper_functions import fetch_s3_presigned_url
+from utilities import constants
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -127,6 +128,49 @@ def serialize_lease(lease):
             "payment_count":        lease.payment_count,
         },
     }
+
+
+# ── Lease Cheque ──────────────────────────────────────────────────────────────
+
+def serialize_lease_cheque(cheque):
+    return {
+        "id":                        cheque.id,
+        "cheque_type":               cheque.cheque_type,
+        "payment_type":              cheque.payment_type,
+
+        # ── Dates ─────────────────────────────────────────────────
+        "cheque_date": str(cheque.cheque_date)[:10] if cheque.cheque_date else None,
+        "start_date":  str(cheque.start_date)[:10]  if cheque.start_date  else None,
+        "end_date":    str(cheque.end_date)[:10]     if cheque.end_date    else None,
+
+        # ── Origin Bank ───────────────────────────────────────────
+        "origin_bank": {
+            "id":             cheque.origin_bank_id,
+            "name":           cheque.origin_bank.name if cheque.origin_bank else None,
+        },
+
+        # ── Settlement Bank ───────────────────────────────────────
+        "selltlement_bank": {
+            "id":             cheque.selltlement_bank_id,
+            "name":           cheque.selltlement_bank.name if cheque.selltlement_bank else None,
+        },
+
+        # ── Financials ────────────────────────────────────────────
+        "origin_account_number":     cheque.origin_account_number,
+        "settlement_account_number": cheque.settlement_account_number,
+        "amount":                    cheque.amount,
+
+        # ── Document ──────────────────────────────────────────────
+        "file_name": cheque.file_name,
+        "file_path": fetch_s3_presigned_url(cheque.file_path) if cheque.file_path else None,
+    }
+
+
+def group_lease_cheques(cheques):
+    """Split a queryset of LeaseCheque into rent and additional groups."""
+    rent       = [serialize_lease_cheque(c) for c in cheques if c.cheque_type == constants.RENT_CHEQUE]
+    additional = [serialize_lease_cheque(c) for c in cheques if c.cheque_type == constants.ADDITIONAL_CHEQUE]
+    return {"rent_cheques": rent, "additional_cheques": additional}
 
 
 # ── Tenant Lease (tenant-facing list) ─────────────────────────────────────────
