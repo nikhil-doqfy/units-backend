@@ -18,12 +18,14 @@ class UserProfile(Base):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="profile")
     profile_image = models.TextField(null=True, blank=True)
     pin_code = models.CharField(max_length=20, null=True, blank=True)
+    
     address_line_1 = models.CharField(max_length=255, null=True, blank=True)
     address_line_2 = models.CharField(max_length=255, null=True, blank=True)
     emirate_id = models.CharField(max_length=255, null=True, blank=True)
     email = models.EmailField(max_length=255, null=True, blank=True)
     contact_number = models.CharField(max_length=20, null=True, blank=True)
     timezone = models.CharField(max_length=100, choices=constants.TIMEZONE_CHOICES, default=constants.TIMEZONE_CHOICES[0][0])
+    nationality = models.CharField(max_length=100, blank=True, null=True)
     passport_number = models.CharField(max_length=50, blank=True, null=True)
     passport_expiry_datetime = models.DateTimeField(blank=True, null=True)
     visa_number = models.CharField(max_length=50, blank=True, null=True)
@@ -64,6 +66,7 @@ class PropertyManager(UserProfile):
 
 
 class Tenant(UserProfile):
+    is_onboarding = models.BooleanField(default=False)
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         if not self.code:

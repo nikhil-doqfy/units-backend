@@ -5,8 +5,9 @@ from property_management import settings
 from user_service import urls as user_service_urls  
 from auth_service import urls as auth_service_urls
 from payment import urls as payment_urls
-from . import views
+from property_management import views
 from django.urls import re_path
+from terms import urls as terms_urls
 from charges import urls as charges_urls
 from property import urls as property_urls
 from lead import urls as lead_urls
@@ -25,11 +26,10 @@ urlpatterns = [
 
     re_path(r"^media/(?P<path>.*)$", views.serve_media),
     path('options', views.options, name='options'),
-    path('invitation', views.send_invitation, name='send_invitation'),
     path('property/details', views.property_table_view, name='property_table_view'),
     path('tenant/table', views.tenant_table_view, name='create_property_basic'), 
-    path('property/images', views.property_images, name='property_images'),
-    path('property/documents', views.property_documents, name='property_images'), 
+    path("property/images", views.property_images, name="property_images"),
+    path("property/unit/images", views.property_unit_images, name="property_unit_images"),
     path('parent/property', views.parent_property_view, name=' parent_property_view'),
     path('statistics', views.dashboard_overview, name='dashboard_statistics'),
     path('company/owners', views.company_owners_view, name='company_owners_view'),
@@ -37,7 +37,7 @@ urlpatterns = [
     path('save/lease', views.lease_details_view, name='lease_details_view'),
     path('audit_log', views.audit_log, name='audit_log'),
 
-    path('lease_documents', views.lease_documents, name='lease_documents'),
+    path('lease_documents', views.lease_documents, name='lease_documents'), 
     path('lease/tenancy', views.lease_tenancy, name='lease_tenancy'),
     path("complaint", views.complaint, name="complaint_api"), 
     path("faq_api", views.faq_api, name="faq_api"),
@@ -57,11 +57,11 @@ urlpatterns = [
     path('lease_term_and_condition', views.lease_term_and_condition, name='lease_term_and_condition'),
     path('property_owner_compny_lease', views.property_owner_compny_lease, name='property_owner_compny_lease'),
     path('property_lease_payment', views.property_lease_payment, name='lease_payment'),
+    path('terms/',  include(terms_urls)),
     path('companies', views.company_list, name='company_list'),
 
     # path('complaint_list', views.complaint_list, name='complaint_list'),
 
-    
 ] 
 
 if settings.DEBUG:
