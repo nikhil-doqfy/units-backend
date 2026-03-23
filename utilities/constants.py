@@ -496,6 +496,7 @@ APPROVED="APPROVED"
 
 IN_PROGRESS="IN_PROGRESS"
 COMPLETED="COMPLETED"
+ASSIGNED_TO_ENGINEER = 'ASSIGNED_TO_ENGINEER'
 ASSIGNED_ENGINEER="ASSIGNED_ENGINEER"
 
 
@@ -797,3 +798,18 @@ TIMEZONE_CHOICES = (
     ("JST", "JST"),
     ("AEST", "AEST")
 )
+
+COMPLAINT_STATUS_CHOICES = (
+    (PENDING, 'PENDING'),
+    (IN_PROGRESS, 'In Progress'),
+    (ASSIGNED_TO_ENGINEER, 'Assigned to Engineer'),
+    (COMPLETED, 'Completed'),
+    (REJECTED, 'Rejected'),
+)
+
+# ── Complaint Messages ─────────────────────────────────────────
+COMPLAINT_CREATED_SUCCESSFULLY = "Complaint created successfully."
+COMPLAINT_UPDATED_SUCCESSFULLY = "Complaint updated successfully."
+COMPLAINT_DELETED_SUCCESSFULLY = "Complaint deleted successfully."
+COMPLAINT_FETCHED_SUCCESSFULLY = "Complaints fetched successfully."
+COMPLAINT_NOT_FOUND = "Complaint not found."

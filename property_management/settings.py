@@ -37,7 +37,8 @@ INSTALLED_APPS = [
     'sslserver',
     'charges',
     'lead',
-    'complaint'
+    'complaint',
+    'lease'
  
 ]
 
