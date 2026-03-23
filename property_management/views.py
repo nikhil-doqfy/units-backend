@@ -4,7 +4,7 @@ import json
 import datetime
 from user_service.models import UserProfile, Documents, Role, FAQ, Owner, Tenant, PropertyManager, DocumentType
 from property.models import Unit, Property, PropertyManagmentCompany, PropertyImages, PropertyInterest
-from property_management.models import TermAndCondition, Country, AuditLog
+from property_management.models import TermAndCondition, Country,State,City, AuditLog
 from lease.models import Template, TemplateField, TemplateValue
 from payment.models import Payment, Bank
 from utilities.decorator import is_request_authenticated
@@ -55,6 +55,8 @@ import base64
 import uuid
 from django.core.files.base import ContentFile
 
+from lease.models import  Lease, LeaseDocuments
+from property.models import PropertyDocuments, Unit, UnitImages
 
 @is_request_authenticated
 def serve_media(request, path):
@@ -202,7 +204,7 @@ def options(request):
                 
         # ---------- Fetched rental accoubt lease ----------
         elif option_type == "RENTAL_ACCOUNT_LEASE":
-            leases = LeasePropertyDetails.objects.filter(lease_status=constants.ACTIVE)
+            leases = Lease.objects.filter(lease_status=constants.ACTIVE)
             content["lease_data"] = [
                 {
                     "key": lease.id,
@@ -369,7 +371,7 @@ def property_table_view(request):
 
     if my_property and user.user_role == constants.TENANT:
         lease_property_id = (
-        LeasePropertyDetails.objects
+        Lease.objects
         .filter(tenant=user)
         .values_list("lease_property_id", flat=True)
         .first()
@@ -413,7 +415,7 @@ def property_table_view(request):
     else:
         return prepare_response(message=constants.UNAUTHORIZED_ROLE, status=status.HTTP_403_FORBIDDEN)
     properties_qs = properties_qs.select_related("owner__user", "company", "property").prefetch_related(
-        Prefetch("lease_details", queryset=LeasePropertyDetails.objects.select_related("tenant__user"))
+        Prefetch("lease_details", queryset=Lease.objects.select_related("tenant__user"))
     ).distinct()
     if tenancy_status == constants.VACANT:
         properties_qs = properties_qs.filter(is_occupied=False)
@@ -491,133 +493,6 @@ def property_table_view(request):
     )
 
 
-def save_local_base64(base64_data, original_name):
-    try:
-        if "," in base64_data:
-            base64_str = base64_data.split(",")[1]
-        else:
-            base64_str = base64_data
-
-        
-        decoded_file = base64.b64decode(base64_str)
-        extension = original_name.split('.')[-1] if '.' in original_name else 'jpg'
-        unique_name = f"{uuid.uuid4()}.{extension}"
-        return ContentFile(decoded_file, name=unique_name)
-    except:
-        return None
-
-def handle_image_upload(images_data, object_id, model_class, id_field, user):   #Generic function to handle image uploads for both property and property unit
-
-    uploaded = []
-
-    for img in images_data:
-        image_data = img.get("data")
-        file_name = img.get("file_name")
-        image_type = img.get("type", "INTERIOR").upper()
-
-        if not image_data or not file_name:
-            continue
-
-        image_file = save_local_base64(image_data, file_name)
-        if not image_file:
-            continue
-
-        kwargs = {
-            id_field: object_id,
-            "image": image_file,
-            "file_name": file_name,
-            "image_type": image_type,
-            "created_by": user
-        }
-
-        instance = model_class.objects.create(**kwargs)
-        uploaded.append({"image_id": instance.id, "url": instance.image.url})
-
-    return uploaded
-
-@is_request_authenticated
-def property_images(request):
-    if request.method == "GET":
-        property_id = request.GET.get("property_id")
-        if not property_id:
-            return prepare_response(
-                message="Property ID is required",
-                status=400
-            )
-
-        images = PropertyImages.objects.filter(property_id=property_id).order_by("-id")
-        final_images = [
-            {
-                "id": img.id,
-                "file_name": img.file_name,
-                "url": img.image.url if img.image else None,
-                "type": img.image_type
-            } for img in images
-        ]
-        return prepare_response(message="Success", content={"images": final_images}, status=200)
-
-    elif request.method == "POST":
-        try:
-            body = json.loads(request.body)
-        except json.JSONDecodeError:
-            return prepare_response(message="Invalid JSON", status=400)
-
-        property_id = body.get("property_unit_id") or body.get("property_id")
-        if not property_id:
-            return prepare_response(message="Property ID is required", status=400)
-
-        images_data = body.get("images", [])
-        if not images_data:
-            return prepare_response(message="No images provided", status=400)
-
-        uploaded = handle_image_upload(images_data, property_id, PropertyImages, "property_id", request.user.user)
-
-        if not uploaded:
-            return prepare_response(message="No valid images uploaded", status=400)
-
-        return prepare_response(message="Uploaded Successfully", content={"uploaded": uploaded}, status=201)
-
-
-@is_request_authenticated
-def property_unit_images(request):
-    if request.method == "GET":
-        unit_id = request.GET.get("property_unit_id")
-        if not unit_id:
-            return prepare_response(message="Property Unit ID is required", status=400)
-
-        images = UnitImages.objects.filter(property_unit_id=unit_id).order_by("-id")
-        final_images = [
-            {
-                "id": img.id,
-                "file_name": img.file_name,
-                "url": img.image.url if img.image else None,
-                "type": img.image_type
-            } for img in images
-        ]
-        return prepare_response(message="Success", content={"images": final_images}, status=200)
-
-    elif request.method == "POST":
-        try:
-            body = json.loads(request.body)
-        except json.JSONDecodeError:
-            return prepare_response(message="Invalid JSON", status=400)
-
-        unit_id = body.get("property_unit_id")
-        if not unit_id:
-            return prepare_response(message="Property Unit ID is required", status=400)
-
-        images_data = body.get("images", [])
-        if not images_data:
-            return prepare_response(message="No images provided", status=400)
-
-        uploaded = handle_image_upload(images_data, unit_id, UnitImages, "property_unit_id", request.user.user)
-
-        if not uploaded:
-            return prepare_response(message="No valid images uploaded", status=400)
-
-        return prepare_response(message="Uploaded Successfully", content={"uploaded": uploaded}, status=201)
-    
-
 @is_request_authenticated
 def tenant_table_view(request):
 
@@ -654,7 +529,7 @@ def tenant_table_view(request):
 
 
             }
-            lease_qs = LeasePropertyDetails.objects.filter(tenant=tenant_obj).select_related(
+            lease_qs = Lease.objects.filter(tenant=tenant_obj).select_related(
                 "tenant", "lease_property", "lease_property__owner", "lease_property__company"
             )
             return prepare_response(content= tenant_data, message=constants.TENANT_DETAIL_FETCHED, status=status.HTTP_200_OK)
@@ -663,7 +538,7 @@ def tenant_table_view(request):
             
 
         elif user.user_role == constants.OWNER:
-            lease_qs = LeasePropertyDetails.objects.filter(owner=user).select_related(
+            lease_qs = Lease.objects.filter(owner=user).select_related(
                 "tenant", "lease_property", "lease_property__owner", "lease_property__company"
             )
 
@@ -671,7 +546,7 @@ def tenant_table_view(request):
             company = PropertyManagmentCompany.objects.filter(company_user=user).first()
             if not company:
                 return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_400_BAD_REQUEST)
-            lease_qs = LeasePropertyDetails.objects.filter(
+            lease_qs = Lease.objects.filter(
                 lease_property__company=company
             ).select_related(
                 "tenant", "lease_property", "lease_property__owner", "lease_property__company"
@@ -914,7 +789,7 @@ def owner_pmc_view(request):
                     companies = pmc.company_user.all()
                     for comp in companies:
                         owner_props = Unit.objects.filter(owner=user, company=comp)
-                        leased_count = LeasePropertyDetails.objects.filter(
+                        leased_count = Lease.objects.filter(
                             lease_property__in=owner_props
                         ).count()
                         total_count = owner_props.count()
@@ -1099,7 +974,7 @@ def lease_details_view(request):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            lease = LeasePropertyDetails.objects.filter(id=lease_id).first()
+            lease = Lease.objects.filter(id=lease_id).first()
             if not lease:
                 return prepare_response(
                     message=constants.LEASE_NOT_FOUND,
@@ -1142,7 +1017,7 @@ def lease_details_view(request):
             lease_grace_end_date = safe_epoch_to_datetime(body.get("lease_grace_end_date")) if body.get("lease_grace_end_date") else None
 
             # ----------------- Create Lease with all fields -----------------
-            lease = LeasePropertyDetails.objects.create(
+            lease = Lease.objects.create(
                 created_by=user_profile.user,
                 lease_property=property_obj,
                 tenant=tenant_obj,
@@ -1192,7 +1067,7 @@ def lease_details_view(request):
             if not lease_id:
                 return prepare_response(message=constants.LEASE_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
 
-            lease = LeasePropertyDetails.objects.filter(id=lease_id).first()
+            lease = Lease.objects.filter(id=lease_id).first()
             if not lease:
                 return prepare_response(message=constants.LEASE_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
 
@@ -1263,8 +1138,8 @@ def lease_documents(request):
                 )
 
             try:
-                lease_obj = LeasePropertyDetails.objects.get(id=lease_id)
-            except LeasePropertyDetails.DoesNotExist:
+                lease_obj = Lease.objects.get(id=lease_id)
+            except Lease.DoesNotExist:
                 return prepare_response(
                     message=constants.INVALID_LEASE_ID,
                     status=status.HTTP_404_NOT_FOUND
@@ -1315,8 +1190,8 @@ def lease_documents(request):
                 )
 
             try:
-                lease_obj = LeasePropertyDetails.objects.get(id=lease_id)
-            except LeasePropertyDetails.DoesNotExist:
+                lease_obj = Lease.objects.get(id=lease_id)
+            except Lease.DoesNotExist:
                 return prepare_response(
                     message=constants.INVALID_LEASE_ID,
                     status=status.HTTP_404_NOT_FOUND
@@ -1344,7 +1219,7 @@ def lease_documents(request):
                     created_by=request.user.user
                 )
 
-                LeaseDocumentsMapping.objects.create(
+                LeaseDocuments.objects.create(
                     lease=lease_obj,
                     document=doc_obj,
                     document_choice=doc_type,
@@ -1391,8 +1266,8 @@ def lease_documents(request):
                 )
 
             try:
-                lease_obj = LeasePropertyDetails.objects.get(id=lease_id)
-            except LeasePropertyDetails.DoesNotExist:
+                lease_obj = Lease.objects.get(id=lease_id)
+            except Lease.DoesNotExist:
                 return prepare_response(
                     message=constants.INVALID_LEASE_ID,
                     status=status.HTTP_404_NOT_FOUND
@@ -1411,7 +1286,7 @@ def lease_documents(request):
                         status=status.HTTP_400_BAD_REQUEST
                     )
 
-                mapping_obj = LeaseDocumentsMapping.objects.filter(
+                mapping_obj = LeaseDocuments.objects.filter(
                     lease=lease_obj,
                     document__file_name=file_name
                 ).select_related("document").first()
@@ -1426,7 +1301,7 @@ def lease_documents(request):
                         file_path="",
                         created_by=request.user.user
                     )
-                    mapping_obj = LeaseDocumentsMapping.objects.create(
+                    mapping_obj = LeaseDocuments.objects.create(
                         lease=lease_obj,
                         document=doc_obj,
                         document_choice=doc_type,
@@ -1471,13 +1346,6 @@ def lease_documents(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
-
-
-
-
-
-
-
 @is_request_authenticated
 def lease_tenancy(request):
     try:
@@ -1490,7 +1358,7 @@ def lease_tenancy(request):
         current_user = request.user  
         lease_status_param = request.GET.get("lease_status")
 
-        leases_qs = LeasePropertyDetails.objects.select_related(
+        leases_qs = Lease.objects.select_related(
             "lease_property",
             "lease_property__company",
             "tenant",
@@ -1581,10 +1449,6 @@ def lease_tenancy(request):
         )
 
 
-
-
-
-
 @is_request_authenticated
 def dashboard_overview(request):
     if request.method != "GET":
@@ -1621,7 +1485,7 @@ def dashboard_overview(request):
         total_properties = properties.count()
         rented_count = properties.filter(is_occupied=True).count()
         vacant_count = properties.filter(is_occupied=False).count()
-        lease_queryset = LeasePropertyDetails.objects.filter(
+        lease_queryset = Lease.objects.filter(
             lease_property__in=properties
         )
 
@@ -1870,7 +1734,7 @@ def export_property_table_csv(request):
         ).prefetch_related(
             Prefetch(
                 "lease_details",
-                queryset=LeasePropertyDetails.objects.select_related("tenant__user")
+                queryset=Lease.objects.select_related("tenant__user")
             )
         ).distinct()
         if search:
@@ -1958,207 +1822,6 @@ def export_property_table_csv(request):
         )
 
 
-
-@is_request_authenticated
-def complaint(request):
-    user_profile = request.user
-
-    if request.method == "POST":
-        try:
-            data = json.loads(request.body)
-            message = data.get("message")
-
-            if not message:
-                return prepare_response(
-                    message=constants.MESSAGE_REQUIRED,
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            complaint = Complaint.objects.create(
-                user=user_profile,
-                message=message,
-                created_by=request.user.user
-            )
-
-            return prepare_response(
-                message=constants.COMPLAINT_RAISED_SUCCESS,
-                status=status.HTTP_201_CREATED,
-                content={
-                    "id": complaint.id,
-                    "message": complaint.message
-                }
-            )
-
-        except Exception as e:
-            return prepare_response(
-                message=str(e),
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-    elif request.method == "GET":
-        login_user = request.user
-        complaints_qs = Complaint.objects.none()
-
-        # ================= ROLE BASED FILTER (UNCHANGED) =================
-        if login_user.user_role == constants.TENANT:
-            complaints_qs = Complaint.objects.filter(user=login_user)
-
-        elif login_user.user_role == constants.OWNER:
-            complaints_qs = Complaint.objects.filter(
-                user__tenant_leases__lease_property__owner=login_user
-            ).distinct()
-
-        elif login_user.user_role == constants.COMPANY_USER:
-            company = PropertyManagmentCompany.objects.filter(company_user=login_user).first()
-            if not company:
-                return prepare_response(
-                    message=constants.COMPANY_NOT_FOUND,
-                    status=status.HTTP_404_NOT_FOUND
-                )
-
-            complaints_qs = Complaint.objects.filter(
-                user__tenant_leases__lease_property__company=company
-            ).distinct()
-
-        else:
-            return prepare_response(
-                message="Invalid user role",
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # ================= STATUS FILTER (UNCHANGED) =================
-        status_param = request.GET.get("status")
-        if status_param:
-            status_list = [s.strip() for s in status_param.split(",")]
-
-            VALID_STATUSES = {
-                constants.IN_PROGRESS,
-                constants.COMPLETED,
-                constants.ASSIGNED_ENGINEER,
-                constants.REJECTED,
-            }
-
-            invalid_status = set(status_list) - VALID_STATUSES
-            if invalid_status:
-                return prepare_response(
-                    message=f"Invalid status value(s): {', '.join(invalid_status)}",
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            complaints_qs = complaints_qs.filter(status__in=status_list)
-        property_unit_id = request.GET.get("property_unit_id")
-        if property_unit_id:
-            if not property_unit_id.isdigit():
-                return prepare_response(message="Invalid property_unit_id",status=status.HTTP_400_BAD_REQUEST)
-            complaints_qs = complaints_qs.filter(user__tenant_leases__lease_property__id=property_unit_id).distinct()
-        
-
-        # ================= SEARCH FILTER (NEW) =================
-        search = request.GET.get("search", "").strip()
-        if search:
-            complaints_qs = complaints_qs.filter(
-                Q(id__icontains=search) |
-                Q(user__user__first_name__icontains=search) |
-                Q(user__user__last_name__icontains=search) |
-                Q(user__tenant_leases__lease_property__unit_name__icontains=search)
-            ).distinct()
-
-        complaints_qs = complaints_qs.select_related(
-            "user", "user__user"
-        ).order_by("-created")
-
-        # ================= SUMMARY COUNTS (UNCHANGED) =================
-        total_complaints = complaints_qs.count()
-        total_completed = complaints_qs.filter(status=constants.COMPLETED).count()
-        total_in_progress = complaints_qs.filter(status=constants.IN_PROGRESS).count()
-        total_rejected = complaints_qs.filter(status=constants.REJECTED).count()
-
-        # ================= PAGINATION (NEW) =================
-        page = int(request.GET.get("page", 1))
-        limit = int(request.GET.get("limit", 10))
-
-        paginator = Paginator(complaints_qs, limit)
-        try:
-            complaints_page = paginator.page(page)
-        except EmptyPage:
-            complaints_page = paginator.page(paginator.num_pages)
-
-        complaint_list = []
-
-        for complaint_obj in complaints_page:
-            tenant = complaint_obj.user
-
-            lease = LeasePropertyDetails.objects.filter(
-                tenant=tenant
-            ).select_related("lease_property").first()
-
-            unit_name = None
-            property_image = None
-
-            if lease and lease.lease_property:
-                property_obj = lease.lease_property
-                unit_name = property_obj.unit_name
-
-                image_data = get_property_images(
-                    property_id=property_obj.id,
-                    single=True
-                )
-                if not image_data.get("error") and image_data.get("images"):
-                    property_image = image_data["images"][0]["data"]
-
-            complaint_list.append({
-                "complaint_id": complaint_obj.id,
-                "unit_name": unit_name,
-                "property_unit_id":property_obj.id,
-                "description": complaint_obj.message,
-                "raised_by_email": tenant.user.email,
-                "raised_by_name": tenant.user.first_name,
-                "status": {
-                    "key": complaint_obj.status,
-                    "value": complaint_obj.get_status_display()
-                },
-                "raised_date": datetime_to_epoch_millis(complaint_obj.created),
-                "property_image": property_image,
-
-                "raised_by_image": tenant.profile_image
-            })
-
-        return prepare_response(
-            content={
-                "summary": {
-                    "total_complaints": total_complaints,
-                    "total_completed": total_completed,
-                    "total_in_progress": total_in_progress,
-                    "total_rejected": total_rejected,
-                },
-                "complaints": complaint_list
-            },
-            pagination={
-                "current_page": complaints_page.number,
-                "limit": limit,
-                "total_records": paginator.count,
-                "total_pages": paginator.num_pages
-            },
-            message="Complaints fetched successfully",
-            status=status.HTTP_200_OK
-        )
-
-    elif request.method == "PUT":
-        pass
-
-    elif request.method == "DELETE":
-        pass
-
-    else:
-        return prepare_response(
-            message=constants.INVALID_REQUEST,
-            status=status.HTTP_405_METHOD_NOT_ALLOWED
-        )
-
-
-
-
-
 def faq_api(request):
 
     if request.method == "GET":
@@ -2181,9 +1844,6 @@ def faq_api(request):
         )
 
 
-
-
-
 @is_request_authenticated
 def export_tenant_csv(request):
     """
@@ -2200,7 +1860,7 @@ def export_tenant_csv(request):
     try:
         user = request.user
         search = request.GET.get("search", "").strip()
-        lease_qs = LeasePropertyDetails.objects.select_related(
+        lease_qs = Lease.objects.select_related(
             "tenant",
             "tenant__user",
             "lease_property",
@@ -2316,7 +1976,7 @@ def export_owner_pmc_csv(request):
                     )
 
                     total_props = owner_props.count()
-                    leased_props = LeasePropertyDetails.objects.filter(
+                    leased_props = Lease.objects.filter(
                         lease_property__in=owner_props
                     ).count()
 
@@ -2424,7 +2084,7 @@ def export_lease_tenancy_csv(request):
         current_user = request.user
         lease_status_param = request.GET.get("lease_status")
 
-        leases_qs = LeasePropertyDetails.objects.select_related(
+        leases_qs = Lease.objects.select_related(
             "lease_property",
             "lease_property__company",
             "tenant",
@@ -2834,7 +2494,7 @@ def lease_pdf_view(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        lease = LeasePropertyDetails.objects.filter(id=lease_id).first()
+        lease = Lease.objects.filter(id=lease_id).first()
         if not lease:
             return prepare_response(
                 message=constants.LEASE_NOT_FOUND,
@@ -2891,10 +2551,6 @@ def lease_pdf_view(request):
 
 #--------------------------------------------> Dashboard API<------------------------------------------------------------------
 
-
-
-
-
 @is_request_authenticated
 def dashboard_monthly_revenue(request):
     if request.method != "GET":
@@ -2933,7 +2589,7 @@ def dashboard_monthly_revenue(request):
             created__date__range=[start_date, end_date]
         )
 
-        leases = LeasePropertyDetails.objects.filter(
+        leases = Lease.objects.filter(
             lease_status=constants.ACTIVE,
             is_active=True
         )
@@ -3069,7 +2725,7 @@ def dashboard_cheque_visibility(request):
         # ROLE BASED LEASES
         # =========================
         if user.user_role == constants.OWNER:
-            leases = LeasePropertyDetails.objects.filter(owner=user, is_active=True)
+            leases = Lease.objects.filter(owner=user, is_active=True)
         elif user.user_role == constants.COMPANY_USER:
             companies = PropertyManagmentCompany.objects.filter(company_user=user)
             if not companies.exists():
@@ -3077,7 +2733,7 @@ def dashboard_cheque_visibility(request):
                     message=constants.COMPANY_NOT_FOUND,
                     status=status.HTTP_404_NOT_FOUND
                 )
-            leases = LeasePropertyDetails.objects.filter(lease_property__company__in=companies, is_active=True)
+            leases = Lease.objects.filter(lease_property__company__in=companies, is_active=True)
         else:
             return prepare_response(
                 message=constants.UNAUTHORIZED_ROLE,
@@ -3430,7 +3086,7 @@ def dashboard_yearly_dues(request):
         # ------------------------------------------------
         # 1 BASE LEASE QUERY (Expected Rent)
         # ------------------------------------------------
-        leases = LeasePropertyDetails.objects.filter(
+        leases = Lease.objects.filter(
             lease_status=constants.ACTIVE,
             is_active=True,
             lease_start_date__lte=year_end,
@@ -3577,8 +3233,8 @@ def lease_term_and_condition(request):
                 )
 
             try:
-                lease_obj = LeasePropertyDetails.objects.get(id=lease_id)
-            except LeasePropertyDetails.DoesNotExist:
+                lease_obj = Lease.objects.get(id=lease_id)
+            except Lease.DoesNotExist:
                 return prepare_response(
                     message=constants.INVALID_LEASE_ID,
                     status=status.HTTP_404_NOT_FOUND
@@ -3641,8 +3297,8 @@ def lease_term_and_condition(request):
                 )
 
             try:
-                lease_obj = LeasePropertyDetails.objects.get(id=lease_id)
-            except LeasePropertyDetails.DoesNotExist:
+                lease_obj = Lease.objects.get(id=lease_id)
+            except Lease.DoesNotExist:
                 return prepare_response(
                     message=constants.INVALID_LEASE_ID,
                     status=status.HTTP_404_NOT_FOUND
@@ -3863,7 +3519,7 @@ def property_lease_payment(request):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            lease = LeasePropertyDetails.objects.filter(id=lease_id).first()
+            lease = Lease.objects.filter(id=lease_id).first()
             if not lease:
                 return prepare_response(
                     message="Invalid lease_id",
