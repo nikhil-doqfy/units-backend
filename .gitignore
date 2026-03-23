@@ -9,3 +9,4 @@ static
 .env
 .venv
 venv/
+test_weasy.py

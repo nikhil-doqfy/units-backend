@@ -2,7 +2,8 @@ import random
 from datetime import timedelta
 from utilities.helper_functions import upload_file_to_s3_base64, get_extension_from_base64
 from user_service.models import DocumentType
-
+from user_service.models import Approval
+from django.utils import timezone
 
 def request_otp_sent():
     otp = random.randint(100000, 999999)
@@ -29,7 +30,41 @@ def upload_document(base64_data, file_prefix, document_type_id, document_model, 
         **extra_kwargs
     )
 
+def process_rent_approval(approval_id, user_profile, rent=None, tenure=None, action="approve"):
 
+    approval = Approval.objects.select_related("unit").filter(id=approval_id).first()
+
+    if not approval:
+        return None, "Approval request not found"
+
+    if action == "approve":
+
+        approval.approved = True
+        approval.approved_by = user_profile
+        approval.approved_at = timezone.now()
+        approval.save()
+        unit = approval.unit
+
+        if rent:
+            unit.rent = rent
+
+        if tenure:
+            unit.cycle = tenure
+
+        unit.save()
+
+        return approval, "Rent request approved successfully"
+
+    elif action == "reject":
+
+        approval.approved = False
+        approval.approved_by = user_profile
+        approval.approved_at = timezone.now()
+        approval.save()
+
+        return approval, "Rent request rejected"
+
+    return None, "Invalid action"
 
 # def get_company_staff(user):
 #     try:
