@@ -756,6 +756,24 @@ TIMEZONE_CHOICES = (
     ("AEST", "AEST")
 )
 
+PENDING = "PENDING"
+ASSIGNED = "ASSIGNED"
+IN_PROGRESS = "IN_PROGRESS"
+RESOLVED = "RESOLVED"
+CLOSED = "CLOSED"
+REOPENED = "REOPENED"
+CANCELLED = "CANCELLED"
+ 
+COMPLAINT_STATUS_CHOICES = (
+    (PENDING, "Pending"),
+    (ASSIGNED, "Assigned"),
+    (IN_PROGRESS, "In Progress"),
+    (RESOLVED, "Resolved"),
+    (CLOSED, "Closed"),
+    (REOPENED, "Reopened"),
+    (CANCELLED, "Cancelled"),
+)
+
 DRAFT = "DRAFT"
 SCHEDULED = "SCHEDULED"
 SENT = "SENT"
