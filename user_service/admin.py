@@ -3,7 +3,7 @@ from user_service.models import (
     UserProfile, Permission, Role, UserVerification,
     Documents, OwnerDocuments, TenantDocuments,
     Owner, Tenant, PropertyManager,
-    FAQ, PrivacyPolicy,Approval
+    FAQ, PrivacyPolicy, Approval
 )
 
 
@@ -85,7 +85,7 @@ class PrivacyPolicyAdmin(admin.ModelAdmin):
 @admin.register(FAQ)
 class FAQAdmin(admin.ModelAdmin):
     list_display = ("id", "question")
-
+   
 @admin.register(Approval)
 class ApprovalAdmin(admin.ModelAdmin):
     list_display = ("tenant","unit","requested_rent","requested_tenure","approved","approved_by",)
