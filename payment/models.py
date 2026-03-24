@@ -11,8 +11,8 @@ from lease.models import Lease
 class Bank(Base):
     name = models.CharField(max_length=100)
     city = models.ForeignKey(City, on_delete=models.CASCADE)
-    branch_name = models.CharField(max_length=150, null=True, blank=True)
-    branch_code = models.CharField(max_length=20, null=True, blank=True)
+    branch_name = models.CharField(max_length=150)
+    branch_code = models.CharField(max_length=20)
     bank_code = models.CharField(max_length=10, null=True, blank=True)
     address = models.TextField(null=True, blank=True)
     swift_code = models.CharField(max_length=11, null=True, blank=True)

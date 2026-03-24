@@ -118,3 +118,25 @@ class LeaseDocuments(Documents):
 
     def __str__(self):
         return f"{self.lease}"
+
+
+class LeaseCheque(Documents):
+    lease = models.ForeignKey(Lease, on_delete=models.CASCADE, related_name="lease_cheques")
+    start_date = models.DateTimeField()
+    end_date = models.DateTimeField()
+    cheque_date = models.DateTimeField()
+    origin_bank = models.ForeignKey("payment.Bank", on_delete=models.CASCADE, related_name="origin_cheques")
+    selltlement_bank = models.ForeignKey("payment.Bank", on_delete=models.CASCADE, related_name="settlement_cheques")
+    origin_account_number = models.IntegerField()
+    settlement_account_number = models.IntegerField()
+    amount = models.IntegerField()
+    cheque_type = models.CharField(
+        max_length=20,
+        choices=constants.CHEQUE_TYPE_CHOICES,
+        default=constants.RENT_CHEQUE,
+    )
+    payment_type = models.CharField(
+        max_length=20,
+        choices=constants.PAYMENT_TYPE_CHOICES,
+        default=constants.PAYMENT_TYPE_CHEQUE,
+    )

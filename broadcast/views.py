@@ -1,12 +1,10 @@
 import csv
 import json
 from datetime import datetime
-
 from django.conf import settings
 from django.core.mail import send_mail
 from django.http import HttpResponse
 from django.utils import timezone
-
 from broadcast.models import Announcement, AnnouncementLog, AnnouncementRecipient
 from property.models import Property, PropertyBlocks, Unit
 from property_management.models import AuditLog
@@ -14,9 +12,6 @@ from user_service.models import UserProfile
 from utilities import constants, status
 from utilities.decorator import is_request_authenticated
 from utilities.helper_functions import prepare_response
-
-
-# ── formatters ────────────────────────────────────────────────────────────────
 
 def format_announcement(ann, log=None):
     return {
@@ -51,7 +46,6 @@ def format_announcement(ann, log=None):
         "created_at": ann.created.isoformat() if ann.created else None,
     }
 
-
 def format_recipient(r):
     return {
         "id":           r.id,
@@ -64,14 +58,10 @@ def format_recipient(r):
         "failure_reason": r.failure_reason,
     }
 
-
-# ── private helpers ───────────────────────────────────────────────────────────
-
 def _base_qs():
     return Announcement.objects.select_related(
         "property", "block", "unit", "log"
     ).order_by("-id")
-
 
 def _resolve_tenants(ann):
     qs = UserProfile.objects.all()
@@ -101,7 +91,6 @@ def _resolve_tenants(ann):
         ).distinct()
 
     return UserProfile.objects.none()
-
 
 def _dispatch(ann, created_by):
     """Resolve recipients, mark delivery, send e-mail, update the log."""
@@ -189,18 +178,13 @@ def _dispatch(ann, created_by):
     ann.sent_at = timezone.now()
     ann.save(update_fields=["status", "sent_at"])
 
-
-# ── views ─────────────────────────────────────────────────────────────────────
-
 @is_request_authenticated
 def announcement(request):
     user_profile = request.user
 
-    # ── GET ──────────────────────────────────────────────────────────────────
     if request.method == "GET":
         ann_id = request.GET.get("announcement_id")
 
-        # single-record fetch
         if ann_id:
             ann = _base_qs().filter(id=ann_id).first()
             if not ann:
@@ -213,7 +197,6 @@ def announcement(request):
                 status=status.HTTP_200_OK,
             )
 
-        # list with optional filters
         tab = request.GET.get("tab", "SENT").upper()
         if tab not in {"SENT", "SCHEDULED", "DRAFT", "DELETED"}:
             tab = "SENT"
@@ -272,7 +255,6 @@ def announcement(request):
             status=status.HTTP_200_OK,
         )
 
-    # ── POST ─────────────────────────────────────────────────────────────────
     elif request.method == "POST":
         data = json.loads(request.body)
 
@@ -357,7 +339,6 @@ def announcement(request):
             status=status.HTTP_201_CREATED,
         )
 
-    # ── PUT ──────────────────────────────────────────────────────────────────
     elif request.method == "PUT":
         data = json.loads(request.body)
 
@@ -414,7 +395,6 @@ def announcement(request):
             status=status.HTTP_200_OK,
         )
 
-    # ── DELETE ───────────────────────────────────────────────────────────────
     elif request.method == "DELETE":
         ann_id = request.GET.get("announcement_id")
         if not ann_id:
@@ -437,7 +417,6 @@ def announcement(request):
         message=constants.INVALID_REQUEST_METHOD,
         status=status.HTTP_405_METHOD_NOT_ALLOWED,
     )
-
 
 @is_request_authenticated
 def announcement_send(request):
@@ -472,7 +451,6 @@ def announcement_send(request):
         content={"id": ann.id, "log_id": ann.log_id},
         status=status.HTTP_200_OK,
     )
-
 
 @is_request_authenticated
 def announcement_banner(request):
@@ -512,7 +490,6 @@ def announcement_banner(request):
         content={"url": ann.banner_image.url},
         status=status.HTTP_200_OK,
     )
-
 
 @is_request_authenticated
 def announcement_recipients(request):

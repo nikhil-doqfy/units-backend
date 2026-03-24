@@ -37,10 +37,11 @@ INSTALLED_APPS = [
     'sslserver',
     'charges',
     'lead',
-    'lease',
     'terms',
     'complaint',
-    'broadcast'
+    'lease',
+    'broadcast',
+ 
 ]
 
 MIDDLEWARE = [
@@ -118,6 +119,15 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR /'media'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# File-based cache — persists across Django dev-server reloads (unlike LocMemCache)
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.filebased.FileBasedCache",
+        "LOCATION": os.path.join(BASE_DIR, ".django_cache"),
+        "TIMEOUT": 600,
+    }
+}
 
 EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
 EMAIL_USE_TLS = True

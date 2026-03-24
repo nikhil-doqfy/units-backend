@@ -141,6 +141,7 @@ class DocumentType(property_management.models.Base):
         (constants.PROPERTY_MANAGER, "Property Manager"),
         (constants.PROPERTY, "Property"),
         (constants.UNIT, "Unit"),
+        (constants.LEASE_CHEQUE, "Lease Cheque"),
     )
     name = models.CharField(max_length=255)
     section = models.CharField(max_length=255)
