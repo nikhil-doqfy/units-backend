@@ -24,7 +24,7 @@ urlpatterns = [
     path('', include(lead_urls)),
     path('', include(lease_urls)),
     path('terms/',  include(terms_urls)),
-    path('broadcast/', include(broadcast_urls)),
+     path('broadcast/', include(broadcast_urls)),
 
     re_path(r"^media/(?P<path>.*)$", views.serve_media),
     path('options', views.options, name='options'),
@@ -60,7 +60,6 @@ urlpatterns = [
 
     # path('complaint_list', views.complaint_list, name='complaint_list'),
 
-    
 ] 
 
 if settings.DEBUG:

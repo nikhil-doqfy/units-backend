@@ -798,25 +798,7 @@ TIMEZONE_CHOICES = (
     ("JST", "JST"),
     ("AEST", "AEST")
 )
-
-PENDING = "PENDING"
-ASSIGNED = "ASSIGNED"
-IN_PROGRESS = "IN_PROGRESS"
-RESOLVED = "RESOLVED"
-CLOSED = "CLOSED"
-REOPENED = "REOPENED"
-CANCELLED = "CANCELLED"
- 
-COMPLAINT_STATUS_CHOICES = (
-    (PENDING, "Pending"),
-    (ASSIGNED, "Assigned"),
-    (IN_PROGRESS, "In Progress"),
-    (RESOLVED, "Resolved"),
-    (CLOSED, "Closed"),
-    (REOPENED, "Reopened"),
-    (CANCELLED, "Cancelled"),
-)
-
+  
 DRAFT = "DRAFT"
 SCHEDULED = "SCHEDULED"
 SENT = "SENT"
@@ -905,7 +887,7 @@ ANNOUNCEMENT_SENT = "Announcement sent successfully."
 ANNOUNCEMENT_TITLE_REQUIRED = "Title is required."
 ANNOUNCEMENT_DESCRIPTION_REQUIRED = "Description is required."
 ANNOUNCEMENT_ID_REQUIRED = "Announcement ID is required."
-
+  
 COMPLAINT_STATUS_CHOICES = (
     (PENDING, 'PENDING'),
     (IN_PROGRESS, 'In Progress'),
