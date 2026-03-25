@@ -18,7 +18,7 @@ from django.template.loader import render_to_string
 from utilities.helper_functions import (
     prepare_response, fetch_s3_presigned_url,
     upload_file_to_s3_base64, get_extension_from_base64,
-    replace_placeholders, send_ses_email,
+    replace_placeholders, send_ses_email, fetch_s3_file_as_base64,
 )
 from utilities import status, constants
 from property.models import Unit
@@ -927,6 +927,8 @@ def lease_approval_otp(request):
             return prepare_response(message="lease_id, role and email are required", status=status.HTTP_400_BAD_REQUEST)
         lease = Lease.objects.select_related(
             "tenant__user",
+            "unit__property_block_tower__property",
+        ).prefetch_related(
             "unit__unit_owners__owner__user",
         ).get(id=lease_id)
 
@@ -1060,6 +1062,326 @@ def approve_lease_view(request):
 
 @is_request_authenticated
 @csrf_exempt
+def send_for_signature(request):
+    """Send signature-request emails to tenant and owners. Requires auth."""
+    if request.method != "POST":
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    try:
+        body     = json.loads(request.body)
+        lease_id = body.get("lease_id")
+        if not lease_id:
+            return prepare_response(message="lease_id is required", status=status.HTTP_400_BAD_REQUEST)
+
+        lease = Lease.objects.select_related(
+            "tenant__user",
+            "unit__property_block_tower__property",
+        ).prefetch_related(
+            "unit__unit_owners__owner__user"
+        ).get(id=lease_id)
+
+        t    = lease.tenant
+        unit = lease.unit
+        pb   = unit.property_block_tower if unit else None
+        prop = pb.property if pb else None
+
+        tenant_name  = f"{t.user.first_name} {t.user.last_name}".strip() if t and t.user else "Tenant"
+        tenant_email = t.user.email if t and t.user else None
+
+        owner_recipients = []
+        if unit:
+            for o in unit.unit_owners.select_related("owner__user").all():
+                if o.owner and o.owner.email:
+                    owner_recipients.append({
+                        "email": o.owner.email,
+                        "name":  f"{o.owner.user.first_name} {o.owner.user.last_name}".strip() if o.owner.user else "Owner",
+                        "role":  "owner",
+                    })
+
+        recipients = []
+        if tenant_email:
+            recipients.append({"email": tenant_email, "name": tenant_name, "role": "tenant"})
+        recipients.extend(owner_recipients)
+
+        if not recipients:
+            return prepare_response(message="No recipient emails found for this lease", status=status.HTTP_400_BAD_REQUEST)
+
+        from utilities.config import FRONTEND_URL
+
+        ctx_base = {
+            "lease_code":    lease.code,
+            "tenant_name":   tenant_name,
+            "property_name": prop.property_name if prop else "",
+            "unit_name":     unit.unit_name if unit else "",
+        }
+
+        lease.lease_stage = constants.AGREEMENT_SIGNING
+        lease.save(update_fields=["lease_stage"])
+
+        subject = f"Lease Agreement – Signature Required – {lease.code}"
+        failed  = []
+        sent    = []
+        for r in recipients:
+            ctx = dict(ctx_base)
+            ctx["recipient_name"] = r["name"]
+            ctx["signature_url"]  = (
+                f"{FRONTEND_URL}/lease-sign"
+                f"?lease={lease.id}&role={r['role']}&email={r['email']}"
+            )
+            body_html = render_to_string("email_templates/lease_signature_request.html", ctx)
+            body_text = (
+                f"Dear {r['name']},\n\n"
+                f"Your signature is required for lease agreement {lease.code}.\n"
+                f"Tenant: {tenant_name} | Property: {ctx_base['property_name']} | Unit: {ctx_base['unit_name']}\n"
+                f"Sign here: {ctx['signature_url']}\n\nThank you,\nThe Doqfy Team"
+            )
+            ok = send_ses_email(r["email"], subject, body_text, body_html)
+            (sent if ok else failed).append(r["email"])
+
+        audit_logs(request, f"Sent signature request emails for lease '{lease.code}' to {sent}", constants.CREATED)
+
+        return prepare_response(
+            message="Signature request emails sent successfully",
+            content={"sent": sent, "failed": failed},
+            status=status.HTTP_200_OK,
+        )
+
+    except Lease.DoesNotExist:
+        return prepare_response(message=constants.INVALID_LAESE_ID, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@csrf_exempt
+def lease_signature_otp(request):
+    """Send OTP to owner/tenant for lease signature. No auth required."""
+    if request.method != "POST":
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    try:
+        from user_service.utils import request_otp_sent
+        from django.core.cache import cache
+        body     = json.loads(request.body)
+        lease_id = body.get("lease_id")
+        role     = body.get("role")
+        email    = body.get("email", "").strip().lower()
+        if not lease_id or not role or not email:
+            return prepare_response(message="lease_id, role and email are required", status=status.HTTP_400_BAD_REQUEST)
+
+        lease = Lease.objects.select_related(
+            "tenant__user",
+            "unit__property_block_tower__property",
+        ).prefetch_related(
+            "unit__unit_owners__owner__user",
+        ).get(id=lease_id)
+
+        # Verify the email actually belongs to this lease
+        if role == "tenant":
+            expected = lease.tenant.user.email.strip().lower() if lease.tenant and lease.tenant.user else None
+            if not expected or expected != email:
+                return prepare_response(message="Email does not match the tenant for this lease.", status=status.HTTP_403_FORBIDDEN)
+        elif role == "owner":
+            owner_emails = set()
+            if lease.unit:
+                for uo in lease.unit.unit_owners.all():
+                    if uo.owner and uo.owner.user:
+                        owner_emails.add(uo.owner.user.email.strip().lower())
+            if email not in owner_emails:
+                return prepare_response(message="Email does not match any owner for this lease.", status=status.HTTP_403_FORBIDDEN)
+        else:
+            return prepare_response(message="Invalid role.", status=status.HTTP_400_BAD_REQUEST)
+
+        otp = request_otp_sent()
+        cache_key = f"otp_lease_signature_{lease_id}_{role}_{email}"
+        cache.set(cache_key, otp, timeout=600)
+        role_label    = "Owner" if role == "owner" else "Tenant"
+        role_label_ar = "المالك" if role == "owner" else "المستأجر"
+        ctx = {
+            "otp":            otp,
+            "recipient_name": email,
+            "lease_code":     lease.code,
+            "role_label":     role_label,
+            "role_label_ar":  role_label_ar,
+        }
+        subject   = f"OTP for Lease Signature – {lease.code}"
+        body_text = f"Your OTP for lease signature ({lease.code}) is: {otp}\nThis OTP expires in 10 minutes."
+        body_html = render_to_string("email_templates/lease_approval_otp.html", ctx)
+        send_ses_email(email, subject, body_text, body_html)
+        return prepare_response(message="OTP sent successfully", status=status.HTTP_200_OK)
+    except Lease.DoesNotExist:
+        return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@csrf_exempt
+def lease_signature_verify_otp(request):
+    """Verify OTP and return lease PDF + details for signing. No auth required."""
+    if request.method != "POST":
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    try:
+        from django.core.cache import cache
+        body     = json.loads(request.body)
+        lease_id = body.get("lease_id")
+        role     = body.get("role")
+        email    = body.get("email", "").strip().lower()
+        otp      = body.get("otp")
+        if not lease_id or not role or not email or not otp:
+            return prepare_response(message="lease_id, role, email and otp are required", status=status.HTTP_400_BAD_REQUEST)
+
+        cache_key = f"otp_lease_signature_{lease_id}_{role}_{email}"
+        stored    = cache.get(cache_key)
+        if not stored or str(stored) != str(otp):
+            return prepare_response(message="Invalid or expired OTP", status=status.HTTP_400_BAD_REQUEST)
+
+        # Store verified flag for submit step
+        verified_key = f"otp_lease_signature_verified_{lease_id}_{role}_{email}"
+        cache.set(verified_key, True, timeout=600)
+
+        lease = Lease.objects.select_related(
+            "tenant__user",
+            "unit__property_block_tower__property",
+        ).get(id=lease_id)
+        unit = lease.unit
+        pb   = unit.property_block_tower if unit else None
+        prop = pb.property if pb else None
+        pdf_url = fetch_s3_presigned_url(lease.pdf_path, file_name="agreement.pdf") if lease.pdf_path else ""
+        return prepare_response(
+            message="OTP verified",
+            content={
+                "pdf_url":       pdf_url,
+                "lease_code":    lease.code,
+                "tenant_name":   f"{lease.tenant.user.first_name} {lease.tenant.user.last_name}".strip() if lease.tenant and lease.tenant.user else "",
+                "property_name": prop.property_name if prop else "",
+                "unit_name":     unit.unit_name if unit else "",
+            },
+            status=status.HTTP_200_OK,
+        )
+    except Lease.DoesNotExist:
+        return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@csrf_exempt
+def submit_lease_signature(request):
+    """Emboss signature onto lease PDF and save. No auth required."""
+    if request.method != "POST":
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    try:
+        import io
+        import base64 as _b64
+        import pypdf
+        from reportlab.pdfgen import canvas as rl_canvas
+        from reportlab.lib.utils import ImageReader
+        from django.core.cache import cache
+
+        body           = json.loads(request.body)
+        lease_id       = body.get("lease_id")
+        role           = body.get("role")
+        email          = (body.get("email") or "").strip().lower()
+        signature_data = body.get("signature_data", "")
+
+        if not lease_id or not role or not email or not signature_data:
+            return prepare_response(message="lease_id, role, email and signature_data are required", status=status.HTTP_400_BAD_REQUEST)
+
+        # Check that OTP was verified
+        verified_key = f"otp_lease_signature_verified_{lease_id}_{role}_{email}"
+        if not cache.get(verified_key):
+            return prepare_response(message="OTP not verified. Please verify OTP first.", status=status.HTTP_400_BAD_REQUEST)
+
+        lease = Lease.objects.get(id=lease_id)
+        if not lease.pdf_path:
+            return prepare_response(message="No PDF available for this lease.", status=status.HTTP_400_BAD_REQUEST)
+
+        # Download original PDF bytes
+        pdf_b64 = fetch_s3_file_as_base64(lease.pdf_path)
+        if not pdf_b64:
+            return prepare_response(message="Failed to fetch lease PDF from storage.", status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        original_pdf_bytes = _b64.b64decode(pdf_b64)
+
+        # Decode signature image (strip data URL prefix if present)
+        if "," in signature_data:
+            sig_b64 = signature_data.split(",", 1)[1]
+        else:
+            sig_b64 = signature_data
+        sig_bytes = _b64.b64decode(sig_b64)
+
+        # Read original PDF
+        reader = pypdf.PdfReader(io.BytesIO(original_pdf_bytes))
+        writer = pypdf.PdfWriter()
+        for page in reader.pages:
+            writer.add_page(page)
+
+        # Get last page dimensions
+        last_page = writer.pages[-1]
+        page_width  = float(last_page.mediabox.width)
+        page_height = float(last_page.mediabox.height)
+
+        # Create signature overlay PDF using reportlab
+        sig_width  = 180.0
+        sig_height = 60.0
+        margin     = 40.0
+        # Owner → bottom-left, Tenant → bottom-right
+        if role.lower() == "owner":
+            sig_x = margin
+        else:
+            sig_x = page_width - sig_width - margin
+        sig_y = margin
+
+        overlay_buf = io.BytesIO()
+        c = rl_canvas.Canvas(overlay_buf, pagesize=(page_width, page_height))
+
+        # Draw signature label
+        c.setFont("Helvetica", 8)
+        c.setFillColorRGB(0.4, 0.4, 0.4)
+        c.drawString(sig_x, sig_y + sig_height + 6, f"Signed by: {email} ({role})")
+
+        # Draw signature image
+        sig_img = ImageReader(io.BytesIO(sig_bytes))
+        c.drawImage(sig_img, sig_x, sig_y, width=sig_width, height=sig_height, preserveAspectRatio=True, mask="auto")
+
+        # Draw a thin line above the signature block
+        c.setStrokeColorRGB(0.6, 0.6, 0.6)
+        c.setLineWidth(0.5)
+        c.line(sig_x - 5, sig_y + sig_height + 20, sig_x + sig_width + 5, sig_y + sig_height + 20)
+
+        c.save()
+        overlay_buf.seek(0)
+
+        # Stamp overlay onto last page
+        overlay_reader = pypdf.PdfReader(overlay_buf)
+        overlay_page   = overlay_reader.pages[0]
+        last_page.merge_page(overlay_page)
+
+        # Output final signed PDF
+        output_buf = io.BytesIO()
+        writer.write(output_buf)
+        signed_pdf_bytes = output_buf.getvalue()
+
+        # Upload to S3
+        object_name  = f"signed_agreements/signed_{lease_id}_{role}.pdf"
+        signed_url   = upload_file_to_s3_base64(signed_pdf_bytes, object_name)
+
+        # Update lease
+        lease.pdf_path    = signed_url
+        lease.lease_stage = constants.AGREEMENT_SIGNED
+        lease.save(update_fields=["pdf_path", "lease_stage"])
+
+        # Invalidate verified flag
+        cache.delete(verified_key)
+
+        return prepare_response(
+            message="Signature submitted successfully",
+            content={"signed_pdf_url": signed_url},
+            status=status.HTTP_200_OK,
+        )
+    except Lease.DoesNotExist:
+        return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@is_request_authenticated
+@csrf_exempt
 @is_request_authenticated
 def lease_cheque_view(request):
     """CRUD for LeaseCheque. GET ?lease_id=X, POST/PUT body JSON, DELETE ?cheque_id=X"""
@@ -1098,7 +1420,7 @@ def lease_cheque_view(request):
 
         from payment.models import Bank
         origin_bank_id      = data.get("origin_bank_id")
-        settlement_bank_id  = data.get("selltlement_bank_id")
+        settlement_bank_id  = data.get("settlement_bank_id")
         try:
             origin_bank     = Bank.objects.get(id=origin_bank_id)     if origin_bank_id     else None
             settlement_bank = Bank.objects.get(id=settlement_bank_id) if settlement_bank_id else None
@@ -1122,14 +1444,16 @@ def lease_cheque_view(request):
             file_path=file_path,
             cheque_type=data.get("cheque_type", constants.RENT_CHEQUE),
             payment_type=data.get("payment_type", constants.PAYMENT_TYPE_CHEQUE),
+            cheque_number=data.get("cheque_number") or "",
             start_date=_parse_date(data.get("start_date")),
             end_date=_parse_date(data.get("end_date")),
             cheque_date=_parse_date(data.get("cheque_date")) or date.today(),
             origin_bank=origin_bank,
             selltlement_bank=settlement_bank,
-            origin_account_number=data.get("origin_account_number", 0),
-            settlement_account_number=data.get("settlement_account_number", 0),
-            amount=data.get("amount", 0),
+            origin_account_number=data.get("origin_account_number") or 0,
+            settlement_account_number=data.get("settlement_account_number") or 0,
+            amount=data.get("amount") or 0,
+            created_by=request.user.user,
         )
         return prepare_response(
             message="Cheque created successfully",

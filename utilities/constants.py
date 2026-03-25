@@ -389,6 +389,7 @@ LEASE_STATUS_CHOICES = [
 
 # ── Lease Onboarding Stage ─────────────────────────────────────
 INVITE              = "INVITE"
+WAITING_FOR_SIGNUP  = "WAITING_FOR_SIGNUP"   # invite sent, tenant hasn't registered yet
 ONBOARDING          = "ONBOARDING"
 NEGOTIATION_SENT    = "NEGOTIATION_SENT"
 PENDING_APPROVAL    = "PENDING_APPROVAL"    # kept for backward compat
@@ -428,6 +429,7 @@ ACTIVATED           = "ACTIVATED"
 
 LEASE_STAGE_CHOICES = (
     (INVITE,            "Invite"),
+    (WAITING_FOR_SIGNUP,"Waiting for Signup"),
     (ONBOARDING,        "Onboarding"),
     (NEGOTIATION_SENT,  "Negotiation Sent"),
     (OWNER_APPROVED,    "Owner Approved"),

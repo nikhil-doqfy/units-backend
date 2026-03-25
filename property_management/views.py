@@ -300,8 +300,15 @@ def options(request):
             {"key": constants.NET_BANKING, "value": "Net Banking"},
         ]
         elif option_type == "BANK_WITH_BRANCH":
-            banks = Bank.objects.all()
-            content["bank"] = [{"key": bank.id, "value": f"{bank.name} ({bank.branch_code}) - {bank.city.name}"}for bank in banks]
+            banks = Bank.objects.select_related("city").all()
+            content["bank"] = [
+                {
+                    "key":       bank.id,
+                    "value":     f"{bank.name} ({bank.branch_code}) - {bank.city.name}",
+                    "ifsc_code": bank.ifsc_code or "",
+                }
+                for bank in banks
+            ]
 
         elif option_type == "PROPERTY_UNIT_BY_PROPERTY":
             property_id = request.GET.get("property_id")
@@ -3499,7 +3506,7 @@ def property_lease_payment(request):
                         "id": p.bank.id,
                         "name": p.bank.name,
                         "branch_name": p.bank.branch_name,
-                        "swift_code": p.bank.swift_code
+                        "ifsc_code": p.bank.ifsc_code
                     } if p.bank else None
                 })
 

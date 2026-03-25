@@ -15,7 +15,7 @@ class Bank(Base):
     branch_code = models.CharField(max_length=20)
     bank_code = models.CharField(max_length=10, null=True, blank=True)
     address = models.TextField(null=True, blank=True)
-    swift_code = models.CharField(max_length=11, null=True, blank=True)
+    ifsc_code = models.CharField(max_length=11, null=True, blank=True)
     
     def __str__(self):
         return "{}-{}".format(self.name, self.city.name)

@@ -39,6 +39,7 @@ def _serialize_lead(lead):
         "name": lead.name,
         "email": lead.email,
         "contact_number": lead.contact_number,
+        "nationality": lead.tenant.nationality if lead.tenant else None,
         "status": lead.status,
         "platform": lead.platform,
         "lead_type": lead.lead_type,

@@ -15,4 +15,8 @@ urlpatterns = [
     path("api/lease/approve",             views.approve_lease_view,          name="approve_lease_view"),
     path("api/lease/cheques",             views.lease_cheque_view,            name="lease_cheque_view"),
     path("api/lease/cheque-status",       views.lease_cheque_status,          name="lease_cheque_status"),
+    path("api/lease/send-for-signature",  views.send_for_signature,           name="send_for_signature"),
+    path("api/lease/signature-otp",       views.lease_signature_otp,          name="lease_signature_otp"),
+    path("api/lease/signature-otp-verify",views.lease_signature_verify_otp,   name="lease_signature_verify_otp"),
+    path("api/lease/submit-signature",    views.submit_lease_signature,       name="submit_lease_signature"),
 ]

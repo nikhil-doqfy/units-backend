@@ -122,8 +122,8 @@ class LeaseDocuments(Documents):
 
 class LeaseCheque(Documents):
     lease = models.ForeignKey(Lease, on_delete=models.CASCADE, related_name="lease_cheques")
-    start_date = models.DateTimeField()
-    end_date = models.DateTimeField()
+    start_date = models.DateTimeField(null=True, blank=True)
+    end_date = models.DateTimeField(null=True, blank=True)
     cheque_date = models.DateTimeField()
     origin_bank = models.ForeignKey("payment.Bank", on_delete=models.CASCADE, related_name="origin_cheques")
     selltlement_bank = models.ForeignKey("payment.Bank", on_delete=models.CASCADE, related_name="settlement_cheques")
@@ -140,3 +140,4 @@ class LeaseCheque(Documents):
         choices=constants.PAYMENT_TYPE_CHOICES,
         default=constants.PAYMENT_TYPE_CHEQUE,
     )
+    cheque_number = models.CharField(max_length=100, null=True, blank=True)
