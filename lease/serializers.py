@@ -102,7 +102,7 @@ def serialize_lease(lease):
         "lease_status": lease.lease_status,
         "lease_stage":  lease.lease_stage,
         "remarks":      lease.remarks,
-        "pdf_path":     lease.pdf_path,
+        "pdf_url":      fetch_s3_presigned_url(lease.pdf_path, file_name="agreement.pdf") if lease.pdf_path else None,
         "shell_and_core": lease.shell_and_core,
 
         # ── Dates ─────────────────────────────────────────────────
@@ -143,16 +143,21 @@ def serialize_lease_cheque(cheque):
         "start_date":  str(cheque.start_date)[:10]  if cheque.start_date  else None,
         "end_date":    str(cheque.end_date)[:10]     if cheque.end_date    else None,
 
+        # ── Cheque ────────────────────────────────────────────────
+        "cheque_number": cheque.cheque_number,
+
         # ── Origin Bank ───────────────────────────────────────────
         "origin_bank": {
-            "id":             cheque.origin_bank_id,
-            "name":           cheque.origin_bank.name if cheque.origin_bank else None,
+            "id":         cheque.origin_bank_id,
+            "name":       cheque.origin_bank.name       if cheque.origin_bank else None,
+            "ifsc_code":  cheque.origin_bank.ifsc_code if cheque.origin_bank else None,
         },
 
         # ── Settlement Bank ───────────────────────────────────────
         "selltlement_bank": {
-            "id":             cheque.selltlement_bank_id,
-            "name":           cheque.selltlement_bank.name if cheque.selltlement_bank else None,
+            "id":         cheque.selltlement_bank_id,
+            "name":       cheque.selltlement_bank.name       if cheque.selltlement_bank else None,
+            "ifsc_code":  cheque.selltlement_bank.ifsc_code if cheque.selltlement_bank else None,
         },
 
         # ── Financials ────────────────────────────────────────────
