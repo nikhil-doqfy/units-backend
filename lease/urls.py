@@ -3,7 +3,6 @@ from . import views
 
 urlpatterns = [
     path("api/lease", views.lease_view, name="lease_view"),
-    path("api/tenant-leases", views.tenant_leases_view, name="tenant_leases_view"),
     path("api/lease/onboarding-documents", views.lease_onboarding_documents_view, name="lease_onboarding_documents"),
     path("api/lease/templates", views.get_templates, name="lease_get_templates"),
     path("api/lease/template-fields", views.get_template_fields, name="lease_get_template_fields"),
@@ -19,4 +18,13 @@ urlpatterns = [
     path("api/lease/signature-otp",       views.lease_signature_otp,          name="lease_signature_otp"),
     path("api/lease/signature-otp-verify",views.lease_signature_verify_otp,   name="lease_signature_verify_otp"),
     path("api/lease/submit-signature",    views.submit_lease_signature,       name="submit_lease_signature"),
+    # Moved from property_management
+    path('save/lease', views.lease_details_view, name='lease_details_view'),
+    path('lease_documents', views.lease_documents, name='lease_documents'),
+    path('lease/tenancy', views.lease_tenancy, name='lease_tenancy'),
+    path('lease_tenancy_csv', views.export_lease_tenancy_csv, name='export_lease_tenancy_csv'),
+    path('lease_pdf', views.lease_pdf_view, name='lease_pdf_view'),
+    path('lease_term_and_condition', views.lease_term_and_condition, name='lease_term_and_condition'),
+    path('property_owner_compny_lease', views.property_owner_compny_lease, name='property_owner_compny_lease'),
+    path('property_lease_payment', views.property_lease_payment, name='lease_payment'),
 ]

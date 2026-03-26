@@ -5,7 +5,7 @@ import uuid
 from weasyprint import HTML as WeasyprintHTML
 from datetime import datetime, date
 
-from django.core.paginator import Paginator
+from django.core.paginator import Paginator, EmptyPage
 from django.db.models import Q
 from django.contrib.auth.models import User
 from django.db import transaction
@@ -19,12 +19,16 @@ from utilities.helper_functions import (
     prepare_response, fetch_s3_presigned_url,
     upload_file_to_s3_base64, get_extension_from_base64,
     replace_placeholders, send_ses_email, fetch_s3_file_as_base64,
+    safe_epoch_to_datetime, export_to_csv, datetime_to_epoch_millis,
+    fetch_s3_presigned_url_for_download, translate_to_arabic,
 )
 from utilities import status, constants
 from property.models import Unit
-from user_service.models import Tenant, TenantDocuments, DocumentType
+from user_service.models import Tenant, TenantDocuments, DocumentType, UserProfile, Documents
 from property_management import settings
-from property_management.utils import audit_logs
+from property_management.utils import audit_logs, get_tenant_detail_by_id
+from property_management.models import TermAndCondition
+from payment.models import Payment, Bank
 from .models import Lease, LeaseDocuments, LeaseCheque, Template, TemplateField, TemplateValue
 from .serializers import serialize_lease, serialize_tenant_lease, group_lease_cheques
 
@@ -196,6 +200,18 @@ def lease_view(request):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
+            # Block if tenant already has an active lease
+            active_lease = Lease.objects.filter(
+                tenant=tenant_obj,
+                lease_status="ACTIVE",
+                is_active=True,
+            ).first()
+            if active_lease:
+                return prepare_response(
+                    message=f"Tenant already has an active lease ({active_lease.code}). A new lease cannot be created while an active lease exists.",
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
             lease = Lease.objects.create(
                 created_by=user.user,
                 unit=unit_obj,
@@ -314,93 +330,6 @@ def lease_view(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
 
-
-@is_request_authenticated
-def tenant_leases_view(request):
-    if request.method != "GET":
-        return prepare_response(message="Method not allowed", status=status.HTTP_405_METHOD_NOT_ALLOWED)
-
-    try:
-        tab        = request.GET.get("tab", "onboarding")   # onboarding | active | past | rejected
-        search     = request.GET.get("search", "").strip()
-        page       = int(request.GET.get("page", 1))
-        page_size  = int(request.GET.get("page_size", 10))
-        export     = request.GET.get("export", "")
-        today      = date.today()
-
-        qs = (
-            Lease.objects
-            .select_related("tenant__user", "unit__property_block_tower__property")
-            .prefetch_related("unit__property_block_tower__property__property_images")
-            .filter(is_active=True)
-        )
-
-        if tab == "onboarding":
-            qs = qs.filter(lease_status="DRAFT")
-        elif tab == "active":
-            qs = qs.filter(
-                lease_status="ACTIVE",
-                start_date__date__lte=today,
-                end_date__date__gte=today,
-            )
-        elif tab == "past":
-            qs = qs.filter(lease_status__in=["INACTIVE", "EXPIRED"])
-        elif tab == "rejected":
-            qs = qs.filter(lease_status="REJECTED")
-
-        if search:
-            qs = qs.filter(
-                Q(tenant__user__first_name__icontains=search) |
-                Q(tenant__user__last_name__icontains=search) |
-                Q(tenant__email__icontains=search) |
-                Q(tenant__contact_number__icontains=search) |
-                Q(tenant__code__icontains=search) |
-                Q(code__icontains=search)
-            )
-
-        qs = qs.order_by("-created")
-
-        if export == "csv":
-            response = HttpResponse(content_type="text/csv")
-            response["Content-Disposition"] = f'attachment; filename="tenants_{tab}.csv"'
-            writer = csv.writer(response)
-            writer.writerow([
-                "Lease Code", "Tenant Code", "Tenant Name", "Email",
-                "Contact", "Emirates ID", "Property", "Block",
-                "Start Date", "End Date", "Rent", "Status",
-            ])
-            for l in qs:
-                row = serialize_tenant_lease(l)
-                t   = row.get("tenant", {})
-                p   = row.get("property", {})
-                d   = row.get("dates", {})
-                f   = row.get("financials", {})
-                writer.writerow([
-                    row["code"], t.get("code"), t.get("name"),
-                    t.get("email"), t.get("contact_number"), t.get("emirates_id"),
-                    p.get("name"), p.get("block_name"),
-                    d.get("start_date"), d.get("end_date"), f.get("rent"), row["lease_status"],
-                ])
-            return response
-
-        paginator = Paginator(qs, page_size)
-        page_obj  = paginator.get_page(page)
-
-        return prepare_response(
-            content=[serialize_tenant_lease(l) for l in page_obj],
-            pagination={
-                "total_records": paginator.count,
-                "total_pages":   paginator.num_pages,
-                "current_page":  page,
-                "page_size":     page_size,
-            },
-        )
-
-    except Exception as e:
-        return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-
-# ── Lease Onboarding Documents ─────────────────────────────────────────────────
 
 @is_request_authenticated
 def lease_onboarding_documents_view(request):
@@ -1522,3 +1451,1040 @@ def lease_cheque_view(request):
 def lease_cheque_status(request):
     """Legacy — kept for backward compat. Delegates to lease_cheque_view."""
     return lease_cheque_view(request)
+
+
+# ---------------------------------------------------------------------------
+# Functions moved from property_management/views.py
+# ---------------------------------------------------------------------------
+
+@is_request_authenticated
+def lease_details_view(request):
+    user_profile = request.user
+
+    try:
+        # ----------------------- GET -----------------------
+        if request.method == "GET":
+            lease_id = request.GET.get("lease_id")
+            if not lease_id:
+                return prepare_response(
+                    message=constants.LEASE_ID_REQUIRED,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            lease = Lease.objects.filter(id=lease_id).first()
+            if not lease:
+                return prepare_response(
+                    message=constants.LEASE_NOT_FOUND,
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+
+            return prepare_response(
+                content=serialize_lease(lease),
+                message=constants.LEASE_FETCHED,
+                status=status.HTTP_200_OK
+            )
+
+        # ----------------------- POST -----------------------
+        elif request.method == "POST":
+            body = json.loads(request.body)
+
+            # Required fields
+            property_id = body.get("property_id")
+            tenant_id = body.get("tenant_id")
+            if not property_id or not tenant_id:
+                return prepare_response(
+                    message=constants.PROPERTY_AND_TENANT_REQUIRED,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            property_obj = Unit.objects.filter(id=property_id).first()
+            tenant_obj = UserProfile.objects.filter(id=tenant_id, user_role=constants.TENANT).first()
+            if not property_obj or not tenant_obj:
+                return prepare_response(message=constants.PROPERTY_TENANT_INVALID, status=status.HTTP_400_BAD_REQUEST)
+
+            owner_obj = property_obj.owner
+            if not owner_obj:
+                return prepare_response(message=constants.THIS_OWNER_HAS_NO_PROPERTY, status=status.HTTP_400_BAD_REQUEST)
+
+            # Convert datetime fields
+            lease_start_date = safe_epoch_to_datetime(body.get("lease_start_date"))
+            lease_end_date = safe_epoch_to_datetime(body.get("lease_end_date"))
+            lease_grace_start_date = safe_epoch_to_datetime(body.get("lease_grace_start_date")) if body.get("lease_grace_start_date") else None
+            lease_grace_end_date = safe_epoch_to_datetime(body.get("lease_grace_end_date")) if body.get("lease_grace_end_date") else None
+
+            # ----------------- Create Lease with all fields -----------------
+            lease = Lease.objects.create(
+                created_by=user_profile.user,
+                lease_property=property_obj,
+                tenant=tenant_obj,
+                owner=owner_obj,
+                lease_number=body.get("lease_number"),
+                lease_start_date=lease_start_date,
+                lease_end_date=lease_end_date,
+                lease_grace_start_date=lease_grace_start_date,
+                lease_grace_end_date=lease_grace_end_date,
+                lease_remarks=body.get("lease_remarks"),
+                step_status=body.get("step_status", "LEASE_DETAILS"),
+                lease_status=body.get("lease_status", "DRAFT"),
+                # approval_status=body.get("approval_status", "PENDING"),
+
+
+                annual_amount=body.get("annual_amount"),
+                actual_annual_amount=body.get("actual_annual_amount"),
+                rent=body.get("rent"),
+                booking_amount=body.get("booking_amount"),
+                security_deposit=body.get("security_deposit"),
+                maintenance_charges=body.get("maintenance_charges"),
+                commission_percentage=body.get("commission_percentage"),
+                notice_period=body.get("notice_period"),
+                discount=body.get("discount"),
+                contract_amount=body.get("contract_amount"),
+                payment_count=body.get("payment_count"),
+                shell=body.get("shell", False),
+                core=body.get("core", False),
+            )
+
+            audit_logs(
+                request,
+                f"Added lease agreement for {property_obj.property.property_name} – Unit {property_obj.unit_name}",
+                constants.CREATED
+            )
+
+            return prepare_response(
+                message=constants.LEASE_CREATED,
+                content={"id": lease.id},
+                status=status.HTTP_201_CREATED
+            )
+
+        # ----------------------- PUT -----------------------
+        elif request.method == "PUT":
+            body = json.loads(request.body)
+            lease_id = body.get("lease_id")
+            if not lease_id:
+                return prepare_response(message=constants.LEASE_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
+
+            lease = Lease.objects.filter(id=lease_id).first()
+            if not lease:
+                return prepare_response(message=constants.LEASE_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+
+            # Update ForeignKeys
+            if "tenant_id" in body:
+                tenant_obj = UserProfile.objects.filter(id=body["tenant_id"], user_role=constants.TENANT).first()
+                if not tenant_obj:
+                    return prepare_response(message=constants.INVALID_TENANT, status=status.HTTP_400_BAD_REQUEST)
+                lease.tenant = tenant_obj
+
+            if "property_id" in body:
+                property_obj = Unit.objects.filter(id=body["property_id"]).first()
+                if not property_obj:
+                    return prepare_response(message=constants.INVALID_PROPERTY, status=status.HTTP_400_BAD_REQUEST)
+                lease.lease_property = property_obj
+                lease.owner = property_obj.owner
+
+            # Update datetime fields
+            datetime_fields = ["lease_start_date", "lease_end_date", "lease_grace_start_date", "lease_grace_end_date"]
+            for field in datetime_fields:
+                if field in body and body[field]:
+                    setattr(lease, field, safe_epoch_to_datetime(body[field]))
+
+            # Update all other fields explicitly
+            lease_fields = [
+                "lease_number", "lease_remarks", "step_status", "lease_status",
+                "approval_status", "pdf_path",
+                "annual_amount", "actual_annual_amount", "rent", "booking_amount",
+                "security_deposit", "maintenance_charges", "commission_percentage",
+                "notice_period", "discount",
+                "contract_amount", "payment_count", "shell", "core"
+            ]
+            for field in lease_fields:
+                if field in body:
+                    setattr(lease, field, body[field])
+
+            lease.save()
+
+            audit_logs(
+                request,
+                f"Updated lease agreement for {lease.lease_property.property.property_name} – Unit {lease.lease_property.unit_name}",
+                constants.UPDATED
+            )
+
+            return prepare_response(
+                message=constants.LEASE_UPDATED,
+                content={"id": lease.id},
+                status=status.HTTP_200_OK
+            )
+
+        else:
+            return prepare_response(message=constants.INVALID_REQUEST, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    except Exception as e:
+        return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@is_request_authenticated
+def lease_documents(request):
+    try:
+        if request.method == "GET":
+            lease_id = request.GET.get("lease_id")
+            if not lease_id:
+                return prepare_response(
+                    message=constants.LEASE_ID_REQUIRED,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            try:
+                lease_obj = Lease.objects.get(id=lease_id)
+            except Lease.DoesNotExist:
+                return prepare_response(
+                    message=constants.INVALID_LEASE_ID,
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            docs_qs = lease_obj.lease_documents.select_related("document").order_by("-id")
+            final_docs = []
+
+            for mapping in docs_qs:
+                doc = mapping.document
+                base64_data = fetch_s3_presigned_url(
+                    doc.file_path,
+                    file_name=doc.file_name
+                )
+                final_docs.append({
+                    "id": mapping.id,
+                    "file_name": doc.file_name,
+                    "data": base64_data,
+                    "type": mapping.document_choice
+                })
+
+            return prepare_response(
+                message=constants.DATA_FETCHED_SUCCESSFULLY,
+                content={
+                    "documents": final_docs,
+                    "lease_id": lease_id,
+                    "step_status": lease_obj.step_status
+                },
+                status=status.HTTP_200_OK
+            )
+
+        # -------------------- POST --------------------
+        if request.method == "POST":
+            body = json.loads(request.body)
+            lease_id = body.get("lease_id")
+            documents = body.get("documents", [])
+
+            if not lease_id:
+                return prepare_response(
+                    message=constants.LEASE_ID_REQUIRED,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if not isinstance(documents, list) or not documents:
+                return prepare_response(
+                    message=constants.DOCUMENTS_MUST_BE_LIST,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            try:
+                lease_obj = Lease.objects.get(id=lease_id)
+            except Lease.DoesNotExist:
+                return prepare_response(
+                    message=constants.INVALID_LEASE_ID,
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            uploaded_files = []
+
+            for doc in documents:
+                file_name = doc.get("file_name")
+                base64_data = doc.get("data")
+                doc_type = doc.get("type", constants.EJARI_CERTIFICATE).upper()
+
+                if not file_name or not base64_data:
+                    return prepare_response(
+                        message=constants.MISSING_FILE_OR_DATA,
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                object_name = f"lease_documents/{lease_id}/{file_name}"
+                file_url = upload_file_to_s3_base64(base64_data, object_name)
+
+                doc_obj = Documents.objects.create(
+                    file_name=file_name,
+                    file_path=file_url,
+                    created_by=request.user.user
+                )
+
+                LeaseDocuments.objects.create(
+                    lease=lease_obj,
+                    document=doc_obj,
+                    document_choice=doc_type,
+                    created_by=request.user.user
+                )
+
+                uploaded_files.append({
+                    "file_name": file_name,
+                    "file_url": file_url,
+                    "type": doc_type
+                })
+
+            lease_obj.step_status = "UPLOAD_EJARI"
+            lease_obj.save()
+
+            audit_logs(
+                request,
+                f"Uploaded lease documents for unit '{lease_obj.lease_property.unit_name}'",
+                constants.CREATED
+            )
+
+            return prepare_response(
+                message=constants.DOCUMENTS_UPLOAD_SUCCESS,
+                content={"uploaded": uploaded_files},
+                status=status.HTTP_201_CREATED
+            )
+
+        # -------------------- PUT --------------------
+        if request.method == "PUT":
+            body = json.loads(request.body)
+            lease_id = body.get("lease_id")
+            documents = body.get("documents", [])
+
+            if not lease_id:
+                return prepare_response(
+                    message=constants.LEASE_ID_REQUIRED,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if not isinstance(documents, list):
+                return prepare_response(
+                    message=constants.DOCUMENTS_MUST_BE_LIST,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            try:
+                lease_obj = Lease.objects.get(id=lease_id)
+            except Lease.DoesNotExist:
+                return prepare_response(
+                    message=constants.INVALID_LEASE_ID,
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            updated_files = []
+
+            for doc in documents:
+                file_name = doc.get("file_name")
+                base64_data = doc.get("data")
+                doc_type = doc.get("type", constants.EJARI_CERTIFICATE).upper()
+
+                if not file_name or not base64_data:
+                    return prepare_response(
+                        message=constants.MISSING_FILE_OR_DATA,
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                mapping_obj = LeaseDocuments.objects.filter(
+                    lease=lease_obj,
+                    document__file_name=file_name
+                ).select_related("document").first()
+
+                if mapping_obj:
+                    doc_obj = mapping_obj.document
+                    mapping_obj.document_choice = doc_type
+                    status_text = "updated"
+                else:
+                    doc_obj = Documents.objects.create(
+                        file_name=file_name,
+                        file_path="",
+                        created_by=request.user.user
+                    )
+                    mapping_obj = LeaseDocuments.objects.create(
+                        lease=lease_obj,
+                        document=doc_obj,
+                        document_choice=doc_type,
+                        created_by=request.user.user
+                    )
+                    status_text = "created"
+
+                object_name = f"lease_documents/{lease_id}/{file_name}"
+                file_url = upload_file_to_s3_base64(base64_data, object_name)
+
+                doc_obj.file_path = file_url
+                doc_obj.save()
+                mapping_obj.save()
+
+                updated_files.append({
+                    "file_name": file_name,
+                    "file_url": file_url,
+                    "type": doc_type,
+                    "status": status_text
+                })
+
+            audit_logs(
+                request,
+                f"Updated lease documents for unit '{lease_obj.lease_property.unit_name}'",
+                constants.UPDATED
+            )
+
+            return prepare_response(
+                message=constants.DOCUMENTS_UPLOAD_SUCCESS,
+                content={"updated": updated_files},
+                status=status.HTTP_200_OK
+            )
+
+        return prepare_response(
+            message=constants.INVALID_REQUEST_METHOD,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+    except Exception as e:
+        return prepare_response(
+            message=str(e),
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@is_request_authenticated
+def lease_tenancy(request):
+    try:
+        if request.method != "GET":
+            return prepare_response(
+                message=constants.INVALID_REQUEST_METHOD,
+                status=status.HTTP_405_METHOD_NOT_ALLOWED
+            )
+
+        current_user = request.user
+        lease_status_param = request.GET.get("lease_status")
+
+        leases_qs = Lease.objects.select_related(
+            "lease_property",
+            "lease_property__company",
+            "tenant",
+            "tenant__user"
+        )
+
+        # ================= ROLE BASED FILTER (UNCHANGED) =================
+        if current_user.user_role == constants.OWNER:
+            leases_qs = leases_qs.filter(owner=current_user)
+
+        elif current_user.user_role == constants.COMPANY_USER:
+            leases_qs = leases_qs.filter(
+                lease_property__company__company_user=current_user
+            ).distinct()
+
+        else:
+            return prepare_response(
+                message=constants.UNAUTHORIZED_ROLE,
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # ================= LEASE STATUS FILTER (UNCHANGED) =================
+        if lease_status_param:
+            status_list = [status.strip().upper() for status in lease_status_param.split(",")]
+            leases_qs = leases_qs.filter(lease_status__in=status_list)
+
+        # ================= SEARCH FILTER (NEW - NON BREAKING) =================
+        search = request.GET.get("search", "").strip()
+        if search:
+            leases_qs = leases_qs.filter(
+                Q(id__icontains=search) |
+                Q(lease_property__property_code__icontains=search) |
+                Q(tenant__user__first_name__icontains=search) |
+                Q(tenant__user__last_name__icontains=search) |
+                Q(tenant__contact_number__icontains=search)
+            ).distinct()
+
+        # ================= PAGINATION (NEW - SAFE) =================
+        page = int(request.GET.get("page", 1))
+        limit = int(request.GET.get("limit", 10))
+
+        paginator = Paginator(leases_qs.order_by("-created"), limit)
+
+        try:
+            leases_page = paginator.page(page)
+        except EmptyPage:
+            leases_page = paginator.page(paginator.num_pages)
+
+        table_data = []
+
+        # ================= LOOP (UNCHANGED LOGIC) =================
+        for lease in leases_page:
+            tenant_profile = lease.tenant
+            property_unit = lease.lease_property
+
+            table_data.append({
+                "lease_id": lease.id,
+                "property_code": property_unit.property_code if property_unit else None,
+                "tenant_name": (
+                    tenant_profile.user.get_full_name()
+                    if tenant_profile and tenant_profile.user
+                    else None
+                ),
+                "tenant_profile_image": tenant_profile.profile_image if tenant_profile else None,
+                "tenant_contact_number": tenant_profile.contact_number if tenant_profile else None,
+                "lease_status": lease.lease_status,
+                "agreement_start_date": datetime_to_epoch_millis(lease.lease_start_date),
+                "agreement_end_date": datetime_to_epoch_millis(lease.lease_end_date),
+            })
+
+        return prepare_response(
+            message=constants.DATA_FETCHED_SUCCESSFULLY,
+            content=table_data,
+
+            pagination={
+                "current_page": leases_page.number,
+                "limit": limit,
+                "total_pages": paginator.num_pages,
+                "total_records": paginator.count
+            },
+            status=status.HTTP_200_OK
+        )
+
+    except Exception as e:
+        return prepare_response(
+            message=str(e),
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@is_request_authenticated
+def export_lease_tenancy_csv(request):
+    try:
+        if request.method != "GET":
+            return prepare_response(
+                message=constants.INVALID_REQUEST_METHOD,
+                status=status.HTTP_405_METHOD_NOT_ALLOWED
+            )
+
+        current_user = request.user
+        lease_status_param = request.GET.get("lease_status")
+
+        leases_qs = Lease.objects.select_related(
+            "lease_property",
+            "lease_property__company",
+            "tenant",
+            "tenant__user"
+        )
+        if current_user.user_role == constants.OWNER:
+            leases_qs = leases_qs.filter(owner=current_user)
+
+        elif current_user.user_role == constants.COMPANY_USER:
+            leases_qs = leases_qs.filter(
+                lease_property__company__company_user=current_user
+            ).distinct()
+        else:
+            return prepare_response(
+                message=constants.UNAUTHORIZED_ROLE,
+                status=status.HTTP_403_FORBIDDEN
+            )
+        if lease_status_param:
+            status_list = [s.strip().upper() for s in lease_status_param.split(",")]
+            leases_qs = leases_qs.filter(lease_status__in=status_list)
+        field_names = [
+            "Property Code",
+            "Agreement With",
+            "Contact Number",
+            "Agreement Start Date",
+            "Agreement End Date",
+            "Lease Status"
+        ]
+
+        data_list = []
+
+        for lease in leases_qs.order_by("-created"):
+            tenant = lease.tenant
+            property_unit = lease.lease_property
+
+            data_list.append({
+                "Property Code": property_unit.property_code if property_unit else "",
+                "Agreement With": tenant.user.get_full_name() if tenant and tenant.user else "",
+                "Contact Number": tenant.contact_number if tenant else "",
+                "Agreement Start Date": lease.lease_start_date.strftime("%Y-%m-%d") if lease.lease_start_date else "",
+                "Agreement End Date": lease.lease_end_date.strftime("%Y-%m-%d") if lease.lease_end_date else "",
+                "Lease Status": lease.lease_status
+            })
+
+        return export_to_csv(
+            filename="lease_tenancy_export",
+            field_names=field_names,
+            data_list=data_list
+        )
+
+    except Exception as e:
+        return prepare_response(
+            message=f"Error exporting lease CSV: {str(e)}",
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+def lease_pdf_view(request):
+    if request.method != "GET":
+        return prepare_response(
+            message=constants.INVALID_REQUEST_METHOD,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+    try:
+        lease_id = request.GET.get("lease_id")
+        purpose = request.GET.get("purpose")
+
+        if not lease_id:
+            return prepare_response(
+                message=constants.LEASE_ID_REQUIRED,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        lease = Lease.objects.filter(id=lease_id).first()
+        if not lease:
+            return prepare_response(
+                message=constants.LEASE_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        if not lease.pdf_path:
+            return prepare_response(
+                message=constants.LEASE_PDF_NOT_AVAILABLE,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        file_name = f"lease_{lease.lease_number}.pdf"
+
+
+        if purpose == "download":
+            presigned_url = fetch_s3_presigned_url_for_download(
+                file_url=lease.pdf_path,
+                file_name=file_name
+            )
+        else:
+
+            presigned_url = fetch_s3_presigned_url(
+                file_url=lease.pdf_path,
+                file_name=file_name
+            )
+
+        if not presigned_url:
+            return prepare_response(
+                message=constants.PDF_URL_GENERATION_FAILED,
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        return prepare_response(
+            content={
+                "lease_id": lease.id,
+                "lease_number": lease.lease_number,
+                "purpose": purpose or "preview",
+                "pdf_url": presigned_url
+            },
+            message=constants.LEASE_PDF_URL_GENERATED_SUCCESS,
+            status=status.HTTP_200_OK
+        )
+
+    except Exception as e:
+        return prepare_response(
+            message={"error": str(e)},
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+def lease_term_and_condition(request):
+    try:
+        if request.method == "GET":
+            lease_id = request.GET.get("lease_id")
+
+            if not lease_id:
+                return prepare_response(
+                    message=constants.LEASE_ID_REQUIRED,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            try:
+                lease_obj = Lease.objects.get(id=lease_id)
+            except Lease.DoesNotExist:
+                return prepare_response(
+                    message=constants.INVALID_LEASE_ID,
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            # Fetch predefined terms (global) and user-defined terms for this lease
+            predefined_terms = TermAndCondition.objects.filter(
+                lease__isnull=True,
+                is_predefined=True
+            )
+
+            user_defined_terms = TermAndCondition.objects.filter(
+                lease=lease_obj,
+                is_predefined=False
+            )
+
+            response_data = {
+                "Predefined": [],
+                "User defined": []
+            }
+
+            # Predefined terms
+            for term in predefined_terms:
+                response_data["Predefined"].append({
+                 "id": term.id,
+                 "description_en": term.description,
+                "description_ar": translate_to_arabic(term.description),
+                "term_type": term.term_type
+                 })
+            # User defined terms
+            for term in user_defined_terms:
+                response_data["User defined"].append({
+                 "id": term.id,
+                 "description_en": term.description,
+                     "description_ar": translate_to_arabic(term.description),
+                    "term_type": term.term_type
+                        })
+
+            return prepare_response(
+                message=constants.DATA_FETCHED_SUCCESS,
+                content=response_data,
+                status=status.HTTP_200_OK
+            )
+
+        elif request.method == "POST":
+            body = json.loads(request.body)
+            lease_id = body.get("lease_id")
+            descriptions = body.get("descriptions", [])
+
+            if not lease_id:
+                return prepare_response(
+                    message=constants.LEASE_ID_REQUIRED,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            if not isinstance(descriptions, list) or not descriptions:
+                return prepare_response(
+                    message=constants.TERMS_MUST_BE_LIST,
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            try:
+                lease_obj = Lease.objects.get(id=lease_id)
+            except Lease.DoesNotExist:
+                return prepare_response(
+                    message=constants.INVALID_LEASE_ID,
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            created_terms = []
+
+            for item in descriptions:
+                description = item.get("description")
+                term_type = item.get("term_type", "ADDITIONAL")
+
+                if not description:
+                    return prepare_response(
+                        message=constants.DESCRIPTION_REQUIRED,
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                term_obj = TermAndCondition.objects.create(
+                    lease=lease_obj,
+                    description=description,
+                    term_type=term_type,
+                    is_predefined=False
+                )
+
+                created_terms.append({
+                    "id": term_obj.id,
+                    "description": term_obj.description,
+                    "term_type": term_obj.term_type
+                })
+
+            return prepare_response(
+                message=constants.TERMS_CREATED_SUCCESS,
+                content={"created_terms": created_terms},
+                status=status.HTTP_201_CREATED
+            )
+
+
+        return prepare_response(
+            message=constants.INVALID_REQUEST_METHOD,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+    except Exception as e:
+        return prepare_response(
+            message=str(e),
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+def property_owner_compny_lease(request):
+    try:
+        if request.method == "GET":
+            property_unit_id = request.GET.get("property_unit_id")
+            tenant_id = request.GET.get("tenant_id")
+
+            tenant_data = None
+            if tenant_id:
+
+                tenant_data = get_tenant_detail_by_id(tenant_id)
+                if not tenant_data:
+                    return prepare_response(message="Invalid tenant_id",status=status.HTTP_404_NOT_FOUND)
+
+                return prepare_response(message="tenant details fetched successfully", content=tenant_data,status=status.HTTP_200_OK)
+
+            if not property_unit_id:
+                return prepare_response(
+                    message="Property unit id is required",
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            try:
+                unit = Unit.objects.select_related(
+                    "property_block_tower__property"
+                ).get(id=property_unit_id)
+            except Unit.DoesNotExist:
+                return prepare_response(
+                    message="Invalid property unit id",
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            # ---------------- Owner Details ----------------
+            owner_data = [
+                {
+                    "name": o.name,
+                    "email": o.email,
+                    "contact_number": o.contact_number,
+                    "emirates_id": o.emirates_id,
+                    "owner_number": o.owner_number,
+                    "trade_license_number": o.trade_license_number,
+                    "license_number": o.license_number,
+                    "license_expiry_date": o.license_expiry_date.strftime("%Y-%m-%d") if o.license_expiry_date else None,
+                    "license_issuer": o.license_issuer,
+                    "fax_number": o.fax_number,
+                    "po_box_number": o.po_box_number,
+                }
+                for o in unit.unit_owners.all()
+            ]
+
+            # ---------------- Parent Property ----------------
+            property_data = None
+            if unit.property_block_tower and unit.property_block_tower.property:
+                prop = unit.property_block_tower.property
+                property_data = {
+                    "property_id": prop.id,
+                    "property_name": prop.property_name,
+                    "property_code": prop.code,
+                    "property_type": prop.property_type,
+                    "total_units": prop.no_of_units,
+                }
+
+            # ---------------- Block / Tower ----------------
+            block_data = None
+            if unit.property_block_tower:
+                block_data = {
+                    "block_id": unit.property_block_tower.id,
+                    "block_name": unit.property_block_tower.block_name,
+                }
+
+            # ---------------- Property Unit ----------------
+            unit_data = {
+                "property_unit_id": unit.id,
+                "unit_name": unit.unit_name,
+                "unit_size": str(unit.unit_size) if unit.unit_size is not None else None,
+                "area": unit.area,
+                "dm_no": unit.dm_no,
+                "land_no": unit.land_no,
+                "unit_usage": unit.unit_usage,
+                "unit_type": unit.unit_type,
+                "sub_type": unit.sub_type,
+                "makani_no": unit.makani_no,
+                "dewa_no": unit.dewa_no,
+                "floor_no": unit.floor_no,
+                "rent": unit.rent,
+                "security_deposit": unit.security_deposit,
+                "maintenance_charges": unit.maintenance_charges,
+                "is_occupied": unit.is_occupied,
+                "no_of_bedrooms": unit.no_of_bedrooms,
+            }
+
+            response_data = {
+                "property_unit": unit_data,
+                "block": block_data,
+                "parent_property": property_data,
+                "owners": owner_data,
+            }
+
+            return prepare_response(
+                message="Property unit details fetched successfully",
+                content=response_data,
+                status=status.HTTP_200_OK
+            )
+
+        return prepare_response(
+            message="Invalid request method",
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+    except Exception as e:
+        return prepare_response(
+            message=str(e),
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@is_request_authenticated
+def property_lease_payment(request):
+    try:
+        user = request.user
+        if request.method == "GET":
+            lease_id = request.GET.get("lease_id")
+            payment_id = request.GET.get("payment_id")
+
+            if lease_id:
+                payments = Payment.objects.filter(rental_account_id=lease_id)
+            elif payment_id:
+                payments = Payment.objects.filter(id=payment_id)
+            else:
+                return prepare_response(
+                    message="lease_id or payment_id is required",
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            data = []
+            for p in payments:
+                data.append({
+                    "id": p.id,
+                    "lease_id": p.rental_account.id if p.rental_account else None,
+                    "amount": p.amount,
+                    "method": p.method,
+                    "reason_type": p.reason_type,
+                    "status": p.status,
+                    "payee_name": p.payee_name,
+                    "payee_email": p.payee_email,
+                    "payee_contact": p.payee_contact,
+                    "account_number": p.account_number,
+                    "cheque_number": p.cheque_number,
+                    "cheque_date": int(p.cheque_date.timestamp()) if p.cheque_date else None,
+                    "bank": {
+                        "id": p.bank.id,
+                        "name": p.bank.name,
+                        "branch_name": p.bank.branch_name,
+                        "ifsc_code": p.bank.ifsc_code
+                    } if p.bank else None
+                })
+
+            return prepare_response(
+                content=data if lease_id else data[0],
+                message="Payment data fetched",
+                status=status.HTTP_200_OK
+            )
+
+        elif request.method == "POST":
+            body = json.loads(request.body)
+
+            lease_id = body.get("lease_id")
+            if not lease_id:
+                return prepare_response(
+                    message="lease_id is required",
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            lease = Lease.objects.filter(id=lease_id).first()
+            if not lease:
+                return prepare_response(
+                    message="Invalid lease_id",
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            bank = None
+            if body.get("bank_id"):
+                bank = Bank.objects.filter(id=body.get("bank_id")).first()
+            scanned_image = None
+            if body.get("scanned_image_base64"):
+                from utilities.helper_functions import base64_to_image
+                scanned_image = base64_to_image(body.get("scanned_image_base64"))
+
+            payment = Payment.objects.create(
+                created_by=user.user,
+                rental_account=lease,
+                bank=bank,
+                method=body.get("method"),
+                reason_type=body.get("reason_type"),
+                amount=body.get("amount", 0),
+                payee_name=body.get("payee_name"),
+                payee_email=body.get("payee_email"),
+                payee_contact=body.get("payee_contact"),
+                account_number=body.get("account_number"),
+                cheque_number=body.get("cheque_number"),
+                cheque_date=safe_epoch_to_datetime(body.get("cheque_date"))
+                if body.get("cheque_date") else None,
+                scanned_image=scanned_image,
+                status=body.get("status")
+            )
+
+            audit_logs(
+                request,
+                f"Created payment of {payment.amount} for Lease {lease.id}",
+                constants.CREATED
+            )
+
+            return prepare_response(
+                message="Payment created successfully",
+                content={"payment_id": payment.id},
+                status=status.HTTP_201_CREATED
+            )
+        elif request.method == "PUT":
+            body = json.loads(request.body)
+            payment_id = body.get("payment_id")
+            if not payment_id:
+                return prepare_response(
+                    message="payment_id is mandatory for update",
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            payment = Payment.objects.filter(id=payment_id).first()
+            if not payment:
+                return prepare_response(
+                    message="Payment not found",
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            if body.get("bank_id"):
+                bank = Bank.objects.filter(id=body.get("bank_id")).first()
+                if not bank:
+                    return prepare_response(
+                        message="Invalid bank_id",
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                payment.bank = bank
+
+            for field in [
+                "method", "reason_type", "amount", "payee_name",
+                "payee_email", "payee_contact", "account_number",
+                "cheque_number", "status"
+            ]:
+                if field in body:
+                    setattr(payment, field, body[field])
+
+            if body.get("cheque_date"):
+                payment.cheque_date = safe_epoch_to_datetime(body.get("cheque_date"))
+
+            payment.save()
+
+            audit_logs(
+               request,
+                f"Updated payment {payment.id}",
+               constants.UPDATED
+            )
+
+            return prepare_response(
+                message="Payment updated successfully",
+                content={"payment_id": payment.id},
+                status=status.HTTP_200_OK
+            )
+
+        else:
+            return prepare_response(
+                message="Invalid request method",
+                status=status.HTTP_405_METHOD_NOT_ALLOWED
+            )
+
+    except Exception as e:
+        return prepare_response(
+            message=str(e),
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
