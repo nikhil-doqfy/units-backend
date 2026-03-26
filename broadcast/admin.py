@@ -30,10 +30,10 @@ class AnnouncementLogInline(admin.StackedInline):
 class AnnouncementAdmin(admin.ModelAdmin):
     list_display = (
         "log_id", "title", "priority", "status",
-        "scope", "channel", "send_mail",
+        "scope", "send_mail",
         "scheduled_at", "sent_at", 'created', 'modified',
     )
-    list_filter  = ("status", "priority", "scope", "channel", "send_mail")
+    list_filter  = ("status", "priority", "scope", "send_mail")
     search_fields = ("log_id", "title", "description")
     readonly_fields = ("log_id", "sent_at", 'created', 'modified')
     ordering      = ("-id",)
