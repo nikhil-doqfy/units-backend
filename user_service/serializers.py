@@ -88,6 +88,7 @@ def serialize_owner_unit(unit, owner):
         "code":             unit.code,
 
         # ── Property ──────────────────────────────────────────────
+        "property_id":      prop.id if prop else None,
         "property_name":    prop.property_name if prop else unit.unit_name,
         "thumbnail":        _get_unit_thumbnail(unit),
 
@@ -95,6 +96,7 @@ def serialize_owner_unit(unit, owner):
         "owner_name": f"{owner.user.first_name} {owner.user.last_name}".strip() if owner.user else "",
 
         # ── Tenant ────────────────────────────────────────────────
+        "tenant_id":   tenant.id if tenant else None,
         "tenant_name": (
             f"{tenant.user.first_name} {tenant.user.last_name}".strip()
             if tenant and tenant.user else None

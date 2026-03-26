@@ -178,6 +178,51 @@ def group_lease_cheques(cheques):
     return {"rent_cheques": rent, "additional_cheques": additional}
 
 
+def serialize_cheque_list_row(cheque):
+    """One row in the all-cheques list page."""
+    lease  = cheque.lease
+    unit   = lease.unit   if lease else None
+    pb     = unit.property_block_tower if unit else None
+    prop   = pb.property  if pb   else None
+    tenant = lease.tenant if lease else None
+
+    return {
+        "cheque": {
+            "id":            cheque.id,
+            "cheque_number": cheque.cheque_number,
+            "amount":        cheque.amount,
+            "cheque_date":   str(cheque.cheque_date)[:10] if cheque.cheque_date else None,
+            "payment_type":  cheque.payment_type,
+            "cheque_type":   cheque.cheque_type,
+            "status":        cheque.status,
+        },
+        "unit": {
+            "id":   unit.id   if unit else None,
+            "code": unit.code if unit else None,
+        },
+        "block_tower": {
+            "name": pb.block_name if pb else None,
+        },
+        "property": {
+            "id":        prop.id            if prop else None,
+            "name":      prop.property_name if prop else None,
+            "thumbnail": prop._get_thumbnail() if prop else None,
+        },
+        "settlement_bank": {
+            "name":           cheque.selltlement_bank.name if cheque.selltlement_bank else None,
+            "account_number": cheque.settlement_account_number,
+        },
+        "tenant": {
+            "id":            tenant.id if tenant else None,
+            "name": (
+                f"{tenant.user.first_name} {tenant.user.last_name}".strip()
+                if tenant and tenant.user else None
+            ),
+            "profile_image": fetch_s3_presigned_url(tenant.profile_image) if tenant and tenant.profile_image else None,
+        },
+    }
+
+
 # ── Tenant Lease (tenant-facing list) ─────────────────────────────────────────
 
 def serialize_tenant_lease(lease):

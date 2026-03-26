@@ -1015,6 +1015,16 @@ def owner_crud(request):
 
 
 def _serialize_tenant(tenant):
+    docs = tenant.tenant_documents.select_related("document_type").all()
+    documents = [
+        {
+            "id": d.id,
+            "file_name": d.file_name,
+            "file_path": d.file_path,
+            "document_type": d.document_type.name if d.document_type else "",
+        }
+        for d in docs
+    ]
     return {
         "id": tenant.id,
         "code": tenant.code or "",
@@ -1032,6 +1042,7 @@ def _serialize_tenant(tenant):
         "passport_expiry_date": tenant.passport_expiry_datetime.strftime("%Y-%m-%d") if tenant.passport_expiry_datetime else "",
         "visa_number": tenant.visa_number or "",
         "visa_expiry_date": tenant.visa_expiry_datetime.strftime("%Y-%m-%d") if tenant.visa_expiry_datetime else "",
+        "documents": documents,
     }
 
 
@@ -1154,6 +1165,17 @@ def tenant_crud(request):
                 Q(tenant__code__icontains=search) |
                 Q(code__icontains=search)
             )
+
+        property_id = request.GET.get("property_id", "").strip()
+        block_id    = request.GET.get("block_id", "").strip()
+        unit_id     = request.GET.get("unit_id", "").strip()
+
+        if property_id:
+            qs = qs.filter(unit__property_block_tower__property_id=property_id)
+        if block_id:
+            qs = qs.filter(unit__property_block_tower_id=block_id)
+        if unit_id:
+            qs = qs.filter(unit_id=unit_id)
 
         qs = qs.order_by("-created")
 

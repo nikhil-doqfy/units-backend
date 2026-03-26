@@ -48,78 +48,57 @@ def owner_rent_amounts(request):
         )
 
     try:
-        user = request.user  # UserProfile
+        user = request.user  # UserProfile (Owner)
 
-        # 🔹 Payments related to OWNER via property_unit → owner
-        payments = Payment.objects.select_related(
-            "rental_account",
-            "rental_account__tenant",
-            "rental_account__lease_property",
-            "rental_account__lease_property__property",
+        page  = int(request.GET.get("page", 1))
+        limit = int(request.GET.get("limit", 10))
+
+        # Lease → unit → unit_owners (UnitOwner) → owner (Owner extends UserProfile)
+        leases = Lease.objects.select_related(
+            "unit__property_block_tower__property",
+            "tenant__user",
         ).filter(
-            rental_account__lease_property__owner=user
-        )
+            unit__unit_owners__owner_id=user.id
+        ).distinct().order_by("-id")
+
+        from django.core.paginator import Paginator
+        paginator = Paginator(leases, limit)
+        page_obj  = paginator.get_page(page)
 
         response = []
-
-        for payment in payments:
-            lease = payment.rental_account
-            tenant = lease.tenant
-            unit = lease.lease_property
-            property_obj = unit.property if unit else None
-
-            # 🔹 Charges (VAT, other charges)
-            charges = ChargeDetails.objects.filter(
-                lease=lease,
-                is_selected=True
-            )
-
-            # vat_amount = charges.aggregate(
-            #     vat=Sum("vat_amount")
-            # )["vat"] or 0
-
-            # other_charges = charges.aggregate(
-            #     amt=Sum("amount")
-            # )["amt"] or 0
-
-            # total_rent = (lease.annual_amount or 0) + other_charges + vat_amount
+        for lease in page_obj:
+            unit     = lease.unit
+            pb       = unit.property_block_tower if unit else None
+            prop     = pb.property if pb else None
+            tenant   = lease.tenant
 
             response.append({
                 # 🔹 Tenant
-                "tenant_name": tenant.user.get_full_name() if tenant else None,
-                "tenant_no": tenant.user_code if tenant else None,
+                "tenant_name": tenant.user.get_full_name() if tenant and tenant.user else None,
+                "tenant_no":   getattr(tenant, "user_code", None) if tenant else None,
 
                 # 🔹 Property info
-                "property_name": property_obj.property_name if property_obj else None,
-                "room_no": unit.apartment_no if unit else None,
-                "unit_type": unit.property_type if unit else None,
+                "property_name": prop.property_name if prop else None,
+                "room_no":       unit.unit_name or unit.code if unit else None,
+                "unit_type":     getattr(unit, "property_type", None) if unit else None,
 
                 # 🔹 Lease info
-                "lease_no": lease.lease_number,
+                "lease_no":     lease.code,
                 "lease_status": lease.lease_status,
-                "period_from": datetime_to_epoch_millis(lease.lease_start_date),
-                "period_to":datetime_to_epoch_millis(lease.lease_end_date),
+                "period_from":  datetime_to_epoch_millis(lease.start_date),
+                "period_to":    datetime_to_epoch_millis(lease.end_date),
 
                 # 🔹 Rent details
-                "year_rent": lease.annual_amount,
-                "vat":None,
-
-                "other_charges":None,
-                # "vat": float(vat_amount),
-                "total_rent": None,
-
-                    #    "lease_start_date": datetime_to_epoch_millis(lease.lease_start_date),
-        # "lease_end_date": datetime_to_epoch_millis(lease.lease_end_date),
-
-                # 🔹 Payment info
-                "payment_amount": payment.amount,
-                "payment_method": payment.method,
-                "payment_status": payment.status,
-                "payment_reason": payment.reason_type,
+                "year_rent":     lease.annual_amount,
+                "vat":           None,
+                "other_charges": None,
+                "total_rent":    None,
             })
 
         return prepare_response(
             content=response,
+            paginator=page_obj,
+            total_records=paginator.count,
             message="Rent amounts fetched successfully",
             status=status.HTTP_200_OK
         )

@@ -141,3 +141,8 @@ class LeaseCheque(Documents):
         default=constants.PAYMENT_TYPE_CHEQUE,
     )
     cheque_number = models.CharField(max_length=100, null=True, blank=True)
+    status = models.CharField(
+        max_length=20,
+        choices=constants.CHEQUE_STATUS_CHOICES,
+        default=constants.CHEQUE_STATUS_BALANCE,
+    )
