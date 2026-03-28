@@ -390,6 +390,7 @@ LEASE_STATUS_CHOICES = [
 
 # ── Lease Onboarding Stage ─────────────────────────────────────
 INVITE              = "INVITE"
+WAITING_FOR_SIGNUP  = "WAITING_FOR_SIGNUP"   # invite sent, tenant hasn't registered yet
 ONBOARDING          = "ONBOARDING"
 NEGOTIATION_SENT    = "NEGOTIATION_SENT"
 PENDING_APPROVAL    = "PENDING_APPROVAL"    # kept for backward compat
@@ -402,6 +403,19 @@ ADDITIONAL_CHEQUE = "ADDITIONAL_CHEQUE"
 CHEQUE_TYPE_CHOICES = (
     (RENT_CHEQUE,       "Rent Cheque"),
     (ADDITIONAL_CHEQUE, "Additional Cheque"),
+)
+
+# Cheque status choices
+CHEQUE_STATUS_BALANCE  = "BALANCE"
+CHEQUE_STATUS_CREDITED = "CREDITED"
+CHEQUE_STATUS_REALIZED = "REALIZED"
+CHEQUE_STATUS_BOUNCED  = "BOUNCED"
+
+CHEQUE_STATUS_CHOICES = (
+    (CHEQUE_STATUS_BALANCE,  "Balance"),
+    (CHEQUE_STATUS_CREDITED, "Credited"),
+    (CHEQUE_STATUS_REALIZED, "Realized"),
+    (CHEQUE_STATUS_BOUNCED,  "Bounced"),
 )
 
 # Payment type choices
@@ -429,6 +443,7 @@ ACTIVATED           = "ACTIVATED"
 
 LEASE_STAGE_CHOICES = (
     (INVITE,            "Invite"),
+    (WAITING_FOR_SIGNUP,"Waiting for Signup"),
     (ONBOARDING,        "Onboarding"),
     (NEGOTIATION_SENT,  "Negotiation Sent"),
     (OWNER_APPROVED,    "Owner Approved"),

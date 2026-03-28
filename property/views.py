@@ -1,14 +1,20 @@
 import csv
 import json
 import uuid
+from datetime import timedelta
 from django.contrib.auth.models import User
+from django.core.paginator import Paginator, EmptyPage
+from django.db import transaction
+from django.db.models import Q, Prefetch
 from django.http import HttpResponse
-from .models import Unit, UnitImages, UnitDocuments, UnitOwner, Property, PropertyBlocks, PropertyImages, PropertyDocuments
+from django.utils import timezone
+from .models import Unit, UnitImages, UnitDocuments, UnitOwner, Property, PropertyBlocks, PropertyImages, PropertyDocuments, PropertyManagmentCompany, PropertyInterest
 from user_service.models import PropertyManager, DocumentType, Owner
 from utilities.decorator import is_request_authenticated
-from utilities.helper_functions import prepare_response, generate_property_code, upload_file_to_s3_base64, fetch_s3_presigned_url, get_extension_from_base64
+from utilities.helper_functions import prepare_response, generate_property_code, upload_file_to_s3_base64, fetch_s3_presigned_url, get_extension_from_base64, export_to_csv
 from utilities import status, constants
-from property_management.utils import audit_logs
+from property_management.utils import audit_logs, get_full_property_data, get_property_images, get_lease_status
+from lease.models import Lease
 
 
 def _parse_date(value):
@@ -922,3 +928,410 @@ def unit_documents(request):
             message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
+
+
+# ---------------------------------------------------------------------------
+# Functions moved from property_management/views.py
+# ---------------------------------------------------------------------------
+
+@is_request_authenticated
+def property_table_view(request):
+    user = request.user
+    search = request.GET.get("search", "").strip()
+    page = int(request.GET.get("page", 1))
+    limit = int(request.GET.get("limit", 10))
+    property_id = request.GET.get("property_id")
+    my_property = request.GET.get("MY_PROPERTY", "").lower() == "true"
+    tenancy_status = request.GET.get("tenancy_status")
+    agreement_expiration = request.GET.get("agreement_expiration")
+
+    if my_property and user.user_role == constants.TENANT:
+        lease_property_id = (
+        Lease.objects
+        .filter(tenant=user)
+        .values_list("lease_property_id", flat=True)
+        .first()
+    )
+        if not lease_property_id:
+            return prepare_response(
+            message=constants.NO_PROPERTY_ASSIGNED_TO_TENANAT,
+            status=status.HTTP_404_NOT_FOUND
+        )
+        full_data, error = get_full_property_data(lease_property_id)
+        if error:
+            return prepare_response(message=error, status=status.HTTP_404_NOT_FOUND)
+        return prepare_response(
+        content=full_data,
+        message=constants.PROPERTIES_FETCHED,
+        status=status.HTTP_200_OK
+    )
+
+    if property_id:
+        full_data, error = get_full_property_data(property_id)
+        if error:
+            return prepare_response(message=error, status=status.HTTP_404_NOT_FOUND)
+        return prepare_response(content=full_data, message=constants.PROPERTIES_FETCHED, status=status.HTTP_200_OK)
+    if user.user_role == constants.OWNER:
+        properties_qs = Unit.objects.filter(owner=user)
+
+    elif user.user_role == constants.COMPANY_USER:
+        companies_qs = PropertyManagmentCompany.objects.filter(company_user=user)
+
+        if not companies_qs.exists():
+            return prepare_response(
+            message=constants.COMPANY_NOT_FOUND,
+            status=status.HTTP_400_BAD_REQUEST
+        )
+        properties_qs = Unit.objects.filter(
+        company__in=companies_qs
+    )
+
+    elif user.user_role == constants.TENANT:
+        # properties_qs = PropertyUnit.objects.filter(lease_details__tenant=user)
+        properties_qs = Unit.objects.filter(is_occupied=False)
+    else:
+        return prepare_response(message=constants.UNAUTHORIZED_ROLE, status=status.HTTP_403_FORBIDDEN)
+    properties_qs = properties_qs.select_related("owner__user", "company", "property").prefetch_related(
+        Prefetch("lease_details", queryset=Lease.objects.select_related("tenant__user"))
+    ).distinct()
+    if tenancy_status == constants.VACANT:
+        properties_qs = properties_qs.filter(is_occupied=False)
+    elif tenancy_status == constants.OCCUPIED:
+        properties_qs = properties_qs.filter(is_occupied=True)
+    if search:
+        properties_qs = properties_qs.filter(
+            Q(unit_name__icontains=search) |
+            Q(property__property_name__icontains=search) |
+            Q(owner__user__first_name__icontains=search) |
+            Q(owner__user__last_name__icontains=search) |
+            Q(company__company_name__icontains=search) |
+            Q(lease_details__tenant__user__first_name__icontains=search) |
+            Q(lease_details__tenant__user__last_name__icontains=search)
+        ).distinct()
+
+    now = timezone.now()
+    if agreement_expiration == constants.EXPIRED:
+        properties_qs = properties_qs.filter(
+            lease_details__lease_end_date__lt=now
+        )
+    elif agreement_expiration == constants.ABOUT_TO_EXPIRE:
+        properties_qs = properties_qs.filter(
+            lease_details__lease_end_date__gte=now,
+            lease_details__lease_end_date__lte=now + timedelta(days=30)
+        )
+    elif agreement_expiration == constants.ONGOING:
+        properties_qs = properties_qs.filter(
+            lease_details__lease_end_date__gt=now + timedelta(days=30)
+        )
+
+    paginator = Paginator(properties_qs, limit)
+    try:
+        properties_page = paginator.page(page)
+    except EmptyPage:
+        properties_page = paginator.page(paginator.num_pages)
+    data = []
+    for prop in properties_page:
+        lease_obj = prop.lease_details.first()
+        tenant_name = lease_obj.tenant.user.get_full_name() if lease_obj else None
+        owner_name = prop.owner.user.get_full_name() if prop.owner else None
+        lease_status = get_lease_status(lease_obj)
+        image_data = get_property_images(prop.id, single=True)
+        property_image = image_data["images"][0]["data"] if image_data["images"] else None
+        tenant_profile_image = lease_obj.tenant.profile_image if lease_obj else None
+
+        data.append({
+            "property_unit_id": prop.id,
+            "property_name": prop.property.property_name if prop.property else None,
+            "unit_name": prop.unit_name,
+            "property_code":prop.property.Property_code if prop.property else None,
+            "tenant_name": tenant_name,
+            "tenant_profile_image": tenant_profile_image,
+            "owner_name": owner_name,
+            "company_name": prop.company.company_name if prop.company else None,
+            "tenancy_status": "occupied" if prop.is_occupied else "vacant",
+            "dimension":prop.dimension,
+            "agreement_expiration":lease_status,
+             "property_image": property_image,
+
+        })
+
+    pagination_meta = {
+        "current_page": properties_page.number,
+        "limit": limit,
+        "total_records": paginator.count,
+        "total_pages": paginator.num_pages
+    }
+
+    return prepare_response(
+        content=data,
+        message=constants.PROPERTIES_FETCHED,
+        pagination=pagination_meta,
+        status=status.HTTP_200_OK
+    )
+
+
+def parent_property_view(request):
+    if request.method == "GET":
+        property_id = request.GET.get("id")
+
+        if not property_id:
+            return prepare_response(
+                message=constants.PROPERTY_ID_REQUIRED,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        prop = Property.objects.filter(id=property_id).first()
+
+        if not prop:
+            return prepare_response(
+                message=constants.PROPERTY_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        data = {
+            "id": prop.id,
+            "property_name": prop.property_name,
+            "no_of_blocks": prop.no_of_blocks,
+            "no_of_units": prop.no_of_units,
+            "property_type": {
+                "key": prop.property_type,
+                "value": prop.get_property_type_display()
+            },
+            "land_area": prop.land_area,
+            "land_area_unit": prop.land_area_unit,
+            "land_dm_no": prop.land_dm_no,
+            "plot_no": prop.plot_no,
+            "makani_no": prop.makani_no,
+            "dewa_no": prop.dewa_no,
+            "address_line_1": prop.address_line_1,
+            "address_line_2": prop.address_line_2,
+            "landmark": prop.landmark,
+            "pincode": prop.pincode,
+            "latitude": prop.latitude,
+            "longitude": prop.longitude,
+            "map_address": prop.map_address,
+            "property_pmc": {
+                "id": prop.property_pmc.id if prop.property_pmc else None,
+                "name": prop.property_pmc.company_name if prop.property_pmc else None,
+            }
+        }
+
+        return prepare_response(
+            content=data,
+            message=constants.PROPERTY_FETCH_SUCCESS,
+            status=status.HTTP_200_OK
+        )
+
+    else:
+        return prepare_response(
+            message=constants.INVALID_REQUEST_METHOD,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+
+@is_request_authenticated
+def export_property_table_csv(request):
+    if request.method != "GET":
+        return prepare_response(
+            message=constants.INVALID_REQUEST,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+    try:
+        user = request.user
+        search = request.GET.get("search", "").strip()
+        if user.user_role == constants.OWNER:
+            properties_qs = Unit.objects.filter(owner=user)
+
+        elif user.user_role == constants.COMPANY_USER:
+            company = PropertyManagmentCompany.objects.filter(company_user=user).first()
+            if not company:
+                return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_400_BAD_REQUEST)
+            properties_qs = Unit.objects.filter(company=company)
+
+        elif user.user_role == constants.TENANT:
+            properties_qs = Unit.objects.filter(
+                lease_details__tenant=user
+            )
+
+        else:
+            return prepare_response(
+                message=constants.UNAUTHORIZED_USER_ROLE,
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        properties_qs = properties_qs.select_related(
+            "owner__user", "company", "property"
+        ).prefetch_related(
+            Prefetch(
+                "lease_details",
+                queryset=Lease.objects.select_related("tenant__user")
+            )
+        ).distinct()
+        if search:
+            properties_qs = properties_qs.filter(
+                Q(unit_name__icontains=search) |
+                Q(property__property_name__icontains=search) |
+                Q(owner__user__first_name__icontains=search) |
+                Q(owner__user__last_name__icontains=search) |
+                Q(company__company_name__icontains=search) |
+                Q(lease_details__tenant__user__first_name__icontains=search) |
+                Q(lease_details__tenant__user__last_name__icontains=search)
+            ).distinct()
+
+        export_data = []
+
+
+        if user.user_role == constants.OWNER:
+            field_names = [
+                "Property Name",
+                "Tenant Name",
+                "Agreement Expiration",
+                "Dimension",
+                "PropertyManagmentCompany Name"
+            ]
+
+            for prop in properties_qs:
+                lease = prop.lease_details.first()
+                export_data.append({
+                    "Property Name": prop.property.property_name if prop.property else "",
+                    "Tenant Name": lease.tenant.user.get_full_name() if lease else "",
+                    "Agreement Expiration": get_lease_status(lease),
+                    "Dimension": prop.area_of_property,
+                    "PropertyManagmentCompany Name": prop.company.company_name if prop.company else ""
+                })
+
+
+        elif user.user_role == constants.COMPANY_USER:
+            field_names = [
+                "Property ID",
+                "Property Name",
+                "Tenant Name",
+                "Owner Name",
+                "Tenancy Status"
+            ]
+
+            for prop in properties_qs:
+                lease = prop.lease_details.first()
+                export_data.append({
+                    "Property ID": prop.id,
+                    "Property Name": prop.property.property_name if prop.property else "",
+                    "Tenant Name": lease.tenant.user.get_full_name() if lease else "",
+                    "Owner Name": prop.owner.user.get_full_name() if prop.owner else "",
+                    "Tenancy Status": "Occupied" if prop.is_occupied else "Available"
+                })
+
+
+        elif user.user_role == constants.TENANT:
+            field_names = [
+                "Property Name",
+                "Owner Name",
+                "Tenancy Status",
+                "Dimension",
+                "PropertyManagmentCompany Name"
+            ]
+
+            for prop in properties_qs:
+                export_data.append({
+                    "Property Name": prop.property.property_name if prop.property else "",
+                    "Owner Name": prop.owner.user.get_full_name() if prop.owner else "",
+                    "Tenancy Status": "Occupied" if prop.is_occupied else "Available",
+                    "Dimension": prop.area_of_property,
+                    "PropertyManagmentCompany Name": prop.company.company_name if prop.company else ""
+                })
+
+        return export_to_csv(
+            filename="property_table",
+            field_names=field_names,
+            data_list=export_data
+        )
+
+    except Exception as e:
+        return prepare_response(
+            message=f"Error exporting CSV: {str(e)}",
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@is_request_authenticated
+def toggle_property_interest(request):
+    if request.method != "PUT":
+        return prepare_response(
+            message=constants.INVALID_REQUEST,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+
+    try:
+        data = json.loads(request.body)
+
+        property_unit_id = data.get("property_unit_id")
+        is_interested = data.get("is_interested")
+
+        if property_unit_id  is None or is_interested is None:
+            return prepare_response(
+                message=constants.INVALID_DATA,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        tenant = request.user
+
+        if tenant.user_role != constants.TENANT:
+            return prepare_response(
+                message=constants.ONLY_TENANT_ALLOWED,
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        property_unit = Unit.objects.filter(
+            id=property_unit_id,
+            is_active=True
+        ).first()
+
+        if not property_unit:
+            return prepare_response(
+                message=constants.PROPERTY_UNIT_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        with transaction.atomic():
+            interest_obj, created = PropertyInterest.objects.update_or_create(
+                property_unit=property_unit,
+                tenant=tenant,
+                defaults={
+                    "is_active": is_interested,
+                    "created_by": tenant.user
+                }
+            )
+            if is_interested:
+                PropertyInterest.objects.filter(
+                    id=interest_obj.id
+                ).update(created=timezone.now())
+
+        return prepare_response(
+            message=constants.INTEREST_UPDATED_SUCCESS,
+            status=status.HTTP_200_OK,
+            content={
+                "property_unit": property_unit.unit_name,
+                "is_interested": is_interested
+            }
+        )
+
+    except Exception as e:
+        print("Interest API Error:", e)
+        return prepare_response(
+            message=constants.INTERNAL_SERVER_ERROR,
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+def company_list(request):
+    if request.method != "GET":
+        return prepare_response(
+            message=constants.INVALID_REQUEST_METHOD,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+    search = request.GET.get("search", "").strip()
+    companies = PropertyManagmentCompany.objects.filter(is_active=True).order_by("name")
+    if search:
+        companies = companies.filter(name__icontains=search)
+    content = [{"key": c.id, "value": c.name, "code": c.code} for c in companies]
+    return prepare_response(content=content, status=status.HTTP_200_OK)

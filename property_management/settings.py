@@ -38,7 +38,8 @@ INSTALLED_APPS = [
     'charges',
     'lead',
     'complaint',
-    'lease'
+    'lease',
+    'terms'
  
 ]
 

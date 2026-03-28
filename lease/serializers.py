@@ -102,7 +102,7 @@ def serialize_lease(lease):
         "lease_status": lease.lease_status,
         "lease_stage":  lease.lease_stage,
         "remarks":      lease.remarks,
-        "pdf_path":     lease.pdf_path,
+        "pdf_url":      fetch_s3_presigned_url(lease.pdf_path, file_name="agreement.pdf") if lease.pdf_path else None,
         "shell_and_core": lease.shell_and_core,
 
         # ── Dates ─────────────────────────────────────────────────
@@ -143,16 +143,21 @@ def serialize_lease_cheque(cheque):
         "start_date":  str(cheque.start_date)[:10]  if cheque.start_date  else None,
         "end_date":    str(cheque.end_date)[:10]     if cheque.end_date    else None,
 
+        # ── Cheque ────────────────────────────────────────────────
+        "cheque_number": cheque.cheque_number,
+
         # ── Origin Bank ───────────────────────────────────────────
         "origin_bank": {
-            "id":             cheque.origin_bank_id,
-            "name":           cheque.origin_bank.name if cheque.origin_bank else None,
+            "id":         cheque.origin_bank_id,
+            "name":       cheque.origin_bank.name       if cheque.origin_bank else None,
+            "ifsc_code":  cheque.origin_bank.ifsc_code if cheque.origin_bank else None,
         },
 
         # ── Settlement Bank ───────────────────────────────────────
         "selltlement_bank": {
-            "id":             cheque.selltlement_bank_id,
-            "name":           cheque.selltlement_bank.name if cheque.selltlement_bank else None,
+            "id":         cheque.selltlement_bank_id,
+            "name":       cheque.selltlement_bank.name       if cheque.selltlement_bank else None,
+            "ifsc_code":  cheque.selltlement_bank.ifsc_code if cheque.selltlement_bank else None,
         },
 
         # ── Financials ────────────────────────────────────────────
@@ -171,6 +176,51 @@ def group_lease_cheques(cheques):
     rent       = [serialize_lease_cheque(c) for c in cheques if c.cheque_type == constants.RENT_CHEQUE]
     additional = [serialize_lease_cheque(c) for c in cheques if c.cheque_type == constants.ADDITIONAL_CHEQUE]
     return {"rent_cheques": rent, "additional_cheques": additional}
+
+
+def serialize_cheque_list_row(cheque):
+    """One row in the all-cheques list page."""
+    lease  = cheque.lease
+    unit   = lease.unit   if lease else None
+    pb     = unit.property_block_tower if unit else None
+    prop   = pb.property  if pb   else None
+    tenant = lease.tenant if lease else None
+
+    return {
+        "cheque": {
+            "id":            cheque.id,
+            "cheque_number": cheque.cheque_number,
+            "amount":        cheque.amount,
+            "cheque_date":   str(cheque.cheque_date)[:10] if cheque.cheque_date else None,
+            "payment_type":  cheque.payment_type,
+            "cheque_type":   cheque.cheque_type,
+            "status":        cheque.status,
+        },
+        "unit": {
+            "id":   unit.id   if unit else None,
+            "code": unit.code if unit else None,
+        },
+        "block_tower": {
+            "name": pb.block_name if pb else None,
+        },
+        "property": {
+            "id":        prop.id            if prop else None,
+            "name":      prop.property_name if prop else None,
+            "thumbnail": prop._get_thumbnail() if prop else None,
+        },
+        "settlement_bank": {
+            "name":           cheque.selltlement_bank.name if cheque.selltlement_bank else None,
+            "account_number": cheque.settlement_account_number,
+        },
+        "tenant": {
+            "id":            tenant.id if tenant else None,
+            "name": (
+                f"{tenant.user.first_name} {tenant.user.last_name}".strip()
+                if tenant and tenant.user else None
+            ),
+            "profile_image": fetch_s3_presigned_url(tenant.profile_image) if tenant and tenant.profile_image else None,
+        },
+    }
 
 
 # ── Tenant Lease (tenant-facing list) ─────────────────────────────────────────
