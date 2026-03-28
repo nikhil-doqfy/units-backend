@@ -16,7 +16,7 @@ EMIRATES_VISA_DOC_SPECS = [
     ("emirates_id_doc", "emirates_id", "emirates_id_doc_type"),
     ("uae_residence_visa_doc", "uae_residence_visa", "visa_doc_type"),
 ]
-
+from property_management.models import  City
 
 def user_sign_up(request):
     if request.method != "POST":
@@ -602,7 +602,7 @@ def export_staff_csv(request):
 
  
         if staff_id:
-            staff = CompanyStaff.objects.filter(
+            staff = PropertyManager.objects.filter(
                 id=staff_id,
                 company=company
             ).select_related(
@@ -656,7 +656,7 @@ def export_staff_csv(request):
             )
 
 
-        staff_qs = CompanyStaff.objects.filter(
+        staff_qs = PropertyManager.objects.filter(
             company=company,
             staff__is_active=True
         ).select_related(

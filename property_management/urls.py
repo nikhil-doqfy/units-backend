@@ -11,6 +11,7 @@ from charges import urls as charges_urls
 from property import urls as property_urls
 from lead import urls as lead_urls
 from lease import urls as lease_urls
+from complaint import urls as complaint_urls
 
 
 urlpatterns = [
@@ -22,6 +23,7 @@ urlpatterns = [
     path('', include(property_urls)),
     path('', include(lead_urls)),
     path('', include(lease_urls)),
+    path('', include(complaint_urls)),
 
     re_path(r"^media/(?P<path>.*)$", views.serve_media),
     path('options', views.options, name='options'),
