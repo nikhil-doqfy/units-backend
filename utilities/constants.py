@@ -362,6 +362,7 @@ PERMISSION_DENIED_SUCCESS = "This API is not accessible. Permission denied."
 PERMISSION_DOES_NOT_EXIST = "Your role does not have the required permission to access this API."
 CONTACTS_FETCH_SUCCESS = "Contacts fetched successfully"
 METHOD_NOT_ALLOWED = "Method not allowed"
+SCHEDULED = "SCHEDULED"
 # ── Lead Messages ──────────────────────────────────────────────
 NAME_REQUIRED            = "Name is required."
 PLATFORM_REQUIRED        = "Platform is required."
@@ -402,6 +403,19 @@ ADDITIONAL_CHEQUE = "ADDITIONAL_CHEQUE"
 CHEQUE_TYPE_CHOICES = (
     (RENT_CHEQUE,       "Rent Cheque"),
     (ADDITIONAL_CHEQUE, "Additional Cheque"),
+)
+
+# Cheque status choices
+CHEQUE_STATUS_BALANCE  = "BALANCE"
+CHEQUE_STATUS_CREDITED = "CREDITED"
+CHEQUE_STATUS_REALIZED = "REALIZED"
+CHEQUE_STATUS_BOUNCED  = "BOUNCED"
+
+CHEQUE_STATUS_CHOICES = (
+    (CHEQUE_STATUS_BALANCE,  "Balance"),
+    (CHEQUE_STATUS_CREDITED, "Credited"),
+    (CHEQUE_STATUS_REALIZED, "Realized"),
+    (CHEQUE_STATUS_BOUNCED,  "Bounced"),
 )
 
 # Payment type choices
@@ -890,16 +904,131 @@ ANNOUNCEMENT_TITLE_REQUIRED = "Title is required."
 ANNOUNCEMENT_DESCRIPTION_REQUIRED = "Description is required."
 ANNOUNCEMENT_ID_REQUIRED = "Announcement ID is required."
   
+ 
+# =====================================================
+# Complaint Status
+# =====================================================
+ 
+PENDING = "PENDING"
+ASSIGNED = "ASSIGNED"
+IN_PROGRESS = "IN_PROGRESS"
+RESOLVED = "RESOLVED"
+CLOSED = "CLOSED"
+REOPENED = "REOPENED"
+CANCELLED = "CANCELLED"
+ 
 COMPLAINT_STATUS_CHOICES = (
-    (PENDING, 'PENDING'),
-    (IN_PROGRESS, 'In Progress'),
-    (ASSIGNED_TO_ENGINEER, 'Assigned to Engineer'),
-    (COMPLETED, 'Completed'),
-    (REJECTED, 'Rejected'),
+    (PENDING, "Pending"),
+    (ASSIGNED, "Assigned"),
+    (IN_PROGRESS, "In Progress"),
+    (RESOLVED, "Resolved"),
+    (CLOSED, "Closed"),
+    (REOPENED, "Reopened"),
+    (CANCELLED, "Cancelled"),
 )
 
+ 
+ 
+# =====================================================
+# Complaint Timeline Status
+# =====================================================
+ 
+CREATED = "CREATED"
+ASSIGNED_TIMELINE = "ASSIGNED"
+WORK_STARTED = "WORK_STARTED"
+WORK_COMPLETED = "WORK_COMPLETED"
+COMPLAINT_CLOSED = "CLOSED"
+ 
+COMPLAINT_TIMELINE_STATUS_CHOICES = (
+    (CREATED, "Complaint Created"),
+    (ASSIGNED_TIMELINE, "Complaint Assigned"),
+    (WORK_STARTED, "Work Started"),
+    (WORK_COMPLETED, "Work Completed"),
+    (COMPLAINT_CLOSED, "Complaint Closed"),
+)
+ 
+ 
+# =====================================================
+# Complaint Priority
+# =====================================================
+ 
+LOW = "LOW"
+MEDIUM = "MEDIUM"
+HIGH = "HIGH"
+URGENT = "URGENT"
+ 
+COMPLAINT_PRIORITY_CHOICES = (
+    (LOW, "Low"),
+    (MEDIUM, "Medium"),
+    (HIGH, "High"),
+    (URGENT, "Urgent"),
+)
+ 
+ 
+# =====================================================
+# Service Provider Types
+# =====================================================
+ 
+AC_TECH = "AC_TECH"
+PLUMBER = "PLUMBER"
+ELECTRICIAN = "ELECTRICIAN"
+CARPENTER = "CARPENTER"
+CLEANING = "CLEANING"
+INTERNET_TECH = "INTERNET_TECH"
+LIFT_TECH = "LIFT_TECH"
+PAINTER = "PAINTER"
+GARDENER = "GARDENER"
+SECURITY = "SECURITY"
+PEST_CONTROL = "PEST_CONTROL"
+OTHER = "OTHER"
+ 
+SERVICE_TYPE_CHOICES = (
+    (AC_TECH, "AC Technician"),
+    (PLUMBER, "Plumber"),
+    (ELECTRICIAN, "Electrician"),
+    (CARPENTER, "Carpenter"),
+    (CLEANING, "Cleaning"),
+    (INTERNET_TECH, "Internet Technician"),
+    (LIFT_TECH, "Lift Technician"),
+    (PAINTER, "Painter"),
+    (GARDENER, "Gardener"),
+    (SECURITY, "Security"),
+    (PEST_CONTROL, "Pest Control"),
+    (OTHER, "Other"),
+)
+ 
+ 
+# =====================================================
+# Appointment Status
+# =====================================================
+ 
+APPOINTMENT_PROPOSED = "PROPOSED"
+APPOINTMENT_APPROVED = "APPROVED"
+APPOINTMENT_RESCHEDULED = "RESCHEDULED"
+APPOINTMENT_CONFIRMED = "CONFIRMED"
+APPOINTMENT_DECLINED = "DECLINED"
+APPOINTMENT_FINALIZED = "FINALIZED"
+ 
+APPOINTMENT_STATUS_CHOICES = (
+    (APPOINTMENT_PROPOSED, "Proposed"),
+    (APPOINTMENT_APPROVED, "Approved"),
+    (APPOINTMENT_RESCHEDULED, "Rescheduled"),
+    (APPOINTMENT_CONFIRMED, "Confirmed"),
+    (APPOINTMENT_DECLINED, "Declined"),
+    (APPOINTMENT_FINALIZED, "Finalized"),
+)
+ 
+ 
+# =====================================================
+# Complaint Messages
+# =====================================================
+ 
 COMPLAINT_CREATED_SUCCESSFULLY = "Complaint created successfully."
 COMPLAINT_UPDATED_SUCCESSFULLY = "Complaint updated successfully."
 COMPLAINT_DELETED_SUCCESSFULLY = "Complaint deleted successfully."
 COMPLAINT_FETCHED_SUCCESSFULLY = "Complaints fetched successfully."
 COMPLAINT_NOT_FOUND = "Complaint not found."
+COMPLAINT_IMAGES_UPLOADED_SUCCESSFULLY = "Images uploaded successfully."
+COMPLAINT_IMAGES_REQUIRED = "Images are required."
+COMPLAINT_NOT_ASSIGNED_TO_YOU = "This complaint is not assigned to you."
+ 

@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Complaint Notification</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f5f6fa;
+      margin: 0;
+      padding: 0;
+    }
+    .email-container {
+      background-color: #fff;
+      max-width: 600px;
+      margin: 30px auto;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+    .header {
+      text-align: center;
+      padding: 25px 20px;
+      background-color: #2575fc; /* fallback for Outlook */
+      color: white;
+    }
+    .header img {
+      width: 150px;
+      margin-bottom: 10px;
+    }
+    .tagline {
+      font-size: 14px;
+      color: #f0f0f0;
+      margin: 0;
+    }
+    .content {
+      padding: 25px;
+      color: #333;
+    }
+    h2 {
+      margin-top: 0;
+      color: #222;
+    }
+    p {
+      line-height: 1.6;
+    }
+    .info-box {
+      background-color: #f8f9fc;
+      border: 1px solid #e0e4f0;
+      border-radius: 6px;
+      padding: 15px;
+      margin: 15px 0;
+    }
+    .info-box p {
+      margin: 6px 0;
+      font-size: 14px;
+    }
+    .box-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #2575fc;
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #e0e4f0;
+    }
+    .slot {
+      background: #eef3ff;
+      padding: 10px;
+      border-radius: 5px;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+    .confirmed-slot {
+      background: #d1fae5;
+      border: 1px solid #6ee7b7;
+      padding: 10px;
+      border-radius: 5px;
+      font-size: 14px;
+      font-weight: 600;
+      color: #065f46;
+    }
+    .rating-stars {
+      font-size: 22px;
+      color: #f59e0b;
+      letter-spacing: 3px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #fff;
+    }
+    .badge-Pending   { background-color: #f39c12; }
+    .badge-Assigned  { background-color: #3498db; }
+    .badge-In Progress  { background-color: #9b59b6; }
+    .badge-Resolved  { background-color: #27ae60; }
+    .badge-Closed    { background-color: #2ecc71; }
+    .badge-high      { background-color: #e74c3c; }
+    .badge-medium    { background-color: #f39c12; }
+    .badge-low       { background-color: #27ae60; }
+    .badge-urgent    { background-color: #c0392b; }
+    .divider {
+      border: none;
+      border-top: 1px solid #e0e4f0;
+      margin: 20px 0;
+    }
+    .footer {
+      background-color: #f1f1f1;
+      text-align: center;
+      padding: 15px;
+      font-size: 13px;
+      color: #666;
+    }
+    .footer a {
+      color: #2575fc;
+      text-decoration: none;
+    }
+    .arabic {
+      direction: rtl;
+      text-align: right;
+      margin-top: 20px;
+      padding-top: 15px;
+      border-top: 1px solid #e0e4f0;
+      color: #444;
+    }
+    .arabic p {
+      margin: 6px 0;
+      font-size: 14px;
+    }
+  </style>
+</head>
+
+<body>
+<div class="email-container">
+
+  <!-- HEADER -->
+  <div class="header">
+    <img src="https://xscaleglobal.com/wp-content/uploads/2024/06/Untitled-1-1.png" alt="Doqfy" />
+    <div class="tagline">Complaint Management System</div>
+  </div>
+
+  <!-- CONTENT -->
+  <div class="content">
+
+    <h2>Complaint Notification | إشعار الشكوى</h2>
+
+    <p>Dear <strong>{{ user_name }}</strong>,</p>
+    <p>{{ message }}</p>
+
+    <hr class="divider" />
+
+    <!-- Complaint Details -->
+    <div class="info-box">
+      <div class="box-title">📋 Complaint Details</div>
+      <p><strong>Complaint ID:</strong> {{ complaint_id }}</p>
+      <p><strong>Service Type:</strong> {{ service_type }}</p>
+      <p><strong>Description:</strong> {{ description }}</p>
+
+      {% if locality %}
+      <p><strong>Locality:</strong> {{ locality }}</p>
+      {% endif %}
+
+      <p>
+        <strong>Priority:</strong>
+        <span class="badge badge-{{ priority|lower }}">{{ priority }}</span>
+      </p>
+
+      {% if status %}
+      <p>
+        <strong>Status:</strong>
+        <span class="badge badge-{{ status }}">{{ status }}</span>
+      </p>
+      {% endif %}
+
+      {% if work_started_at %}
+      <p><strong>Work Started At:</strong> {{ work_started_at }}</p>
+      {% endif %}
+
+      {% if work_completed_at %}
+      <p><strong>Work Completed At:</strong> {{ work_completed_at }}</p>
+      {% endif %}
+
+      {% if work_duration %}
+      <p><strong>Work Duration:</strong> {{ work_duration }}</p>
+      {% endif %}
+
+      {% if issue_closed_on %}
+      <p><strong>Issue Closed On:</strong> {{ issue_closed_on }}</p>
+      {% endif %}
+    </div>
+
+    {% if scheduled_time %}
+    <div class="info-box">
+      <div class="box-title">✅ Confirmed Appointment</div>
+      <div class="confirmed-slot">📅 {{ scheduled_time }}</div>
+    </div>
+    {% endif %}
+
+    {% if slots %}
+    <div class="info-box">
+      <div class="box-title">📅 Available Appointment Slots</div>
+      {% for slot in slots %}
+      <div class="slot">📌 {{ slot }}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if technician_name %}
+    <div class="info-box">
+      <div class="box-title">👷 Technician Details</div>
+      <p><strong>Name:</strong> {{ technician_name }}</p>
+      {% if technician_phone %}
+      <p><strong>Phone:</strong> {{ technician_phone }}</p>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if extra_message %}
+    <div class="info-box">
+      <div class="box-title">ℹ️ Additional Information</div>
+      <p>{{ extra_message }}</p>
+    </div>
+    {% endif %}
+
+    {% if rating %}
+    <div class="info-box">
+      <div class="box-title">⭐ Rating & Feedback</div>
+      <p>
+        <strong>Rating:</strong>
+        <span class="rating-stars">
+          {% for i in "12345" %}
+            {% if forloop.counter <= rating %}⭐{% endif %}
+          {% endfor %}
+        </span>
+        {{ rating }}/5
+      </p>
+      {% if feedback %}
+      <p><strong>Feedback:</strong> {{ feedback }}</p>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    <hr class="divider" />
+
+    <!-- Arabic -->
+    <div class="arabic">
+      <p>عزيزي <strong>{{ user_name }}</strong>،</p>
+      <p>{{ message }}</p>
+      <p><strong>رقم الشكوى:</strong> {{ complaint_id }}</p>
+      <p><strong>نوع الخدمة:</strong> {{ service_type }}</p>
+      <p><strong>الوصف:</strong> {{ description }}</p>
+    </div>
+
+    <p style="margin-top: 20px;">
+      Thank you,<br/>
+      <strong>The Doqfy Team</strong>
+    </p>
+
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <p>© 2025 Doqfy Internet Pvt. Ltd.</p>
+    <p>admin@doqfy.in</p>
+  </div>
+
+</div>
+</body>
+</html>

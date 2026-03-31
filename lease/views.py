@@ -30,7 +30,7 @@ from property_management.utils import audit_logs, get_tenant_detail_by_id
 from property_management.models import TermAndCondition
 from payment.models import Payment, Bank
 from .models import Lease, LeaseDocuments, LeaseCheque, Template, TemplateField, TemplateValue
-from .serializers import serialize_lease, serialize_tenant_lease, group_lease_cheques
+from .serializers import serialize_lease, serialize_tenant_lease, group_lease_cheques, serialize_cheque_list_row
 
 
 def _parse_date(value):
@@ -1451,6 +1451,147 @@ def lease_cheque_view(request):
 def lease_cheque_status(request):
     """Legacy — kept for backward compat. Delegates to lease_cheque_view."""
     return lease_cheque_view(request)
+
+
+@is_request_authenticated
+@csrf_exempt
+def cheque_summary_view(request):
+    """GET summary counts and totals grouped by cheque status."""
+    if request.method != "GET":
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    from django.db.models import Count, Sum
+
+    qs = LeaseCheque.objects.all()
+
+    property_id = request.GET.get("property_id", "").strip()
+    block_id    = request.GET.get("block_id", "").strip()
+    unit_id     = request.GET.get("unit_id", "").strip()
+    year        = request.GET.get("year", "").strip()
+
+    if property_id:
+        qs = qs.filter(lease__unit__property_block_tower__property_id=property_id)
+    if block_id:
+        qs = qs.filter(lease__unit__property_block_tower_id=block_id)
+    if unit_id:
+        qs = qs.filter(lease__unit_id=unit_id)
+    if year:
+        qs = qs.filter(cheque_date__year=year)
+
+    total_count  = qs.count()
+    total_amount = qs.aggregate(total=Sum("amount"))["total"] or 0
+
+    def _stats(status_val):
+        agg = qs.filter(status=status_val).aggregate(cnt=Count("id"), amt=Sum("amount"))
+        return {"count": agg["cnt"] or 0, "amount": agg["amt"] or 0}
+
+    summary = {
+        "total":    {"count": total_count,  "amount": total_amount},
+        "credited": _stats(constants.CHEQUE_STATUS_CREDITED),
+        "realized": _stats(constants.CHEQUE_STATUS_REALIZED),
+        "bounce":   _stats(constants.CHEQUE_STATUS_BOUNCED),
+        "balance":  _stats(constants.CHEQUE_STATUS_BALANCE),
+    }
+    return prepare_response(content=summary, status=status.HTTP_200_OK)
+
+
+@is_request_authenticated
+@csrf_exempt
+def all_cheques_view(request):
+    """GET all cheques across all leases with pagination and search."""
+    if request.method != "GET":
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    page        = int(request.GET.get("page", 1))
+    page_size   = int(request.GET.get("page_size", 10))
+    search      = request.GET.get("search", "").strip()
+    cheque_status_filter = request.GET.get("status", "").strip()
+    property_id = request.GET.get("property_id", "").strip()
+    block_id    = request.GET.get("block_id", "").strip()
+    unit_id     = request.GET.get("unit_id", "").strip()
+    year        = request.GET.get("year", "").strip()
+
+    qs = LeaseCheque.objects.select_related(
+        "lease__unit__property_block_tower__property",
+        "lease__tenant__user",
+        "selltlement_bank",
+    ).order_by("-id")
+
+    if cheque_status_filter:
+        qs = qs.filter(status=cheque_status_filter)
+    if property_id:
+        qs = qs.filter(lease__unit__property_block_tower__property_id=property_id)
+    if block_id:
+        qs = qs.filter(lease__unit__property_block_tower_id=block_id)
+    if unit_id:
+        qs = qs.filter(lease__unit_id=unit_id)
+    if year:
+        qs = qs.filter(cheque_date__year=year)
+
+    if search:
+        from django.db.models import Q
+        qs = qs.filter(
+            Q(cheque_number__icontains=search) |
+            Q(lease__unit__code__icontains=search) |
+            Q(lease__tenant__user__first_name__icontains=search) |
+            Q(lease__tenant__user__last_name__icontains=search) |
+            Q(lease__unit__property_block_tower__property__property_name__icontains=search)
+        )
+
+    from django.core.paginator import Paginator
+    paginator   = Paginator(qs, page_size)
+    page_obj    = paginator.get_page(page)
+    rows        = [serialize_cheque_list_row(c) for c in page_obj]
+
+    return prepare_response(
+        content=rows,
+        pagination={
+            "total_records": paginator.count,
+            "total_pages":   paginator.num_pages,
+            "current_page":  page,
+            "page_size":     page_size,
+        },
+        status=status.HTTP_200_OK,
+    )
+
+
+@is_request_authenticated
+@csrf_exempt
+def cheque_monthly_view(request):
+    """GET month-wise cheque amount totals for a given year."""
+    if request.method != "GET":
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    from django.db.models import Sum
+    from django.db.models.functions import ExtractMonth
+
+    year        = request.GET.get("year", "").strip() or str(datetime.now().year)
+    property_id = request.GET.get("property_id", "").strip()
+    block_id    = request.GET.get("block_id", "").strip()
+    unit_id     = request.GET.get("unit_id", "").strip()
+
+    qs = LeaseCheque.objects.filter(cheque_date__year=year)
+    if property_id:
+        qs = qs.filter(lease__unit__property_block_tower__property_id=property_id)
+    if block_id:
+        qs = qs.filter(lease__unit__property_block_tower_id=block_id)
+    if unit_id:
+        qs = qs.filter(lease__unit_id=unit_id)
+
+    monthly = (
+        qs.annotate(month=ExtractMonth("cheque_date"))
+          .values("month")
+          .annotate(total=Sum("amount"))
+          .order_by("month")
+    )
+
+    month_names = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+    result = {m: 0 for m in range(1, 13)}
+    for row in monthly:
+        result[row["month"]] = float(row["total"] or 0)
+
+    data = [{"month": month_names[m - 1], "amount": result[m]} for m in range(1, 13)]
+    return prepare_response(content=data, status=status.HTTP_200_OK)
 
 
 # ---------------------------------------------------------------------------

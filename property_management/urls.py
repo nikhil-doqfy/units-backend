@@ -12,6 +12,8 @@ from lead import urls as lead_urls
 from lease import urls as lease_urls
 from terms import urls as terms_urls
 from broadcast import urls as broadcast_urls
+from complaint import urls as complaint_urls
+
 # User-service views kept here because user_service/urls.py is under the 'user/' prefix
 from user_service.views import (
     owner_pmc_view,
@@ -33,6 +35,7 @@ urlpatterns = [
     path('', include(lease_urls)),
     path('terms/',  include(terms_urls)),
     path('broadcast/', include(broadcast_urls)),
+    path('', include(complaint_urls)),
 
     re_path(r"^media/(?P<path>.*)$", views.serve_media),
     path('options', views.options, name='options'),
