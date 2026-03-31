@@ -11,7 +11,7 @@ from django.contrib.auth.models import User
 from django.db import transaction
 from property_management.utils import get_staff_details, get_property_images, get_full_user_data
 from user_service.utils import upload_document, process_rent_approval
-from lease.models import Lease
+from lease.models import Lease, LeaseDocuments
 from user_service.serializers import serialize_owner_detail, serialize_owner_unit
 
 EMIRATES_VISA_DOC_SPECS = [
@@ -1015,34 +1015,45 @@ def owner_crud(request):
 
 
 def _serialize_tenant(tenant):
-    docs = tenant.tenant_documents.select_related("document_type").all()
-    documents = [
-        {
-            "id": d.id,
+    def _doc_entry(d):
+        return {
+            "id":        d.id,
             "file_name": d.file_name,
             "file_path": d.file_path,
-            "document_type": d.document_type.name if d.document_type else "",
         }
-        for d in docs
+
+    # ── Lease documents grouped by document_type ─────────────────────
+    groups = {}
+    lease_docs = LeaseDocuments.objects.filter(
+        lease__tenant=tenant
+    ).select_related("document_type")
+    for d in lease_docs:
+        key = d.document_type.name if d.document_type else "Lease Documents"
+        groups.setdefault(key, []).append(_doc_entry(d))
+
+    document_groups = [
+        {"group": group_name, "files": files}
+        for group_name, files in groups.items()
     ]
+
     return {
-        "id": tenant.id,
-        "code": tenant.code or "",
-        "name": f"{tenant.user.first_name} {tenant.user.last_name}".strip(),
-        "first_name": tenant.user.first_name or "",
-        "last_name": tenant.user.last_name or "",
-        "email": tenant.email or tenant.user.email or "",
-        "contact_number": tenant.contact_number or "",
-        "emirates_id": tenant.emirate_id or "",
-        "nationality": tenant.nationality or "",
-        "address_line_1": tenant.address_line_1 or "",
-        "address_line_2": tenant.address_line_2 or "",
-        "pin_code": tenant.pin_code or "",
-        "passport_number": tenant.passport_number or "",
+        "id":                   tenant.id,
+        "code":                 tenant.code or "",
+        "name":                 f"{tenant.user.first_name} {tenant.user.last_name}".strip(),
+        "first_name":           tenant.user.first_name or "",
+        "last_name":            tenant.user.last_name or "",
+        "email":                tenant.email or tenant.user.email or "",
+        "contact_number":       tenant.contact_number or "",
+        "emirates_id":          tenant.emirate_id or "",
+        "nationality":          tenant.nationality or "",
+        "address_line_1":       tenant.address_line_1 or "",
+        "address_line_2":       tenant.address_line_2 or "",
+        "pin_code":             tenant.pin_code or "",
+        "passport_number":      tenant.passport_number or "",
         "passport_expiry_date": tenant.passport_expiry_datetime.strftime("%Y-%m-%d") if tenant.passport_expiry_datetime else "",
-        "visa_number": tenant.visa_number or "",
-        "visa_expiry_date": tenant.visa_expiry_datetime.strftime("%Y-%m-%d") if tenant.visa_expiry_datetime else "",
-        "documents": documents,
+        "visa_number":          tenant.visa_number or "",
+        "visa_expiry_date":     tenant.visa_expiry_datetime.strftime("%Y-%m-%d") if tenant.visa_expiry_datetime else "",
+        "document_groups":      document_groups,
     }
 
 

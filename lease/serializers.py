@@ -67,17 +67,25 @@ def serialize_lease(lease):
 
         # ── Unit ──────────────────────────────────────────────────
         "unit": {
-            "id":         unit.id if unit else None,
-            "name":       unit.unit_name if unit else None,
-            "size":       str(unit.unit_size) if unit and unit.unit_size else None,
-            "land_no":    unit.land_no if unit else None,
-            "dm_no":      unit.dm_no if unit else None,
-            "unit_usage": unit.unit_usage if unit else None,
-            "unit_type":  unit.unit_type if unit else None,
-            "sub_type":   unit.sub_type if unit else None,
-            "makani_no":  unit.makani_no if unit else None,
-            "floor_no":   unit.floor_no if unit else None,
-            "owners":     unit_owners,
+            "id":                 unit.id if unit else None,
+            "name":               unit.unit_name if unit else None,
+            "size":               str(unit.unit_size) if unit and unit.unit_size else None,
+            "land_no":            unit.land_no if unit else None,
+            "dm_no":              unit.dm_no if unit else None,
+            "unit_usage":         unit.unit_usage if unit else None,
+            "unit_type":          unit.unit_type if unit else None,
+            "sub_type":           unit.sub_type if unit else None,
+            "makani_no":          unit.makani_no if unit else None,
+            "floor_no":           unit.floor_no if unit else None,
+            "owners":             unit_owners,
+            # Commercial defaults from the unit (used to pre-fill lease commercial form)
+            "rent":               str(unit.rent) if unit and unit.rent is not None else None,
+            "security_deposit":   str(unit.security_deposit) if unit and unit.security_deposit is not None else None,
+            "booking_amount":     str(unit.booking_amount) if unit and unit.booking_amount is not None else None,
+            "maintenance_charges":str(unit.maintenance_charges) if unit and unit.maintenance_charges is not None else None,
+            "cycle":              unit.cycle if unit else None,
+            "notice_period":      unit.notice_period if unit else None,
+            "commission_percent": str(unit.commission_percent) if unit and unit.commission_percent is not None else None,
         },
 
         # ── Tenant ────────────────────────────────────────────────
@@ -135,6 +143,7 @@ def serialize_lease(lease):
 def serialize_lease_cheque(cheque):
     return {
         "id":                        cheque.id,
+        "code":                      cheque.code or "",
         "cheque_type":               cheque.cheque_type,
         "payment_type":              cheque.payment_type,
 
@@ -145,6 +154,7 @@ def serialize_lease_cheque(cheque):
 
         # ── Cheque ────────────────────────────────────────────────
         "cheque_number": cheque.cheque_number,
+        "status":        cheque.status,
 
         # ── Origin Bank ───────────────────────────────────────────
         "origin_bank": {
@@ -172,7 +182,7 @@ def serialize_lease_cheque(cheque):
 
 
 def group_lease_cheques(cheques):
-    """Split a queryset of LeaseCheque into rent and additional groups."""
+    """Split a queryset of LeaseTransaction into rent and additional groups."""
     rent       = [serialize_lease_cheque(c) for c in cheques if c.cheque_type == constants.RENT_CHEQUE]
     additional = [serialize_lease_cheque(c) for c in cheques if c.cheque_type == constants.ADDITIONAL_CHEQUE]
     return {"rent_cheques": rent, "additional_cheques": additional}

@@ -440,7 +440,12 @@ EJARI               = "EJARI"
 EJARI_SIGNING       = "EJARI_SIGNING"
 ACTIVATED           = "ACTIVATED"
 
+BASIC_DETAILS       = "BASIC_DETAILS"
+COMMERCIAL_DETAILS  = "COMMERCIAL_DETAILS"
+
 LEASE_STAGE_CHOICES = (
+    (BASIC_DETAILS,     "Basic Details"),
+    (COMMERCIAL_DETAILS,"Commercial Details"),
     (INVITE,            "Invite"),
     (WAITING_FOR_SIGNUP,"Waiting for Signup"),
     (ONBOARDING,        "Onboarding"),

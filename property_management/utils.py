@@ -375,7 +375,7 @@ def serialize_lease(lease):
         "lease_grace_start_date": datetime_to_epoch_millis(lease.lease_grace_start_date),
         "lease_grace_end_date": datetime_to_epoch_millis(lease.lease_grace_end_date),
         "lease_remarks": lease.lease_remarks,
-        "step_status": lease.step_status,
+        "step_status": lease.lease_stage,
         "lease_status": lease.lease_status,
         "pdf_path": lease.pdf_path,
 

@@ -80,7 +80,7 @@ class Lease(Base):
     lease_stage = models.CharField(
         max_length=20,
         choices=constants.LEASE_STAGE_CHOICES,
-        default=constants.INVITE,
+        default=constants.BASIC_DETAILS,
     )
     pdf_path = models.CharField(max_length=2000, null=True, blank=True)
     annual_amount = models.FloatField(null=True, blank=True)
@@ -120,7 +120,8 @@ class LeaseDocuments(Documents):
         return f"{self.lease}"
 
 
-class LeaseCheque(Documents):
+class LeaseTransaction(Documents):
+    code = models.CharField(max_length=255, blank=True)
     lease = models.ForeignKey(Lease, on_delete=models.CASCADE, related_name="lease_cheques")
     start_date = models.DateTimeField(null=True, blank=True)
     end_date = models.DateTimeField(null=True, blank=True)
@@ -146,3 +147,12 @@ class LeaseCheque(Documents):
         choices=constants.CHEQUE_STATUS_CHOICES,
         default=constants.CHEQUE_STATUS_BALANCE,
     )
+
+    def __str__(self):
+        return "{}-{}".format(self.code or self.id, self.lease_id)
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if not self.code:
+            self.code = f"LT{self.pk:05d}"
+            LeaseTransaction.objects.filter(pk=self.pk).update(code=self.code)

@@ -29,7 +29,7 @@ from property_management import settings
 from property_management.utils import audit_logs, get_tenant_detail_by_id
 from property_management.models import TermAndCondition
 from payment.models import Payment, Bank
-from .models import Lease, LeaseDocuments, LeaseCheque, Template, TemplateField, TemplateValue
+from .models import Lease, LeaseDocuments, LeaseTransaction, Template, TemplateField, TemplateValue
 from .serializers import serialize_lease, serialize_tenant_lease, group_lease_cheques, serialize_cheque_list_row
 
 
@@ -128,12 +128,15 @@ def lease_view(request):
             qs = Lease.objects.select_related("unit__property_block_tower__property", "tenant__user").filter(is_active=True)
 
             property_id = request.GET.get("property_id")
+            unit_id = request.GET.get("unit_id")
             tenant_id = request.GET.get("tenant_id")
             lease_status = request.GET.get("lease_status")
             search = request.GET.get("search", "").strip()
 
             if property_id:
                 qs = qs.filter(unit__property_block_tower__property_id=property_id)
+            if unit_id:
+                qs = qs.filter(unit_id=unit_id)
             if tenant_id:
                 qs = qs.filter(tenant_id=tenant_id)
             if lease_status:
@@ -1313,14 +1316,14 @@ def submit_lease_signature(request):
 @csrf_exempt
 @is_request_authenticated
 def lease_cheque_view(request):
-    """CRUD for LeaseCheque. GET ?lease_id=X, POST/PUT body JSON, DELETE ?cheque_id=X"""
+    """CRUD for LeaseTransaction. GET ?lease_id=X, POST/PUT body JSON, DELETE ?cheque_id=X"""
 
     # ── GET list ──────────────────────────────────────────────────────────────
     if request.method == "GET":
         lease_id = request.GET.get("lease_id")
         if not lease_id:
             return prepare_response(message="lease_id is required", status=status.HTTP_400_BAD_REQUEST)
-        cheques = LeaseCheque.objects.filter(lease_id=lease_id).select_related(
+        cheques = LeaseTransaction.objects.filter(lease_id=lease_id).select_related(
             "origin_bank", "selltlement_bank", "document_type"
         )
         return prepare_response(content=group_lease_cheques(cheques), status=status.HTTP_200_OK)
@@ -1366,7 +1369,7 @@ def lease_cheque_view(request):
             ) or ""
             file_name = data["file_name"]
 
-        cheque = LeaseCheque.objects.create(
+        cheque = LeaseTransaction.objects.create(
             lease=lease,
             document_type=doc_type,
             file_name=file_name,
@@ -1401,8 +1404,8 @@ def lease_cheque_view(request):
         if not cheque_id:
             return prepare_response(message="cheque_id is required", status=status.HTTP_400_BAD_REQUEST)
         try:
-            cheque = LeaseCheque.objects.get(id=cheque_id)
-        except LeaseCheque.DoesNotExist:
+            cheque = LeaseTransaction.objects.get(id=cheque_id)
+        except LeaseTransaction.DoesNotExist:
             return prepare_response(message="Cheque not found", status=status.HTTP_404_NOT_FOUND)
 
         from payment.models import Bank
@@ -1440,8 +1443,8 @@ def lease_cheque_view(request):
         if not cheque_id:
             return prepare_response(message="cheque_id is required", status=status.HTTP_400_BAD_REQUEST)
         try:
-            LeaseCheque.objects.get(id=cheque_id).delete()
-        except LeaseCheque.DoesNotExist:
+            LeaseTransaction.objects.get(id=cheque_id).delete()
+        except LeaseTransaction.DoesNotExist:
             return prepare_response(message="Cheque not found", status=status.HTTP_404_NOT_FOUND)
         return prepare_response(message="Cheque deleted successfully", status=status.HTTP_200_OK)
 
@@ -1462,7 +1465,7 @@ def cheque_summary_view(request):
 
     from django.db.models import Count, Sum
 
-    qs = LeaseCheque.objects.all()
+    qs = LeaseTransaction.objects.all()
 
     property_id = request.GET.get("property_id", "").strip()
     block_id    = request.GET.get("block_id", "").strip()
@@ -1511,7 +1514,7 @@ def all_cheques_view(request):
     unit_id     = request.GET.get("unit_id", "").strip()
     year        = request.GET.get("year", "").strip()
 
-    qs = LeaseCheque.objects.select_related(
+    qs = LeaseTransaction.objects.select_related(
         "lease__unit__property_block_tower__property",
         "lease__tenant__user",
         "selltlement_bank",
@@ -1570,7 +1573,7 @@ def cheque_monthly_view(request):
     block_id    = request.GET.get("block_id", "").strip()
     unit_id     = request.GET.get("unit_id", "").strip()
 
-    qs = LeaseCheque.objects.filter(cheque_date__year=year)
+    qs = LeaseTransaction.objects.filter(cheque_date__year=year)
     if property_id:
         qs = qs.filter(lease__unit__property_block_tower__property_id=property_id)
     if block_id:
@@ -1592,6 +1595,259 @@ def cheque_monthly_view(request):
 
     data = [{"month": month_names[m - 1], "amount": result[m]} for m in range(1, 13)]
     return prepare_response(content=data, status=status.HTTP_200_OK)
+
+
+@is_request_authenticated
+@csrf_exempt
+def rent_analytics_view(request):
+    """GET summary + month-wise rent analytics (3 series: received, bounce, total)."""
+    if request.method != "GET":
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    from django.db.models import Sum
+    from django.db.models.functions import ExtractMonth
+
+    year        = request.GET.get("year", "").strip() or str(datetime.now().year)
+    lease_id    = request.GET.get("lease_id", "").strip()
+    property_id = request.GET.get("property_id", "").strip()
+    block_id    = request.GET.get("block_id", "").strip()
+    unit_id     = request.GET.get("unit_id", "").strip()
+
+    qs = LeaseTransaction.objects.filter(cheque_date__year=year)
+    if lease_id:
+        qs = qs.filter(lease_id=lease_id)
+    if property_id:
+        qs = qs.filter(lease__unit__property_block_tower__property_id=property_id)
+    if block_id:
+        qs = qs.filter(lease__unit__property_block_tower_id=block_id)
+    if unit_id:
+        qs = qs.filter(lease__unit_id=unit_id)
+
+    # Summary totals
+    total_amount    = float(qs.aggregate(t=Sum("amount"))["t"] or 0)
+    received_amount = float(
+        qs.filter(status__in=[constants.CHEQUE_STATUS_CREDITED, constants.CHEQUE_STATUS_REALIZED])
+          .aggregate(t=Sum("amount"))["t"] or 0
+    )
+    pending_amount  = total_amount - received_amount
+
+    # Month-wise breakdown helper
+    month_names = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+
+    def monthly_agg(filter_statuses=None):
+        result = {m: 0 for m in range(1, 13)}
+        qs_f = qs.filter(status__in=filter_statuses) if filter_statuses else qs
+        rows = (
+            qs_f.annotate(m=ExtractMonth("cheque_date"))
+                .values("m")
+                .annotate(total=Sum("amount"))
+                .order_by("m")
+        )
+        for row in rows:
+            result[row["m"]] = float(row["total"] or 0)
+        return result
+
+    received_m = monthly_agg([constants.CHEQUE_STATUS_CREDITED, constants.CHEQUE_STATUS_REALIZED])
+    bounce_m   = monthly_agg([constants.CHEQUE_STATUS_BOUNCED])
+    total_m    = monthly_agg()
+
+    monthly = [
+        {
+            "month":           month_names[m - 1],
+            "amount_received": received_m[m],
+            "cheque_bounce":   bounce_m[m],
+            "total_amount":    total_m[m],
+        }
+        for m in range(1, 13)
+    ]
+
+    return prepare_response(content={
+        "summary": {
+            "total_amount":    total_amount,
+            "amount_received": received_amount,
+            "pending_amount":  pending_amount,
+        },
+        "monthly": monthly,
+    }, status=status.HTTP_200_OK)
+
+
+@is_request_authenticated
+@csrf_exempt
+def property_analytics_view(request):
+    """GET property/block/unit-wise revenue analytics.
+    Always returns ALL properties/blocks/units (revenue = 0 when no transactions).
+    """
+    if request.method != "GET":
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    from django.db.models import Sum, Q, Value
+    from django.db.models.functions import Coalesce
+    from property.models import Property, PropertyBlocks
+
+    year        = request.GET.get("year", "").strip() or str(datetime.now().year)
+    property_id = request.GET.get("property_id", "").strip()
+    block_id    = request.GET.get("block_id", "").strip()
+
+    if block_id:
+        # All units in this block, each annotated with their total revenue
+        # Unit -> Lease (related_name="leases") -> LeaseTransaction (related_name="lease_cheques")
+        units = (
+            Unit.objects
+            .filter(property_block_tower_id=block_id)
+            .annotate(
+                revenue=Coalesce(
+                    Sum(
+                        "leases__lease_cheques__amount",
+                        filter=Q(leases__lease_cheques__cheque_date__year=year),
+                    ),
+                    Value(0),
+                )
+            )
+            .order_by("unit_name")
+        )
+        chart = [
+            {
+                "key":     str(u.id),
+                "name":    u.unit_name or u.code or f"Unit {u.id}",
+                "revenue": float(u.revenue),
+            }
+            for u in units
+        ]
+        level = "unit"
+
+    elif property_id:
+        # All blocks in this property, each annotated with their total revenue
+        # PropertyBlocks -> Unit (related_name="block_towers") -> Lease -> LeaseTransaction
+        blocks = (
+            PropertyBlocks.objects
+            .filter(property_id=property_id)
+            .annotate(
+                revenue=Coalesce(
+                    Sum(
+                        "block_towers__leases__lease_cheques__amount",
+                        filter=Q(block_towers__leases__lease_cheques__cheque_date__year=year),
+                    ),
+                    Value(0),
+                )
+            )
+            .order_by("block_name")
+        )
+        chart = [
+            {
+                "key":     str(b.id),
+                "name":    b.block_name or f"Block {b.id}",
+                "revenue": float(b.revenue),
+            }
+            for b in blocks
+        ]
+        level = "block"
+
+    else:
+        # All properties, each annotated with their total revenue
+        # Property -> PropertyBlocks (related_name="property_blocks") -> Unit (related_name="block_towers") -> Lease -> LeaseTransaction
+        properties = (
+            Property.objects
+            .annotate(
+                revenue=Coalesce(
+                    Sum(
+                        "property_blocks__block_towers__leases__lease_cheques__amount",
+                        filter=Q(
+                            property_blocks__block_towers__leases__lease_cheques__cheque_date__year=year
+                        ),
+                    ),
+                    Value(0),
+                )
+            )
+            .order_by("property_name")
+        )
+        chart = [
+            {
+                "key":     str(p.id),
+                "name":    p.property_name or f"Property {p.id}",
+                "revenue": float(p.revenue),
+            }
+            for p in properties
+        ]
+        level = "property"
+
+    total_revenue = sum(item["revenue"] for item in chart)
+
+    return prepare_response(content={
+        "total_revenue": total_revenue,
+        "chart":         chart,
+        "level":         level,
+    }, status=status.HTTP_200_OK)
+
+
+@is_request_authenticated
+@csrf_exempt
+def property_comparison_view(request):
+    """GET full detail for one property for the comparison card."""
+    if request.method != "GET":
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    from django.db.models import Sum, Count, Q
+    from property.models import Property, PropertyBlocks
+
+    property_id = request.GET.get("property_id", "").strip()
+    if not property_id:
+        return prepare_response(message="property_id is required", status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        prop = Property.objects.get(id=property_id)
+    except Property.DoesNotExist:
+        return prepare_response(message="Property not found", status=status.HTTP_404_NOT_FOUND)
+
+    # Revenue: sum all LeaseTransaction amounts for this property
+    revenue = float(
+        LeaseTransaction.objects
+        .filter(lease__unit__property_block_tower__property_id=property_id)
+        .aggregate(t=Sum("amount"))["t"] or 0
+    )
+
+    # Rank: how many properties have strictly higher revenue
+    all_revenues = (
+        LeaseTransaction.objects
+        .values("lease__unit__property_block_tower__property_id")
+        .annotate(total=Sum("amount"))
+    )
+    higher_count = sum(1 for r in all_revenues if float(r["total"] or 0) > revenue)
+    rank = higher_count + 1
+
+    # Unit counts
+    total_units    = Unit.objects.filter(property_block_tower__property_id=property_id).count()
+    occupied_units = Unit.objects.filter(property_block_tower__property_id=property_id, is_occupied=True).count()
+    available_units = total_units - occupied_units
+
+    # Total parking across all blocks
+    total_parking = (
+        PropertyBlocks.objects
+        .filter(property_id=property_id)
+        .aggregate(t=Sum("no_of_parking"))["t"] or 0
+    )
+
+    # Built-up area: sum of unit sizes
+    built_up_area = float(
+        Unit.objects
+        .filter(property_block_tower__property_id=property_id)
+        .aggregate(t=Sum("unit_size"))["t"] or 0
+    )
+
+    return prepare_response(content={
+        "id":              prop.id,
+        "property_name":   prop.property_name,
+        "thumbnail":       prop._get_thumbnail(),
+        "revenue":         revenue,
+        "rank":            rank,
+        "land_area":       float(prop.land_area or 0),
+        "land_area_unit":  prop.land_area_unit or "",
+        "no_of_blocks":    prop.no_of_blocks,
+        "total_units":     total_units,
+        "occupied_units":  occupied_units,
+        "available_units": available_units,
+        "total_parking":   total_parking,
+        "built_up_area":   built_up_area,
+    }, status=status.HTTP_200_OK)
 
 
 # ---------------------------------------------------------------------------
@@ -1666,7 +1922,7 @@ def lease_details_view(request):
                 lease_grace_start_date=lease_grace_start_date,
                 lease_grace_end_date=lease_grace_end_date,
                 lease_remarks=body.get("lease_remarks"),
-                step_status=body.get("step_status", "LEASE_DETAILS"),
+                lease_stage=body.get("lease_stage", constants.BASIC_DETAILS),
                 lease_status=body.get("lease_status", "DRAFT"),
                 # approval_status=body.get("approval_status", "PENDING"),
 
@@ -1731,7 +1987,7 @@ def lease_details_view(request):
 
             # Update all other fields explicitly
             lease_fields = [
-                "lease_number", "lease_remarks", "step_status", "lease_status",
+                "lease_number", "lease_remarks", "lease_stage", "lease_status",
                 "approval_status", "pdf_path",
                 "annual_amount", "actual_annual_amount", "rent", "booking_amount",
                 "security_deposit", "maintenance_charges", "commission_percentage",
@@ -1803,7 +2059,7 @@ def lease_documents(request):
                 content={
                     "documents": final_docs,
                     "lease_id": lease_id,
-                    "step_status": lease_obj.step_status
+                    "step_status": lease_obj.lease_stage
                 },
                 status=status.HTTP_200_OK
             )
@@ -1869,7 +2125,7 @@ def lease_documents(request):
                     "type": doc_type
                 })
 
-            lease_obj.step_status = "UPLOAD_EJARI"
+            lease_obj.lease_stage = "UPLOAD_EJARI"
             lease_obj.save()
 
             audit_logs(

@@ -347,6 +347,25 @@ def activity_log_view(request):
 
 
 @is_request_authenticated
+def lead_check_active_lease(request):
+    if request.method != "GET":
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    lead_id = request.GET.get("lead_id", "").strip()
+    if not lead_id:
+        return prepare_response(message="lead_id is required", status=status.HTTP_400_BAD_REQUEST)
+
+    lead = Lead.objects.filter(id=lead_id).select_related("unit").first()
+    if not lead:
+        return prepare_response(message="Lead not found", status=status.HTTP_404_NOT_FOUND)
+
+    from lease.models import Lease
+    has_active_lease = Lease.objects.filter(unit=lead.unit, lease_status="ACTIVE").exists()
+
+    return prepare_response(content={"has_active_lease": has_active_lease}, status=status.HTTP_200_OK)
+
+
+@is_request_authenticated
 def lead_bulk_import(request):
     if request.method != "POST":
         return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
