@@ -21,6 +21,7 @@ class UserProfile(Base):
     
     address_line_1 = models.CharField(max_length=255, null=True, blank=True)
     address_line_2 = models.CharField(max_length=255, null=True, blank=True)
+    locality = models.CharField(max_length=255, null=True, blank=True)
     emirate_id = models.CharField(max_length=255, null=True, blank=True)
     email = models.EmailField(max_length=255, null=True, blank=True)
     contact_number = models.CharField(max_length=20, null=True, blank=True)

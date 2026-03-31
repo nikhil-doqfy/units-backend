@@ -2,7 +2,7 @@ import json
 from utilities import status, constants
 from utilities.helper_functions import prepare_response, datetime_to_epoch_millis, safe_epoch_to_datetime,get_extension_from_base64,export_to_csv
 from user_service.models import UserProfile, Documents, OwnerDocuments, TenantDocuments, Role, Owner, Tenant, PropertyManager ,Approval
-from property.models import PropertyManagerDocuments, Unit, Property, PropertyManagmentCompany
+from property.models import PropertyManagerDocuments, Unit, Property, PropertyManagmentCompany, UnitOwner
 from django.db import transaction
 from utilities.decorator import is_request_authenticated
 from django.core.paginator import Paginator, EmptyPage
@@ -107,12 +107,22 @@ def userprofile_view(request):
             state = city.state if city else None
             country = state.country if state else None
 
+            # Determine role from MTI subtype
+            if PropertyManager.objects.filter(pk=user_profile.pk).exists():
+                user_role = constants.COMPANY_USER
+            elif Owner.objects.filter(pk=user_profile.pk).exists():
+                user_role = constants.OWNER
+            elif Tenant.objects.filter(pk=user_profile.pk).exists():
+                user_role = constants.TENANT
+            else:
+                user_role = constants.COMPANY_USER
+
             data = {
                 "id": user_profile.id,
                 "email": user.email,
                 "first_name": user.first_name,
                 "last_name": user.last_name,
-                "user_role": user_profile.user_role,
+                "user_role": user_role,
                 "profile_image": user_profile.profile_image,
                 "city": {
                     "key": city.id if city else None,
@@ -126,17 +136,13 @@ def userprofile_view(request):
                     "key": country.id if country else None,
                     "value": country.name if country else None,
                 },
-                "locality": user_profile.locality,
                 "postal_code": user_profile.pin_code,
-                "address": user_profile.address,
-                "additional_address": user_profile.additional_address,
+                "address": user_profile.address_line_1,
+                "additional_address": user_profile.address_line_2,
+                "locality": user_profile.locality,
                 "contact_number": user_profile.contact_number,
                 "emirate_id": user_profile.emirate_id,
-                "uae_residence_visa": user_profile.uae_residence_visa,
-                "trade_license_number": user_profile.trade_license_number,
-                "time_zone": user_profile.time_zone,
-                "utc": user_profile.utc,
-                "manage_through": user_profile.manage_through,
+                "time_zone": user_profile.timezone,
             }
 
             return prepare_response(
@@ -170,23 +176,20 @@ def userprofile_view(request):
                 else:
                     user_profile.city = None
 
-            simple_fields = [
-                "profile_image",
-                "locality",
-                "pin_code",
-                "address",
-                "additional_address",
-                "contact_number",
-                "emirate_id",
-                "uae_residence_visa",
-                "trade_license_number",
-                "time_zone",
-                "utc",
-                "manage_through",
-            ]
-            for field in simple_fields:
-                if field in body:
-                    setattr(user_profile, field, body[field])
+            # Direct model field mappings (body key → model field)
+            field_map = {
+                "profile_image": "profile_image",
+                "pin_code": "pin_code",
+                "address": "address_line_1",
+                "additional_address": "address_line_2",
+                "locality": "locality",
+                "contact_number": "contact_number",
+                "emirate_id": "emirate_id",
+                "time_zone": "timezone",
+            }
+            for body_key, model_field in field_map.items():
+                if body_key in body:
+                    setattr(user_profile, model_field, body[body_key])
             user_profile.save()
                
                     
@@ -212,20 +215,19 @@ def user_management(request):
         if request.method == "POST":
             body = json.loads(request.body)
             first_name = body.get("first_name")
-            last_name = body.get("last_name")
-            email = body.get("email")
-            password = body.get("password")
-            phone = body.get("phone")
-            role = body.get("role")
-            city_id = body.get("city_id")
-       
+            last_name  = body.get("last_name")
+            email      = body.get("email")
+            password   = body.get("password")
+            phone      = body.get("contact_number") or body.get("phone")
+            role       = body.get("role")
+
             if not all([first_name, last_name, email, password, role]):
                 return prepare_response(
                     message=constants.ALL_FIELD_REQUIRED,
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            if role not in [constants.OWNER, constants.TENANT]:
+            if role not in [constants.OWNER, constants.TENANT, constants.COMPANY_USER]:
                 return prepare_response(
                     message=constants.UNAUTHORIZED_USER_ROLE,
                     status=status.HTTP_400_BAD_REQUEST
@@ -237,57 +239,92 @@ def user_management(request):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            django_user = User.objects.create_user(
-                username=email,
-                email=email,
-                password=password,
-                first_name=first_name,
-                last_name=last_name
-            )
-            city_instance = None
-            if city_id:
-                city_instance = City.objects.filter(id=city_id).first()
-
-            profile = UserProfile.objects.create(
-                user=django_user,
-                user_role=role,
+            common_kwargs = dict(
                 contact_number=phone,
-                address=body.get("address"),
-                locality=body.get("locality"),
-                pin_code=body.get("pin_code"),
                 profile_image=body.get("profile_image"),
-                city=city_instance,
-                created_by=user.user
+                created_by=user.user,
             )
+
+            with transaction.atomic():
+                django_user = User.objects.create_user(
+                    username=email,
+                    email=email,
+                    password=password,
+                    first_name=first_name,
+                    last_name=last_name,
+                )
+
+                if role == constants.OWNER:
+                    profile = Owner.objects.create(user=django_user, **common_kwargs)
+                elif role == constants.TENANT:
+                    profile = Tenant.objects.create(user=django_user, **common_kwargs)
+                elif role == constants.COMPANY_USER:
+                    company = PropertyManagmentCompany.objects.filter(
+                        created_by=user.user, is_active=True
+                    ).first()
+                    if not company:
+                        pm_self = PropertyManager.objects.filter(pk=user.pk).select_related("company").first()
+                        company = pm_self.company if pm_self else None
+                    if not company:
+                        return prepare_response(
+                            message=constants.COMPANY_NOT_FOUND,
+                            status=status.HTTP_404_NOT_FOUND
+                        )
+                    profile = PropertyManager.objects.create(
+                        user=django_user, company=company, **common_kwargs
+                    )
 
             return prepare_response(
                 message=constants.USER_CREATED,
-                content={
-                    "user_id": profile.id,
-                    "email": django_user.email,
-                    "role": profile.user_role
-                },
+                content={"user_id": profile.id, "email": django_user.email, "role": role},
                 status=status.HTTP_201_CREATED
             )
         elif request.method == "GET":
-            is_active_param = request.GET.get("is_active", "true").lower()
-            is_active = is_active_param == "true"
+            is_active_raw = request.GET.get("is_active")
             role = request.GET.get("role")
             search = request.GET.get("search", "").strip()
             page = int(request.GET.get("page", 1))
             limit = int(request.GET.get("limit", 10))
-            start_epoch = request.GET.get("start_date")
-            end_epoch = request.GET.get("end_date")
             user_id = request.GET.get("user_id")
-            users_qs = UserProfile.objects.select_related("user").filter( is_active=is_active,created_by=user.user,is_staff=False)
-            if role:
-                users_qs = users_qs.filter(user_role=role)
+
+            # Resolve the company for the logged-in user
+            company = PropertyManagmentCompany.objects.filter(created_by=user.user, is_active=True).first()
+            if not company:
+                pm_check = PropertyManager.objects.filter(pk=user.pk).select_related("company").first()
+                company = pm_check.company if pm_check else None
+            if not company:
+                return prepare_response(
+                    message=constants.COMPANY_NOT_FOUND,
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            # Collect UserProfile IDs from all three user types linked to this company:
+            # 1. Property Managers (staff) — directly linked via company FK
+            pm_ids = set(PropertyManager.objects.filter(company=company).values_list("pk", flat=True))
+
+            # 2. Owners — via UnitOwner → Unit → PropertyBlocks → Property → pmc
+            owner_ids = set(
+                UnitOwner.objects.filter(
+                    unit__property_block_tower__property__pmc=company,
+                    owner__isnull=False
+                ).values_list("owner_id", flat=True)
+            )
+
+            # 3. Tenants — via Lease → Unit → PropertyBlocks → Property → pmc
+            tenant_ids = set(
+                Lease.objects.filter(
+                    unit__property_block_tower__property__pmc=company
+                ).values_list("tenant_id", flat=True)
+            )
+
+            all_profile_ids = pm_ids | owner_ids | tenant_ids
+
+            users_qs = UserProfile.objects.select_related("user").filter(id__in=all_profile_ids)
+
+            if is_active_raw is not None:
+                users_qs = users_qs.filter(is_active=is_active_raw.lower() == "true")
             if user_id:
                 users_qs = users_qs.filter(id=user_id)
-            if start_epoch and end_epoch:
-                s = safe_epoch_to_datetime(int(start_epoch))
-                e = safe_epoch_to_datetime(int(end_epoch))
-                users_qs = users_qs.filter(created__range=(s, e))
             if search:
                 users_qs = users_qs.filter(
                     Q(user__email__icontains=search) |
@@ -295,6 +332,14 @@ def user_management(request):
                     Q(user__last_name__icontains=search) |
                     Q(contact_number__icontains=search)
                 )
+            if role:
+                role_upper = role.upper()
+                if role_upper in ("OWNER",):
+                    users_qs = users_qs.filter(id__in=owner_ids)
+                elif role_upper in ("TENANT",):
+                    users_qs = users_qs.filter(id__in=tenant_ids)
+                elif role_upper in ("COMPANY_USER", "PROPERTY_MANAGER"):
+                    users_qs = users_qs.filter(id__in=pm_ids)
 
             users_qs = users_qs.order_by("-created")
             paginator = Paginator(users_qs, limit)
@@ -302,27 +347,29 @@ def user_management(request):
                 page_obj = paginator.page(page)
             except EmptyPage:
                 page_obj = paginator.page(paginator.num_pages)
+
             data = []
             for profile in page_obj:
-                role_key = profile.user_role
-                role_value = role_key.replace("_", " ").title()
+                django_user = profile.user
+                if profile.id in pm_ids:
+                    role_label = "Property Manager"
+                elif profile.id in owner_ids:
+                    role_label = "Owner"
+                elif profile.id in tenant_ids:
+                    role_label = "Tenant"
+                else:
+                    role_label = "User"
                 data.append({
                     "id": profile.id,
-                    "email": profile.user.email,
-                    "first_name": profile.user.first_name,
-                    "last_name": profile.user.last_name,
+                    "email": django_user.email,
+                    "first_name": django_user.first_name,
+                    "last_name": django_user.last_name,
                     "contact_number": profile.contact_number,
-                    "address": profile.address,
-                    "locality": profile.locality,
-                    "pin_code": profile.pin_code,
                     "profile_image": profile.profile_image,
                     "is_active": profile.is_active,
                     "created_on": datetime_to_epoch_millis(profile.created),
-                    "last_login": datetime_to_epoch_millis(profile.user.last_login) if profile.user.last_login else None,
-                    "role": {
-                        "key": role_key,
-                        "value": role_value
-                    }
+                    "last_login": datetime_to_epoch_millis(django_user.last_login) if django_user.last_login else None,
+                    "role": {"key": role_label.upper().replace(" ", "_"), "value": role_label},
                 })
 
             pagination_meta = {
@@ -339,9 +386,36 @@ def user_management(request):
                 status=status.HTTP_200_OK
             )
         elif request.method == "PUT":
+            body = json.loads(request.body)
+            user_id = body.get("user_id")
+            if not user_id:
+                return prepare_response(message=constants.USER_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
+
+            profile = UserProfile.objects.select_related("user").filter(id=user_id).first()
+            if not profile:
+                return prepare_response(message=constants.USER_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+
+            django_user = profile.user
+            if body.get("first_name"):
+                django_user.first_name = body["first_name"]
+            if body.get("last_name"):
+                django_user.last_name = body["last_name"]
+            django_user.save(update_fields=["first_name", "last_name"])
+
+            update_fields = []
+            if body.get("contact_number") is not None:
+                profile.contact_number = body["contact_number"]
+                update_fields.append("contact_number")
+            if body.get("profile_image") is not None:
+                profile.profile_image = body["profile_image"]
+                update_fields.append("profile_image")
+            if update_fields:
+                profile.save(update_fields=update_fields)
+
             return prepare_response(
-                message="Update user API will be added later",
-                status=status.HTTP_501_NOT_IMPLEMENTED
+                message=constants.USER_UPDATED_SUCCESS if hasattr(constants, 'USER_UPDATED_SUCCESS') else "User updated successfully.",
+                content={"user_id": profile.id},
+                status=status.HTTP_200_OK
             )
         elif request.method == "DELETE":
             user_id = request.GET.get("user_id")

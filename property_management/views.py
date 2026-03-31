@@ -147,7 +147,11 @@ def options(request):
     ]
             
         elif option_type == "USER_ROLE":
-            content["user_role"] = [ {"key": constants.OWNER, "value": "Owner"}, {"key": constants.TENANT, "value": "Tenant"},]
+            content["user_role"] = [
+                {"key": constants.OWNER, "value": "Owner"},
+                {"key": constants.TENANT, "value": "Tenant"},
+                {"key": constants.COMPANY_USER, "value": "Property Manager"},
+            ]
         
         elif option_type == "PROPERTY_DOCUMENT_CHOICE":
              content["Property_Document"] = [
@@ -326,8 +330,11 @@ def options(request):
             content["tenant"] = [{"key": t.id, "value": f"{t.user.first_name} {t.user.last_name}"} for t in tenants]
 
             
-        else:   
-            content[option_type] = []  
+        elif option_type == "TIMEZONE":
+            content["timezone"] = [{"key": key, "value": value} for key, value in constants.TIMEZONE_CHOICES]
+
+        else:
+            content[option_type] = []
     return prepare_response(
         content=content,
         message=constants.DROPDOWN_DATA_FETCHED_SUCEESS,
