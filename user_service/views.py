@@ -720,15 +720,24 @@ def export_staff_csv(request):
 def contact_list_view(request):
 
     if request.method == "GET":
-
         search = request.GET.get("search")
         logged_in_profile = request.user
-        role_filter = logged_in_profile.user_role
 
-        profiles = UserProfile.objects.select_related("user")
+        company = PropertyManagmentCompany.objects.filter(
+            company_staff=logged_in_profile,
+            is_active=True
+        ).first()
 
-        if role_filter and role_filter.upper() != "ALL":
-            profiles = profiles.filter(user_role=role_filter.upper())
+        if not company:
+            return prepare_response(
+                message=constants.COMPANY_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        profiles = UserProfile.objects.select_related("user").filter(
+            propertymanager__company=company,
+            is_active=True
+        ).exclude(id=logged_in_profile.id)
 
         if search:
             profiles = profiles.filter(
@@ -741,23 +750,23 @@ def contact_list_view(request):
         results = [
             {
                 "id": profile.id,
-                "full_name": f"{profile.user.first_name} {profile.user.last_name}",
+                "full_name": f"{profile.user.first_name} {profile.user.last_name}".strip(),
                 "email": profile.user.email,
-                "phone": profile.contact_number
+                "phone": profile.contact_number,
             }
             for profile in profiles
         ]
 
         return prepare_response(
             content=results,
-            message=constants.CONTACTS_FETCH_SUCCESS
+            message=constants.CONTACTS_FETCH_SUCCESS,
+            status=status.HTTP_200_OK
         )
 
     return prepare_response(
         message=constants.METHOD_NOT_ALLOWED,
         status=status.HTTP_405_METHOD_NOT_ALLOWED
     )
-
 # ─────────────────────────────────────────────────────────────
 #  Owner CRUD
 # ─────────────────────────────────────────────────────────────
