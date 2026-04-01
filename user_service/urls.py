@@ -14,6 +14,7 @@ urlpatterns = [
     path("approval/", views.approval, name="approval"),
     path('owner', views.owner_crud, name='owner_crud'),
     path('tenant', views.tenant_crud, name='tenant_crud'),
+    path("unit-assign", views.unit_assign, name="unit_assign"),
     # Moved from property_management
     path('owner/pmc', views.owner_pmc_view, name='owner_pmc_view'),
     path('owner_compnay_csv', views.export_owner_pmc_csv, name='export_owner_pmc_csv'),

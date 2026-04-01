@@ -3,7 +3,7 @@ from user_service.models import (
     UserProfile, Permission, Role, UserVerification,
     Documents, OwnerDocuments, TenantDocuments,
     Owner, Tenant, PropertyManager,
-    FAQ, PrivacyPolicy, Approval
+    FAQ, PrivacyPolicy, Approval, AssignedUnit
 )
 
 
@@ -91,3 +91,11 @@ class ApprovalAdmin(admin.ModelAdmin):
     list_display = ("tenant","unit","requested_rent","requested_tenure","approved","approved_by",)
     list_filter = ("approved","approved_at",)
     search_fields = ("tenant__id","unit__unit_name",)
+
+@admin.register(AssignedUnit)
+class AssignedUnitAdmin(admin.ModelAdmin):
+    list_display = ["staff_name", "unit"]
+ 
+    @admin.display(description="Staff Name")
+    def staff_name(self, obj):
+        return f"{obj.property_manager.user.first_name} {obj.property_manager.user.last_name}".strip()

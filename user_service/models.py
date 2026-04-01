@@ -202,3 +202,12 @@ class Approval(Base):
     def __str__(self):
         return f"{self.unit} - {self.tenant}"
 
+class AssignedUnit(Base):
+    property_manager = models.ForeignKey("PropertyManager",on_delete=models.CASCADE,related_name="assigned_units")
+    unit = models.ForeignKey("property.Unit",on_delete=models.CASCADE,related_name="assigned_managers")
+ 
+    class Meta:
+        unique_together = ("property_manager", "unit")
+ 
+    def __str__(self):
+        return f"{self.property_manager} - {self.unit}"

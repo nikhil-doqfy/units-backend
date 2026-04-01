@@ -1,7 +1,7 @@
 import json
 from utilities import status, constants
 from utilities.helper_functions import prepare_response, datetime_to_epoch_millis, safe_epoch_to_datetime,get_extension_from_base64,export_to_csv
-from user_service.models import UserProfile, Documents, OwnerDocuments, TenantDocuments, Role, Owner, Tenant, PropertyManager ,Approval
+from user_service.models import UserProfile, Documents, OwnerDocuments, TenantDocuments, Role, Owner, Tenant, PropertyManager, Approval, AssignedUnit
 from property.models import PropertyManagerDocuments, Unit, Property, PropertyManagmentCompany, UnitOwner
 from django.db import transaction
 from utilities.decorator import is_request_authenticated
@@ -2179,3 +2179,218 @@ def company_tenants(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
+@is_request_authenticated
+def unit_assign(request):
+ 
+    user_profile=request.user
+    if request.method=="GET":
+ 
+        pms=PropertyManager.objects.prefetch_related(
+            "roles",
+            "assigned_units__unit"
+        ).select_related("user").order_by("-id")
+ 
+        content=[]
+ 
+        for pm in pms:
+ 
+            assignments=pm.assigned_units.all()
+            total_units=assignments.count()
+            occupied_units=assignments.filter(unit__is_occupied=True).count()
+            tenancy_ratio=f"{occupied_units}:{total_units}" if total_units else "0:0"
+            staff_name=f"{pm.user.first_name} {pm.user.last_name}".strip()
+            unit_names=[{"id":a.unit.id,"name":a.unit.unit_name} for a in assignments if a.unit]
+            content.append({
+                "id":pm.id,
+                "code":pm.code,
+                "staff_name":staff_name,
+                "contact_number":pm.contact_number,
+                "roles":[{"id":role.id,"name":role.name} for role in pm.roles.all()],
+                "unit_assigned":unit_names,
+                "tenancy_ratio":tenancy_ratio
+            })
+ 
+        return prepare_response(
+            content=content,
+            status=status.HTTP_200_OK
+        )
+ 
+    elif request.method=="POST":
+ 
+        data=json.loads(request.body)
+ 
+        first_name=data.get("first_name")
+        last_name=data.get("last_name")
+        email=data.get("email")
+        contact_number=data.get("contact_number")
+        roles=data.get("roles",[])
+        unit_assigned=data.get("unit_assigned",[])
+ 
+        if not first_name or not email or not unit_assigned:
+            return prepare_response(
+                message="first_name, email and unit_assigned are required",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+ 
+        pm_user = PropertyManager.objects.filter(id=request.user.id).first()
+        company = pm_user.company if pm_user else None
+ 
+        if not company:
+            return prepare_response(
+                message="Company not found",
+                status=status.HTTP_404_NOT_FOUND
+            )
+        pm=PropertyManager.objects.filter(email=email).first()
+ 
+        if not pm:
+ 
+            user=User.objects.create(
+                username=email,
+                email=email,
+                first_name=first_name,
+                last_name=last_name
+            )
+ 
+            pm=PropertyManager.objects.create(
+                user=user,
+                email=email,
+                contact_number=contact_number,
+                company=company,
+                created_by=user_profile.user
+            )
+ 
+        if roles:
+            pm.roles.set(Role.objects.filter(id__in=roles))
+ 
+        for unit_id in unit_assigned:
+ 
+            unit=Unit.objects.filter(id=unit_id).first()
+            if not unit:
+                return prepare_response(
+                    message=f"Unit '{unit_id}' not found",
+                    status=status.HTTP_404_NOT_FOUND
+                )
+ 
+            AssignedUnit.objects.get_or_create(
+                property_manager=pm,
+                unit=unit,
+                defaults={"created_by":user_profile.user}
+            )
+ 
+        assignments=pm.assigned_units.all()
+        content={
+            "id":pm.id,
+            "code":pm.code,
+            "staff_name":f"{pm.user.first_name} {pm.user.last_name}",
+            "contact_number":pm.contact_number,
+            "roles":[{"id":role.id,"name":role.name} for role in pm.roles.all()],
+            "unit_assigned":[{"id":a.unit.id,"name":a.unit.unit_name} for a in assignments if a.unit],
+            "tenancy_ratio":f"{assignments.filter(unit__is_occupied=True).count()}:{assignments.count()}"
+        }
+ 
+        return prepare_response(
+            message="Staff and units assigned successfully",
+            content=content,
+            status=status.HTTP_201_CREATED
+        )
+ 
+    elif request.method=="PUT":
+ 
+        data=json.loads(request.body)
+        pm_id=request.GET.get("id")
+ 
+        if not pm_id:
+            return prepare_response(
+                message="id is required",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+ 
+        pm=PropertyManager.objects.filter(id=pm_id).first()
+ 
+        if not pm:
+            return prepare_response(
+                message="Staff not found",
+                status=status.HTTP_404_NOT_FOUND
+            )
+ 
+        first_name=data.get("first_name")
+        last_name=data.get("last_name")
+        contact_number=data.get("contact_number")
+        roles=data.get("roles")
+        unit_assigned=data.get("unit_assigned")
+ 
+        if first_name:
+            pm.user.first_name=first_name
+        if last_name is not None:
+            pm.user.last_name=last_name
+        pm.user.save()
+ 
+        if contact_number:
+            pm.contact_number=contact_number
+            pm.save()
+ 
+        if roles is not None:
+            pm.roles.clear()
+            for role_id in roles:
+                role=Role.objects.filter(id=role_id).first()
+                if role:
+                    pm.roles.add(role)
+ 
+        if unit_assigned is not None:
+            pm.assigned_units.exclude(unit_id__in=unit_assigned).delete()
+            for unit_id in unit_assigned:
+                unit=Unit.objects.filter(id=unit_id).first()
+                if unit:
+                    AssignedUnit.objects.get_or_create(
+                        property_manager=pm,
+                        unit=unit,
+                        defaults={"created_by":user_profile.user}
+                    )
+ 
+        assignments=pm.assigned_units.all()
+        content={
+            "id":pm.id,
+            "code":pm.code,
+            "staff_name":f"{pm.user.first_name} {pm.user.last_name}",
+            "contact_number":pm.contact_number,
+            "roles":[{"id":role.id,"name":role.name} for role in pm.roles.all()],
+            "unit_assigned":[{"id":a.unit.id,"name":a.unit.unit_name} for a in assignments if a.unit],
+            "tenancy_ratio":f"{assignments.filter(unit__is_occupied=True).count()}:{assignments.count()}"
+        }
+ 
+        return prepare_response(
+            message="Staff updated successfully",
+            content=content,
+            status=status.HTTP_200_OK
+        )
+ 
+    elif request.method=="DELETE":
+ 
+        data=json.loads(request.body)
+        pm_id=request.GET.get("id")
+ 
+        if not pm_id:
+            return prepare_response(
+                message="id is required",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+ 
+        pm=PropertyManager.objects.filter(id=pm_id).first()
+ 
+        if not pm:
+            return prepare_response(
+                message="Staff not found",
+                status=status.HTTP_404_NOT_FOUND
+            )
+ 
+        pm.delete()
+ 
+        return prepare_response(
+            message="Staff deleted successfully",
+            status=status.HTTP_200_OK
+        )
+ 
+    return prepare_response(
+        message="Invalid request method",
+        status=status.HTTP_405_METHOD_NOT_ALLOWED
+    )
