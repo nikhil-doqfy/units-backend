@@ -204,7 +204,7 @@ def property(request):
             pmc=pmc,
         )
 
-        audit_logs(request, f"Property '{prop.property_name}' created", constants.CREATED)
+        audit_logs(request, f"Property '{prop.property_name}' created", constants.CREATED, "property")
         return prepare_response(
             message=constants.PROPERTY_ADDED,
             content={"id": prop.id},
@@ -240,7 +240,7 @@ def property(request):
 
         prop.save()
 
-        audit_logs(request, f"Parent property '{prop.property_name}' updated", constants.UPDATED)
+        audit_logs(request, f"Parent property '{prop.property_name}' updated", constants.UPDATED,"property")
         return prepare_response(
             message=constants.PROPERTY_UPDATE_SUCCESS,
             content={"id": prop.id},
@@ -307,6 +307,7 @@ def property_blocks(request):
             )
             created.append(b.id)
 
+        audit_logs(request,f"Blocks added to property '{prop.property_name}'",constants.CREATED, "property")
         return prepare_response(
             message="Blocks added successfully",
             content={"ids": created},
@@ -342,7 +343,7 @@ def property_blocks(request):
                 no_of_parking=block.get("no_of_parking") or 0,
                 no_of_units=block.get("no_of_units") or 0,
             )
-
+        audit_logs(request,f"Blocks updated for property '{prop.property_name}'",constants.UPDATED, "property")
         return prepare_response(
             message="Blocks updated successfully",
             status=status.HTTP_200_OK
@@ -670,7 +671,7 @@ def unit(request):
                     owner=owner_obj,
                 )
 
-        audit_logs(request, f"Unit '{u.unit_name}' created", constants.CREATED)
+        audit_logs(request, f"Unit '{u.unit_name}' created", constants.CREATED, "unit")
         return prepare_response(
             message="Unit added successfully",
             content={"id": u.id},
@@ -720,7 +721,7 @@ def unit(request):
                         owner=owner_obj,
                     )
 
-        audit_logs(request, f"Unit '{u.unit_name}' updated", constants.UPDATED)
+        audit_logs(request, f"Unit '{u.unit_name}' updated", constants.UPDATED, "unit")
         return prepare_response(
             message="Unit updated successfully",
             content={"id": u.id},

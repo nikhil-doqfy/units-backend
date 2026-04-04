@@ -111,6 +111,14 @@ class TermAndCondition(models.Model):
 
 class AuditLog(Base):
 
+    SECTION_CHOICES = (
+        ("unit", "Unit"),
+        ("property", "Property"),
+        ("lease", "Lease"),
+        ("payment", "Payment"),
+        ("user", "User"),
+    )
+
     userprofile = models.ForeignKey(
         "user_service.UserProfile",
         on_delete=models.CASCADE,
@@ -118,10 +126,15 @@ class AuditLog(Base):
     )
 
     message = models.CharField(max_length=500)
-
     action_type = models.CharField(
         max_length=20,
         choices=constants.AUDIT_ACTION_CHOICES
+    )
+    section = models.CharField(
+        max_length=50,
+        choices=SECTION_CHOICES,
+        null=True,
+        blank=True
     )
 
     class Meta:
