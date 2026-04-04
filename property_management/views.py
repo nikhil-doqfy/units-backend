@@ -6,7 +6,7 @@ from calendar import monthrange
 from dateutil.relativedelta import relativedelta
 
 from django.core.paginator import Paginator
-from django.db.models import Count, Q, Prefetch, Sum
+from django.db.models import Count, Q, Prefetch, Sum, F
 from django.db.models.functions import TruncMonth
 from django.http import FileResponse
 from django.utils import timezone
@@ -14,10 +14,10 @@ from django.utils.timezone import now
 from django.utils.dateparse import parse_date
 
 from user_service.models import Role, FAQ, Owner, Tenant, PropertyManager, DocumentType
-from property.models import Unit, Property, PropertyManagmentCompany
+from property.models import Unit, Property, PropertyManagmentCompany, UnitOwner
 from property_management.models import Country, State, City, AuditLog
-from lease.models import Lease, Template
-from payment.models import Payment, Bank
+from lease.models import Lease, Template, LeaseTransaction
+from payment.models import Bank
 from utilities.decorator import is_request_authenticated
 from utilities.helper_functions import (
     prepare_response,
@@ -243,20 +243,20 @@ def options(request):
             parent_property_id = request.GET.get("parent_property_id")
             if not parent_property_id:
                 if is_owner:
-                    units = Unit.objects.filter(owner=user, lease_details__isnull=False).distinct()
+                    units = Unit.objects.filter(owner=user, leases__isnull=False).distinct()
                 elif is_pm:
                     if not pm_profile.company:
                         return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
-                    units = Unit.objects.filter(property_block_tower__property__pmc=pm_profile.company, lease_details__isnull=False).distinct()
+                    units = Unit.objects.filter(property_block_tower__property__pmc=pm_profile.company, leases__isnull=False).distinct()
                 else:
                     units = Unit.objects.none()
             else:
                 if is_owner:
-                    units = Unit.objects.filter(property_block_tower__property_id=parent_property_id, lease_details__isnull=False).distinct()
+                    units = Unit.objects.filter(property_block_tower__property_id=parent_property_id, leases__isnull=False).distinct()
                 elif is_pm:
                     if not pm_profile.company:
                         return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
-                    units = Unit.objects.filter(property_block_tower__property_id=parent_property_id, property_block_tower__property__pmc=pm_profile.company, lease_details__isnull=False).distinct()
+                    units = Unit.objects.filter(property_block_tower__property_id=parent_property_id, property_block_tower__property__pmc=pm_profile.company, leases__isnull=False).distinct()
                 else:
                     units = Unit.objects.none()
             content["property_unit_with_lease"] = [{"key": u.id, "value": u.unit_name or "Unnamed Unit"} for u in units]
@@ -425,103 +425,149 @@ def dashboard_overview(request):
         now = timezone.now()
         renewal_window = now + timedelta(days=30)
         property_id = request.GET.get("property_id")
-        if user.user_role == constants.OWNER:
-            properties = Unit.objects.filter(owner=user)
-        elif user.user_role == constants.COMPANY_USER:
-            company = PropertyManagmentCompany.objects.filter(company_user=user).first()
+
+        # ── Resolve unit queryset by checking which subclass user is ─
+        pm_instance = PropertyManager.objects.filter(pk=user.pk).select_related("company").first()
+        owner_instance = Owner.objects.filter(pk=user.pk).first()
+
+        if pm_instance:
+            company = pm_instance.company
             if not company:
                 return prepare_response(
                     message=constants.COMPANY_NOT_FOUND,
                     status=status.HTTP_404_NOT_FOUND
                 )
-            properties = Unit.objects.filter(company=company)
+            units_qs = Unit.objects.filter(property_block_tower__property__pmc=company)
+        elif owner_instance:
+            units_qs = Unit.objects.filter(unit_owners__owner=owner_instance)
         else:
-            properties = Unit.objects.none()
+            units_qs = Unit.objects.none()
 
-        if not property_id:  
-            property_id = properties.values_list("property_id", flat=True).first()
-        if property_id:
-            filtered_units = Unit.objects.filter(property_id=property_id)
+        # ── Properties summary: property-level counts ────────────────
+        if pm_instance:
+            properties_qs = Property.objects.filter(pmc=company)
+        elif owner_instance:
+            owned_prop_ids = units_qs.values_list(
+                "property_block_tower__property_id", flat=True
+            ).distinct()
+            properties_qs = Property.objects.filter(id__in=owned_prop_ids)
         else:
-            filtered_units = Unit.objects.none()
+            properties_qs = Property.objects.none()
 
-
-        total_properties = properties.count()
-        rented_count = properties.filter(is_occupied=True).count()
-        vacant_count = properties.filter(is_occupied=False).count()
-        lease_queryset = Lease.objects.filter(
-            lease_property__in=properties
+        total_properties = properties_qs.count()
+        rented_property_ids = (
+            Lease.objects.filter(unit__in=units_qs, lease_status=constants.ACTIVE)
+            .values_list("unit__property_block_tower__property_id", flat=True)
+            .distinct()
         )
+        rented_count = rented_property_ids.count()
+        vacant_count = total_properties - rented_count
 
-        active_count = lease_queryset.filter(
-            lease_start_date__lte=now,
-            lease_end_date__gte=now
-        ).count()
-
+        # ── Tenants stats ────────────────────────────────────────────
+        lease_queryset = Lease.objects.filter(unit__in=units_qs)
+        active_count = lease_queryset.filter(lease_status=constants.ACTIVE).count()
         upcoming_renewals_count = lease_queryset.filter(
-            lease_end_date__gt=now,
-            lease_end_date__lte=renewal_window
+            lease_status=constants.ACTIVE,
+            end_date__gte=now,
+            end_date__lte=renewal_window,
+        ).count()
+        negotiations_count = lease_queryset.filter(
+            lease_stage=constants.NEGOTIATION_SENT,
         ).count()
 
-        negotiations_count = lease_queryset.filter(
-            lease_end_date__lt=now
-        ).count()
-        property_stats = (
-            properties
-            .values("property_id", "property__property_name")
-            .annotate(
-                total_units=Count("id"),
-                occupied_units=Count(
-                    "id",
-                    filter=Q(is_occupied=True)
-                )
-            )
+        # ── Top properties by occupancy rate (all properties, not just those with units)
+        property_stats = properties_qs.annotate(
+            total_units=Count("property_blocks__block_towers", distinct=True),
         )
+        rented_per_prop = {
+            r["unit__property_block_tower__property_id"]: r["rented"]
+            for r in (
+                Lease.objects.filter(
+                    unit__property_block_tower__property__in=properties_qs,
+                    lease_status=constants.ACTIVE,
+                )
+                .values("unit__property_block_tower__property_id")
+                .annotate(rented=Count("unit_id", distinct=True))
+            )
+        }
         top_properties = []
-        index = 1
-        for item in property_stats:
-            total = item["total_units"]
-            occupied = item["occupied_units"]
+        for idx, prop in enumerate(property_stats, start=1):
+            total = prop.total_units
+            occupied = rented_per_prop.get(prop.id, 0)
             occupancy_rate = round((occupied / total) * 100, 2) if total > 0 else 0
             top_properties.append({
-                "rank": index,
-                "property_id": item["property_id"],
-                "name": item["property__property_name"],
+                "rank": idx,
+                "property_id": prop.id,
+                "name": prop.property_name,
                 "occupancy_rate": occupancy_rate,
                 "figures": f"{occupancy_rate}%",
                 "total_units": total,
-                "occupied_units": occupied
+                "occupied_units": occupied,
             })
-            index += 1
+        top_properties = sorted(top_properties, key=lambda x: x["occupancy_rate"], reverse=True)[:5]
 
-        top_properties = sorted(top_properties, key=lambda x: x["occupancy_rate"], reverse=True)
+        # ── Occupancy data (per property_id if given, else all) ──────
+        filtered_units = units_qs.filter(
+            property_block_tower__property_id=property_id
+        ) if property_id else units_qs
 
-        # ---- Occupancy Section ----
-        total_units = filtered_units.count()
-        occupied_units = filtered_units.filter(is_occupied=True).count()
-        vacant_units = filtered_units.filter(is_occupied=False).count()
-        occupied_percent = round((occupied_units / total_units) * 100, 2) if total_units > 0 else 0
-        vacant_percent = round((vacant_units / total_units) * 100, 2) if total_units > 0 else 0
-        occupancy_data = {
-         "total_units": total_units,
-         "occupied_units": occupied_units,
-        "vacant_units": vacant_units,
-        "occupied_percent": occupied_percent,
-        "vacant_percent": vacant_percent
-                        }
+        f_total = filtered_units.count()
+        f_occupied = (
+            Lease.objects.filter(unit__in=filtered_units, lease_status=constants.ACTIVE)
+            .values_list("unit_id", flat=True)
+            .distinct()
+            .count()
+        )
+        f_vacant = f_total - f_occupied
+        occupied_percent = round((f_occupied / f_total) * 100, 2) if f_total > 0 else 0
+        vacant_percent = round((f_vacant / f_total) * 100, 2) if f_total > 0 else 0
+
+        # ── Top revenue-generating properties ────────────────────────
+        revenue_rows = (
+            LeaseTransaction.objects.filter(
+                lease__unit__in=units_qs,
+                status=constants.CHEQUE_STATUS_REALIZED,
+                is_active=True,
+            )
+            .values(
+                prop_id=F("lease__unit__property_block_tower__property_id"),
+                prop_name=F("lease__unit__property_block_tower__property__property_name"),
+            )
+            .annotate(total_revenue=Sum("amount"))
+            .order_by("-total_revenue")
+        )
+        max_revenue = revenue_rows[0]["total_revenue"] if revenue_rows else 1
+        top_revenue_properties = [
+            {
+                "rank": idx,
+                "property_id": r["prop_id"],
+                "name": r["prop_name"],
+                "total_revenue": round(r["total_revenue"], 2),
+                "revenue_percent": round((r["total_revenue"] / max_revenue) * 100, 2),
+            }
+            for idx, r in enumerate(revenue_rows, start=1)
+        ]
+
         content = {
             "properties": {
                 "total": total_properties,
                 "rented": rented_count,
-                "vacant": vacant_count
+                "vacant": vacant_count,
             },
             "tenants": {
                 "active": active_count,
                 "upcoming_renewals": upcoming_renewals_count,
-                "negotiations": negotiations_count
+                "negotiations": negotiations_count,
             },
             "top_properties": top_properties,
-            "occupancy_data":occupancy_data,
+            "top_revenue_properties": top_revenue_properties,
+            "occupancy_data": {
+                "total_units": f_total,
+                "occupied_units": f_occupied,
+                "vacant_units": f_vacant,
+                "occupied_percent": occupied_percent,
+                "vacant_percent": vacant_percent,
+            },
         }
 
         return prepare_response(
@@ -592,11 +638,10 @@ def dashboard_monthly_revenue(request):
             start_date = date(year, 1, 1)
             end_date = date(year, 12, 31)
 
-        payments = Payment.objects.filter(
-            status=constants.PAYMENT_SUCCESSFUL,
-            reason_type=constants.RENT,
+        transactions = LeaseTransaction.objects.filter(
+            status=constants.CHEQUE_STATUS_REALIZED,
             is_active=True,
-            created__date__range=[start_date, end_date]
+            cheque_date__date__range=[start_date, end_date]
         )
 
         leases = Lease.objects.filter(
@@ -607,46 +652,47 @@ def dashboard_monthly_revenue(request):
         # =========================
         # ROLE BASED FILTER
         # =========================
-        if user.user_role == constants.OWNER:
-            payments = payments.filter(
-                rental_account__lease_property__owner=user
-            )
-        elif user.user_role == constants.COMPANY_USER:
-            company = PropertyManagmentCompany.objects.filter(company_user=user).first()
-            if not company:
-                return prepare_response(
-                    message=constants.COMPANY_NOT_FOUND,
-                    status=status.HTTP_404_NOT_FOUND
-                )
+        pm_instance = PropertyManager.objects.filter(pk=user.pk).select_related("company").first()
+        owner_instance = Owner.objects.filter(pk=user.pk).first()
 
-            payments = payments.filter(
-                rental_account__lease_property__company=company
+        if pm_instance:
+            company = pm_instance.company
+            transactions = transactions.filter(
+                lease__unit__property_block_tower__property__pmc=company
+            )
+            leases = leases.filter(
+                unit__property_block_tower__property__pmc=company
+            )
+        elif owner_instance:
+            transactions = transactions.filter(
+                lease__unit__unit_owners__owner=owner_instance
+            )
+            leases = leases.filter(
+                unit__unit_owners__owner=owner_instance
             )
         else:
-            return prepare_response(
-                message=constants.UNAUTHORIZED_ROLE,
-                status=status.HTTP_403_FORBIDDEN
-            )
+            transactions = transactions.none()
+            leases = leases.none()
 
         # =========================
         # OPTIONAL FILTERS
         # =========================
         if city_id:
-            payments = payments.filter(
-                rental_account__lease_property__property__city_id=city_id
+            transactions = transactions.filter(
+                lease__unit__property_block_tower__property__city_id=city_id
             )
 
         if unit_id:
-            payments = payments.filter(
-                rental_account__lease_property__id=unit_id
+            transactions = transactions.filter(
+                lease__unit__id=unit_id
             )
 
         # =========================
         # MONTHLY AGGREGATION (12 MONTHS ALWAYS)
         # =========================
         monthly_data = (
-            payments
-            .annotate(month=TruncMonth("created"))
+            transactions
+            .annotate(month=TruncMonth("cheque_date"))
             .values("month")
             .annotate(total_amount=Sum("amount"))
             .order_by("month")
@@ -671,11 +717,24 @@ def dashboard_monthly_revenue(request):
             })
 
         # =========================
-        # MRR
+        # MRR — total of all realized lease transactions for the company (no date filter)
         # =========================
-        mrr = leases.aggregate(
-            total_mrr=Sum("rent")
-        )["total_mrr"] or 0
+        mrr_qs = LeaseTransaction.objects.filter(
+            status=constants.CHEQUE_STATUS_REALIZED,
+            is_active=True
+        )
+        if pm_instance:
+            mrr_qs = mrr_qs.filter(
+                lease__unit__property_block_tower__property__pmc=company
+            )
+        elif owner_instance:
+            mrr_qs = mrr_qs.filter(
+                lease__unit__unit_owners__owner=owner_instance
+            )
+        else:
+            mrr_qs = mrr_qs.none()
+
+        mrr = mrr_qs.aggregate(total_mrr=Sum("amount"))["total_mrr"] or 0
 
         return prepare_response(
             message=constants.MONTHLY_REVENUE_FETCH_SUCCESS,
@@ -711,102 +770,97 @@ def dashboard_cheque_visibility(request):
 
     try:
         user = request.user
-        city_id = request.GET.get("city_id")
-        unit_id = request.GET.get("property_unit_id")
-        from_date = request.GET.get("from_date")
-        to_date = request.GET.get("to_date")      
+        city_id        = request.GET.get("city_id")
+        unit_id        = request.GET.get("property_unit_id")
+        property_id    = request.GET.get("property_id")
+        cheque_status  = request.GET.get("cheque_status")
+        from_date      = request.GET.get("from_date")
+        to_date        = request.GET.get("to_date")      
 
         # =========================
         # DEFAULT DATE RANGE = CURRENT MONTH
         # =========================
-        today = datetime.now()
+        start_date = None
+        end_date   = None
         if from_date and to_date:
             start_date = safe_epoch_to_datetime(int(from_date))
-            end_date = safe_epoch_to_datetime(int(to_date))
+            end_date   = safe_epoch_to_datetime(int(to_date))
             if start_date:
                 start_date = start_date.date()
             if end_date:
                 end_date = end_date.date()
-        else:
-            start_date = today.replace(day=1).date()  # first day of current month
-            end_date = (today.replace(day=1) + relativedelta(months=1, days=-1)).date()  # last day of current month
 
         # =========================
-        # ROLE BASED LEASES
+        # ROLE BASED FILTER
         # =========================
-        if user.user_role == constants.OWNER:
-            leases = Lease.objects.filter(owner=user, is_active=True)
-        elif user.user_role == constants.COMPANY_USER:
-            companies = PropertyManagmentCompany.objects.filter(company_user=user)
-            if not companies.exists():
-                return prepare_response(
-                    message=constants.COMPANY_NOT_FOUND,
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            leases = Lease.objects.filter(lease_property__company__in=companies, is_active=True)
-        else:
-            return prepare_response(
-                message=constants.UNAUTHORIZED_ROLE,
-                status=status.HTTP_403_FORBIDDEN
+        pm_instance = PropertyManager.objects.filter(pk=user.pk).select_related("company").first()
+        owner_instance = Owner.objects.filter(pk=user.pk).first()
+
+        transactions = LeaseTransaction.objects.filter(is_active=True)
+
+        if pm_instance:
+            company = pm_instance.company
+            transactions = transactions.filter(
+                lease__unit__property_block_tower__property__pmc=company
             )
+        elif owner_instance:
+            transactions = transactions.filter(
+                lease__unit__unit_owners__owner=owner_instance
+            )
+        else:
+            transactions = transactions.none()
 
         # =========================
         # OPTIONAL FILTERS
         # =========================
         if city_id:
-            leases = leases.filter(lease_property__property__city_id=city_id)
+            transactions = transactions.filter(
+                lease__unit__property_block_tower__property__city_id=city_id
+            )
+        if property_id:
+            transactions = transactions.filter(
+                lease__unit__property_block_tower__property__id=property_id
+            )
         if unit_id:
-            leases = leases.filter(lease_property__id=unit_id)
+            transactions = transactions.filter(lease__unit__id=unit_id)
+        if cheque_status:
+            transactions = transactions.filter(status=cheque_status)
 
         # =========================
         # APPLY DATE RANGE FILTER
         # =========================
-        leases = leases.filter(
-            created__date__range=[start_date, end_date]
-        )
-
-        leases = leases.prefetch_related(
-            Prefetch(
-                "payments",
-                queryset=Payment.objects.filter(method=constants.CHEQUE, is_active=True),
-                to_attr="cheque_payments"
+        if start_date and end_date:
+            transactions = transactions.filter(
+                cheque_date__date__range=[start_date, end_date]
             )
-        ).select_related(
-            "lease_property",
-            "owner",
-            "tenant"
+
+        transactions = transactions.select_related(
+            "lease__unit__property_block_tower__property",
+            "lease__tenant__user"
         )
 
         # =========================
         # BUILD RESPONSE
         # =========================
         cheque_list = []
-        for lease in leases:
-            property_unit = lease.lease_property
-            owner_name = f"{lease.owner.user.first_name} {lease.owner.user.last_name}".strip() if lease.owner else ""
-            tenant_name = f"{lease.tenant.user.first_name} {lease.tenant.user.last_name}".strip() if lease.tenant else ""
+        for t in transactions:
+            lease  = t.lease
+            unit   = lease.unit if lease else None
+            prop   = unit.property_block_tower.property if unit and unit.property_block_tower_id else None
+            tenant = lease.tenant if lease else None
+            tenant_name = f"{tenant.user.first_name} {tenant.user.last_name}".strip() if tenant and tenant.user else ""
 
-            if lease.cheque_payments:
-                for p in lease.cheque_payments:
-                    cheque_list.append({
-                        "lease_number": lease.lease_number,
-                        "unit_name": property_unit.unit_name if property_unit else "",
-                        "owner_name": owner_name,
-                        "tenant_name": tenant_name,
-                        "cheque_number": p.cheque_number,
-                        "status": p.get_status_display() if p.status else None,
-                        "amount": round(p.amount, 2)
-                    })
-            else:
-                cheque_list.append({
-                    "lease_number": lease.lease_number,
-                    "unit_name": property_unit.unit_name if property_unit else "",
-                    "owner_name": owner_name,
-                    "tenant_name": tenant_name,
-                    "cheque_number": None,
-                    "status": None,
-                    "amount": 0
-                })
+            cheque_list.append({
+                "lease_number":       lease.code if lease else "",
+                "property_unit_name": unit.unit_name if unit else "",
+                "property_name":      prop.property_name if prop else "",
+                "tenant_name":        tenant_name,
+                "cheque_number":      t.cheque_number,
+                "cheque_date":        t.cheque_date.strftime("%d %b %Y") if t.cheque_date else "",
+                "status":             t.status or "",
+                "status_display":     t.get_status_display() if t.status else "",
+                "amount":             round(t.amount, 2),
+            })
 
         return prepare_response(
             message=constants.CHEQUE_VISIBILITY_FETCH_SUCCESS,
@@ -831,46 +885,40 @@ def dashboard_cheque_aging(request):
         )
     try:
         user = request.user
-        property_unit_id = request.GET.get("property_unit_id")
+        property_id = request.GET.get("property_id")
         today = now().date()
-        payments = Payment.objects.filter(
-            method=constants.CHEQUE,
-            is_active=True
-        )
-        if user.user_role == constants.OWNER:
-            payments = payments.filter(rental_account__owner=user)
 
-        elif user.user_role == constants.COMPANY_USER:
-            companies = PropertyManagmentCompany.objects.filter(company_user=user)
-            if not companies.exists():
-                return prepare_response(
-                    message=constants.COMPANY_NOT_FOUND,
-                    status=status.HTTP_404_NOT_FOUND
-                )
+        pm_instance = PropertyManager.objects.filter(pk=user.pk).select_related("company").first()
+        owner_instance = Owner.objects.filter(pk=user.pk).first()
 
-            payments = payments.filter(
-                rental_account__lease_property__company__in=companies
+        transactions = LeaseTransaction.objects.filter(is_active=True)
+
+        if pm_instance:
+            company = pm_instance.company
+            transactions = transactions.filter(
+                lease__unit__property_block_tower__property__pmc=company
+            )
+        elif owner_instance:
+            transactions = transactions.filter(
+                lease__unit__unit_owners__owner=owner_instance
             )
         else:
-            return prepare_response(
-                message=constants.UNAUTHORIZED_ROLE,
-                status=status.HTTP_403_FORBIDDEN
-            )
-        if property_unit_id:
-            payments = payments.filter(
-                rental_account__lease_property__id=property_unit_id
+            transactions = transactions.none()
+
+        if property_id:
+            transactions = transactions.filter(
+                lease__unit__property_block_tower__property__id=property_id
             )
 
         # ================= SUMMARY =================
-        total_cheques = payments.count()
+        total_cheques = transactions.count()
 
-        realized_count = payments.filter(
-            status=constants.PAYMENT_SUCCESSFUL
+        realized_count = transactions.filter(
+            status=constants.CHEQUE_STATUS_REALIZED
         ).count()
 
-        bounced_payments = payments.filter(
-            status=constants.PAYMENT_BOUNCED,
-            cheque_date__isnull=False
+        bounced_payments = transactions.filter(
+            status=constants.CHEQUE_STATUS_BOUNCED,
         )
 
         bounced_count = bounced_payments.count()
@@ -879,8 +927,8 @@ def dashboard_cheque_aging(request):
         aging_30 = aging_60 = aging_90 = aging_90_plus = 0
 
         for p in bounced_payments:
-            age_days = (today - p.cheque_date.date()).days
-
+            ref_date = p.cheque_date or p.created
+            age_days = (today - ref_date.date()).days
             if age_days <= 30:
                 aging_30 += 1
             elif age_days <= 60:
@@ -891,7 +939,7 @@ def dashboard_cheque_aging(request):
                 aging_90_plus += 1
 
         data = {
-            "property_unit_id": property_unit_id,
+            "property_id": property_id,
             "summary": {
                 "total_cheques": total_cheques,
                 "realized_cheques": {
@@ -939,50 +987,42 @@ def dashboard_other_type_payments(request):
         property_unit_id = request.GET.get("property_unit_id")
         year_start = date(year, 1, 1)
         year_end = date(year, 12, 31)
-        payments = Payment.objects.filter(
-            status=constants.PAYMENT_SUCCESSFUL,
+        transactions = LeaseTransaction.objects.filter(
+            status=constants.CHEQUE_STATUS_REALIZED,
             is_active=True,
-            created__date__range=[year_start, year_end]
+            cheque_date__date__range=[year_start, year_end]
         )
 
         # ---------------- USER FILTER ----------------
-        if user.user_role == constants.OWNER:
-            payments = payments.filter(
-                rental_account__lease_property__owner=user
+        pm_instance = PropertyManager.objects.filter(pk=user.pk).select_related("company").first()
+        owner_instance = Owner.objects.filter(pk=user.pk).first()
+
+        if pm_instance:
+            company = pm_instance.company
+            transactions = transactions.filter(
+                lease__unit__property_block_tower__property__pmc=company
             )
-
-        elif user.user_role == constants.COMPANY_USER:
-            company = PropertyManagmentCompany.objects.filter(company_user=user).first()
-            if not company:
-                return prepare_response(
-                    message=constants.COMPANY_NOT_FOUND,
-                    status=status.HTTP_404_NOT_FOUND
-                )
-
-            payments = payments.filter(
-                rental_account__lease_property__company=company
+        elif owner_instance:
+            transactions = transactions.filter(
+                lease__unit__unit_owners__owner=owner_instance
             )
         else:
-            return prepare_response(
-                message=constants.UNAUTHORIZED_ROLE,
-                status=status.HTTP_403_FORBIDDEN
-            )
+            transactions = transactions.none()
 
         # ---------------- PROPERTY UNIT FILTER ----------------
         if property_unit_id:
-            payments = payments.filter(
-                rental_account__lease_property__id=property_unit_id
-            )
+            transactions = transactions.filter(lease__unit__id=property_unit_id)
 
-        # ---------------- MONTH + METHOD AGGREGATION (SAME) ----------------
+        # ---------------- MONTH + PAYMENT TYPE AGGREGATION ----------------
         monthly_qs = (
-            payments
-            .annotate(month=TruncMonth("created"))
+            transactions
+            .annotate(month=TruncMonth("cheque_date"))
             .values("month")
             .annotate(
-                credit_card=Sum("amount", filter=Q(method=constants.CREDIT_CARD)),
-                debit_card=Sum("amount", filter=Q(method=constants.DEBIT_CARD)),
-                net_banking=Sum("amount", filter=Q(method=constants.NET_BANKING)),
+                cheque=Sum("amount", filter=Q(payment_type=constants.PAYMENT_TYPE_CHEQUE)),
+                cash=Sum("amount", filter=Q(payment_type=constants.PAYMENT_TYPE_CASH)),
+                bank_transfer=Sum("amount", filter=Q(payment_type=constants.PAYMENT_TYPE_BANK_TRANSFER)),
+                pdc=Sum("amount", filter=Q(payment_type=constants.PAYMENT_TYPE_PDC)),
                 total=Sum("amount")
             )
         )
@@ -990,8 +1030,8 @@ def dashboard_other_type_payments(request):
         # ---------------- CONVERT TO MAP ----------------
         month_map = {}
         for row in monthly_qs:
-            month_no = row["month"].month
-            month_map[month_no] = row
+            if row["month"]:
+                month_map[row["month"].month] = row
 
         # ---------------- FORCE JAN → DEC ----------------
         monthly_data = []
@@ -1000,23 +1040,23 @@ def dashboard_other_type_payments(request):
         for month in range(1, 13):
             data = month_map.get(month, {})
 
-            credit_card = float(data.get("credit_card", 0) or 0)
-            debit_card = float(data.get("debit_card", 0) or 0)
-            net_banking = float(data.get("net_banking", 0) or 0)
-            total = float(data.get("total", 0) or 0)
+            cheque       = float(data.get("cheque",       0) or 0)
+            cash         = float(data.get("cash",         0) or 0)
+            bank_transfer = float(data.get("bank_transfer", 0) or 0)
+            pdc          = float(data.get("pdc",          0) or 0)
+            total        = float(data.get("total",        0) or 0)
 
             total_revenue += total
 
-            month_date = datetime(year, month, 1)
-
             monthly_data.append({
-                "period_epoch": datetime_to_epoch_millis(month_date),
-                "month": month,
-                "year": year,
-                "credit_card": credit_card,
-                "debit_card": debit_card,
-                "net_banking": net_banking,
-                "total": total
+                "month":         month,
+                "month_str":     calendar.month_abbr[month],
+                "year":          year,
+                "cheque":        cheque,
+                "cash":          cash,
+                "bank_transfer": bank_transfer,
+                "pdc":           pdc,
+                "total":         total,
             })
 
         return prepare_response(
@@ -1080,107 +1120,73 @@ def dashboard_yearly_dues(request):
         year_end = date(year, 12, 31)
 
         # ------------------------------------------------
-        # 1 BASE LEASE QUERY (Expected Rent)
+        # 1 ROLE BASED COMPANY FILTER
         # ------------------------------------------------
-        leases = Lease.objects.filter(
-            lease_status=constants.ACTIVE,
-            is_active=True,
-            lease_start_date__lte=year_end,
-            lease_end_date__gte=year_start
-        )
+        pm_instance = PropertyManager.objects.filter(pk=user.pk).select_related("company").first()
+        owner_instance = Owner.objects.filter(pk=user.pk).first()
 
-        # ------------------------------------------------
-        # 2 BASE PAYMENT QUERY (Actual Received)
-        # ------------------------------------------------
-        payments = Payment.objects.filter(
-            status=constants.PAYMENT_SUCCESSFUL,
-            reason_type=constants.RENT,
-            is_active=True,
-            created__date__range=[year_start, year_end]
-        )
+        base_qs = LeaseTransaction.objects.filter(is_active=True)
 
-        # ------------------------------------------------
-        # 3 USER WISE FILTER
-        # ------------------------------------------------
-        if user.user_role == constants.OWNER:
-            leases = leases.filter(owner=user)
-            payments = payments.filter(rental_account__owner=user)
-
-        elif user.user_role == constants.COMPANY_USER:
-            company = PropertyManagmentCompany.objects.filter(company_user=user).first()
-            if not company:
-                return prepare_response(
-                    message=constants.COMPANY_NOT_FOUND,
-                    status=status.HTTP_404_NOT_FOUND
-                )
-
-            leases = leases.filter(lease_property__company=company)
-            payments = payments.filter(
-                rental_account__lease_property__company=company
+        if pm_instance:
+            company = pm_instance.company
+            base_qs = base_qs.filter(
+                lease__unit__property_block_tower__property__pmc=company
+            )
+        elif owner_instance:
+            base_qs = base_qs.filter(
+                lease__unit__unit_owners__owner=owner_instance
             )
         else:
-            return prepare_response(
-                message=constants.UNAUTHORIZED_ROLE,
-                status=status.HTTP_403_FORBIDDEN
-            )
+            base_qs = base_qs.none()
+
+        base_qs = base_qs.filter(cheque_date__year=year)
 
         # ------------------------------------------------
-        # 4 PROPERTY UNIT FILTER ( ONLY ADDITION)
+        # 2 PROPERTY UNIT FILTER
         # ------------------------------------------------
         if property_unit_id:
-            leases = leases.filter(lease_property__id=property_unit_id)
-            payments = payments.filter(
-                rental_account__lease_property__id=property_unit_id
+            base_qs = base_qs.filter(lease__unit__id=property_unit_id)
+
+        # ------------------------------------------------
+        # 3 BUILD MONTHLY MAPS FROM LeaseTransaction
+        # ------------------------------------------------
+        def _monthly_map(qs):
+            rows = (
+                qs.annotate(month=TruncMonth("cheque_date"))
+                .values("month")
+                .annotate(total=Sum("amount"))
             )
+            return {row["month"].month: float(row["total"] or 0) for row in rows if row["month"]}
+
+        total_map    = _monthly_map(base_qs)
+        received_map = _monthly_map(base_qs.filter(status=constants.CHEQUE_STATUS_REALIZED))
 
         # ------------------------------------------------
-        # 5 PAYMENT MONTHLY MAP → {month: received}
-        # ------------------------------------------------
-        payment_qs = (
-            payments
-            .annotate(month=TruncMonth("created"))
-            .values("month")
-            .annotate(total=Sum("amount"))
-        )
-
-        payment_map = {
-            row["month"].month: float(row["total"] or 0)
-            for row in payment_qs if row["month"]
-        }
-
-        # ------------------------------------------------
-        # 6 MONTHLY CALCULATION (NO LOGIC CHANGE)
+        # 4 MONTHLY CALCULATION
         # ------------------------------------------------
         monthly_data = []
         yearly_total = 0
         yearly_received = 0
 
         for month in range(1, 13):
+            total_amount    = total_map.get(month, 0)
+            received_amount = received_map.get(month, 0)
+            due_amount      = max(total_amount - received_amount, 0)
 
-            month_start = date(year, month, 1)
-            month_end = date(year, month, monthrange(year, month)[1])
-
-            active_leases = leases.filter(
-                lease_start_date__lte=month_end,
-                lease_end_date__gte=month_start
-            )
-
-            expected_amount = active_leases.aggregate(
-                total=Sum("rent")
-            )["total"] or 0
-
-            received_amount = payment_map.get(month, 0)
-            due_amount = max(expected_amount - received_amount, 0)
-
-            yearly_total += expected_amount
+            yearly_total    += total_amount
             yearly_received += received_amount
 
+            received_pct = round((received_amount / total_amount * 100), 1) if total_amount else 0
+            due_pct      = round(100 - received_pct, 1) if total_amount else 0
+
             monthly_data.append({
-                "month": month,
-                "month_str": calendar.month_abbr[month],
-                "total_amount": round(expected_amount, 2),
-                "received_amount": round(received_amount, 2),
-                "due_amount": round(due_amount, 2)
+                "month":             month,
+                "month_str":         calendar.month_abbr[month],
+                "total_amount":      round(total_amount, 2),
+                "received_amount":   round(received_amount, 2),
+                "due_amount":        round(due_amount, 2),
+                "received_percent":  received_pct,
+                "due_percent":       due_pct,
             })
 
         # ------------------------------------------------
@@ -1188,8 +1194,8 @@ def dashboard_yearly_dues(request):
         # ------------------------------------------------
         yearly_due = max(yearly_total - yearly_received, 0)
 
-        received_percent = (yearly_received / yearly_total * 100) if yearly_total else 0
-        due_percent = (yearly_due / yearly_total * 100) if yearly_total else 0
+        received_percent = round((yearly_received / yearly_total * 100), 1) if yearly_total else 0
+        due_percent = round(100 - received_percent, 1) if yearly_total else 0
 
         return prepare_response(
             message="Yearly dues fetched successfully",

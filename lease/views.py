@@ -28,7 +28,8 @@ from user_service.models import Tenant, TenantDocuments, DocumentType, UserProfi
 from property_management import settings
 from property_management.utils import audit_logs, get_tenant_detail_by_id
 from property_management.models import TermAndCondition
-from payment.models import Payment, Bank
+from payment.models import Bank
+from lease.models import LeaseTransaction
 from .models import Lease, LeaseDocuments, LeaseTransaction, Template, TemplateField, TemplateValue
 from .serializers import serialize_lease, serialize_tenant_lease, group_lease_cheques, serialize_cheque_list_row
 
@@ -1410,7 +1411,7 @@ def lease_cheque_view(request):
 
         from payment.models import Bank
         updatable = ["cheque_type", "payment_type", "origin_account_number",
-                     "settlement_account_number", "amount"]
+                     "settlement_account_number", "amount", "status", "cheque_number"]
         for field in updatable:
             if field in data:
                 setattr(cheque, field, data[field])
@@ -1456,6 +1457,18 @@ def lease_cheque_status(request):
     return lease_cheque_view(request)
 
 
+def _scope_transactions_to_user(qs, user):
+    """Filter LeaseTransaction queryset to the logged-in user's company or owner scope."""
+    from user_service.models import PropertyManager, Owner
+    pm = PropertyManager.objects.filter(pk=user.pk).select_related("company").first()
+    owner = Owner.objects.filter(pk=user.pk).first()
+    if pm:
+        return qs.filter(lease__unit__property_block_tower__property__pmc=pm.company)
+    elif owner:
+        return qs.filter(lease__unit__unit_owners__owner=owner)
+    return qs.none()
+
+
 @is_request_authenticated
 @csrf_exempt
 def cheque_summary_view(request):
@@ -1465,7 +1478,7 @@ def cheque_summary_view(request):
 
     from django.db.models import Count, Sum
 
-    qs = LeaseTransaction.objects.all()
+    qs = _scope_transactions_to_user(LeaseTransaction.objects.all(), request.user)
 
     property_id = request.GET.get("property_id", "").strip()
     block_id    = request.GET.get("block_id", "").strip()
@@ -2733,39 +2746,37 @@ def property_lease_payment(request):
             payment_id = request.GET.get("payment_id")
 
             if lease_id:
-                payments = Payment.objects.filter(rental_account_id=lease_id)
+                transactions = LeaseTransaction.objects.filter(lease_id=lease_id)
             elif payment_id:
-                payments = Payment.objects.filter(id=payment_id)
+                transactions = LeaseTransaction.objects.filter(id=payment_id)
             else:
                 return prepare_response(
                     message="lease_id or payment_id is required",
                     status=status.HTTP_400_BAD_REQUEST
                 )
             data = []
-            for p in payments:
+            for t in transactions:
                 data.append({
-                    "id": p.id,
-                    "lease_id": p.rental_account.id if p.rental_account else None,
-                    "amount": p.amount,
-                    "method": p.method,
-                    "reason_type": p.reason_type,
-                    "status": p.status,
-                    "payee_name": p.payee_name,
-                    "payee_email": p.payee_email,
-                    "payee_contact": p.payee_contact,
-                    "account_number": p.account_number,
-                    "cheque_number": p.cheque_number,
-                    "cheque_date": int(p.cheque_date.timestamp()) if p.cheque_date else None,
-                    "bank": {
-                        "id": p.bank.id,
-                        "name": p.bank.name,
-                        "branch_name": p.bank.branch_name,
-                        "ifsc_code": p.bank.ifsc_code
-                    } if p.bank else None
+                    "id": t.id,
+                    "lease_id": t.lease_id,
+                    "amount": t.amount,
+                    "cheque_type": t.cheque_type,
+                    "payment_type": t.payment_type,
+                    "status": t.status,
+                    "cheque_number": t.cheque_number,
+                    "origin_account_number": t.origin_account_number,
+                    "settlement_account_number": t.settlement_account_number,
+                    "cheque_date": int(t.cheque_date.timestamp()) if t.cheque_date else None,
+                    "origin_bank": {
+                        "id": t.origin_bank.id,
+                        "name": t.origin_bank.name,
+                        "branch_name": t.origin_bank.branch_name,
+                        "ifsc_code": t.origin_bank.ifsc_code
+                    } if t.origin_bank else None
                 })
 
             return prepare_response(
-                content=data if lease_id else data[0],
+                content=data if lease_id else (data[0] if data else {}),
                 message="Payment data fetched",
                 status=status.HTTP_200_OK
             )
@@ -2787,41 +2798,35 @@ def property_lease_payment(request):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            bank = None
-            if body.get("bank_id"):
-                bank = Bank.objects.filter(id=body.get("bank_id")).first()
-            scanned_image = None
-            if body.get("scanned_image_base64"):
-                from utilities.helper_functions import base64_to_image
-                scanned_image = base64_to_image(body.get("scanned_image_base64"))
+            origin_bank = Bank.objects.filter(id=body.get("origin_bank_id")).first() if body.get("origin_bank_id") else None
+            settlement_bank = Bank.objects.filter(id=body.get("settlement_bank_id")).first() if body.get("settlement_bank_id") else None
 
-            payment = Payment.objects.create(
+            transaction = LeaseTransaction.objects.create(
                 created_by=user.user,
-                rental_account=lease,
-                bank=bank,
-                method=body.get("method"),
-                reason_type=body.get("reason_type"),
+                lease=lease,
+                origin_bank=origin_bank,
+                selltlement_bank=settlement_bank,
+                cheque_type=body.get("cheque_type", constants.RENT_CHEQUE),
+                payment_type=body.get("payment_type", constants.PAYMENT_TYPE_CHEQUE),
                 amount=body.get("amount", 0),
-                payee_name=body.get("payee_name"),
-                payee_email=body.get("payee_email"),
-                payee_contact=body.get("payee_contact"),
-                account_number=body.get("account_number"),
+                origin_account_number=body.get("origin_account_number", 0),
+                settlement_account_number=body.get("settlement_account_number", 0),
                 cheque_number=body.get("cheque_number"),
-                cheque_date=safe_epoch_to_datetime(body.get("cheque_date"))
-                if body.get("cheque_date") else None,
-                scanned_image=scanned_image,
-                status=body.get("status")
+                cheque_date=safe_epoch_to_datetime(body.get("cheque_date")) if body.get("cheque_date") else None,
+                status=body.get("status", constants.CHEQUE_STATUS_BALANCE),
+                start_date=safe_epoch_to_datetime(body.get("start_date")) if body.get("start_date") else None,
+                end_date=safe_epoch_to_datetime(body.get("end_date")) if body.get("end_date") else None,
             )
 
             audit_logs(
                 request,
-                f"Created payment of {payment.amount} for Lease {lease.id}",
+                f"Created transaction of {transaction.amount} for Lease {lease.id}",
                 constants.CREATED
             )
 
             return prepare_response(
                 message="Payment created successfully",
-                content={"payment_id": payment.id},
+                content={"payment_id": transaction.id},
                 status=status.HTTP_201_CREATED
             )
         elif request.method == "PUT":
@@ -2833,44 +2838,44 @@ def property_lease_payment(request):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-            payment = Payment.objects.filter(id=payment_id).first()
-            if not payment:
+            transaction = LeaseTransaction.objects.filter(id=payment_id).first()
+            if not transaction:
                 return prepare_response(
                     message="Payment not found",
                     status=status.HTTP_404_NOT_FOUND
                 )
 
-            if body.get("bank_id"):
-                bank = Bank.objects.filter(id=body.get("bank_id")).first()
+            if body.get("origin_bank_id"):
+                bank = Bank.objects.filter(id=body.get("origin_bank_id")).first()
                 if not bank:
                     return prepare_response(
-                        message="Invalid bank_id",
+                        message="Invalid origin_bank_id",
                         status=status.HTTP_400_BAD_REQUEST
                     )
-                payment.bank = bank
+                transaction.origin_bank = bank
 
             for field in [
-                "method", "reason_type", "amount", "payee_name",
-                "payee_email", "payee_contact", "account_number",
+                "cheque_type", "payment_type", "amount",
+                "origin_account_number", "settlement_account_number",
                 "cheque_number", "status"
             ]:
                 if field in body:
-                    setattr(payment, field, body[field])
+                    setattr(transaction, field, body[field])
 
             if body.get("cheque_date"):
-                payment.cheque_date = safe_epoch_to_datetime(body.get("cheque_date"))
+                transaction.cheque_date = safe_epoch_to_datetime(body.get("cheque_date"))
 
-            payment.save()
+            transaction.save()
 
             audit_logs(
-               request,
-                f"Updated payment {payment.id}",
-               constants.UPDATED
+                request,
+                f"Updated payment {transaction.id}",
+                constants.UPDATED
             )
 
             return prepare_response(
                 message="Payment updated successfully",
-                content={"payment_id": payment.id},
+                content={"payment_id": transaction.id},
                 status=status.HTTP_200_OK
             )
 

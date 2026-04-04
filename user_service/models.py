@@ -76,7 +76,7 @@ class Tenant(UserProfile):
 
 
 class Permission(Base):
-    module_name = models.CharField(max_length=100)
+    module_name = models.CharField(max_length=100, choices=constants.PERMISSION_MODULE_CHOICES)
     create = models.BooleanField(default=False)
     edit = models.BooleanField(default=False)
     delete = models.BooleanField(default=False)

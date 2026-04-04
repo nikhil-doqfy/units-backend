@@ -31,6 +31,8 @@ PASSWORDS_DO_NOT_MATCH = "Passwords do not match."
 DOCUMENT_UPLOAD_FAILED = "Document upload failed"
 ROLE_IS_REQUIRED = "Role is required"
 ROLE_CREATED_SUCCESS = "Role created successfully"
+ROLE_UPDATED_SUCCESS = "Role updated successfully"
+ROLE_NOT_FOUND = "Role not found"
 USER_ALREADY_EXISTS_EMAIL = "User already exists with this email"
 SIGNUP_SUCCESS = "Signup successful"
 ROLES_FETCH_SUCCESS = "Roles fetched successfully"
@@ -805,6 +807,35 @@ STEP_CHOICES = (
     (COMPLETED,       'Completed'),
 )
 
+
+# Permission modules
+PERM_PROPERTIES = "Properties"
+PERM_LEAD = "Lead"
+PERM_TENANT = "Tenant"
+PERM_OWNER = "Owner"
+PERM_CHEQUE = "Cheque"
+PERM_RENTAL_PORTFOLIO = "Rental Portfolio"
+PERM_APPROVAL = "Approval"
+PERM_COMPLAINTS = "Complaints"
+PERM_BROADCAST = "Broadcast"
+PERM_USERS = "Users"
+PERM_TEAM = "Team"
+PERM_ROLES_AND_PERMISSION = "Roles and Permission"
+
+PERMISSION_MODULE_CHOICES = [
+    (PERM_PROPERTIES, "Properties"),
+    (PERM_LEAD, "Lead"),
+    (PERM_TENANT, "Tenant"),
+    (PERM_OWNER, "Owner"),
+    (PERM_CHEQUE, "Cheque"),
+    (PERM_RENTAL_PORTFOLIO, "Rental Portfolio"),
+    (PERM_APPROVAL, "Approval"),
+    (PERM_COMPLAINTS, "Complaints"),
+    (PERM_BROADCAST, "Broadcast"),
+    (PERM_USERS, "Users"),
+    (PERM_TEAM, "Team"),
+    (PERM_ROLES_AND_PERMISSION, "Roles and Permission"),
+]
 
 TIMEZONE_CHOICES = (
     ("UTC", "UTC"),

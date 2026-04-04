@@ -104,7 +104,7 @@ USE_TZ = True
  
 CORS_ALLOWED_ORIGINS = [
  "http://localhost:4200",
- "http://192.168.1.15:4200",
+ "http://192.168.1.2:4200",
  "https://units.doqfy.in",
 ]
  

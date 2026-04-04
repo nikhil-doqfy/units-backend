@@ -108,7 +108,8 @@ def userprofile_view(request):
             country = state.country if state else None
 
             # Determine role from MTI subtype
-            if PropertyManager.objects.filter(pk=user_profile.pk).exists():
+            pm_instance = PropertyManager.objects.filter(pk=user_profile.pk).prefetch_related("roles__permissions").first()
+            if pm_instance:
                 user_role = constants.COMPANY_USER
             elif Owner.objects.filter(pk=user_profile.pk).exists():
                 user_role = constants.OWNER
@@ -116,6 +117,19 @@ def userprofile_view(request):
                 user_role = constants.TENANT
             else:
                 user_role = constants.COMPANY_USER
+
+            # Build permission map for PropertyManagers: {module_name: {create, edit, delete, view}}
+            permissions = {}
+            if pm_instance:
+                for role in pm_instance.roles.all():
+                    for perm in role.permissions.all():
+                        existing = permissions.get(perm.module_name, {"create": False, "edit": False, "delete": False, "view": False})
+                        permissions[perm.module_name] = {
+                            "create": existing["create"] or perm.create,
+                            "edit": existing["edit"] or perm.edit,
+                            "delete": existing["delete"] or perm.delete,
+                            "view": existing["view"] or perm.view,
+                        }
 
             data = {
                 "id": user_profile.id,
@@ -143,6 +157,7 @@ def userprofile_view(request):
                 "contact_number": user_profile.contact_number,
                 "emirate_id": user_profile.emirate_id,
                 "time_zone": user_profile.timezone,
+                "permissions": permissions,
             }
 
             return prepare_response(
@@ -361,6 +376,7 @@ def user_management(request):
                     role_label = "User"
                 data.append({
                     "id": profile.id,
+                    "code": profile.code or "",
                     "email": django_user.email,
                     "first_name": django_user.first_name,
                     "last_name": django_user.last_name,
@@ -453,6 +469,28 @@ def user_management(request):
 
 
 
+def _save_role_permissions(role, permissions_data, created_by):
+    """Replace all permissions on a role with the provided list."""
+    from user_service.models import Permission
+    role.permissions.all().delete()
+    new_perms = []
+    for perm in permissions_data:
+        module_name = perm.get("module_name", "").strip()
+        if not module_name:
+            continue
+        p = Permission.objects.create(
+            module_name=module_name,
+            create=bool(perm.get("create", False)),
+            edit=bool(perm.get("edit", False)),
+            delete=bool(perm.get("delete", False)),
+            view=bool(perm.get("view", False)),
+            created_by=created_by,
+        )
+        new_perms.append(p)
+    if new_perms:
+        role.permissions.set(new_perms)
+
+
 @is_request_authenticated
 def create_role(request):
     if request.method != "POST":
@@ -468,39 +506,31 @@ def create_role(request):
                 message=constants.ROLE_IS_REQUIRED,
                 status=status.HTTP_400_BAD_REQUEST
             )
-        user_profile = request.user 
+        user_profile = request.user
         django_user = user_profile.user
-        company = PropertyManagmentCompany.objects.filter(company_user=user_profile, is_active=True).first()
+        company = PropertyManagmentCompany.objects.filter(created_by=django_user, is_active=True).first()
+        if not company:
+            pm_check = PropertyManager.objects.filter(pk=user_profile.pk).select_related("company").first()
+            company = pm_check.company if pm_check else None
         if not company:
             return prepare_response(
                 message=constants.COMPANY_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
             )
-        if Role.objects.filter(
-            name__iexact=role_name,
-            company=company,
-            is_active=True
-        ).exists():
+        if Role.objects.filter(name__iexact=role_name, company=company, is_active=True).exists():
             return prepare_response(
                 message=constants.ROLE_ALREADY_EXISTS_IN_COMPANY,
                 status=status.HTTP_400_BAD_REQUEST
             )
-
-        role = Role.objects.create(
-            name=role_name,
-            company=company,
-            created_by=django_user
-        )
+        role = Role.objects.create(name=role_name, company=company, created_by=django_user)
+        permissions_data = body.get("permissions", [])
+        if permissions_data:
+            _save_role_permissions(role, permissions_data, django_user)
         return prepare_response(
-            content={
-                "id": role.id,
-                "name": role.name,
-                "company": company.company_name
-            },
+            content={"id": role.id, "name": role.name},
             message=constants.ROLE_CREATED_SUCCESS,
             status=status.HTTP_201_CREATED
         )
-
     except Exception as e:
         print("Create Role Error:", e)
         return prepare_response(
@@ -509,68 +539,99 @@ def create_role(request):
         )
 
 
-
 @is_request_authenticated
 def role_table_view(request):
     user = request.user
-    if request.method != "GET":
-        return prepare_response(
-            message=constants.INVALID_REQUEST_METHOD,
-            status=status.HTTP_405_METHOD_NOT_ALLOWED
-        )
     try:
-        search = request.GET.get("search", "").strip()
-        page = int(request.GET.get("page", 1))
-        limit = int(request.GET.get("limit", 10))
-        start_epoch = request.GET.get("start_date")
-        end_epoch = request.GET.get("end_date")
-        is_active_param = request.GET.get("is_active", "true").lower()
-        is_active = is_active_param == "true"
-        company = PropertyManagmentCompany.objects.filter(company_user=user, is_active=True).first()
+        django_user = user.user
+        company = PropertyManagmentCompany.objects.filter(created_by=django_user, is_active=True).first()
         if not company:
-            return prepare_response(
-                message=constants.COMPANY_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
-        roles_qs = Role.objects.filter(company=company, is_active=is_active)
-        if search:
-            roles_qs = roles_qs.filter(name__icontains=search)
-        if start_epoch and end_epoch:
-            start_dt = safe_epoch_to_datetime(int(start_epoch))
-            end_dt = safe_epoch_to_datetime(int(end_epoch))
-            roles_qs = roles_qs.filter(created__range=(start_dt, end_dt))
-        roles_qs = roles_qs.order_by("-created")
-        paginator = Paginator(roles_qs, limit)
-        try:
-            page_obj = paginator.page(page)
-        except EmptyPage:
-            page_obj = paginator.page(paginator.num_pages)
+            pm_check = PropertyManager.objects.filter(pk=user.pk).select_related("company").first()
+            company = pm_check.company if pm_check else None
+        if not company:
+            return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
 
-        data = []
-        for role in page_obj:
-            data.append({
-                "role_id": role.id,
-                "role_name": role.name,
-                "created_on": datetime_to_epoch_millis(role.created)
-            })
-        pagination_meta = {
-            "current_page": page_obj.number,
-            "limit": limit,
-            "total_records": paginator.count,
-            "total_pages": paginator.num_pages
-        }
-        return prepare_response(
-            message=constants.ROLES_FETCH_SUCCESS,
-            content=data,
-            pagination=pagination_meta,
-            status=status.HTTP_200_OK
-        )
+        if request.method == "GET":
+            search = request.GET.get("search", "").strip()
+            page = int(request.GET.get("page", 1))
+            limit = int(request.GET.get("limit", 10))
+            start_epoch = request.GET.get("start_date")
+            end_epoch = request.GET.get("end_date")
+            is_active_param = request.GET.get("is_active", "true").lower()
+            is_active = is_active_param == "true"
+
+            roles_qs = Role.objects.filter(company=company, is_active=is_active).prefetch_related("permissions")
+            if search:
+                roles_qs = roles_qs.filter(name__icontains=search)
+            if start_epoch and end_epoch:
+                start_dt = safe_epoch_to_datetime(int(start_epoch))
+                end_dt = safe_epoch_to_datetime(int(end_epoch))
+                roles_qs = roles_qs.filter(created__range=(start_dt, end_dt))
+            roles_qs = roles_qs.order_by("-created")
+            paginator = Paginator(roles_qs, limit)
+            try:
+                page_obj = paginator.page(page)
+            except EmptyPage:
+                page_obj = paginator.page(paginator.num_pages)
+
+            data = []
+            for role in page_obj.object_list:
+                perms = role.permissions.all()
+                data.append({
+                    "role_id": role.id,
+                    "role_name": role.name,
+                    "created_on": datetime_to_epoch_millis(role.created),
+                    "permissions": [
+                        {
+                            "module_name": p.module_name,
+                            "create": p.create,
+                            "edit": p.edit,
+                            "delete": p.delete,
+                            "view": p.view,
+                        }
+                        for p in perms
+                    ],
+                })
+            pagination_meta = {
+                "current_page": page_obj.number,
+                "limit": limit,
+                "total_records": paginator.count,
+                "total_pages": paginator.num_pages,
+            }
+            return prepare_response(
+                message=constants.ROLES_FETCH_SUCCESS,
+                content=data,
+                pagination=pagination_meta,
+                status=status.HTTP_200_OK,
+            )
+
+        elif request.method == "PUT":
+            body = json.loads(request.body)
+            role_id = body.get("role_id")
+            role_name = body.get("name", "").strip()
+            if not role_id or not role_name:
+                return prepare_response(message=constants.ROLE_IS_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
+            role = Role.objects.filter(pk=role_id, company=company, is_active=True).first()
+            if not role:
+                return prepare_response(message=constants.ROLE_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+            if Role.objects.filter(name__iexact=role_name, company=company, is_active=True).exclude(pk=role_id).exists():
+                return prepare_response(message=constants.ROLE_ALREADY_EXISTS_IN_COMPANY, status=status.HTTP_400_BAD_REQUEST)
+            role.name = role_name
+            role.save()
+            permissions_data = body.get("permissions", [])
+            if permissions_data is not None:
+                _save_role_permissions(role, permissions_data, django_user)
+            return prepare_response(
+                content={"role_id": role.id, "role_name": role.name},
+                message=constants.ROLE_UPDATED_SUCCESS,
+                status=status.HTTP_200_OK,
+            )
+
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
     except Exception as e:
-        print("Role Table Error:", e)
-        return prepare_response(
-            message=constants.SOMETHING_WENT_WRONG,
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+        print("Role View Error:", e)
+        return prepare_response(message=constants.SOMETHING_WENT_WRONG, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @is_request_authenticated
@@ -652,6 +713,223 @@ def export_users_csv(request):
 
 
 @is_request_authenticated
+def staff_view(request):
+    user = request.user
+    try:
+        company = PropertyManagmentCompany.objects.filter(created_by=user.user, is_active=True).first()
+        if not company:
+            pm_check = PropertyManager.objects.filter(pk=user.pk).select_related("company").first()
+            company = pm_check.company if pm_check else None
+        if not company:
+            return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+
+        if request.method == "GET":
+            staff_id = request.GET.get("staff_id")
+            search = request.GET.get("search", "").strip()
+            page = int(request.GET.get("page_number", 1))
+            limit = int(request.GET.get("limit", 10))
+
+            qs = PropertyManager.objects.filter(company=company).select_related("user", "city").prefetch_related("roles")
+            company_prop_ids = company.pmc_properties.filter(is_active=True).values_list("id", flat=True)
+
+            if staff_id:
+                pm = qs.filter(pk=staff_id).first()
+                if not pm:
+                    return prepare_response(message=constants.STAFF_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+                pm_roles = list(pm.roles.all())
+                first_role = {"key": pm_roles[0].id, "value": pm_roles[0].name} if pm_roles else None
+
+                from property.models import Unit as UnitModel
+                units_qs = UnitModel.objects.filter(
+                    property_block_tower__property__id__in=company_prop_ids
+                ).select_related(
+                    "property_block_tower__property"
+                ).prefetch_related(
+                    "leases__tenant__user",
+                    "unit_owners__owner__user",
+                )
+
+                assigned_properties = []
+                for unit in units_qs:
+                    prop = unit.property_block_tower.property
+                    active_lease = unit.leases.filter(lease_status="ACTIVE", is_active=True).first()
+                    tenant_name = active_lease.tenant.user.get_full_name() if active_lease and active_lease.tenant and active_lease.tenant.user else None
+                    unit_owner = unit.unit_owners.first()
+                    owner_name = unit_owner.owner.user.get_full_name() if unit_owner and unit_owner.owner and unit_owner.owner.user else None
+                    assigned_properties.append({
+                        "property_code": unit.code,
+                        "property_name": f"{unit.unit_name} — {prop.property_name}",
+                        "property_image": unit._get_unit_thumbnail(),
+                        "tenant_name": tenant_name,
+                        "owner_name": owner_name,
+                    })
+
+                data = {
+                    "staff_id": pm.pk,
+                    "staff_name": pm.user.get_full_name(),
+                    "first_name": pm.user.first_name,
+                    "last_name": pm.user.last_name,
+                    "email": pm.user.email,
+                    "contact_number": pm.contact_number,
+                    "emirate_id": pm.emirate_id,
+                    "city": pm.city.name if pm.city else "",
+                    "locality": pm.locality,
+                    "address": pm.address_line_1,
+                    "additional_address": pm.address_line_2,
+                    "postal_code": pm.pin_code,
+                    "roles": [r.name for r in pm_roles],
+                    "staff_role": first_role,
+                    "code": pm.code,
+                    "is_active": pm.is_active,
+                    "profile_image": pm.profile_image,
+                    "assigned_properties": assigned_properties,
+                }
+                return prepare_response(content=data, message=constants.USER_FETCHED_SUCCESS, status=status.HTTP_200_OK)
+
+            role_filter = request.GET.get("role")
+            if role_filter:
+                qs = qs.filter(roles__id=role_filter)
+
+            if search:
+                qs = qs.filter(
+                    Q(user__first_name__icontains=search) |
+                    Q(user__last_name__icontains=search) |
+                    Q(user__email__icontains=search) |
+                    Q(contact_number__icontains=search)
+                )
+            qs = qs.order_by("-created")
+            paginator = Paginator(qs, limit)
+            try:
+                page_obj = paginator.page(page)
+            except EmptyPage:
+                page_obj = paginator.page(paginator.num_pages)
+
+            # Fetch unit thumbnails and tenancy ratio (shared across all staff rows)
+            from property.models import Unit as UnitModel
+            company_property_count = UnitModel.objects.filter(
+                property_block_tower__property__id__in=company_prop_ids
+            ).count()
+            unit_thumb_qs = UnitModel.objects.filter(
+                property_block_tower__property__id__in=company_prop_ids
+            ).prefetch_related("unit_images")[:20]
+            property_thumbnails = []
+            for unit in unit_thumb_qs:
+                thumb = unit._get_unit_thumbnail()
+                if thumb:
+                    property_thumbnails.append(thumb)
+
+            unit_qs = UnitModel.objects.filter(
+                property_block_tower__property__id__in=company_prop_ids
+            )
+            total_units = unit_qs.count()
+            from lease.models import Lease
+            occupied_units = unit_qs.filter(
+                leases__lease_status="ACTIVE",
+                leases__is_active=True
+            ).distinct().count()
+            tenancy_ratio = f"{total_units}:{occupied_units}"
+
+            data = []
+            for pm in page_obj:
+                data.append({
+                    "staff_id": pm.pk,
+                    "staff_name": pm.user.get_full_name(),
+                    "contact_number": pm.contact_number,
+                    "roles": [r.name for r in pm.roles.all()],
+                    "code": pm.code,
+                    "is_active": pm.is_active,
+                    "property_count": company_property_count,
+                    "property_images": property_thumbnails,
+                    "tenancy_ratio": tenancy_ratio,
+                })
+            pagination_meta = {
+                "current_page": page_obj.number,
+                "limit": limit,
+                "total_records": paginator.count,
+                "total_pages": paginator.num_pages,
+            }
+            return prepare_response(content=data, pagination=pagination_meta, message=constants.USER_FETCHED_SUCCESS, status=status.HTTP_200_OK)
+
+        elif request.method == "POST":
+            body = json.loads(request.body)
+            staff_name = body.get("staff_name", "").strip()
+            email = body.get("email")
+            password = body.get("password")
+            contact_number = body.get("contact_number")
+            role_id = body.get("role")
+
+            if not all([staff_name, email, password]):
+                return prepare_response(message=constants.ALL_FIELD_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
+            if User.objects.filter(email=email).exists():
+                return prepare_response(message=constants.EMAIL_ALREADY_REGISTERED, status=status.HTTP_400_BAD_REQUEST)
+
+            name_parts = staff_name.split(" ", 1)
+            first_name = name_parts[0]
+            last_name = name_parts[1] if len(name_parts) > 1 else ""
+
+            with transaction.atomic():
+                django_user = User.objects.create_user(
+                    username=email,
+                    email=email,
+                    password=password,
+                    first_name=first_name,
+                    last_name=last_name,
+                )
+                pm = PropertyManager.objects.create(
+                    user=django_user,
+                    company=company,
+                    contact_number=contact_number,
+                    created_by=user.user,
+                )
+                if role_id:
+                    role_obj = Role.objects.filter(id=role_id, company=company).first()
+                    if role_obj:
+                        pm.roles.add(role_obj)
+
+            return prepare_response(
+                message=constants.USER_CREATED,
+                content={"staff_id": pm.pk},
+                status=status.HTTP_201_CREATED,
+            )
+
+        elif request.method == "PUT":
+            body = json.loads(request.body)
+            staff_id = body.get("staff_id")
+            if not staff_id:
+                return prepare_response(message=constants.USER_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
+
+            pm = PropertyManager.objects.select_related("user").filter(pk=staff_id, company=company).first()
+            if not pm:
+                return prepare_response(message=constants.STAFF_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+
+            django_user = pm.user
+            staff_name = body.get("staff_name", "").strip()
+            if staff_name:
+                name_parts = staff_name.split(" ", 1)
+                django_user.first_name = name_parts[0]
+                django_user.last_name = name_parts[1] if len(name_parts) > 1 else ""
+                django_user.save(update_fields=["first_name", "last_name"])
+
+            if body.get("contact_number") is not None:
+                pm.contact_number = body["contact_number"]
+                pm.save(update_fields=["contact_number"])
+
+            role_id = body.get("role")
+            if role_id:
+                role_obj = Role.objects.filter(id=role_id, company=company).first()
+                if role_obj:
+                    pm.roles.set([role_obj])
+
+            return prepare_response(message="Staff updated successfully.", status=status.HTTP_200_OK)
+
+        else:
+            return prepare_response(message=constants.INVALID_REQUEST, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    except Exception as e:
+        return prepare_response(message=f"Error: {str(e)}", status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@is_request_authenticated
 def export_staff_csv(request):
     try:
         if request.method != "GET":
@@ -665,88 +943,73 @@ def export_staff_csv(request):
         role_id = request.GET.get("role_id")
         staff_id = request.GET.get("staff_id")
 
-        company = PropertyManagmentCompany.objects.filter(
-            company_user=user,
-            is_active=True
-        ).first()
-
+        company = PropertyManagmentCompany.objects.filter(created_by=user.user, is_active=True).first()
+        if not company:
+            pm_check = PropertyManager.objects.filter(pk=user.pk).select_related("company").first()
+            company = pm_check.company if pm_check else None
         if not company:
             return prepare_response(
                 message=constants.COMPANY_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
             )
 
- 
+        # When staff_id provided → export that staff's assigned properties
         if staff_id:
-            staff = PropertyManager.objects.filter(
-                id=staff_id,
-                company=company
-            ).select_related(
-                "staff__user"
-            ).prefetch_related(
-                "assigned_properties",
-                "assigned_properties__property",
-                "assigned_properties__lease_details",
-                "assigned_properties__owner"
-            ).first()
+            pm = PropertyManager.objects.filter(pk=staff_id, company=company).select_related("user").first()
+            if not pm:
+                return prepare_response(message=constants.STAFF_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
 
-            if not staff:
-                return prepare_response(
-                    message=constants.STAFF_NOT_FOUND,
-                    status=status.HTTP_404_NOT_FOUND
+            props_qs = company.pmc_properties.filter(
+                is_active=True
+            ).prefetch_related(
+                "property_blocks__block_towers__leases__tenant__user",
+                "property_blocks__block_towers__unit_owners__owner__user",
+            )
+            if search:
+                props_qs = props_qs.filter(
+                    Q(property_name__icontains=search) |
+                    Q(code__icontains=search)
                 )
 
-            field_names = [
-                "Code",
-                "Property Name",
-                "Tenant Name",
-                "Assigned Staff",
-                "Owner Name",
-                "Document"
-            ]
-
+            field_names = ["Code", "Property Name", "Tenant Name", "Assigned Staff", "Owner Name"]
             data_list = []
-
-            for unit in staff.assigned_properties.all():
-                lease = unit.lease_details.first()
-
+            for prop in props_qs:
+                tenant_name = ""
+                owner_name = ""
+                for block in prop.property_blocks.all():
+                    for unit in block.block_towers.all():
+                        if not tenant_name:
+                            lease = unit.leases.first()
+                            if lease and lease.tenant and lease.tenant.user:
+                                tenant_name = lease.tenant.user.get_full_name()
+                        if not owner_name:
+                            unit_owner = unit.unit_owners.first()
+                            if unit_owner and unit_owner.owner and unit_owner.owner.user:
+                                owner_name = unit_owner.owner.user.get_full_name()
+                        if tenant_name and owner_name:
+                            break
+                    if tenant_name and owner_name:
+                        break
                 data_list.append({
-                    "Code": unit.property_code,
-                    "Property Name": unit.property.property_name if unit.property else "",
-                    "Tenant Name": (
-                        lease.tenant.user.get_full_name()
-                        if lease and lease.tenant and lease.tenant.user else ""
-                    ),
-                    "Assigned Staff": staff.staff.user.get_full_name(),
-                    "Owner Name": (
-                        unit.owner.user.get_full_name()
-                        if unit.owner and unit.owner.user else ""
-                    ),
-                    "Document": ""  
+                    "Code": prop.code or "",
+                    "Property Name": prop.property_name,
+                    "Tenant Name": tenant_name or "N/A",
+                    "Assigned Staff": pm.user.get_full_name(),
+                    "Owner Name": owner_name or "N/A",
                 })
+            return export_to_csv(filename="assigned_properties", field_names=field_names, data_list=data_list)
 
-            return export_to_csv(
-                filename="staff_property_details",
-                field_names=field_names,
-                data_list=data_list
-            )
-
-
+        # No staff_id → export staff list
         staff_qs = PropertyManager.objects.filter(
             company=company,
-            staff__is_active=True
-        ).select_related(
-            "staff__user"
-        ).prefetch_related(
-            "roles",
-            "assigned_properties"
-        )
+            is_active=True
+        ).select_related("user").prefetch_related("roles")
 
         if search:
             staff_qs = staff_qs.filter(
-                Q(staff__user__first_name__icontains=search) |
-                Q(staff__user__email__icontains=search) |
-                Q(staff__contact_number__icontains=search)
+                Q(user__first_name__icontains=search) |
+                Q(user__email__icontains=search) |
+                Q(contact_number__icontains=search)
             )
 
         if role_id:
@@ -755,26 +1018,19 @@ def export_staff_csv(request):
         field_names = [
             "Staff Name",
             "Code",
+            "Email",
             "Contact Number",
-            "Properties",
-            "Tenancy Ratio",
             "Staff Role"
         ]
 
         data_list = []
-
-        for staff in staff_qs:
-            total_properties = staff.assigned_properties.count()
-            occupied = staff.assigned_properties.filter(is_occupied=True).count()
-            tenancy_ratio = f"{occupied}:{total_properties}" if total_properties else "0:0"
-
+        for pm in staff_qs:
             data_list.append({
-                "Staff Name": staff.staff.user.get_full_name(),
-                "Code": staff.staff.user_code,
-                "Contact Number": staff.staff.contact_number,
-                "Properties": total_properties,
-                "Tenancy Ratio": tenancy_ratio,
-                "Staff Role": ", ".join([r.name for r in staff.roles.all()])
+                "Staff Name": pm.user.get_full_name(),
+                "Code": pm.code or "",
+                "Email": pm.user.email,
+                "Contact Number": pm.contact_number or "",
+                "Staff Role": ", ".join([r.name for r in pm.roles.all()])
             })
 
         return export_to_csv(

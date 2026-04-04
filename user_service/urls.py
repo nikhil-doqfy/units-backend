@@ -9,6 +9,7 @@ urlpatterns = [
     path('add_role', views.create_role, name='create_role'),
     path('role_table', views.role_table_view, name='role_table_view'),
     path('users_csv', views.export_users_csv, name='export_users_csv'),
+    path('staff_view', views.staff_view, name='staff_view'),
     path('staff_csv', views.export_staff_csv, name='export_staff_csv'),
     path("search_details", views.contact_list_view, name="contact_list"),
     path("approval/", views.approval, name="approval"),
