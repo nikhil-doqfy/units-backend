@@ -203,10 +203,11 @@ class Approval(Base):
         return f"{self.unit} - {self.tenant}"
 
 
+
 class Documentation(Documents):
 
     code = models.CharField(max_length=50, blank=True)
-    user = models.ForeignKey('user_service.UserProfile',on_delete=models.CASCADE,related_name='agreements')
+    user = models.ForeignKey('user_service.PropertyManager',on_delete=models.CASCADE,related_name='agreements')
     company = models.ForeignKey('property.PropertyManagmentCompany',on_delete=models.CASCADE,related_name='agreements')
     agreement_name = models.CharField(max_length=255)
     agreement_type = models.CharField(max_length=255)
@@ -215,12 +216,19 @@ class Documentation(Documents):
     end_date = models.DateTimeField(null=True, blank=True)
     notes = models.TextField(null=True, blank=True)
 
-    def save(self, *args, **kwargs):
-        super().save(*args, **kwargs)
-        if not self.code:
-            prefix = "LP" if self.agreement_type in ["LEASE_PURCHASE", "PROPERTY_MANAGEMENT"] else "VC"
-            self.code = f"{prefix}{self.pk:04d}"
-            Documentation.objects.filter(pk=self.pk).update(code=self.code)
+    def set_company_from_user(self):
+        if self.user and not self.company:
+            self.company = self.user.company
+
+    def generate_code(self):
+        agreement_type = (self.agreement_type or "").upper()
+
+        if agreement_type in ["LEASE_PURCHASE", "PROPERTY_MANAGEMENT"]:
+            prefix = "LP"
+        else:
+            prefix = "VC"
+
+        return f"{prefix}{self.pk:04d}"
 
     def get_status(self):
         if not self.end_date:
@@ -228,9 +236,16 @@ class Documentation(Documents):
         now = timezone.now()
         if self.end_date < now:
             return 'EXPIRED'
-        elif self.end_date <= now + timedelta(days=7):
+        if self.end_date <= now + timedelta(days=7):
             return 'EXPIRING_SOON'
         return 'ACTIVE'
+
+    def update_status(self):
+        new_status = self.get_status()
+
+        if self.status != new_status:
+            self.status = new_status
+            self.save(update_fields=['status'])
 
     def get_status_display_label(self):
         status = self.get_status()
@@ -238,7 +253,7 @@ class Documentation(Documents):
         if status == 'EXPIRED':
             return 'Expired'
 
-        elif status == 'EXPIRING_SOON' and self.end_date:
+        if status == 'EXPIRING_SOON' and self.end_date:
             now = timezone.now()
             diff = self.end_date - now
             days = diff.days
@@ -251,6 +266,17 @@ class Documentation(Documents):
                 return f"Expires in {days} days"
 
         return 'Active'
+
+    def save(self, *args, **kwargs):
+
+        if self.user and not self.company:
+            self.company = self.user.company
+
+        super().save(*args, **kwargs)
+
+        if not self.code:
+            self.code = self.generate_code()
+            Documentation.objects.filter(pk=self.pk).update(code=self.code)
 
     def __str__(self):
         return f"{self.code} - {self.agreement_name}"

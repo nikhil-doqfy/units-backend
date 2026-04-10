@@ -2474,7 +2474,7 @@ def agreement_api(request):
 
         # ── Only logged in user's agreements ──────────────────
         agreements = Documentation.objects.filter(
-            user=request.user,
+            user=request.user.propertymanager,
             is_active=True
         ).select_related(
             'document_type', 'user', 'company'
@@ -2485,7 +2485,10 @@ def agreement_api(request):
         search = request.GET.get("search")
 
         if status_filter:
-            agreements = agreements.filter(status=status_filter.upper())
+            agreements = [
+                a for a in agreements
+                if a.get_status() == status_filter.upper()
+            ]
 
         if search:
             agreements = agreements.filter(
@@ -2545,7 +2548,7 @@ def agreement_api(request):
         end_date = body.get("end_date")
 
         agreement = Documentation.objects.create(
-            user=request.user,
+            user=request.user.propertymanager,
             company=company,
             document_type=document_type,
             agreement_name=agreement_name,
@@ -2577,7 +2580,7 @@ def agreement_detail_api(request, pk):
     # ── Only logged in user's own agreement ───────────────────
     agreement = Documentation.objects.filter(
         id=pk,
-        user=request.user,
+        user=request.user.propertymanager,
         is_active=True
     ).select_related('document_type', 'user', 'company').first()
 
@@ -2649,7 +2652,7 @@ def upload_agreement_document(request, pk):
 
         agreement = Documentation.objects.filter(
             id=pk,
-            user=request.user,
+            user=request.user.propertymanager,
             is_active=True
         ).first()
 
