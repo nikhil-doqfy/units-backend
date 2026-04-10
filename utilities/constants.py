@@ -978,3 +978,26 @@ COMPLAINT_IMAGES_UPLOADED_SUCCESSFULLY = "Images uploaded successfully."
 COMPLAINT_IMAGES_REQUIRED = "Images are required."
 COMPLAINT_NOT_ASSIGNED_TO_YOU = "This complaint is not assigned to you."
  
+
+# ── Agreement Status ───────────────────────────────────────────
+AGREEMENT_STATUS_CHOICES = (
+    ('ACTIVE', 'Active'),
+    ('EXPIRED', 'Expired'),
+    ('EXPIRING_SOON', 'Expiring Soon'),
+    ('DRAFT', 'Draft'),
+    ('TERMINATED', 'Terminated'),
+)
+
+# ── Agreement Message ───────────────────────────────────────────
+AGREEMENT_FETCH_SUCCESS = "Agreements fetched successfully."
+AGREEMENT_CREATE_SUCCESS = "Agreement created successfully."
+AGREEMENT_UPDATE_SUCCESS = "Agreement updated successfully."
+AGREEMENT_DELETE_SUCCESS = "Agreement deleted successfully."
+AGREEMENT_FETCH_SINGLE_SUCCESS = "Agreement fetched successfully."
+
+AGREEMENT_NAME_REQUIRED = "Agreement name is required."
+DOCUMENT_TYPE_REQUIRED = "Document type is required."
+AGREEMENT_NOT_FOUND = "Agreement not found."
+
+FILE_REQUIRED = "file_name and file_data are required."
+DOCUMENT_UPLOAD_SUCCESS = "Document uploaded successfully."

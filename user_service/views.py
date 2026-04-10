@@ -1,7 +1,7 @@
 import json
 from utilities import status, constants
 from utilities.helper_functions import prepare_response, datetime_to_epoch_millis, safe_epoch_to_datetime,get_extension_from_base64,export_to_csv
-from user_service.models import UserProfile, Documents, OwnerDocuments, TenantDocuments, Role, Owner, Tenant, PropertyManager ,Approval
+from user_service.models import UserProfile, Documents, OwnerDocuments, TenantDocuments, Role, Owner, Tenant, PropertyManager ,Approval, Documentation, DocumentType
 from property.models import PropertyManagerDocuments, Unit, Property, PropertyManagmentCompany, UnitOwner
 from django.db import transaction
 from utilities.decorator import is_request_authenticated
@@ -19,6 +19,9 @@ EMIRATES_VISA_DOC_SPECS = [
     ("uae_residence_visa_doc", "uae_residence_visa", "visa_doc_type"),
 ]
 from property_management.models import  City
+from django.utils import timezone
+from utilities.helper_functions import prepare_response, fetch_s3_presigned_url, upload_file_to_s3_base64
+import uuid
 
 def user_sign_up(request):
     if request.method != "POST":
@@ -2435,3 +2438,256 @@ def company_tenants(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
+
+def serialize_agreement(a):
+    return {
+        "id": a.id,
+        "code": a.code,
+        "agreement_name": a.agreement_name,
+        "agreement_type": {
+            "key": a.agreement_type,
+            "value": a.agreement_type
+        },
+        "status": {
+            "key": a.get_status(),
+            "label": a.get_status_display_label()
+        },
+        "start_date": int(a.start_date.timestamp()) if a.start_date else None,
+        "end_date": int(a.end_date.timestamp()) if a.end_date else None,
+        "document": {
+            "file_name": a.file_name,
+            "url": fetch_s3_presigned_url(a.file_path, file_name=a.file_name) if a.file_path else None,
+        } if a.file_path else None,
+        "document_type": {
+            "id": a.document_type.id,
+            "name": a.document_type.name,
+        } if a.document_type else None,
+        "notes": a.notes,
+        "created": int(a.created.timestamp()) if a.created else None,
+    }
+
+
+@is_request_authenticated
+def agreement_api(request):
+
+    if request.method == "GET":
+
+        # ── Only logged in user's agreements ──────────────────
+        agreements = Documentation.objects.filter(
+            user=request.user,
+            is_active=True
+        ).select_related(
+            'document_type', 'user', 'company'
+        ).order_by('-id')
+
+        # ── Filters ───────────────────────────────────────────
+        status_filter = request.GET.get("status")
+        search = request.GET.get("search")
+
+        if status_filter:
+            agreements = agreements.filter(status=status_filter.upper())
+
+        if search:
+            agreements = agreements.filter(
+                agreement_name__icontains=search
+            )
+
+        # ── Pagination ────────────────────────────────────────
+        page_size = int(request.GET.get("page_size", 10))
+        page = int(request.GET.get("page", 1))
+        total = agreements.count()
+        start = (page - 1) * page_size
+        end = start + page_size
+        paginated = agreements[start:end]
+
+        return prepare_response(
+            content={
+                "results": [serialize_agreement(a) for a in paginated],
+                "total": total,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": (total + page_size - 1) // page_size,
+            },
+            message=constants.AGREEMENT_FETCH_SUCCESS,
+            status=status.HTTP_200_OK
+        )
+
+    # ── POST CREATE ───────────────────────────────────────────
+    elif request.method == "POST":
+        body = json.loads(request.body)
+
+        agreement_name = body.get("agreement_name")
+        if not agreement_name:
+            return prepare_response(
+                message="Agreement name is required.",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        agreement_type = body.get("agreement_type", "OTHER")
+
+        # ── Get document type ──────────────────────────────────
+        document_type_id = body.get("document_type_id")
+        document_type = DocumentType.objects.filter(id=document_type_id).first()
+        if not document_type:
+            return prepare_response(
+                message=constants.AGREEMENT_NAME_REQUIRED,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # ── Get company ────────────────────────────────────────
+        company = PropertyManagmentCompany.objects.filter(
+            company_staff=request.user,
+            is_active=True
+        ).first()
+
+        # ── Parse dates ────────────────────────────────────────
+        start_date = body.get("start_date")
+        end_date = body.get("end_date")
+
+        agreement = Documentation.objects.create(
+            user=request.user,
+            company=company,
+            document_type=document_type,
+            agreement_name=agreement_name,
+            agreement_type=agreement_type,
+            status='ACTIVE',
+            notes=body.get("notes"),
+            file_name=body.get("file_name", ""),
+            file_path=body.get("file_path", ""),
+            start_date=timezone.datetime.fromtimestamp(start_date, tz=timezone.utc) if start_date else None,
+            end_date=timezone.datetime.fromtimestamp(end_date, tz=timezone.utc) if end_date else None,
+            created_by=request.user.user
+        )
+
+        return prepare_response(
+            content={"id": agreement.id, "code": agreement.code},
+            message=constants.AGREEMENT_CREATE_SUCCESS,
+            status=status.HTTP_201_CREATED
+        )
+
+    return prepare_response(
+        message=constants.METHOD_NOT_ALLOWED,
+        status=status.HTTP_405_METHOD_NOT_ALLOWED
+    )
+
+
+@is_request_authenticated
+def agreement_detail_api(request, pk):
+
+    # ── Only logged in user's own agreement ───────────────────
+    agreement = Documentation.objects.filter(
+        id=pk,
+        user=request.user,
+        is_active=True
+    ).select_related('document_type', 'user', 'company').first()
+
+    if not agreement:
+        return prepare_response(
+            message=constants.AGREEMENT_NOT_FOUND,
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    # ── GET ───────────────────────────────────────────────────
+    if request.method == "GET":
+        return prepare_response(
+            content=serialize_agreement(agreement),
+            message=constants.AGREEMENT_FETCH_SINGLE_SUCCESS,
+            status=status.HTTP_200_OK
+        )
+
+    # ── PUT ───────────────────────────────────────────────────
+    elif request.method == "PUT":
+        body = json.loads(request.body)
+
+        agreement.agreement_name = body.get("agreement_name", agreement.agreement_name)
+        agreement.agreement_type = body.get("agreement_type", agreement.agreement_type)
+        agreement.notes = body.get("notes", agreement.notes)
+        agreement.status = body.get("status", agreement.status)
+
+        start_date = body.get("start_date")
+        end_date = body.get("end_date")
+        if start_date:
+            agreement.start_date = timezone.datetime.fromtimestamp(start_date, tz=timezone.utc)
+        if end_date:
+            agreement.end_date = timezone.datetime.fromtimestamp(end_date, tz=timezone.utc)
+
+        # ── Update document type if provided ───────────────────
+        document_type_id = body.get("document_type_id")
+        if document_type_id:
+            document_type = DocumentType.objects.filter(id=document_type_id).first()
+            if document_type:
+                agreement.document_type = document_type
+
+        agreement.save()
+
+        return prepare_response(
+            message=constants.AGREEMENT_UPDATE_SUCCESS,
+            status=status.HTTP_200_OK
+        )
+
+    # ── DELETE ────────────────────────────────────────────────
+    elif request.method == "DELETE":
+        agreement.is_active = False
+        agreement.save()
+
+        return prepare_response(
+            message=constants.AGREEMENT_DELETE_SUCCESS,
+            status=status.HTTP_200_OK
+        )
+
+    return prepare_response(
+        message=constants.METHOD_NOT_ALLOWED,
+        status=status.HTTP_405_METHOD_NOT_ALLOWED
+    )
+
+
+@is_request_authenticated
+def upload_agreement_document(request, pk):
+
+    if request.method == "POST":
+        body = json.loads(request.body)
+
+        agreement = Documentation.objects.filter(
+            id=pk,
+            user=request.user,
+            is_active=True
+        ).first()
+
+        if not agreement:
+            return prepare_response(
+                message=constants.AGREEMENT_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        file_name = body.get("file_name")
+        file_data = body.get("file_data")
+
+        if not file_name or not file_data:
+            return prepare_response(
+                message=constants.FILE_REQUIRED,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        object_name = f"agreements/{agreement.code}/{uuid.uuid4()}_{file_name}"
+        file_url = upload_file_to_s3_base64(
+            file_data=file_data,
+            object_name=object_name
+        )
+
+        agreement.file_path = file_url
+        agreement.file_name = file_name
+        agreement.save()
+
+        return prepare_response(
+            content={
+                "file_name": file_name,
+                "url": fetch_s3_presigned_url(file_url, file_name=file_name)
+            },
+            message=constants.DOCUMENT_UPLOAD_SUCCESS,
+            status=status.HTTP_200_OK
+        )
+
+    return prepare_response(
+        message=constants.METHOD_NOT_ALLOWED,
+        status=status.HTTP_405_METHOD_NOT_ALLOWED
+    )

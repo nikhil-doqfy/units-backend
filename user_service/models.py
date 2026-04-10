@@ -202,3 +202,55 @@ class Approval(Base):
     def __str__(self):
         return f"{self.unit} - {self.tenant}"
 
+
+class Documentation(Documents):
+
+    code = models.CharField(max_length=50, blank=True)
+    user = models.ForeignKey('user_service.UserProfile',on_delete=models.CASCADE,related_name='agreements')
+    company = models.ForeignKey('property.PropertyManagmentCompany',on_delete=models.CASCADE,related_name='agreements')
+    agreement_name = models.CharField(max_length=255)
+    agreement_type = models.CharField(max_length=255)
+    status = models.CharField(max_length=20,choices=constants.AGREEMENT_STATUS_CHOICES,default='ACTIVE')
+    start_date = models.DateTimeField(null=True, blank=True)
+    end_date = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(null=True, blank=True)
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if not self.code:
+            prefix = "LP" if self.agreement_type in ["LEASE_PURCHASE", "PROPERTY_MANAGEMENT"] else "VC"
+            self.code = f"{prefix}{self.pk:04d}"
+            Documentation.objects.filter(pk=self.pk).update(code=self.code)
+
+    def get_status(self):
+        if not self.end_date:
+            return self.status
+        now = timezone.now()
+        if self.end_date < now:
+            return 'EXPIRED'
+        elif self.end_date <= now + timedelta(days=7):
+            return 'EXPIRING_SOON'
+        return 'ACTIVE'
+
+    def get_status_display_label(self):
+        status = self.get_status()
+
+        if status == 'EXPIRED':
+            return 'Expired'
+
+        elif status == 'EXPIRING_SOON' and self.end_date:
+            now = timezone.now()
+            diff = self.end_date - now
+            days = diff.days
+
+            if days <= 0:
+                return "Expires today"
+            elif days == 1:
+                return "Expires in 1 day"
+            else:
+                return f"Expires in {days} days"
+
+        return 'Active'
+
+    def __str__(self):
+        return f"{self.code} - {self.agreement_name}"

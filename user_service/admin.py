@@ -3,7 +3,7 @@ from user_service.models import (
     UserProfile, Permission, Role, UserVerification,
     Documents, OwnerDocuments, TenantDocuments,
     Owner, Tenant, PropertyManager,
-    FAQ, PrivacyPolicy, Approval
+    FAQ, PrivacyPolicy, Approval, Documentation, DocumentType
 )
 
 
@@ -91,3 +91,20 @@ class ApprovalAdmin(admin.ModelAdmin):
     list_display = ("tenant","unit","requested_rent","requested_tenure","approved","approved_by",)
     list_filter = ("approved","approved_at",)
     search_fields = ("tenant__id","unit__unit_name",)
+
+@admin.register(Documentation)
+class DocumentationAdmin(admin.ModelAdmin):
+    list_display = (
+        "id", "code", "agreement_name", "agreement_type",
+        "status", "user", "company", "start_date", "end_date", "created"
+    )
+    search_fields = ("code", "agreement_name")
+    list_filter = ("status", "agreement_type", "company")
+    readonly_fields = ("code",)
+
+@admin.register(DocumentType)
+class DocumentTypeAdmin(admin.ModelAdmin):
+    list_display = ('id', 'name', 'section')
+    list_filter = ('section',)
+    search_fields = ('name',)
+    ordering = ('-id',)
