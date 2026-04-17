@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Document Renewed</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f5f6fa;
+      margin: 0;
+      padding: 0;
+    }
+
+    .email-container {
+      background-color: #fff;
+      max-width: 600px;
+      margin: 30px auto;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+
+    /* SAME HEADER STYLE AS EXPIRY TEMPLATE */
+    .header {
+      text-align: center;
+      padding: 25px 20px;
+      background-color: #2575fc;
+      color: white;
+    }
+
+    .header img {
+      width: 150px;
+      margin-bottom: 10px;
+    }
+
+    .tagline {
+      font-size: 14px;
+      color: #f0f0f0;
+      margin: 0;
+    }
+
+    .content {
+      padding: 25px;
+      color: #333;
+    }
+
+    h2 {
+      margin-top: 0;
+      color: #222;
+    }
+
+    p {
+      line-height: 1.6;
+    }
+
+    .info-box {
+      background-color: #f8f9fc;
+      border: 1px solid #e0e4f0;
+      border-radius: 6px;
+      padding: 15px;
+      margin: 15px 0;
+    }
+
+    .box-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #27ae60;
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #e0e4f0;
+    }
+
+    .footer {
+      background-color: #f1f1f1;
+      text-align: center;
+      padding: 15px;
+      font-size: 13px;
+      color: #666;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="email-container">
+
+  <!-- HEADER (SAME AS YOUR ORIGINAL TEMPLATE) -->
+  <div class="header">
+    <img src="https://xscaleglobal.com/wp-content/uploads/2024/06/Untitled-1-1.png" alt="Doqfy" />
+    <div class="tagline">Document Management System</div>
+  </div>
+
+  <!-- CONTENT -->
+  <div class="content">
+
+    <h2>🎉 Document Renewed Successfully | تم تجديد المستند</h2>
+
+    <p>Dear <strong>{{ user_name }}</strong>,</p>
+
+    <p>Your document has been successfully renewed.</p>
+
+    <div class="info-box">
+      <div class="box-title">📋 Document Details</div>
+
+      <p><strong>Code:</strong> {{ code }}</p>
+      <p><strong>Agreement Name:</strong> {{ agreement_name }}</p>
+      <p><strong>Type:</strong> {{ agreement_type }}</p>
+      <p><strong>New Expiry Date:</strong> {{ end_date }}</p>
+    </div>
+
+    <div class="info-box">
+      <div class="box-title">⚡ Status</div>
+      <p>Your document is now ACTIVE and fully renewed.</p>
+    </div>
+
+    <p>
+      Thank you,<br/>
+      <strong>The Doqfy Team</strong>
+    </p>
+
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <p>© 2025 Doqfy Internet Pvt. Ltd.</p>
+    <p>admin@doqfy.in</p>
+  </div>
+
+</div>
+
+</body>
+</html>

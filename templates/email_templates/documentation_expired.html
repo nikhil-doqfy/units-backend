@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Document Expired</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f5f6fa;
+      margin: 0;
+      padding: 0;
+    }
+
+
+.email-container {
+  background-color: #ffffff;
+  max-width: 600px;
+  margin: 30px auto;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  overflow: hidden;
+}
+
+.header {
+  text-align: center;
+  padding: 25px 20px;
+  background-color: #2575fc;
+  color: #ffffff;
+}
+
+.header img {
+  width: 140px;
+  margin-bottom: 8px;
+}
+
+.tagline {
+  font-size: 13px;
+  color: #eaeaea;
+  margin: 0;
+}
+
+.content {
+  padding: 25px;
+  color: #333333;
+}
+
+h2 {
+  margin-top: 0;
+  color: #222222;
+}
+
+p {
+  line-height: 1.6;
+  font-size: 14px;
+}
+
+.info-box {
+  background-color: #f8f9fc;
+  border: 1px solid #e0e4f0;
+  border-radius: 6px;
+  padding: 15px;
+  margin: 15px 0;
+}
+
+.box-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #e74c3c;
+  margin-bottom: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #e0e4f0;
+}
+
+.alert-box {
+  background-color: #fdecea;
+  border: 1px solid #f5c6cb;
+  border-radius: 6px;
+  padding: 12px;
+  margin: 15px 0;
+  color: #c0392b;
+  font-size: 13px;
+}
+
+.footer {
+  background-color: #f1f1f1;
+  text-align: center;
+  padding: 15px;
+  font-size: 12px;
+  color: #666666;
+}
+
+
+  </style>
+</head>
+
+<body>
+
+<div class="email-container">
+
+  <!-- HEADER -->
+
+  <div class="header">
+    <!-- 🔥 REPLACE WITH YOUR REAL LOGO URL -->
+    <img src="https://via.placeholder.com/140x50?text=Doqfy" alt="Doqfy Logo" />
+    <div class="tagline">Document Management System</div>
+  </div>
+
+  <!-- CONTENT -->
+
+  <div class="content">
+
+```
+<h2>⚠️ Document Expired | انتهت صلاحية المستند</h2>
+
+<p>Dear <strong>{{ user_name }}</strong>,</p>
+
+<p>
+  Your document has <strong>EXPIRED</strong> and is no longer valid. Please take immediate action:
+</p>
+
+<div class="info-box">
+  <div class="box-title">📋 Document Details</div>
+
+  <p><strong>Code:</strong> {{ code }}</p>
+  <p><strong>Agreement Name:</strong> {{ agreement_name }}</p>
+  <p><strong>Type:</strong> {{ agreement_type }}</p>
+  <p><strong>Issued By:</strong> {{ issued_by }}</p>
+  <p><strong>Expiry Date:</strong> {{ end_date|date:"M d, Y" }}</p>
+  <p><strong style="color: #e74c3c;">Days Expired:</strong> <strong style="color: #e74c3c;">{{ days_from_expiry }} day(s)</strong></p>
+</div>
+
+<div class="alert-box">
+  ⚠️ <strong>URGENT:</strong> This document expired {{ days_from_expiry }} day(s) ago. Please renew it immediately to avoid any disruption in services.
+</div>
+
+<div class="info-box">
+  <div class="box-title">🔄 What You Need to Do</div>
+  <p>1. Access your account on the Doqfy platform</p>
+  <p>2. Navigate to Agreements/Documents section</p>
+  <p>3. Click "Renew" for this agreement</p>
+  <p>4. Set the new expiry date</p>
+  <p>5. Submit and save</p>
+</div>
+
+<p>
+  If you have already renewed your document, please ignore this email. Otherwise, renew it as soon as possible.
+</p>
+
+<p>
+  Thank you,<br/>
+  <strong>The Doqfy Team</strong>
+</p>
+```
+
+  </div>
+
+  <!-- FOOTER -->
+
+  <div class="footer">
+    <p>© 2025 Doqfy Internet Pvt. Ltd.</p>
+    <p>admin@doqfy.in</p>
+  </div>
+
+</div>
+
+</body>
+</html>

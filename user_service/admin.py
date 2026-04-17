@@ -92,15 +92,71 @@ class ApprovalAdmin(admin.ModelAdmin):
     list_filter = ("approved","approved_at",)
     search_fields = ("tenant__id","unit__unit_name",)
 
+from django.contrib import admin
+from .models import Documentation
+
+from django.contrib import admin
+from .models import Documentation
+
 @admin.register(Documentation)
 class DocumentationAdmin(admin.ModelAdmin):
+
     list_display = (
-        "id", "code", "agreement_name", "agreement_type",
-        "status", "user", "company", "start_date", "end_date", "created"
+        "id",
+        "code",
+        "agreement_name",
+        "agreement_type",
+        "status_display",
+        "renewal_status",
+        "is_expired",
+        "expiry_reminder_sent_count",
+        "expiry_expired_sent_count",
+        "progress_display",
+        "expiry_reminder_sent_at",
+        "last_email_sent_date"
     )
-    search_fields = ("code", "agreement_name")
-    list_filter = ("status", "agreement_type", "company")
-    readonly_fields = ("code",)
+
+    list_filter = (
+        "status",
+        "is_expired",
+        "is_renewed",
+        "does_not_expire",
+    )
+
+    readonly_fields = (
+        "code",
+        "status",
+        "is_expired",
+        "expiry_reminder_sent_count",
+        "expiry_expired_sent_count",
+    )
+
+    search_fields = (
+        "agreement_name",
+        "code",
+    )
+
+    # =========================
+    # DISPLAY METHODS
+    # =========================
+
+    def status_display(self, obj):
+        return obj.get_status()
+    status_display.short_description = "Status"
+
+    def renewal_status(self, obj):
+        return "YES" if obj.is_renewed else "NO"
+    renewal_status.short_description = "Renewed"
+
+    def progress_display(self, obj):
+        return obj.get_expiry_progress()
+    progress_display.short_description = "Progress (7-cycle)"
+
+
+
+
+
+
 
 @admin.register(DocumentType)
 class DocumentTypeAdmin(admin.ModelAdmin):

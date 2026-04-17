@@ -195,13 +195,14 @@ def resize_image(photo_base64, target_size_kb):
     return resized_photo
 
 
-def send_ses_email(to_email, subject, body_text, body_html):
+def send_ses_email(to_email, subject, body_text, body_html,cc=None):
     try:
         send(
             recipient=to_email,
             subject=subject,
             body_html=body_html,
-            body_text=body_text
+            body_text=body_text,
+            cc=cc,
         )
         return True
     except Exception as e:
