@@ -27,7 +27,7 @@ urlpatterns = [
     path('user/', include(user_service_urls)),
     path('auth/', include(auth_service_urls)),
     path('payment/', include(payment_urls)),
-    path('charges/', include(charges_urls)),
+    path('', include(charges_urls)),
     path('', include(property_urls)),
     path('', include(lead_urls)),
     path('', include(lease_urls)),

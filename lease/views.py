@@ -29,8 +29,8 @@ from property_management import settings
 from property_management.utils import audit_logs, get_tenant_detail_by_id
 from property_management.models import TermAndCondition
 from payment.models import Bank
-from lease.models import LeaseTransaction
-from .models import Lease, LeaseDocuments, LeaseTransaction, Template, TemplateField, TemplateValue
+from .models import Lease, LeaseDocuments, LeaseTransaction, LeaseCharge, Template, TemplateField, TemplateValue
+from charges.models import Charge
 from .serializers import serialize_lease, serialize_tenant_lease, group_lease_cheques, serialize_cheque_list_row
 
 
@@ -296,6 +296,31 @@ def lease_view(request):
                     setattr(lease, field, value)
 
             lease.save()
+
+            other_charges = body.get("other_charges")
+            if other_charges is not None:
+                incoming_charge_ids = {item["charge_id"] for item in other_charges if item.get("charge_id")}
+                # Delete removed charges
+                lease.lease_charges.exclude(charge_id__in=incoming_charge_ids).delete()
+                for item in other_charges:
+                    charge_id = item.get("charge_id")
+                    amount = item.get("amount")
+                    if not charge_id or amount is None:
+                        continue
+                    charge = Charge.objects.filter(id=charge_id).first()
+                    if not charge:
+                        continue
+                    existing = lease.lease_charges.filter(charge_id=charge_id).first()
+                    if existing:
+                        existing.amount = float(amount)
+                        existing.save()
+                    else:
+                        LeaseCharge.objects.create(
+                            lease=lease,
+                            charge=charge,
+                            amount=float(amount),
+                            created_by=user.user,
+                        )
 
             return prepare_response(
                 content=serialize_lease(lease),

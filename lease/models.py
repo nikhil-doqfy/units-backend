@@ -2,6 +2,7 @@ from django.db import models
 from property_management.models import Base
 from utilities import constants
 from user_service.models import Documents
+from charges.models import Charge
 
 
 class Template(Base):
@@ -156,3 +157,27 @@ class LeaseTransaction(Documents):
         if not self.code:
             self.code = f"LT{self.pk:05d}"
             LeaseTransaction.objects.filter(pk=self.pk).update(code=self.code)
+
+
+class LeaseCharge(Base):
+    lease = models.ForeignKey(Lease, on_delete=models.CASCADE, related_name="lease_charges")
+    charge = models.ForeignKey(Charge, on_delete=models.CASCADE, related_name="lease_charges")
+    amount = models.FloatField()
+    vat = models.FloatField(default=0)
+    total = models.FloatField(default=0)
+
+    def save(self, *args, **kwargs):
+        self.vat = round(self.amount * (self.charge.tax_code or 0) / 100, 2)
+        self.total = round(self.amount + self.vat, 2)
+        super().save(*args, **kwargs)
+
+    def _serialize(self):
+        return {
+            "id": self.id,
+            "charge_id": self.charge_id,
+            "description": self.charge.description,
+            "amount": self.amount,
+            "tax_code": self.charge.tax_code,
+            "vat": self.vat,
+            "total": self.total,
+        }

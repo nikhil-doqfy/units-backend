@@ -135,6 +135,9 @@ def serialize_lease(lease):
             "contract_amount":      lease.contract_amount,
             "payment_count":        lease.payment_count,
         },
+
+        # ── Other Charges ─────────────────────────────────────────
+        "lease_charges": [lc._serialize() for lc in lease.lease_charges.select_related("charge").all()],
     }
 
 
@@ -285,4 +288,7 @@ def serialize_tenant_lease(lease):
             "rent":          lease.rent,
             "annual_amount": lease.annual_amount,
         },
+
+        # ── Other Charges ─────────────────────────────────────────
+        "lease_charges": [lc._serialize() for lc in lease.lease_charges.select_related("charge").all()],
     }
