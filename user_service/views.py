@@ -1,6 +1,8 @@
 import json
 from utilities import status, constants
-from utilities.helper_functions import prepare_response, datetime_to_epoch_millis, safe_epoch_to_datetime,get_extension_from_base64,export_to_csv
+from utilities.helper_functions import prepare_response, datetime_to_epoch_millis, safe_epoch_to_datetime, get_extension_from_base64, export_to_csv, send_ses_email, fetch_s3_presigned_url, upload_file_to_s3_base64
+import uuid
+from django.template.loader import render_to_string
 from user_service.models import UserProfile, Documents, OwnerDocuments, TenantDocuments, Role, Owner, Tenant, PropertyManager ,Approval
 from property.models import PropertyManagerDocuments, Unit, Property, PropertyManagmentCompany, UnitOwner
 from django.db import transaction
@@ -739,9 +741,13 @@ def staff_view(request):
                 pm_roles = list(pm.roles.all())
                 first_role = {"key": pm_roles[0].id, "value": pm_roles[0].name} if pm_roles else None
 
-                from property.models import Unit as UnitModel
+                from property.models import PropertyManagerAssignedUnits, Unit as UnitModel
+                assigned_unit_ids = list(
+                    PropertyManagerAssignedUnits.objects.filter(property_manager=pm).values_list("unit_id", flat=True)
+                )
+
                 units_qs = UnitModel.objects.filter(
-                    property_block_tower__property__id__in=company_prop_ids
+                    pk__in=assigned_unit_ids
                 ).select_related(
                     "property_block_tower__property"
                 ).prefetch_related(
@@ -783,6 +789,7 @@ def staff_view(request):
                     "is_active": pm.is_active,
                     "profile_image": pm.profile_image,
                     "assigned_properties": assigned_properties,
+                    "assigned_unit_ids": assigned_unit_ids,
                 }
                 return prepare_response(content=data, message=constants.USER_FETCHED_SUCCESS, status=status.HTTP_200_OK)
 
@@ -804,13 +811,35 @@ def staff_view(request):
             except EmptyPage:
                 page_obj = paginator.page(paginator.num_pages)
 
-            # Fetch unit thumbnails and tenancy ratio (shared across all staff rows)
-            from property.models import Unit as UnitModel
-            company_property_count = UnitModel.objects.filter(
-                property_block_tower__property__id__in=company_prop_ids
-            ).count()
+            from property.models import Unit as UnitModel, PropertyManagerAssignedUnits
+            from lease.models import Lease
+            from collections import defaultdict
+
+            pm_ids = [pm.pk for pm in page_obj]
+
+            # Assigned units per PM
+            assigned_rows = PropertyManagerAssignedUnits.objects.filter(
+                property_manager_id__in=pm_ids
+            ).values("property_manager_id", "unit_id")
+
+            pm_unit_map = defaultdict(set)
+            all_assigned_unit_ids = set()
+            for row in assigned_rows:
+                pm_unit_map[row["property_manager_id"]].add(row["unit_id"])
+                all_assigned_unit_ids.add(row["unit_id"])
+
+            # Occupied units among all assigned
+            occupied_unit_ids = set(
+                Lease.objects.filter(
+                    unit_id__in=all_assigned_unit_ids,
+                    lease_status="ACTIVE",
+                    is_active=True,
+                ).values_list("unit_id", flat=True)
+            )
+
+            # Thumbnails from assigned units
             unit_thumb_qs = UnitModel.objects.filter(
-                property_block_tower__property__id__in=company_prop_ids
+                pk__in=all_assigned_unit_ids
             ).prefetch_related("unit_images")[:20]
             property_thumbnails = []
             for unit in unit_thumb_qs:
@@ -818,19 +847,11 @@ def staff_view(request):
                 if thumb:
                     property_thumbnails.append(thumb)
 
-            unit_qs = UnitModel.objects.filter(
-                property_block_tower__property__id__in=company_prop_ids
-            )
-            total_units = unit_qs.count()
-            from lease.models import Lease
-            occupied_units = unit_qs.filter(
-                leases__lease_status="ACTIVE",
-                leases__is_active=True
-            ).distinct().count()
-            tenancy_ratio = f"{total_units}:{occupied_units}"
-
             data = []
             for pm in page_obj:
+                unit_ids = pm_unit_map[pm.pk]
+                total = len(unit_ids)
+                occupied = len(unit_ids & occupied_unit_ids)
                 data.append({
                     "staff_id": pm.pk,
                     "staff_name": pm.user.get_full_name(),
@@ -838,9 +859,9 @@ def staff_view(request):
                     "roles": [r.name for r in pm.roles.all()],
                     "code": pm.code,
                     "is_active": pm.is_active,
-                    "property_count": company_property_count,
+                    "property_count": total,
                     "property_images": property_thumbnails,
-                    "tenancy_ratio": tenancy_ratio,
+                    "tenancy_ratio": f"{total}:{occupied}",
                 })
             pagination_meta = {
                 "current_page": page_obj.number,
@@ -852,20 +873,17 @@ def staff_view(request):
 
         elif request.method == "POST":
             body = json.loads(request.body)
-            staff_name = body.get("staff_name", "").strip()
+            first_name = (body.get("first_name") or body.get("staff_name", "")).strip()
+            last_name = (body.get("last_name") or "").strip()
             email = body.get("email")
             password = body.get("password")
             contact_number = body.get("contact_number")
             role_id = body.get("role")
 
-            if not all([staff_name, email, password]):
+            if not all([first_name, email, password]):
                 return prepare_response(message=constants.ALL_FIELD_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
             if User.objects.filter(email=email).exists():
                 return prepare_response(message=constants.EMAIL_ALREADY_REGISTERED, status=status.HTTP_400_BAD_REQUEST)
-
-            name_parts = staff_name.split(" ", 1)
-            first_name = name_parts[0]
-            last_name = name_parts[1] if len(name_parts) > 1 else ""
 
             with transaction.atomic():
                 django_user = User.objects.create_user(
@@ -886,6 +904,17 @@ def staff_view(request):
                     if role_obj:
                         pm.roles.add(role_obj)
 
+                assigned_unit_ids = body.get("assigned_property") or []
+                if assigned_unit_ids:
+                    from property.models import PropertyManagerAssignedUnits, Unit as UnitModel
+                    for unit_id in assigned_unit_ids:
+                        unit = UnitModel.objects.filter(pk=unit_id).first()
+                        if unit:
+                            PropertyManagerAssignedUnits.objects.get_or_create(
+                                unit=unit, property_manager=pm,
+                                defaults={"created_by": user.user},
+                            )
+
             return prepare_response(
                 message=constants.USER_CREATED,
                 content={"staff_id": pm.pk},
@@ -903,12 +932,23 @@ def staff_view(request):
                 return prepare_response(message=constants.STAFF_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
 
             django_user = pm.user
-            staff_name = body.get("staff_name", "").strip()
-            if staff_name:
-                name_parts = staff_name.split(" ", 1)
-                django_user.first_name = name_parts[0]
-                django_user.last_name = name_parts[1] if len(name_parts) > 1 else ""
-                django_user.save(update_fields=["first_name", "last_name"])
+            first_name = (body.get("first_name") or "").strip()
+            last_name = (body.get("last_name") or "").strip()
+            if not first_name and not last_name:
+                staff_name = (body.get("staff_name") or "").strip()
+                if staff_name:
+                    parts = staff_name.split(" ", 1)
+                    first_name = parts[0]
+                    last_name = parts[1] if len(parts) > 1 else ""
+            update_name_fields = []
+            if first_name:
+                django_user.first_name = first_name
+                update_name_fields.append("first_name")
+            if last_name is not None:
+                django_user.last_name = last_name
+                update_name_fields.append("last_name")
+            if update_name_fields:
+                django_user.save(update_fields=update_name_fields)
 
             if body.get("contact_number") is not None:
                 pm.contact_number = body["contact_number"]
@@ -919,6 +959,14 @@ def staff_view(request):
                 role_obj = Role.objects.filter(id=role_id, company=company).first()
                 if role_obj:
                     pm.roles.set([role_obj])
+
+            if "assigned_property" in body:
+                from property.models import PropertyManagerAssignedUnits, Unit as UnitModel
+                PropertyManagerAssignedUnits.objects.filter(property_manager=pm).delete()
+                for unit_id in (body["assigned_property"] or []):
+                    unit = UnitModel.objects.filter(pk=unit_id).first()
+                    if unit:
+                        PropertyManagerAssignedUnits.objects.create(unit=unit, property_manager=pm, created_by=user.user)
 
             return prepare_response(message="Staff updated successfully.", status=status.HTTP_200_OK)
 
@@ -2434,4 +2482,107 @@ def company_tenants(request):
             message=constants.INTERNAL_SERVER_ERROR,
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+
+@is_request_authenticated
+def share_profile(request):
+    if request.method != "POST":
+        return prepare_response(message=constants.INVALID_REQUEST, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    try:
+        data = json.loads(request.body)
+        profile_id = data.get("profile_id")
+        recipient_email = data.get("recipient_email", "").strip()
+
+        if not all([profile_id, recipient_email]):
+            return prepare_response(message=constants.FIELD_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
+
+        profile = UserProfile.objects.select_related("user", "city").get(pk=profile_id)
+        django_user = profile.user
+
+        role = "User"
+        if PropertyManager.objects.filter(pk=profile.pk).exists():
+            role = "Property Manager"
+        elif Owner.objects.filter(pk=profile.pk).exists():
+            role = "Owner"
+        elif Tenant.objects.filter(pk=profile.pk).exists():
+            role = "Tenant"
+
+        name = django_user.get_full_name() or django_user.email
+        initials = "".join([p[0].upper() for p in name.split()[:2]]) if name else "?"
+
+        sender_profile = request.user
+        shared_by = sender_profile.user.get_full_name() or sender_profile.user.email
+
+        raw_image = profile.profile_image or ""
+        profile_image_url = ""
+        if raw_image:
+            try:
+                if raw_image.startswith("http"):
+                    # Already an S3 URL — generate presigned link
+                    presigned = fetch_s3_presigned_url(raw_image, expiration=604800)
+                    profile_image_url = presigned or ""
+                elif raw_image.startswith("data:") or len(raw_image) > 100:
+                    # Base64 string — upload to S3 then presign
+                    s3_key = f"profile_shares/{profile_id}/{uuid.uuid4().hex}.png"
+                    s3_url = upload_file_to_s3_base64(raw_image, s3_key)
+                    presigned = fetch_s3_presigned_url(s3_url, expiration=604800)
+                    profile_image_url = presigned or ""
+            except Exception:
+                profile_image_url = ""
+
+        context = {
+            "name": name,
+            "initials": initials,
+            "email": django_user.email,
+            "phone": profile.contact_number or "",
+            "code": profile.code or "",
+            "city": profile.city.name if profile.city else "",
+            "role": role,
+            "profile_image": profile_image_url,
+            "shared_by": shared_by,
+        }
+
+        body_html = render_to_string("email_templates/share_profile.html", context)
+        body_text = (
+            f"Profile Shared: {name}\n"
+            f"Role: {role}\nEmail: {context['email']}\n"
+            f"Phone: {context['phone']}\nCode: {context['code']}\n"
+            f"Shared by: {shared_by}"
+        )
+
+        send_ses_email(recipient_email, f"Profile: {name}", body_text, body_html)
+        return prepare_response(message="Profile shared successfully.", status=status.HTTP_200_OK)
+    except UserProfile.DoesNotExist:
+        return prepare_response(message="User not found.", status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        print("share_profile error:", e)
+        return prepare_response(message=constants.INTERNAL_SERVER_ERROR, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@is_request_authenticated
+def reset_user_password(request):
+    if request.method != "POST":
+        return prepare_response(message=constants.INVALID_REQUEST, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    try:
+        data = json.loads(request.body)
+        user_id = data.get("user_id")
+        new_password = data.get("new_password")
+        confirm_password = data.get("confirm_password")
+
+        if not all([user_id, new_password, confirm_password]):
+            return prepare_response(message=constants.FIELD_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
+        if new_password != confirm_password:
+            return prepare_response(message=constants.PASSWORD_MISMATCH, status=status.HTTP_400_BAD_REQUEST)
+        if len(new_password) < 6:
+            return prepare_response(message="Password must be at least 6 characters.", status=status.HTTP_400_BAD_REQUEST)
+
+        profile = UserProfile.objects.select_related("user").get(pk=user_id)
+        profile.user.set_password(new_password)
+        profile.user.save()
+        return prepare_response(message="Password reset successfully.", status=status.HTTP_200_OK)
+    except UserProfile.DoesNotExist:
+        return prepare_response(message="User not found.", status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        print("reset_user_password error:", e)
+        return prepare_response(message=constants.INTERNAL_SERVER_ERROR, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 

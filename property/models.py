@@ -338,3 +338,22 @@ class PropertyManagerDocuments(Documents):
     )
     def __str__(self):
         return f"{self.company_user} -> {self.document}"
+
+
+class PropertyManagerAssignedUnits(Base):
+    unit = models.ForeignKey(
+        Unit,
+        on_delete=models.CASCADE,
+        related_name="assigned_managers"
+    )
+    property_manager = models.ForeignKey(
+        "user_service.PropertyManager",
+        on_delete=models.CASCADE,
+        related_name="assigned_units"
+    )
+
+    class Meta:
+        unique_together = ("unit", "property_manager")
+
+    def __str__(self):
+        return f"PM #{self.property_manager_id} -> Unit #{self.unit_id}"
