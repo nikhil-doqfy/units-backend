@@ -696,7 +696,7 @@ def generate_contract(request):
         lease.pdf_path = pdf_s3_url
         lease.save(update_fields=["pdf_path"])
 
-        audit_logs(request, f"Generated lease contract for lease '{lease.code}'", constants.CREATED)
+        audit_logs(request, f"Generated lease contract for lease '{lease.code}'", constants.CREATED, "lease")
 
         return prepare_response(
             message=constants.CONTRACT_GENERATED_SUCCESS,
@@ -765,7 +765,7 @@ def send_lease_invite(request):
 
         ok = send_ses_email(tenant_email, f"Your Lease is in Progress – {lease.code}", body_text, body_html)
 
-        audit_logs(request, f"Sent invite email for lease '{lease.code}' to {tenant_email}", constants.CREATED)
+        audit_logs(request, f"Sent invite email for lease '{lease.code}' to {tenant_email}", constants.CREATED, "lease")
 
         return prepare_response(
             message="Invite email sent successfully",
@@ -855,7 +855,7 @@ def send_negotiation(request):
             ok = send_ses_email(r["email"], subject, body_text, body_html)
             (sent if ok else failed).append(r["email"])
 
-        audit_logs(request, f"Sent negotiation email for lease '{lease.code}' to {sent}", constants.CREATED)
+        audit_logs(request, f"Sent negotiation email for lease '{lease.code}' to {sent}", constants.CREATED, "lease")
 
         return prepare_response(
             message="Negotiation email sent successfully",

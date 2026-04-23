@@ -54,9 +54,11 @@ def complaint_api(request):
             company=company,
             is_active=True
         ).order_by('-id')
-
+        total = complaints.count()
+ 
         return prepare_response(
             content=[serialize_complaint(c) for c in complaints],
+            pagination={"total_records": total},
             message=constants.COMPLAINT_FETCHED_SUCCESSFULLY,
             status=status.HTTP_200_OK
         )

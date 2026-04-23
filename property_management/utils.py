@@ -543,12 +543,24 @@ def get_tenant_detail_by_id(tenant_id):
     
     }
 
-def audit_logs(request, message, action_type):
+def audit_logs(request, message, action_type, section=None):
     user_profile = request.user
 
     AuditLog.objects.create(
         userprofile=user_profile,
         created_by=user_profile.user,
         message=message,
-        action_type=action_type
+        action_type=action_type,
+        section=section
     )
+def get_user_basic_info(user_profile):
+    if not user_profile:
+        return None
+ 
+    return {
+        "id": user_profile.id,
+        "email": user_profile.user.email,
+        "first_name": user_profile.user.first_name,
+        "last_name": user_profile.user.last_name,
+        "created": datetime_to_epoch_millis(user_profile.created)
+    }

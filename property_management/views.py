@@ -23,10 +23,11 @@ from utilities.helper_functions import (
     prepare_response,
     safe_epoch_to_datetime,
     datetime_to_epoch_millis,
+    export_to_csv
 )
 from utilities import status, constants
 from property_management import settings
-from property_management.utils import create_and_send_invitation
+from property_management.utils import create_and_send_invitation, get_user_basic_info
 
 @is_request_authenticated
 def serve_media(request, path):
@@ -1227,31 +1228,93 @@ def dashboard_yearly_dues(request):
 
 @is_request_authenticated
 def audit_log(request):
-
     if request.method != "GET":
         return prepare_response(
             message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
+    try:
+        search = request.GET.get("search", "").strip()
+        from_date = request.GET.get("from_date")
+        to_date = request.GET.get("to_date")
+        user_id = request.GET.get("user_id")
+        section = request.GET.get("section")
+        download = request.GET.get("download")
+        if from_date and not to_date:
+            to_date = from_date
+        if to_date and not from_date:
+            from_date = to_date
 
-    logs = AuditLog.objects.select_related("userprofile__user").order_by("-created")
+        logs = AuditLog.objects.select_related(
+            "userprofile__user"
+        ).order_by("-created")
 
-    data = []
+        if search:
+            logs = logs.filter(
+                Q(userprofile__user__first_name__icontains=search) |
+                Q(userprofile__user__last_name__icontains=search) |
+                Q(userprofile__user__email__icontains=search) |
+                Q(message__icontains=search) |
+                Q(action_type__icontains=search)
+            )
 
-    for log in logs:
-        data.append({
-            "id": log.id,
-            "user": log.userprofile.get_user_basic_info() if log.userprofile else None,
-            "message": log.message,
-            "action_type": log.action_type,
-            "created": datetime_to_epoch_millis(log.created)
-        })
+        if from_date:
+            logs = logs.filter(created__date__gte=from_date)
+        if to_date:
+            logs = logs.filter(created__date__lte=to_date)
+        if user_id:
+            logs = logs.filter(userprofile__id=user_id)
+        if section:
+            logs = logs.filter(section=section.lower())
+        if download == "csv":
 
-    return prepare_response(
-        content=data,
-        message=constants.DATA_FETCHED_SUCCESSFULLY,
-        status=status.HTTP_200_OK
-    )
+            field_names = [
+                "User Name",
+                "Email",
+                "Section",
+                "Action Type",
+                "Message", 
+                "Created At"
+            ]
+
+            export_data = []
+
+            for log in logs:
+                export_data.append({
+                    "User Name": log.userprofile.user.get_full_name() if log.userprofile else "",
+                    "Email": log.userprofile.user.email if log.userprofile else "",
+                    "Section": log.section if hasattr(log, "section") else "",
+                    "Action Type": log.action_type,
+                    "Message": log.message,
+                    "Created At": log.created.strftime("%Y-%m-%d %H:%M:%S") if log.created else ""
+                })
+            return export_to_csv(
+                filename="audit_logs",
+                field_names=field_names,
+                data_list=export_data
+            )
+        data = []
+
+        for log in logs:
+            data.append({
+                "id": log.id,
+                "user": get_user_basic_info(log.userprofile),
+                "section": log.section if hasattr(log, "section") else "",
+                "message": log.message,
+                "action_type": log.action_type,
+                "created": datetime_to_epoch_millis(log.created)
+            })
+ 
+        return prepare_response(
+            content=data,
+            message=constants.DATA_FETCHED_SUCCESSFULLY,
+            status=status.HTTP_200_OK
+        )
+    except Exception as e:
+        return prepare_response(
+            message=f"Error fetching audit logs: {str(e)}",
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 
 @is_request_authenticated
@@ -1331,3 +1394,4 @@ def global_search(request):
 
     return prepare_response(content={"results": results}, message="OK", status=status.HTTP_200_OK)
 
+            
