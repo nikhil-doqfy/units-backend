@@ -984,4 +984,66 @@ COMPLAINT_IMAGES_UPLOADED_SUCCESSFULLY = "Images uploaded successfully."
 COMPLAINT_IMAGES_REQUIRED = "Images are required."
 COMPLAINT_NOT_ASSIGNED_TO_YOU = "This complaint is not assigned to you."
  
+
+# ── Agreement Status ───────────────────────────────────────────
+AGREEMENT_STATUS_CHOICES = (
+    ('ACTIVE', 'Active'),
+    ('EXPIRED', 'Expired'),
+    ('EXPIRING_SOON', 'Expiring Soon'),
+    ('DRAFT', 'Draft'),
+    ('TERMINATED', 'Terminated'),
+)
+
+# ── Agreement Message ───────────────────────────────────────────
+AGREEMENT_FETCH_SUCCESS = "Agreements fetched successfully."
+AGREEMENT_CREATE_SUCCESS = "Agreement created successfully."
+AGREEMENT_UPDATE_SUCCESS = "Agreement updated successfully."
+AGREEMENT_DELETE_SUCCESS = "Agreement deleted successfully."
+AGREEMENT_FETCH_SINGLE_SUCCESS = "Agreement fetched successfully."
+
+AGREEMENT_NAME_REQUIRED = "Agreement name is required."
+DOCUMENT_TYPE_REQUIRED = "Document type is required."
+AGREEMENT_NOT_FOUND = "Agreement not found."
+
+FILE_REQUIRED = "file_name and file_data are required."
+DOCUMENT_UPLOAD_SUCCESS = "Document uploaded successfully."
+
+# =========================
+# AUTH / ACCESS
+# =========================
+UNAUTHORIZED_ACCESS = "Unauthorized access."
+ONLY_PM_ALLOWED = "Only Property Managers can access this resource."
+ONLY_PM_CREATE = "Only Property Managers can create agreements."
+ONLY_PM_RENEW = "Only Property Managers can renew agreements."
+ONLY_PM_UPLOAD = "Only Property Managers can upload agreement documents."
+
+# =========================
+# AGREEMENT COMMON
+# =========================
+AGREEMENT_NOT_FOUND = "Agreement not found."
+AGREEMENT_FETCHED = "Agreement fetched successfully."
+AGREEMENTS_FETCHED = "Agreements fetched successfully."
+AGREEMENT_CREATED = "Agreement created successfully."
+AGREEMENT_UPDATED = "Agreement updated successfully."
+AGREEMENT_DELETED = "Agreement deleted successfully."
+AGREEMENT_RENEWED = "Agreement renewed successfully."
+
+# =========================
+# VALIDATION ERRORS
+# =========================
+AGREEMENT_NAME_REQUIRED = "Agreement name is required."
+DOCUMENT_TYPE_REQUIRED = "Valid document_type_id is required."
+END_DATE_REQUIRED = "end_date is required unless does_not_expire is true."
+NEW_END_DATE_REQUIRED = "new_end_date is required."
+
+# =========================
+# FILE UPLOAD
+# =========================
+FILE_REQUIRED = "file_name and file_data are required."
+DOCUMENT_UPLOADED = "Document uploaded successfully."
+
+# =========================
+# METHOD
+# =========================
+METHOD_NOT_ALLOWED = "Method not allowed."
 CANNOT_CONVERT_LEAD = "Cannot convert a 'Not Interested' lead to tenancy"
