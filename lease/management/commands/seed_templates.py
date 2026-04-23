@@ -6,6 +6,7 @@ from lease.models import Template, TemplateField
 from utilities import constants
 
 TEMPLATE_PATH = os.path.join(settings.MEDIA_ROOT, "pre_defined_templates", "lease_agreement.html")
+RENTAL_AGREEMENT_PATH = os.path.join(settings.MEDIA_ROOT, "pre_defined_templates", "rental_agreement.html")
 
 
 # ── Template definitions ──────────────────────────────────────────────────────

@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Profile Shared with You</title>
+    <style>
+      body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f5f6fa; margin: 0; padding: 0; }
+      .email-container { background-color: #fff; max-width: 600px; margin: 30px auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); overflow: hidden; }
+      .header { text-align: center; padding: 25px 20px; background: linear-gradient(90deg, #6a11cb 0%, #2575fc 100%); color: white; }
+      .header img { width: 150px; margin-bottom: 10px; display: block; margin-left: auto; margin-right: auto; }
+      .tagline { font-size: 14px; color: #f0f0f0; margin: 0; }
+      .content { padding: 25px; color: #333; }
+      h2 { margin-top: 0; color: #222; }
+      p { line-height: 1.6; margin: 0 0 10px 0; }
+      .role-badge { display: inline-block; background: linear-gradient(90deg, #6a11cb 0%, #2575fc 100%); color: #fff; font-size: 11px; font-weight: 600; padding: 3px 12px; border-radius: 20px; letter-spacing: 0.5px; text-transform: uppercase; }
+      .notice-box { background-color: #fff8e1; border: 1px solid #ffe082; border-radius: 6px; padding: 12px 16px; margin-bottom: 20px; font-size: 13px; color: #7a5800; line-height: 1.5; }
+      .footer { background-color: #f1f1f1; text-align: center; padding: 15px; font-size: 13px; color: #666; }
+      .footer a { color: #2575fc; text-decoration: none; }
+      .arabic { direction: rtl; text-align: right; margin-top: 15px; }
+    </style>
+  </head>
+  <body>
+    <div class="email-container">
+
+      <!-- Header -->
+      <div class="header">
+        <img src="https://xscaleglobal.com/wp-content/uploads/2024/06/Untitled-1-1.png" alt="Doqfy Logo" />
+        <div class="tagline">Smart Contract &amp; Document Management</div>
+      </div>
+
+      <!-- Content -->
+      <div class="content">
+        <h2>Profile Shared with You | تمت مشاركة ملف التعريف معك</h2>
+
+        <p>Hello,</p>
+        <p style="margin-bottom: 20px;"><strong>{{ shared_by }}</strong> has shared the following profile with you via the Units platform.</p>
+
+        <!-- Profile card: table layout for email compatibility -->
+        <table width="100%" cellpadding="0" cellspacing="0" border="0"
+               style="background-color:#f8f9fc; border:1px solid #e0e4f0; border-radius:6px; margin-bottom:20px;">
+          <tr>
+            <td style="padding: 16px 18px;">
+              <table cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <!-- Avatar -->
+                  <td valign="middle" style="padding-right: 16px; width: 64px;">
+                    {% if profile_image %}
+                      <img src="{{ profile_image }}" alt="{{ initials }}"
+                           width="60" height="60"
+                           style="display:block; width:60px; height:60px; border-radius:50%;
+                                  border:2px solid #2575fc; object-fit:cover;" />
+                    {% else %}
+                      <table cellpadding="0" cellspacing="0" border="0"
+                             style="width:60px; height:60px; border-radius:50%;
+                                    background:linear-gradient(135deg,#6a11cb 0%,#2575fc 100%);">
+                        <tr>
+                          <td align="center" valign="middle"
+                              style="width:60px; height:60px; border-radius:50%;
+                                     background:linear-gradient(135deg,#6a11cb 0%,#2575fc 100%);
+                                     color:#ffffff; font-size:22px; font-weight:700;
+                                     font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;
+                                     text-align:center; line-height:60px;">
+                            {{ initials }}
+                          </td>
+                        </tr>
+                      </table>
+                    {% endif %}
+                  </td>
+                  <!-- Name + role -->
+                  <td valign="middle">
+                    <p style="margin:0 0 6px 0; font-size:18px; font-weight:700; color:#1a1a2e;
+                               font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;">
+                      {{ name }}
+                    </p>
+                    <span class="role-badge">{{ role }}</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+
+        <!-- Detail grid: 2-column table -->
+        <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:20px;">
+          <tr>
+            {% if email %}
+            <td width="50%" valign="top" style="padding-right: 6px; padding-bottom: 12px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0"
+                     style="background-color:#f8f9fc; border:1px solid #e0e4f0; border-radius:6px;">
+                <tr>
+                  <td style="padding:12px 14px; font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;">
+                    <p style="margin:0 0 4px 0; font-size:11px; color:#6b7a99; font-weight:600;
+                               text-transform:uppercase; letter-spacing:0.5px;">Email</p>
+                    <p style="margin:0; font-size:14px; color:#1a1a2e; font-weight:500;
+                               word-break:break-all;">{{ email }}</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+            {% endif %}
+            {% if phone %}
+            <td width="50%" valign="top" style="padding-left: 6px; padding-bottom: 12px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0"
+                     style="background-color:#f8f9fc; border:1px solid #e0e4f0; border-radius:6px;">
+                <tr>
+                  <td style="padding:12px 14px; font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;">
+                    <p style="margin:0 0 4px 0; font-size:11px; color:#6b7a99; font-weight:600;
+                               text-transform:uppercase; letter-spacing:0.5px;">Phone</p>
+                    <p style="margin:0; font-size:14px; color:#1a1a2e; font-weight:500;">{{ phone }}</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+            {% endif %}
+          </tr>
+          {% if code or city %}
+          <tr>
+            {% if code %}
+            <td width="50%" valign="top" style="padding-right: 6px; padding-bottom: 12px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0"
+                     style="background-color:#f8f9fc; border:1px solid #e0e4f0; border-radius:6px;">
+                <tr>
+                  <td style="padding:12px 14px; font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;">
+                    <p style="margin:0 0 4px 0; font-size:11px; color:#6b7a99; font-weight:600;
+                               text-transform:uppercase; letter-spacing:0.5px;">Code</p>
+                    <p style="margin:0; font-size:14px; color:#1a1a2e; font-weight:500;">{{ code }}</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+            {% endif %}
+            {% if city %}
+            <td width="50%" valign="top" style="padding-left: 6px; padding-bottom: 12px;">
+              <table width="100%" cellpadding="0" cellspacing="0" border="0"
+                     style="background-color:#f8f9fc; border:1px solid #e0e4f0; border-radius:6px;">
+                <tr>
+                  <td style="padding:12px 14px; font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif;">
+                    <p style="margin:0 0 4px 0; font-size:11px; color:#6b7a99; font-weight:600;
+                               text-transform:uppercase; letter-spacing:0.5px;">City</p>
+                    <p style="margin:0; font-size:14px; color:#1a1a2e; font-weight:500;">{{ city }}</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+            {% endif %}
+          </tr>
+          {% endif %}
+        </table>
+
+        <!-- Shared-by notice -->
+        <div class="notice-box">
+          This profile was shared by <strong>{{ shared_by }}</strong> via the Units Platform.
+        </div>
+
+        <!-- Arabic section -->
+        <div class="arabic">
+          <p>مرحبًا،</p>
+          <p>قام <strong>{{ shared_by }}</strong> بمشاركة الملف التعريفي التالي معك عبر منصة يونيتس.</p>
+          <p><strong>الاسم:</strong> {{ name }} &nbsp;|&nbsp; <strong>الدور:</strong> {{ role }}</p>
+          {% if email %}<p><strong>البريد الإلكتروني:</strong> {{ email }}</p>{% endif %}
+          {% if phone %}<p><strong>الهاتف:</strong> {{ phone }}</p>{% endif %}
+        </div>
+
+        <p style="margin-top:20px;">Thank you,<br /><strong>The Doqfy Team</strong></p>
+        <p class="arabic">شكرًا لكم،<br /><strong>فريق دوكفي</strong></p>
+      </div>
+
+      <!-- Footer -->
+      <div class="footer">
+        <p>© 2025 Doqfy Internet Pvt. Ltd. All Rights Reserved.</p>
+        <p>Need help? <a href="mailto:admin@doqfy.in">admin@doqfy.in</a></p>
+      </div>
+
+    </div>
+  </body>
+</html>

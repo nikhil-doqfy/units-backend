@@ -27,7 +27,7 @@ urlpatterns = [
     path('user/', include(user_service_urls)),
     path('auth/', include(auth_service_urls)),
     path('payment/', include(payment_urls)),
-    path('charges/', include(charges_urls)),
+    path('', include(charges_urls)),
     path('', include(property_urls)),
     path('', include(lead_urls)),
     path('', include(lease_urls)),
@@ -35,6 +35,7 @@ urlpatterns = [
 
     re_path(r"^media/(?P<path>.*)$", views.serve_media),
     path('options', views.options, name='options'),
+    path('global_search', views.global_search, name='global_search'),
     path('invitation', views.send_invitation, name='send_invitation'),
     path('statistics', views.dashboard_overview, name='dashboard_statistics'),
     path('audit_log', views.audit_log, name='audit_log'),

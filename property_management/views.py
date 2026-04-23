@@ -120,7 +120,8 @@ def options(request):
                     return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
                 units = Unit.objects.filter(property_block_tower__property__pmc=pm_profile.company)
             else:
-                units = Unit.objects.none()
+                company = PropertyManagmentCompany.objects.filter(created_by=user.user, is_active=True).first()
+                units = Unit.objects.filter(property_block_tower__property__pmc=company) if company else Unit.objects.none()
             content["property_unit"] = [{"key": u.id, "value": u.unit_name or "Unnamed Unit"} for u in units]
         
 
@@ -169,6 +170,8 @@ def options(request):
 
         elif option_type == "ROLE":
             company = pm_profile.company if pm_profile else None
+            if not company:
+                company = PropertyManagmentCompany.objects.filter(created_by=user.user, is_active=True).first()
             if not company or not company.is_active:
                 content["role"] = []
             else:
@@ -1249,3 +1252,82 @@ def audit_log(request):
         message=constants.DATA_FETCHED_SUCCESSFULLY,
         status=status.HTTP_200_OK
     )
+
+
+@is_request_authenticated
+def global_search(request):
+    if request.method != "GET":
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    search = request.GET.get("search", "").strip()
+    if not search or len(search) < 2:
+        return prepare_response(content={"results": []}, message="OK", status=status.HTTP_200_OK)
+
+    user = request.user
+    results = []
+
+    pm_profile = PropertyManager.objects.filter(pk=user.pk).select_related("company").first()
+    company = pm_profile.company if pm_profile else None
+    if not company:
+        company = PropertyManagmentCompany.objects.filter(created_by=user.user, is_active=True).first()
+
+    if company:
+        props = Property.objects.filter(
+            pmc=company, is_active=True
+        ).filter(
+            Q(property_name__icontains=search) | Q(code__icontains=search)
+        )[:5]
+        for p in props:
+            results.append({
+                "type": "property",
+                "id": p.id,
+                "label": p.property_name,
+                "sub_label": p.code or "",
+            })
+
+        units = Unit.objects.filter(
+            property_block_tower__property__pmc=company,
+            is_active=True,
+        ).filter(
+            Q(unit_name__icontains=search) | Q(code__icontains=search)
+        ).select_related("property_block_tower__property")[:5]
+        for u in units:
+            prop_name = u.property_block_tower.property.property_name
+            results.append({
+                "type": "unit",
+                "id": u.id,
+                "label": u.unit_name,
+                "sub_label": f"{u.property_block_tower.block_name} — {prop_name}",
+            })
+
+    owners = Owner.objects.filter(
+        Q(user__first_name__icontains=search) |
+        Q(user__last_name__icontains=search) |
+        Q(user__email__icontains=search) |
+        Q(contact_number__icontains=search) |
+        Q(owner_number__icontains=search)
+    ).select_related("user")[:5]
+    for o in owners:
+        results.append({
+            "type": "owner",
+            "id": o.id,
+            "label": o.user.get_full_name() or o.user.email,
+            "sub_label": o.user.email,
+        })
+
+    tenants = Tenant.objects.filter(
+        Q(user__first_name__icontains=search) |
+        Q(user__last_name__icontains=search) |
+        Q(user__email__icontains=search) |
+        Q(contact_number__icontains=search)
+    ).select_related("user")[:5]
+    for t in tenants:
+        results.append({
+            "type": "tenant",
+            "id": t.id,
+            "label": t.user.get_full_name() or t.user.email,
+            "sub_label": t.user.email,
+        })
+
+    return prepare_response(content={"results": results}, message="OK", status=status.HTTP_200_OK)
+
