@@ -1100,6 +1100,7 @@ def contact_list_view(request):
 
     if request.method == "GET":
         search = request.GET.get("search")
+        role   = request.GET.get("role")   # All | Tenant | Team | Landlord
         logged_in_profile = request.user
 
         company = PropertyManagmentCompany.objects.filter(
@@ -1108,33 +1109,75 @@ def contact_list_view(request):
         ).first()
 
         if not company:
+            company = PropertyManagmentCompany.objects.filter(
+                created_by=logged_in_profile.user,
+                is_active=True
+            ).first()
+
+        if not company:
+            pm_check = PropertyManager.objects.filter(pk=logged_in_profile.pk).select_related("company").first()
+            company = pm_check.company if pm_check else None
+
+        if not company:
             return prepare_response(
                 message=constants.COMPANY_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        profiles = UserProfile.objects.select_related("user").filter(
-            propertymanager__company=company,
-            is_active=True
-        ).exclude(id=logged_in_profile.id)
+        from django.db.models import Value, CharField
+        from django.db.models.functions import Concat
 
-        if search:
-            profiles = profiles.filter(
-                Q(user__first_name__istartswith=search) |
-                Q(user__last_name__istartswith=search) |
-                Q(user__email__istartswith=search) |
-                Q(contact_number__icontains=search)
-            )
+        def build_qs(model_cls, role_label):
+            qs = model_cls.objects.select_related("user").filter(is_active=True)
+            if model_cls.__name__ == "PropertyManager":
+                qs = qs.filter(company=company).exclude(id=logged_in_profile.id)
+            elif model_cls.__name__ == "Tenant":
+                property_ids = company.pmc_properties.values_list("id", flat=True)
+                from lease.models import Lease
+                tenant_ids = Lease.objects.filter(
+                    unit__property_block_tower__property_id__in=property_ids,
+                    is_active=True,
+                ).values_list("tenant_id", flat=True).distinct()
+                qs = qs.filter(id__in=tenant_ids)
+            elif model_cls.__name__ == "Owner":
+                from property.models import UnitOwner
+                owner_ids = UnitOwner.objects.filter(
+                    unit__property_block_tower__property__pmc=company
+                ).values_list("owner_id", flat=True).distinct()
+                qs = qs.filter(id__in=owner_ids)
 
-        results = [
-            {
-                "id": profile.id,
-                "full_name": f"{profile.user.first_name} {profile.user.last_name}".strip(),
-                "email": profile.user.email,
-                "phone": profile.contact_number,
-            }
-            for profile in profiles
-        ]
+            if search:
+                qs = qs.filter(
+                    Q(user__first_name__icontains=search) |
+                    Q(user__last_name__icontains=search) |
+                    Q(user__email__icontains=search) |
+                    Q(contact_number__icontains=search)
+                )
+            return [
+                {
+                    "id":            p.id,
+                    "full_name":     f"{p.user.first_name} {p.user.last_name}".strip(),
+                    "email":         p.user.email,
+                    "phone":         p.contact_number,
+                    "role":          role_label,
+                    "profile_image": p.profile_image or None,
+                }
+                for p in qs
+            ]
+
+        role_map = {
+            "Team":     [(PropertyManager, "Team")],
+            "Tenant":   [(Tenant,          "Tenant")],
+            "Landlord": [(Owner,           "Landlord")],
+        }
+        targets = role_map.get(role, [
+            (PropertyManager, "Team"),
+            (Tenant,          "Tenant"),
+            (Owner,           "Landlord"),
+        ])
+        results = []
+        for model_cls, label in targets:
+            results += build_qs(model_cls, label)
 
         return prepare_response(
             content=results,
