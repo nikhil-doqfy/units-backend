@@ -24,6 +24,9 @@ urlpatterns = [
     path("api/lease/signature-otp",       views.lease_signature_otp,          name="lease_signature_otp"),
     path("api/lease/signature-otp-verify",views.lease_signature_verify_otp,   name="lease_signature_verify_otp"),
     path("api/lease/submit-signature",    views.submit_lease_signature,       name="submit_lease_signature"),
+    path("api/lease/invoice",             views.invoice_view,                  name="invoice_view"),
+    path("api/lease/invoice-pdf",         views.invoice_pdf_view,              name="invoice_pdf_view"),
+    path("api/lease/manager-approval",   views.manager_approval_view,         name="manager_approval_view"),
     # Moved from property_management
     path('save/lease', views.lease_details_view, name='lease_details_view'),
     path('lease_documents', views.lease_documents, name='lease_documents'),

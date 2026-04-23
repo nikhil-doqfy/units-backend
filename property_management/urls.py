@@ -19,6 +19,7 @@ from user_service.views import (
     export_company_owners_csv,
     export_tenant_csv,
     company_tenants,
+    approval_view,
 )
 
 
@@ -47,6 +48,7 @@ urlpatterns = [
     path('dashboard_graph_due', views.dashboard_yearly_dues, name='dashboard_yearly_due'),
 
     # User-service views at root level (original paths, before user/ prefix migration)
+    path('api/approval', approval_view, name='approval_view'),
     path('owner/pmc', owner_pmc_view, name='owner_pmc_view'),
     path('owner_compnay_csv', export_owner_pmc_csv, name='export_owner_pmc_csv'),
     path('company_owners_csv', export_company_owners_csv, name='export_company_owners_csv'),

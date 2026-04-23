@@ -6,6 +6,7 @@ from django.template.loader import render_to_string
 from user_service.models import UserProfile, Documents, OwnerDocuments, TenantDocuments, Role, Owner, Tenant, PropertyManager ,Approval
 from property.models import PropertyManagerDocuments, Unit, Property, PropertyManagmentCompany, UnitOwner
 from django.db import transaction
+from django.views.decorators.csrf import csrf_exempt
 from utilities.decorator import is_request_authenticated
 from django.core.paginator import Paginator, EmptyPage
 from django.db.models import Q, Count, Prefetch
@@ -1676,8 +1677,9 @@ def tenant_crud(request):
 
     return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
+@csrf_exempt
 @is_request_authenticated
-def approval(request):
+def approval_view(request):
     user_profile = request.user
 
     if request.method == "GET":
@@ -1717,18 +1719,45 @@ def approval(request):
 
             return prepare_response(content=content, status=status.HTTP_200_OK)
 
-        approvals = Approval.objects.select_related(
-            "tenant",
+        approval_status = request.GET.get("status")
+        page = int(request.GET.get("page", 1))
+        page_size = int(request.GET.get("page_size", 10))
+
+        approvals_qs = Approval.objects.select_related(
+            "tenant__user",
             "unit",
-            "unit__property_block_tower__property"
+            "unit__property_block_tower__property",
+            "created_by",
         ).order_by("-id")
+
+        if approval_status == "PENDING":
+            approvals_qs = approvals_qs.filter(approved=False, approved_by_id__isnull=True)
+        elif approval_status == "APPROVED":
+            approvals_qs = approvals_qs.filter(approved=True)
+        elif approval_status == "REJECTED":
+            approvals_qs = approvals_qs.filter(approved=False, approved_by_id__isnull=False)
+
+        total_records = approvals_qs.count()
+        paginator_obj = Paginator(approvals_qs, page_size)
+        try:
+            page_obj = paginator_obj.page(page)
+        except EmptyPage:
+            page_obj = paginator_obj.page(paginator_obj.num_pages)
 
         content = [
             {
                 "id": a.id,
                 "requested_date": a.created,
-                "tenant": str(a.tenant),
+                "created_by": (
+                    a.created_by.get_full_name() or a.created_by.username
+                ) if a.created_by else None,
+                "tenant": (
+                    f"{a.tenant.user.first_name} {a.tenant.user.last_name}".strip()
+                    or a.tenant.user.username
+                ) if a.tenant and a.tenant.user else None,
                 "property": a.unit.property_block_tower.property.property_name
+                if a.unit.property_block_tower and a.unit.property_block_tower.property else None,
+                "property_image": a.unit.property_block_tower.property._get_thumbnail()
                 if a.unit.property_block_tower and a.unit.property_block_tower.property else None,
                 "block": a.unit.property_block_tower.block_name if a.unit.property_block_tower else None,
                 "unit": a.unit.unit_name,
@@ -1736,12 +1765,22 @@ def approval(request):
                 "requested_tenure": a.requested_tenure,
                 "actual_rent": a.unit.rent,
                 "actual_tenure": a.unit.cycle,
-                "approved": a.approved
+                "approved": a.approved,
+                "status": "APPROVED" if a.approved else ("REJECTED" if a.approved_by_id else "PENDING"),
             }
-            for a in approvals
+            for a in page_obj
         ]
 
-        return prepare_response(content=content, status=status.HTTP_200_OK)
+        return prepare_response(
+            content=content,
+            pagination={
+                "total_records": total_records,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": paginator_obj.num_pages,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
     elif request.method == "POST":
