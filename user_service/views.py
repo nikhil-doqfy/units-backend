@@ -1579,26 +1579,46 @@ def tenant_crud(request):
         qs = qs.order_by("-created")
 
         if export == "csv":
+            units_list = list(qs)
+
+            if not units_list:
+                return prepare_response(
+                    message="No data available for export",
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
             response = _HttpResponse(content_type="text/csv")
             response["Content-Disposition"] = f'attachment; filename="tenants_{tab}.csv"'
+
             writer = _csv.writer(response)
             writer.writerow([
                 "Lease Code", "Tenant Code", "Tenant Name", "Email",
                 "Contact", "Emirates ID", "Property", "Block",
                 "Start Date", "End Date", "Rent", "Status",
             ])
-            for l in qs:
+
+            for l in units_list:
                 row = serialize_tenant_lease(l)
                 t = row.get("tenant", {})
                 p = row.get("property", {})
                 d = row.get("dates", {})
                 f = row.get("financials", {})
+
                 writer.writerow([
-                    row["code"], t.get("code"), t.get("name"),
-                    t.get("email"), t.get("contact_number"), t.get("emirates_id"),
-                    p.get("name"), p.get("block_name"),
-                    d.get("start_date"), d.get("end_date"), f.get("rent"), row["lease_status"],
+                    row.get("code"),
+                    t.get("code"),
+                    t.get("name"),
+                    t.get("email"),
+                    t.get("contact_number"),
+                    t.get("emirates_id"),
+                    p.get("name"),
+                    p.get("block_name"),
+                    d.get("start_date"),
+                    d.get("end_date"),
+                    f.get("rent"),
+                    row.get("lease_status"),
                 ])
+
             return response
 
         paginator = Paginator(qs, page_size)
