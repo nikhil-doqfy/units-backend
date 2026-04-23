@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Document Expiry Reminder</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f5f6fa;
+      margin: 0;
+      padding: 0;
+    }
+    .email-container {
+      background-color: #fff;
+      max-width: 600px;
+      margin: 30px auto;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      overflow: hidden;
+    }
+    .header {
+      text-align: center;
+      padding: 25px 20px;
+      background-color: #2575fc;
+      color: white;
+    }
+    .header img {
+      width: 150px;
+      margin-bottom: 10px;
+    }
+    .tagline {
+      font-size: 14px;
+      color: #f0f0f0;
+      margin: 0;
+    }
+    .content {
+      padding: 25px;
+      color: #333;
+    }
+    h2 {
+      margin-top: 0;
+      color: #222;
+    }
+    p {
+      line-height: 1.6;
+    }
+    .info-box {
+      background-color: #f8f9fc;
+      border: 1px solid #e0e4f0;
+      border-radius: 6px;
+      padding: 15px;
+      margin: 15px 0;
+    }
+    .info-box p {
+      margin: 6px 0;
+      font-size: 14px;
+    }
+    .box-title {
+      font-size: 15px;
+      font-weight: 600;
+      color: #2575fc;
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #e0e4f0;
+    }
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #fff;
+    }
+    .badge-ACTIVE { background-color: #27ae60; }
+    .badge-EXPIRED { background-color: #e74c3c; }
+    .badge-EXPIRING_SOON { background-color: #f39c12; }
+
+    .divider {
+      border: none;
+      border-top: 1px solid #e0e4f0;
+      margin: 20px 0;
+    }
+    .footer {
+      background-color: #f1f1f1;
+      text-align: center;
+      padding: 15px;
+      font-size: 13px;
+      color: #666;
+    }
+    .arabic {
+      direction: rtl;
+      text-align: right;
+      margin-top: 20px;
+      padding-top: 15px;
+      border-top: 1px solid #e0e4f0;
+      color: #444;
+    }
+    .arabic p {
+      margin: 6px 0;
+      font-size: 14px;
+    }
+  </style>
+</head>
+
+<body>
+<div class="email-container">
+
+  <!-- HEADER -->
+  <div class="header">
+    <img src="https://xscaleglobal.com/wp-content/uploads/2024/06/Untitled-1-1.png" alt="Doqfy" />
+    <div class="tagline">Document Management System</div>
+  </div>
+
+  <!-- CONTENT -->
+  <div class="content">
+
+    <h2>⏰ Document Expiry Reminder | تذكير انتهاء المستند</h2>
+
+    <p>Dear <strong>{{ user_name }}</strong>,</p>
+    <p>{{ message }}</p>
+
+    <hr class="divider" />
+
+    <!-- Document Details -->
+    <div class="info-box">
+      <div class="box-title">📋 Document Details</div>
+
+      <p><strong>Code:</strong> {{ code }}</p>
+      <p><strong>Agreement Name:</strong> {{ agreement_name }}</p>
+      <p><strong>Type:</strong> {{ agreement_type }}</p>
+
+      {% if issued_by %}
+      <p><strong>Issued By:</strong> {{ issued_by }}</p>
+      {% endif %}
+
+      <p><strong>Expiry Date:</strong> {{ end_date|date:"M d, Y" }}</p>
+      {% if days_from_expiry %}
+      <p><strong style="color: #f39c12;">Days Remaining:</strong> <strong style="color: #f39c12;">{{ days_from_expiry|add:1 }} day(s)</strong></p>
+      {% endif %}
+    </div>
+
+    <!-- Expiry Info -->
+    <div class="info-box">
+      <div class="box-title">⚠️ Expiry Information</div>
+      <p>Your document is expiring soon. Please renew it at your earliest convenience.</p>
+    </div>
+
+    <div class="info-box">
+      <div class="box-title">🔄 How to Renew</div>
+      <p>1. Log in to your Doqfy account</p>
+      <p>2. Go to Agreements/Documents section</p>
+      <p>3. Click "Renew" button for this agreement</p>
+      <p>4. Set the new expiry date</p>
+      <p>5. Save and confirm</p>
+    </div>
+
+    <div class="info-box">
+      <div class="box-title">⚡ Action Required</div>
+      <p>Please renew your document before the expiry date to avoid any interruptions in service.</p>
+    </div>
+
+    <hr class="divider" />
+
+    <!-- Arabic -->
+    <div class="arabic">
+      <p>عزيزي <strong>{{ user_name }}</strong>،</p>
+      <p>{{ message }}</p>
+      <p><strong>الكود:</strong> {{ code }}</p>
+      <p><strong>اسم الاتفاقية:</strong> {{ agreement_name }}</p>
+      <p><strong>النوع:</strong> {{ agreement_type }}</p>
+      <p><strong>تاريخ الانتهاء:</strong> {{ end_date|date:"M d, Y" }}</p>
+      {% if days_from_expiry %}
+      <p><strong>الأيام المتبقية:</strong> {{ days_from_expiry|add:1 }} يوم</p>
+      {% endif %}
+    </div>
+
+    <p style="margin-top: 20px;">
+      Thank you,<br/>
+      <strong>The Doqfy Team</strong>
+    </p>
+
+  </div>
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <p>© 2025 Doqfy Internet Pvt. Ltd.</p>
+    <p>admin@doqfy.in</p>
+  </div>
+
+</div>
+</body>
+</html>

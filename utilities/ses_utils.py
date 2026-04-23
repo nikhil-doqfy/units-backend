@@ -13,13 +13,15 @@ client = boto3.client(
     aws_secret_access_key=config.AWS_SECRET_KEY
 )
 
-def send(recipient, subject, body_text, body_html):
+def send(recipient, subject, body_text, body_html, cc=None, bcc=None):
     try:
         
         response = client.send_email(
             FromEmailAddress=config.EMAIL_SENDER,
             Destination={
-                'ToAddresses': [recipient]
+                'ToAddresses': [recipient],
+                'CcAddresses': cc or [],
+                'BccAddresses': bcc or []
             },
             Content={
                 'Simple': {
