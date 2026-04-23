@@ -137,7 +137,10 @@ def serialize_lease(lease):
         },
 
         # ── Other Charges ─────────────────────────────────────────
-        "lease_charges": [lc._serialize() for lc in lease.lease_charges.select_related("charge").all()],
+        "lease_charges": [
+            lc.serialize_charge()
+            for lc in lease.lease_cheques.filter(cheque_type="OTHER_CHARGE").select_related("charge").all()
+        ],
     }
 
 
@@ -185,10 +188,15 @@ def serialize_lease_cheque(cheque):
 
 
 def group_lease_cheques(cheques):
-    """Split a queryset of LeaseTransaction into rent and additional groups."""
-    rent       = [serialize_lease_cheque(c) for c in cheques if c.cheque_type == constants.RENT_CHEQUE]
-    additional = [serialize_lease_cheque(c) for c in cheques if c.cheque_type == constants.ADDITIONAL_CHEQUE]
-    return {"rent_cheques": rent, "additional_cheques": additional}
+    """Return all lease cheques grouped by type plus a flat all_cheques list."""
+    all_serialized = [serialize_lease_cheque(c) for c in cheques]
+    rent       = [c for c in all_serialized if c["cheque_type"] == constants.RENT_CHEQUE]
+    additional = [c for c in all_serialized if c["cheque_type"] == constants.ADDITIONAL_CHEQUE]
+    return {
+        "rent_cheques":       rent,
+        "additional_cheques": additional,
+        "all_cheques":        all_serialized,
+    }
 
 
 def serialize_cheque_list_row(cheque):
@@ -290,5 +298,8 @@ def serialize_tenant_lease(lease):
         },
 
         # ── Other Charges ─────────────────────────────────────────
-        "lease_charges": [lc._serialize() for lc in lease.lease_charges.select_related("charge").all()],
+        "lease_charges": [
+            lc.serialize_charge()
+            for lc in lease.lease_cheques.filter(cheque_type="OTHER_CHARGE").select_related("charge").all()
+        ],
     }

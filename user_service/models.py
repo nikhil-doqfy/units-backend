@@ -36,6 +36,16 @@ class UserProfile(Base):
     token = models.TextField(null=True, blank=True)
     password_change_timestamp = models.DateTimeField(null=True, blank=True)
 
+    def get_user_basic_info(self):
+        return {
+            "id":             self.id,
+            "name":           self.user.get_full_name() or self.user.username,
+            "email":          self.email or self.user.email,
+            "contact_number": self.contact_number,
+            "code":           self.code,
+            "profile_image":  self.profile_image or None,
+        }
+
     def __str__(self):
         return f"{self.id}-{self.user.email}"
 

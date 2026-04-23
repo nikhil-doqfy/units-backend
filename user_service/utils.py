@@ -4,6 +4,7 @@ from utilities.helper_functions import upload_file_to_s3_base64, get_extension_f
 from user_service.models import DocumentType
 from user_service.models import Approval
 from django.utils import timezone
+from utilities import constants
 
 def request_otp_sent():
     otp = random.randint(100000, 999999)
@@ -31,36 +32,47 @@ def upload_document(base64_data, file_prefix, document_type_id, document_model, 
     )
 
 def process_rent_approval(approval_id, user_profile, rent=None, tenure=None, action="approve"):
+    from lease.models import Lease
 
-    approval = Approval.objects.select_related("unit").filter(id=approval_id).first()
+    approval = Approval.objects.select_related("unit", "tenant").filter(id=approval_id).first()
 
     if not approval:
         return None, "Approval request not found"
 
-    if action == "approve":
+    lease = Lease.objects.filter(
+        tenant=approval.tenant,
+        unit=approval.unit,
+        lease_stage=constants.MANAGER_APPROVAL_REQUIRED,
+    ).first()
 
+    if action == "approve":
         approval.approved = True
         approval.approved_by = user_profile
         approval.approved_at = timezone.now()
         approval.save()
-        unit = approval.unit
 
+        unit = approval.unit
         if rent:
             unit.rent = rent
-
         if tenure:
             unit.cycle = tenure
-
         unit.save()
+
+        if lease:
+            lease.lease_stage = constants.MANAGER_APPROVED
+            lease.save(update_fields=["lease_stage"])
 
         return approval, "Rent request approved successfully"
 
     elif action == "reject":
-
         approval.approved = False
         approval.approved_by = user_profile
         approval.approved_at = timezone.now()
         approval.save()
+
+        if lease:
+            lease.lease_stage = constants.COMMERCIAL_DETAILS
+            lease.save(update_fields=["lease_stage"])
 
         return approval, "Rent request rejected"
 

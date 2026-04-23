@@ -6,6 +6,7 @@ from django.template.loader import render_to_string
 from user_service.models import UserProfile, Documents, OwnerDocuments, TenantDocuments, Role, Owner, Tenant, PropertyManager ,Approval, DocumentType, Documentation
 from property.models import PropertyManagerDocuments, Unit, Property, PropertyManagmentCompany, UnitOwner
 from django.db import transaction
+from django.views.decorators.csrf import csrf_exempt
 from utilities.decorator import is_request_authenticated
 from django.core.paginator import Paginator, EmptyPage
 from django.db.models import Q, Count, Prefetch
@@ -1104,6 +1105,7 @@ def contact_list_view(request):
 
     if request.method == "GET":
         search = request.GET.get("search")
+        role   = request.GET.get("role")   # All | Tenant | Team | Landlord
         logged_in_profile = request.user
 
         company = PropertyManagmentCompany.objects.filter(
@@ -1112,33 +1114,75 @@ def contact_list_view(request):
         ).first()
 
         if not company:
+            company = PropertyManagmentCompany.objects.filter(
+                created_by=logged_in_profile.user,
+                is_active=True
+            ).first()
+
+        if not company:
+            pm_check = PropertyManager.objects.filter(pk=logged_in_profile.pk).select_related("company").first()
+            company = pm_check.company if pm_check else None
+
+        if not company:
             return prepare_response(
                 message=constants.COMPANY_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        profiles = UserProfile.objects.select_related("user").filter(
-            propertymanager__company=company,
-            is_active=True
-        ).exclude(id=logged_in_profile.id)
+        from django.db.models import Value, CharField
+        from django.db.models.functions import Concat
 
-        if search:
-            profiles = profiles.filter(
-                Q(user__first_name__istartswith=search) |
-                Q(user__last_name__istartswith=search) |
-                Q(user__email__istartswith=search) |
-                Q(contact_number__icontains=search)
-            )
+        def build_qs(model_cls, role_label):
+            qs = model_cls.objects.select_related("user").filter(is_active=True)
+            if model_cls.__name__ == "PropertyManager":
+                qs = qs.filter(company=company).exclude(id=logged_in_profile.id)
+            elif model_cls.__name__ == "Tenant":
+                property_ids = company.pmc_properties.values_list("id", flat=True)
+                from lease.models import Lease
+                tenant_ids = Lease.objects.filter(
+                    unit__property_block_tower__property_id__in=property_ids,
+                    is_active=True,
+                ).values_list("tenant_id", flat=True).distinct()
+                qs = qs.filter(id__in=tenant_ids)
+            elif model_cls.__name__ == "Owner":
+                from property.models import UnitOwner
+                owner_ids = UnitOwner.objects.filter(
+                    unit__property_block_tower__property__pmc=company
+                ).values_list("owner_id", flat=True).distinct()
+                qs = qs.filter(id__in=owner_ids)
 
-        results = [
-            {
-                "id": profile.id,
-                "full_name": f"{profile.user.first_name} {profile.user.last_name}".strip(),
-                "email": profile.user.email,
-                "phone": profile.contact_number,
-            }
-            for profile in profiles
-        ]
+            if search:
+                qs = qs.filter(
+                    Q(user__first_name__icontains=search) |
+                    Q(user__last_name__icontains=search) |
+                    Q(user__email__icontains=search) |
+                    Q(contact_number__icontains=search)
+                )
+            return [
+                {
+                    "id":            p.id,
+                    "full_name":     f"{p.user.first_name} {p.user.last_name}".strip(),
+                    "email":         p.user.email,
+                    "phone":         p.contact_number,
+                    "role":          role_label,
+                    "profile_image": p.profile_image or None,
+                }
+                for p in qs
+            ]
+
+        role_map = {
+            "Team":     [(PropertyManager, "Team")],
+            "Tenant":   [(Tenant,          "Tenant")],
+            "Landlord": [(Owner,           "Landlord")],
+        }
+        targets = role_map.get(role, [
+            (PropertyManager, "Team"),
+            (Tenant,          "Tenant"),
+            (Owner,           "Landlord"),
+        ])
+        results = []
+        for model_cls, label in targets:
+            results += build_qs(model_cls, label)
 
         return prepare_response(
             content=results,
@@ -1583,26 +1627,46 @@ def tenant_crud(request):
         qs = qs.order_by("-created")
 
         if export == "csv":
+            units_list = list(qs)
+
+            if not units_list:
+                return prepare_response(
+                    message="No data available for export",
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
             response = _HttpResponse(content_type="text/csv")
             response["Content-Disposition"] = f'attachment; filename="tenants_{tab}.csv"'
+
             writer = _csv.writer(response)
             writer.writerow([
                 "Lease Code", "Tenant Code", "Tenant Name", "Email",
                 "Contact", "Emirates ID", "Property", "Block",
                 "Start Date", "End Date", "Rent", "Status",
             ])
-            for l in qs:
+
+            for l in units_list:
                 row = serialize_tenant_lease(l)
                 t = row.get("tenant", {})
                 p = row.get("property", {})
                 d = row.get("dates", {})
                 f = row.get("financials", {})
+
                 writer.writerow([
-                    row["code"], t.get("code"), t.get("name"),
-                    t.get("email"), t.get("contact_number"), t.get("emirates_id"),
-                    p.get("name"), p.get("block_name"),
-                    d.get("start_date"), d.get("end_date"), f.get("rent"), row["lease_status"],
+                    row.get("code"),
+                    t.get("code"),
+                    t.get("name"),
+                    t.get("email"),
+                    t.get("contact_number"),
+                    t.get("emirates_id"),
+                    p.get("name"),
+                    p.get("block_name"),
+                    d.get("start_date"),
+                    d.get("end_date"),
+                    f.get("rent"),
+                    row.get("lease_status"),
                 ])
+
             return response
 
         paginator = Paginator(qs, page_size)
@@ -1681,8 +1745,9 @@ def tenant_crud(request):
 
     return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
+@csrf_exempt
 @is_request_authenticated
-def approval(request):
+def approval_view(request):
     user_profile = request.user
 
     if request.method == "GET":
@@ -1722,18 +1787,45 @@ def approval(request):
 
             return prepare_response(content=content, status=status.HTTP_200_OK)
 
-        approvals = Approval.objects.select_related(
-            "tenant",
+        approval_status = request.GET.get("status")
+        page = int(request.GET.get("page", 1))
+        page_size = int(request.GET.get("page_size", 10))
+
+        approvals_qs = Approval.objects.select_related(
+            "tenant__user",
             "unit",
-            "unit__property_block_tower__property"
+            "unit__property_block_tower__property",
+            "created_by",
         ).order_by("-id")
+
+        if approval_status == "PENDING":
+            approvals_qs = approvals_qs.filter(approved=False, approved_by_id__isnull=True)
+        elif approval_status == "APPROVED":
+            approvals_qs = approvals_qs.filter(approved=True)
+        elif approval_status == "REJECTED":
+            approvals_qs = approvals_qs.filter(approved=False, approved_by_id__isnull=False)
+
+        total_records = approvals_qs.count()
+        paginator_obj = Paginator(approvals_qs, page_size)
+        try:
+            page_obj = paginator_obj.page(page)
+        except EmptyPage:
+            page_obj = paginator_obj.page(paginator_obj.num_pages)
 
         content = [
             {
                 "id": a.id,
                 "requested_date": a.created,
-                "tenant": str(a.tenant),
+                "created_by": (
+                    a.created_by.get_full_name() or a.created_by.username
+                ) if a.created_by else None,
+                "tenant": (
+                    f"{a.tenant.user.first_name} {a.tenant.user.last_name}".strip()
+                    or a.tenant.user.username
+                ) if a.tenant and a.tenant.user else None,
                 "property": a.unit.property_block_tower.property.property_name
+                if a.unit.property_block_tower and a.unit.property_block_tower.property else None,
+                "property_image": a.unit.property_block_tower.property._get_thumbnail()
                 if a.unit.property_block_tower and a.unit.property_block_tower.property else None,
                 "block": a.unit.property_block_tower.block_name if a.unit.property_block_tower else None,
                 "unit": a.unit.unit_name,
@@ -1741,12 +1833,22 @@ def approval(request):
                 "requested_tenure": a.requested_tenure,
                 "actual_rent": a.unit.rent,
                 "actual_tenure": a.unit.cycle,
-                "approved": a.approved
+                "approved": a.approved,
+                "status": "APPROVED" if a.approved else ("REJECTED" if a.approved_by_id else "PENDING"),
             }
-            for a in approvals
+            for a in page_obj
         ]
 
-        return prepare_response(content=content, status=status.HTTP_200_OK)
+        return prepare_response(
+            content=content,
+            pagination={
+                "total_records": total_records,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": paginator_obj.num_pages,
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
     elif request.method == "POST":
