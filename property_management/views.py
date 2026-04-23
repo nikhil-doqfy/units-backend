@@ -23,7 +23,7 @@ from utilities.helper_functions import (
     prepare_response,
     safe_epoch_to_datetime,
     datetime_to_epoch_millis,
-    export_to_csv
+    export_to_csv,
 )
 from utilities import status, constants
 from property_management import settings
@@ -1228,93 +1228,90 @@ def dashboard_yearly_dues(request):
 
 @is_request_authenticated
 def audit_log(request):
+ 
     if request.method != "GET":
         return prepare_response(
             message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
-    try:
-        search = request.GET.get("search", "").strip()
-        from_date = request.GET.get("from_date")
-        to_date = request.GET.get("to_date")
-        user_id = request.GET.get("user_id")
-        section = request.GET.get("section")
-        download = request.GET.get("download")
-        if from_date and not to_date:
-            to_date = from_date
-        if to_date and not from_date:
-            from_date = to_date
-
-        logs = AuditLog.objects.select_related(
-            "userprofile__user"
-        ).order_by("-created")
-
-        if search:
-            logs = logs.filter(
-                Q(userprofile__user__first_name__icontains=search) |
-                Q(userprofile__user__last_name__icontains=search) |
-                Q(userprofile__user__email__icontains=search) |
-                Q(message__icontains=search) |
-                Q(action_type__icontains=search)
-            )
-
-        if from_date:
-            logs = logs.filter(created__date__gte=from_date)
-        if to_date:
-            logs = logs.filter(created__date__lte=to_date)
-        if user_id:
-            logs = logs.filter(userprofile__id=user_id)
-        if section:
-            logs = logs.filter(section=section.lower())
-        if download == "csv":
-
-            field_names = [
-                "User Name",
-                "Email",
-                "Section",
-                "Action Type",
-                "Message", 
-                "Created At"
-            ]
-
-            export_data = []
-
-            for log in logs:
-                export_data.append({
-                    "User Name": log.userprofile.user.get_full_name() if log.userprofile else "",
-                    "Email": log.userprofile.user.email if log.userprofile else "",
-                    "Section": log.section if hasattr(log, "section") else "",
-                    "Action Type": log.action_type,
-                    "Message": log.message,
-                    "Created At": log.created.strftime("%Y-%m-%d %H:%M:%S") if log.created else ""
-                })
-            return export_to_csv(
-                filename="audit_logs",
-                field_names=field_names,
-                data_list=export_data
-            )
-        data = []
-
-        for log in logs:
-            data.append({
-                "id": log.id,
-                "user": get_user_basic_info(log.userprofile),
-                "section": log.section if hasattr(log, "section") else "",
-                "message": log.message,
-                "action_type": log.action_type,
-                "created": datetime_to_epoch_millis(log.created)
-            })
  
-        return prepare_response(
-            content=data,
-            message=constants.DATA_FETCHED_SUCCESSFULLY,
-            status=status.HTTP_200_OK
+    from django.utils import timezone
+    from datetime import timedelta
+    from django.core.paginator import Paginator, EmptyPage
+ 
+    user_id    = request.GET.get("user_id")
+    search     = request.GET.get("search", "").strip()
+    time_range = request.GET.get("time_range")   # today | 7days | 30days
+    page       = int(request.GET.get("page", 1))
+    page_size  = int(request.GET.get("page_size", 20))
+    export     = request.GET.get("export") == "true"
+ 
+    logs_qs = AuditLog.objects.select_related("userprofile__user").order_by("-created")
+ 
+    if user_id:
+        logs_qs = logs_qs.filter(userprofile_id=user_id)
+ 
+    if search:
+        from django.db.models import Q
+        logs_qs = logs_qs.filter(
+            Q(message__icontains=search) |
+            Q(action_type__icontains=search) |
+            Q(userprofile__user__first_name__icontains=search) |
+            Q(userprofile__user__last_name__icontains=search)
         )
-    except Exception as e:
-        return prepare_response(
-            message=f"Error fetching audit logs: {str(e)}",
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
+ 
+    if time_range:
+        now = timezone.now()
+        if time_range == "today":
+            logs_qs = logs_qs.filter(created__date=now.date())
+        elif time_range == "7days":
+            logs_qs = logs_qs.filter(created__gte=now - timedelta(days=7))
+        elif time_range == "30days":
+            logs_qs = logs_qs.filter(created__gte=now - timedelta(days=30))
+ 
+    if export:
+        field_names = ["ID", "User", "Email", "Message", "Action Type", "Created"]
+        data_list = []
+        for log in logs_qs:
+            user_info = log.userprofile.get_user_basic_info() if log.userprofile else {}
+            data_list.append({
+                "ID":          log.id,
+                "User":        user_info.get("name", ""),
+                "Email":       user_info.get("email", ""),
+                "Message":     log.message,
+                "Action Type": log.action_type,
+                "Created":     log.created.strftime("%Y-%m-%d %H:%M:%S") if log.created else "",
+            })
+        return export_to_csv(filename="audit_logs", field_names=field_names, data_list=data_list)
+ 
+    total_records = logs_qs.count()
+    paginator = Paginator(logs_qs, page_size)
+    try:
+        page_obj = paginator.page(page)
+    except EmptyPage:
+        page_obj = paginator.page(paginator.num_pages)
+ 
+    data = []
+    for log in page_obj:
+        data.append({
+            "id":          log.id,
+            "user":        log.userprofile.get_user_basic_info() if log.userprofile else None,
+            "message":     log.message,
+            "action_type": log.action_type,
+            "created":     datetime_to_epoch_millis(log.created),
+        })
+ 
+    return prepare_response(
+        content=data,
+        pagination={
+            "total_records": total_records,
+            "page":          page,
+            "page_size":     page_size,
+            "total_pages":   paginator.num_pages,
+        },
+        message=constants.DATA_FETCHED_SUCCESSFULLY,
+        status=status.HTTP_200_OK
+    )
 
 
 @is_request_authenticated

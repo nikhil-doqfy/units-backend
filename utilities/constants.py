@@ -401,10 +401,12 @@ TENANT_APPROVED     = "TENANT_APPROVED"
 # Cheque type choices
 RENT_CHEQUE       = "RENT_CHEQUE"
 ADDITIONAL_CHEQUE = "ADDITIONAL_CHEQUE"
+OTHER_CHARGE      = "OTHER_CHARGE"
 
 CHEQUE_TYPE_CHOICES = (
     (RENT_CHEQUE,       "Rent Cheque"),
     (ADDITIONAL_CHEQUE, "Additional Cheque"),
+    (OTHER_CHARGE,      "Other Charge"),
 )
 
 # Cheque status choices
@@ -443,13 +445,17 @@ EJARI               = "EJARI"
 EJARI_SIGNING       = "EJARI_SIGNING"
 ACTIVATED           = "ACTIVATED"
 
-BASIC_DETAILS       = "BASIC_DETAILS"
-COMMERCIAL_DETAILS  = "COMMERCIAL_DETAILS"
+BASIC_DETAILS               = "BASIC_DETAILS"
+COMMERCIAL_DETAILS          = "COMMERCIAL_DETAILS"
+MANAGER_APPROVAL_REQUIRED   = "MANAGER_APPROVAL_REQUIRED"
+MANAGER_APPROVED            = "MANAGER_APPROVED"
 
 LEASE_STAGE_CHOICES = (
-    (BASIC_DETAILS,     "Basic Details"),
-    (COMMERCIAL_DETAILS,"Commercial Details"),
-    (INVITE,            "Invite"),
+    (BASIC_DETAILS,             "Basic Details"),
+    (COMMERCIAL_DETAILS,        "Commercial Details"),
+    (MANAGER_APPROVAL_REQUIRED, "Manager Approval Required"),
+    (MANAGER_APPROVED,          "Manager Approved"),
+    (INVITE,                    "Invite"),
     (WAITING_FOR_SIGNUP,"Waiting for Signup"),
     (ONBOARDING,        "Onboarding"),
     (NEGOTIATION_SENT,  "Negotiation Sent"),
@@ -978,3 +984,4 @@ COMPLAINT_IMAGES_UPLOADED_SUCCESSFULLY = "Images uploaded successfully."
 COMPLAINT_IMAGES_REQUIRED = "Images are required."
 COMPLAINT_NOT_ASSIGNED_TO_YOU = "This complaint is not assigned to you."
  
+CANNOT_CONVERT_LEAD = "Cannot convert a 'Not Interested' lead to tenancy"

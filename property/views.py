@@ -162,7 +162,7 @@ def property(request):
             pagination={"total_records": total, "page": page, "page_size": page_size},
             status=status.HTTP_200_OK
         )
-
+    
     elif request.method == "POST":
         data = json.loads(request.body)
 
@@ -185,8 +185,6 @@ def property(request):
             created_by=user_profile.user,
             property_name=property_name,
             property_type=data.get("property_type") or constants.APARTMENT,
-            no_of_blocks=data.get("no_of_blocks") or 1,
-            no_of_units=data.get("no_of_units") or 1,
             land_area=data.get("land_area"),
             land_area_unit=data.get("land_area_unit") or constants.SQ_FT,
             land_dm_no=data.get("land_dm_no"),
@@ -591,7 +589,8 @@ def unit(request):
         if floor_no:
             units = units.filter(floor_no=floor_no)
         if land_area_unit:
-            units = units.filter(land_area_unit=land_area_unit)
+            units = units.filter(
+                property_block_tower__property__land_area_unit=land_area_unit.upper())
 
         if export == "csv":
             response = HttpResponse(content_type="text/csv")

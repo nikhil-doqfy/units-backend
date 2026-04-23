@@ -190,6 +190,16 @@ def lead_view(request):
         if not lead:
             return prepare_response(message="Lead not found", status=status.HTTP_404_NOT_FOUND)
 
+        if "status" in data and data["status"] is not None:
+            current_status = str(lead.status).upper()
+            new_status = str(data["status"]).upper()
+
+            if current_status == "NOT_INTERESTED" and new_status == "LEASE_TENANCY":
+                return prepare_response(
+                    message=constants.CANNOT_CONVERT_LEAD,
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
         STATUS_LABELS = {
             "INTERESTED": "Interested",
             "NOT_INTERESTED": "Not Interested",
@@ -200,11 +210,16 @@ def lead_view(request):
             if field in data and data[field] is not None:
                 old_val = getattr(lead, field)
                 new_val = data[field]
+
                 if str(old_val) != str(new_val):
                     if field == "status":
-                        changes.append(f"changed status from {STATUS_LABELS.get(old_val, old_val)} to {STATUS_LABELS.get(new_val, new_val)}")
+                        changes.append(
+                            f"changed status from {STATUS_LABELS.get(str(old_val).upper(), old_val)} "
+                            f"to {STATUS_LABELS.get(str(new_val).upper(), new_val)}"
+                        )
                     else:
                         changes.append(f"updated {field.replace('_', ' ')}")
+
                 setattr(lead, field, new_val)
 
         if "unit_id" in data:
@@ -217,6 +232,7 @@ def lead_view(request):
 
         comment = (data.get("comment") or "").strip()
         title = " and ".join(changes) if changes else "updated this lead"
+
         ActivityLog.objects.create(
             lead=lead,
             activity_type=constants.STATUS_CHANGE if any("status" in c for c in changes) else constants.NOTE,
@@ -225,7 +241,11 @@ def lead_view(request):
             created_by=user_profile.user,
         )
 
-        return prepare_response(message="Lead updated successfully", content={"id": lead.id}, status=status.HTTP_200_OK)
+        return prepare_response(
+            message="Lead updated successfully",
+            content={"id": lead.id},
+            status=status.HTTP_200_OK
+        )
 
     elif request.method == "DELETE":
         lead_id = request.GET.get("lead_id")

@@ -79,7 +79,7 @@ class Lease(Base):
         default=constants.LEASE_STATUS_CHOICES[0][0]
     )
     lease_stage = models.CharField(
-        max_length=20,
+        max_length=30,
         choices=constants.LEASE_STAGE_CHOICES,
         default=constants.BASIC_DETAILS,
     )
@@ -126,12 +126,12 @@ class LeaseTransaction(Documents):
     lease = models.ForeignKey(Lease, on_delete=models.CASCADE, related_name="lease_cheques")
     start_date = models.DateTimeField(null=True, blank=True)
     end_date = models.DateTimeField(null=True, blank=True)
-    cheque_date = models.DateTimeField()
-    origin_bank = models.ForeignKey("payment.Bank", on_delete=models.CASCADE, related_name="origin_cheques")
-    selltlement_bank = models.ForeignKey("payment.Bank", on_delete=models.CASCADE, related_name="settlement_cheques")
-    origin_account_number = models.IntegerField()
-    settlement_account_number = models.IntegerField()
-    amount = models.IntegerField()
+    cheque_date = models.DateTimeField(null=True, blank=True)
+    origin_bank = models.ForeignKey("payment.Bank", on_delete=models.SET_NULL, null=True, blank=True, related_name="origin_cheques")
+    selltlement_bank = models.ForeignKey("payment.Bank", on_delete=models.SET_NULL, null=True, blank=True, related_name="settlement_cheques")
+    origin_account_number = models.IntegerField(null=True, blank=True)
+    settlement_account_number = models.IntegerField(null=True, blank=True)
+    amount = models.FloatField(null=True, blank=True)
     cheque_type = models.CharField(
         max_length=20,
         choices=constants.CHEQUE_TYPE_CHOICES,
@@ -148,36 +148,32 @@ class LeaseTransaction(Documents):
         choices=constants.CHEQUE_STATUS_CHOICES,
         default=constants.CHEQUE_STATUS_BALANCE,
     )
+    # ── Other-charge fields (populated when cheque_type = OTHER_CHARGE) ──
+    charge = models.ForeignKey(Charge, on_delete=models.SET_NULL, null=True, blank=True, related_name="lease_transactions")
+    vat   = models.FloatField(default=0)
+    total = models.FloatField(default=0)
 
     def __str__(self):
         return "{}-{}".format(self.code or self.id, self.lease_id)
 
     def save(self, *args, **kwargs):
+        if self.cheque_type == constants.OTHER_CHARGE and self.charge_id and self.amount is not None:
+            tax = self.charge.tax_code or 0
+            self.vat   = round(float(self.amount) * tax / 100, 2)
+            self.total = round(float(self.amount) + self.vat, 2)
         super().save(*args, **kwargs)
         if not self.code:
             self.code = f"LT{self.pk:05d}"
             LeaseTransaction.objects.filter(pk=self.pk).update(code=self.code)
 
-
-class LeaseCharge(Base):
-    lease = models.ForeignKey(Lease, on_delete=models.CASCADE, related_name="lease_charges")
-    charge = models.ForeignKey(Charge, on_delete=models.CASCADE, related_name="lease_charges")
-    amount = models.FloatField()
-    vat = models.FloatField(default=0)
-    total = models.FloatField(default=0)
-
-    def save(self, *args, **kwargs):
-        self.vat = round(self.amount * (self.charge.tax_code or 0) / 100, 2)
-        self.total = round(self.amount + self.vat, 2)
-        super().save(*args, **kwargs)
-
-    def _serialize(self):
+    def serialize_charge(self):
+        """Serialize as an other-charge row (mirrors old LeaseCharge._serialize)."""
         return {
-            "id": self.id,
-            "charge_id": self.charge_id,
-            "description": self.charge.description,
-            "amount": self.amount,
-            "tax_code": self.charge.tax_code,
-            "vat": self.vat,
-            "total": self.total,
+            "id":          self.id,
+            "charge_id":   self.charge_id,
+            "description": self.charge.description if self.charge else None,
+            "amount":      self.amount,
+            "tax_code":    self.charge.tax_code if self.charge else None,
+            "vat":         self.vat,
+            "total":       self.total,
         }

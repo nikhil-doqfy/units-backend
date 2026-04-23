@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Lease, Template, TemplateField, TemplateValue, LeaseTransaction
+from .models import Lease, LeaseTransaction, Template, TemplateField, TemplateValue
 
 
 @admin.register(Lease)
@@ -19,15 +19,15 @@ class LeaseAdmin(admin.ModelAdmin):
 @admin.register(LeaseTransaction)
 class LeaseTransactionAdmin(admin.ModelAdmin):
     list_display = (
-        'code', 'lease', 'cheque_number', 'cheque_type', 'payment_type',
-        'amount', 'status', 'cheque_date', 'is_active', 'created',
+        'code', 'lease', 'cheque_type', 'cheque_number', 'payment_type',
+        'charge', 'amount', 'vat', 'total', 'status', 'cheque_date', 'is_active', 'created',
     )
     list_filter = ('status', 'cheque_type', 'payment_type', 'is_active')
-    search_fields = ('code', 'cheque_number', 'lease__code')
+    search_fields = ('code', 'cheque_number', 'lease__code', 'charge__description')
     readonly_fields = ('code', 'created', 'modified')
-    raw_id_fields = ('lease', 'origin_bank', 'selltlement_bank', 'created_by')
-    date_hierarchy = 'cheque_date'
-    ordering = ('-cheque_date',)
+    raw_id_fields = ('lease', 'origin_bank', 'selltlement_bank', 'charge', 'created_by')
+    date_hierarchy = 'created'
+    ordering = ('-created',)
 
 
 @admin.register(Template)
