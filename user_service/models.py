@@ -5,6 +5,7 @@ from django.utils import timezone
 from django.contrib.auth.models import User
 from datetime import timedelta
 from utilities.config import OTP_VALID_TIME
+from django.db.models import F
 
 
 class UserProfile(Base):
@@ -212,3 +213,206 @@ class Approval(Base):
     def __str__(self):
         return f"{self.unit} - {self.tenant}"
 
+
+class Documentation(Documents):
+
+    code = models.CharField(max_length=50, blank=True)
+    user = models.ForeignKey('user_service.PropertyManager',on_delete=models.CASCADE,related_name='agreements')
+    agreement_name = models.CharField(max_length=255)
+    agreement_type = models.CharField(max_length=50,)
+    status = models.CharField(max_length=20,choices=constants.AGREEMENT_STATUS_CHOICES,default='ACTIVE')
+    issued_by = models.CharField(max_length=255,null=True, blank=True,help_text="Name of person or authority who issued this document")
+    start_date = models.DateTimeField(null=True, blank=True)
+    end_date = models.DateTimeField(null=True, blank=True)
+    does_not_expire = models.BooleanField(default=False,help_text="If True, this document never expires")
+    is_expired = models.BooleanField(default=False)
+    expiry_reminder_sent_at = models.DateTimeField(null=True, blank=True)
+    last_email_sent_date = models.DateField(null=True, blank=True)
+    expiry_reminder_sent_count = models.IntegerField(default=0)
+    expiry_expired_sent_count = models.IntegerField(default=0)
+    is_renewed = models.BooleanField(default=False)
+    renewed_at = models.DateTimeField(null=True, blank=True)
+    renewed_by = models.ForeignKey(
+        'user_service.UserProfile',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='renewed_agreements'
+    )
+    cc_emails = models.TextField(null=True, blank=True)
+    notes = models.TextField(null=True, blank=True)
+
+    # ── Helpers ───────────────────────────────────────────────
+
+    def get_cc_emails_list(self):
+        if not self.cc_emails:
+            return []
+        return [e.strip() for e in self.cc_emails.split(',') if e.strip()]
+
+    def generate_code(self):
+        agreement_type = (self.agreement_type or "").upper()
+        prefix = "LP" if agreement_type in ["LEASE_PURCHASE", "PROPERTY_MANAGEMENT"] else "VC"
+        return f"{prefix}{self.pk:04d}"
+
+    # ── STATUS LOGIC ───────────────────────────────────────────
+
+    def get_status(self):
+        if self.does_not_expire:
+            return 'ACTIVE'
+
+        if self.is_expired:
+            return 'EXPIRED'
+
+        if not self.end_date:
+            return self.status
+
+        now = timezone.now()
+
+        if self.end_date < now:
+            return 'EXPIRED'
+
+        if self.end_date <= now + timedelta(days=7):
+            return 'EXPIRING_SOON'
+
+        return 'ACTIVE'
+
+    def get_status_display_label(self):
+        status = self.get_status()
+
+        if status == 'EXPIRED':
+            return 'Expired'
+
+        if status == 'EXPIRING_SOON' and self.end_date:
+            now = timezone.now()
+            diff = self.end_date - now
+            days = diff.days
+
+            if days <= 0:
+                return "Expires today"
+            elif days == 1:
+                return "Expires in 1 day"
+            else:
+                return f"Expires in {days} days"
+
+        if self.does_not_expire:
+            return 'Active (No Expiry)'
+
+        return 'Active'
+
+    def update_status(self):
+        computed = self.get_status()
+        changed = False
+
+        if computed == 'EXPIRED' and not self.is_expired:
+            self.is_expired = True
+            changed = True
+
+        if self.status != computed:
+            self.status = computed
+            changed = True
+
+        if changed:
+            Documentation.objects.filter(pk=self.pk).update(
+                is_expired=self.is_expired,
+                status=self.status
+            )
+
+    def should_send_reminder(self):
+        from django.utils import timezone
+
+        if not self.end_date:
+            return False
+
+        if self.is_expired:
+            return False
+
+        if self.is_renewed:
+            return False
+
+        today = timezone.now().date()
+        end = self.end_date.date()
+
+        days_left = (end - today).days
+
+        # YOUR RULE (KEEP ONLY THIS LOGIC)
+        if days_left > 7:
+            return False
+
+        return True
+
+    def mark_reminder_sent(self):
+        Documentation.objects.filter(pk=self.pk).update(
+            expiry_reminder_sent_at=timezone.now(),
+            expiry_reminder_sent_count=F('expiry_reminder_sent_count') + 1
+        )
+
+    def mark_renewed(self, user, new_end_date):
+
+        self.is_renewed = True
+        self.is_expired = False
+        self.end_date = new_end_date
+
+        self.expiry_reminder_sent_at = None
+        self.expiry_reminder_sent_count = 0
+        self.expiry_expired_sent_count = 0
+
+        self.renewed_at = timezone.now()
+        self.renewed_by = user
+
+        self.save()
+    
+    def get_expiry_progress(self):
+        if not self.end_date:
+            return "0/7"
+
+        now = timezone.now().date()
+        end = self.end_date.date()
+
+        days_diff = (end - now).days
+
+        # 🟡 BEFORE EXPIRY (including today)
+        if 0 <= days_diff <= 7:
+            return f"{self.expiry_reminder_sent_count}/7 (reminder)"
+
+        # 🔴 AFTER EXPIRY
+        if -7 <= days_diff < 0:
+            return f"{self.expiry_expired_sent_count}/7 (expired)"
+
+        return "0/7"
+
+    # ── SAVE METHOD ───────────────────────────────────────────
+
+    def save(self, *args, **kwargs):
+
+        if self.is_renewed:
+            self.status = "ACTIVE"
+            self.is_expired = False
+
+        elif self.does_not_expire:
+            self.status = "ACTIVE"
+            self.is_expired = False
+
+        elif self.end_date:
+            now = timezone.now()
+
+            if self.end_date < now:
+                self.status = "EXPIRED"
+                self.is_expired = True
+
+            elif self.end_date <= now + timedelta(days=7):
+                self.status = "EXPIRING_SOON"
+                self.is_expired = False
+
+            else:
+                self.status = "ACTIVE"
+                self.is_expired = False
+
+        super().save(*args, **kwargs)
+
+        # FIX: generate code safely
+        if not self.code:
+            self.code = self.generate_code()
+            Documentation.objects.filter(pk=self.pk).update(code=self.code)
+
+    # ── STRING ────────────────────────────────────────────────
+    def __str__(self):
+        return f"{self.code} - {self.agreement_name}"
