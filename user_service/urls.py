@@ -21,4 +21,6 @@ urlpatterns = [
     path('company_owners_csv', views.export_company_owners_csv, name='export_company_owners_csv'),
     path('tenant_csv', views.export_tenant_csv, name='export_tenant_csv'),
     path('tenants_Approved_Rejected', views.company_tenants, name='company_tenants'),
+    path('reset_password', views.reset_user_password, name='reset_user_password'),
+    path('share_profile', views.share_profile, name='share_profile'),
 ]
