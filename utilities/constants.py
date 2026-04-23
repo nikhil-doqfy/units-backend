@@ -984,3 +984,4 @@ COMPLAINT_IMAGES_UPLOADED_SUCCESSFULLY = "Images uploaded successfully."
 COMPLAINT_IMAGES_REQUIRED = "Images are required."
 COMPLAINT_NOT_ASSIGNED_TO_YOU = "This complaint is not assigned to you."
  
+CANNOT_CONVERT_LEAD = "Cannot convert a 'Not Interested' lead to tenancy"
