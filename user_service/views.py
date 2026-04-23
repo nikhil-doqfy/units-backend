@@ -3,7 +3,7 @@ from utilities import status, constants
 from utilities.helper_functions import prepare_response, datetime_to_epoch_millis, safe_epoch_to_datetime, get_extension_from_base64, export_to_csv, send_ses_email, fetch_s3_presigned_url, upload_file_to_s3_base64
 import uuid
 from django.template.loader import render_to_string
-from user_service.models import UserProfile, Documents, OwnerDocuments, TenantDocuments, Role, Owner, Tenant, PropertyManager ,Approval
+from user_service.models import UserProfile, Documents, OwnerDocuments, TenantDocuments, Role, Owner, Tenant, PropertyManager ,Approval, DocumentType, Documentation
 from property.models import PropertyManagerDocuments, Unit, Property, PropertyManagmentCompany, UnitOwner
 from django.db import transaction
 from utilities.decorator import is_request_authenticated
