@@ -3,6 +3,10 @@ from django.template.loader import render_to_string
 from django.utils import timezone
 from celery import shared_task
 from utilities.helper_functions import send_ses_email
+from notification.utils import (
+    notify_document_expiring,
+    notify_document_expired
+)
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +107,7 @@ def send_agreement_expiry_reminders():
         success = send_expiry_email(agreement, is_expired=False)
 
         if success:
+            notify_document_expiring(agreement.user, agreement)
             agreement.last_email_sent_date = today
             agreement.expiry_reminder_sent_count += 1
             agreement.expiry_reminder_sent_at = now
@@ -149,6 +154,7 @@ def send_agreement_expiry_reminders():
         success = send_expiry_email(agreement, is_expired=True)
 
         if success:
+            notify_document_expired(agreement.user, agreement)
             agreement.last_email_sent_date = today
             agreement.expiry_expired_sent_count += 1
 
