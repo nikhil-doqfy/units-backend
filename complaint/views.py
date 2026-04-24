@@ -28,6 +28,12 @@ from complaint.email_services import (
     email_slot_selected,
 )
 from property.models import PropertyManagmentCompany, Unit
+from notification.utils import (
+    notify_complaint_created,
+    notify_complaint_assigned,
+    notify_complaint_resolved,
+    notify_complaint_closed,
+)
 
 
 # =====================================================
@@ -182,6 +188,8 @@ def complaint_api(request):
         email_complaint_created(complaint)
         if providers_count > 0:
             email_complaint_broadcasted(complaint, providers_count)
+
+        notify_complaint_created(complaint.raised_by, complaint)
 
         return prepare_response(
             content={"code": complaint.code},
@@ -414,6 +422,12 @@ def accept_complaint(request, code):
         complaint.assigned_to.add(broadcast.service_provider)
         complaint.status = constants.ASSIGNED
         complaint.save()
+
+        notify_complaint_assigned(
+            complaint.raised_by,
+            complaint,
+            broadcast.service_provider.name
+        )
 
         # ── Timeline ───────────────────────────────────────────────
         ComplaintTimeline.objects.create(
@@ -728,6 +742,7 @@ def complete_work(request, code):
         )
 
         email_work_completed(complaint)
+        notify_complaint_resolved(complaint.raised_by, complaint)
 
         return prepare_response(
             content={"work_duration": duration},
@@ -813,6 +828,7 @@ def verify_complaint(request, code):
 
         # ── Email with rating and feedback ─────────────────────────
         email_complaint_closed(complaint, rating=rating, feedback=feedback)
+        notify_complaint_closed(complaint.raised_by, complaint)
 
         return prepare_response(
             message="Complaint verified and closed successfully.",
