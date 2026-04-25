@@ -1047,3 +1047,17 @@ DOCUMENT_UPLOADED = "Document uploaded successfully."
 # =========================
 METHOD_NOT_ALLOWED = "Method not allowed."
 CANNOT_CONVERT_LEAD = "Cannot convert a 'Not Interested' lead to tenancy"
+
+
+NOTIFICATION_TYPE_CHOICES = (
+    ('PAYMENT_REMINDER', 'Payment Reminder'),
+    ('PAYMENT_SUCCESS', 'Payment Success'),
+    ('CHEQUE_BOUNCED', 'Cheque Bounced'),
+    ('CHEQUE_REALIZED', 'Cheque Realized'),
+    ('LEASE_EXPIRY', 'Lease Expiry'),
+    ('DOCUMENT_EXPIRY', 'Document Expiry'),
+    ('COMPLAINT', 'Complaint'),
+    ('ACCOUNT_ACTIVITY', 'Account Activity'),
+    ('GLOBAL', 'Global'),
+    ('GENERAL', 'General'),
+    )

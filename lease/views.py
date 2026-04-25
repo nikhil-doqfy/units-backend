@@ -1483,6 +1483,20 @@ def lease_cheque_view(request):
             cheque.file_name = data["file_name"]
 
         cheque.save()
+        from notification.utils import (
+            notify_cheque_bounced,
+            notify_cheque_realized,
+        )
+
+        tenant_user_profile = cheque.lease.tenant
+        print("Logged in user:", request.user)
+        print("Tenant user:", tenant_user_profile)
+
+        if cheque.status == "BOUNCED":
+            notify_cheque_bounced(tenant_user_profile, cheque)
+
+        elif cheque.status == "REALIZED":
+            notify_cheque_realized(tenant_user_profile, cheque)
         return prepare_response(message="Cheque updated successfully", status=status.HTTP_200_OK)
 
     # ── DELETE ────────────────────────────────────────────────────────────────
