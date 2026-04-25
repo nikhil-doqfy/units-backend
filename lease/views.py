@@ -803,6 +803,8 @@ def send_negotiation(request):
         ).prefetch_related(
             "unit__unit_owners__owner__user"
         ).get(id=lease_id)
+        if lease.lease_stage == constants.NEGOTIATION_SENT:
+            return prepare_response(message="Negotiation email already sent",status=status.HTTP_400_BAD_REQUEST)
 
         t    = lease.tenant
         unit = lease.unit
@@ -840,8 +842,8 @@ def send_negotiation(request):
 
         from utilities.config import FRONTEND_URL
 
-        lease.lease_stage = constants.NEGOTIATION_SENT
-        lease.save(update_fields=["lease_stage"])
+        # lease.lease_stage = constants.NEGOTIATION_SENT
+        # lease.save(update_fields=["lease_stage"])
 
         subject = f"Lease Negotiation Document – {lease.code}"
         failed  = []
@@ -862,7 +864,9 @@ def send_negotiation(request):
             )
             ok = send_ses_email(r["email"], subject, body_text, body_html)
             (sent if ok else failed).append(r["email"])
-
+        if sent and not failed:
+            lease.lease_stage = constants.NEGOTIATION_SENT
+            lease.save(update_fields=["lease_stage"])
         audit_logs(request, f"Sent negotiation email for lease '{lease.code}' to {sent}", constants.CREATED, "lease")
 
         return prepare_response(
