@@ -1752,6 +1752,34 @@ def approval_view(request):
 
     if request.method == "GET":
 
+        lease_id_param = request.GET.get("lease_id")
+        if lease_id_param:
+            lease = Lease.objects.select_related("tenant", "unit").filter(id=lease_id_param).first()
+            if not lease:
+                return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
+            approval = Approval.objects.select_related(
+                "tenant__user", "unit", "unit__property_block_tower__property", "created_by"
+            ).filter(tenant=lease.tenant, unit=lease.unit).order_by("-id").first()
+            if not approval:
+                return prepare_response(message="No approval found for this lease", status=status.HTTP_404_NOT_FOUND)
+            content = {
+                "id": approval.id,
+                "requested_date": approval.created,
+                "tenant": f"{approval.tenant.user.first_name} {approval.tenant.user.last_name}".strip() if approval.tenant and approval.tenant.user else None,
+                "created_by": (approval.created_by.get_full_name() or approval.created_by.username) if approval.created_by else None,
+                "property": approval.unit.property_block_tower.property.property_name if approval.unit.property_block_tower and approval.unit.property_block_tower.property else None,
+                "property_image": approval.unit.property_block_tower.property._get_thumbnail() if approval.unit.property_block_tower and approval.unit.property_block_tower.property else None,
+                "block": approval.unit.property_block_tower.block_name if approval.unit.property_block_tower else None,
+                "unit": approval.unit.unit_name,
+                "requested_rent": approval.requested_rent,
+                "requested_tenure": approval.requested_tenure,
+                "actual_rent": approval.unit.rent,
+                "actual_tenure": approval.unit.cycle,
+                "approved": approval.approved,
+                "status": "APPROVED" if approval.approved else ("REJECTED" if approval.approved_by_id else "PENDING"),
+            }
+            return prepare_response(content=content, status=status.HTTP_200_OK)
+
         approval_id = request.GET.get("approval_id")
 
         if approval_id:
