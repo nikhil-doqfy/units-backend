@@ -167,6 +167,8 @@ def property(request):
         data = json.loads(request.body)
 
         property_name = data.get("property_name")
+        no_of_blocks = data.get("no_of_blocks")
+        no_of_units = data.get("no_of_units")
         if not property_name:
             return prepare_response(
                 message=constants.PROPERTY_NAME_REQUIRED,
@@ -184,6 +186,8 @@ def property(request):
         prop = Property.objects.create(
             created_by=user_profile.user,
             property_name=property_name,
+            no_of_blocks=no_of_blocks,
+            no_of_units=no_of_units,
             property_type=data.get("property_type") or constants.APARTMENT,
             land_area=data.get("land_area"),
             land_area_unit=data.get("land_area_unit") or constants.SQ_FT,
