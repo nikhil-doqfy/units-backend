@@ -7,7 +7,7 @@ from django.db.models import Q
 from django.http import HttpResponse
 from .models import Lead, ActivityLog
 from property.models import Unit
-from user_service.models import PropertyManager
+from user_service.models import PropertyManager, Tenant
 
 def _get_pmc(user_profile):
     pm = PropertyManager.objects.filter(pk=user_profile.pk).select_related("company").first()
@@ -25,6 +25,18 @@ def _get_property_thumbnail(prop):
         return None
     from utilities.helper_functions import fetch_s3_presigned_url
     return fetch_s3_presigned_url(img.image_path, img.file_name)
+
+
+def _find_lead_lease(lead):
+    """Return the most recent active lease for this lead's unit+tenant combination."""
+    from lease.models import Lease
+    if lead.tenant_id:
+        return Lease.objects.filter(unit=lead.unit, tenant_id=lead.tenant_id, is_active=True).order_by('-id').first()
+    # lead.tenant not set yet — try matching by email (tenant created by lease POST)
+    tenant = Tenant.objects.filter(email__iexact=lead.email).first()
+    if tenant:
+        return Lease.objects.filter(unit=lead.unit, tenant=tenant, is_active=True).order_by('-id').first()
+    return None
 
 
 def _serialize_lead(lead):
@@ -82,6 +94,15 @@ def _serialize_lead(lead):
     }
 
 
+def _serialize_lead_with_lease(lead):
+    """Serialize a lead and attach lease_id / lease_stage from the matching lease."""
+    data = _serialize_lead(lead)
+    lease = _find_lead_lease(lead)
+    data["lease_id"] = lease.id if lease else None
+    data["lease_stage"] = lease.lease_stage if lease else None
+    return data
+
+
 @is_request_authenticated
 def lead_view(request):
     user_profile = request.user
@@ -96,7 +117,7 @@ def lead_view(request):
             lead = Lead.objects.filter(id=lead_id, pmc=pmc).first()
             if not lead:
                 return prepare_response(message="Lead not found", status=status.HTTP_404_NOT_FOUND)
-            return prepare_response(content=_serialize_lead(lead), status=status.HTTP_200_OK)
+            return prepare_response(content=_serialize_lead_with_lease(lead), status=status.HTTP_200_OK)
 
         search = request.GET.get("search", "").strip()
         lead_status = request.GET.get("status", "").strip()
