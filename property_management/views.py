@@ -17,6 +17,8 @@ from user_service.models import Role, FAQ, Owner, Tenant, PropertyManager, Docum
 from property.models import Unit, Property, PropertyManagmentCompany, UnitOwner
 from property_management.models import Country, State, City, AuditLog
 from lease.models import Lease, Template, LeaseTransaction
+from lead.models import Lead
+from complaint.models import Complaint
 from payment.models import Bank
 from utilities.decorator import is_request_authenticated
 from utilities.helper_functions import (
@@ -552,6 +554,17 @@ def dashboard_overview(request):
             for idx, r in enumerate(revenue_rows, start=1)
         ]
 
+        # ── Leads & Complaints counts ────────────────────────────────
+        if pm_instance:
+            active_leads_count = Lead.objects.filter(pmc=company).count()
+            active_complaints_count = Complaint.objects.filter(company=company, is_active=True).count()
+        elif owner_instance:
+            active_leads_count = 0
+            active_complaints_count = Complaint.objects.filter(unit__in=units_qs, is_active=True).count()
+        else:
+            active_leads_count = 0
+            active_complaints_count = 0
+
         content = {
             "properties": {
                 "total": total_properties,
@@ -572,6 +585,8 @@ def dashboard_overview(request):
                 "occupied_percent": occupied_percent,
                 "vacant_percent": vacant_percent,
             },
+            "active_leads_count": active_leads_count,
+            "active_complaints_count": active_complaints_count,
         }
 
         return prepare_response(

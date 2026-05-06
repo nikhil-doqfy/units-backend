@@ -77,6 +77,7 @@ def _serialize_lead(lead):
             }
             for o in unit.unit_owners.select_related("owner__user").all()
         ],
+        "tenant_id": lead.tenant_id,
         "created_at": lead.created.strftime("%m/%d/%Y %H:%M") if lead.created else None,
     }
 

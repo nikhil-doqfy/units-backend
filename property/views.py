@@ -185,6 +185,8 @@ def property(request):
             created_by=user_profile.user,
             property_name=property_name,
             property_type=data.get("property_type") or constants.APARTMENT,
+            no_of_blocks=data.get("no_of_blocks") or 0,
+            no_of_units=data.get("no_of_units") or 0,
             land_area=data.get("land_area"),
             land_area_unit=data.get("land_area_unit") or constants.SQ_FT,
             land_dm_no=data.get("land_dm_no"),

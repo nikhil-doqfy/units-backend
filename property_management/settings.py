@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'terms',
     "notification",
  
+
 ]
 
 MIDDLEWARE = [
@@ -106,7 +107,7 @@ USE_TZ = True
  
 CORS_ALLOWED_ORIGINS = [
  "http://localhost:4200",
- "http://192.168.1.11:4200",
+ "http://192.168.1.6:4200",
  "https://units.doqfy.in",
 ]
  

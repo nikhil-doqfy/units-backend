@@ -8,6 +8,7 @@ from datetime import datetime, date
 from django.core.paginator import Paginator, EmptyPage
 from django.db.models import Q
 from django.contrib.auth.models import User
+from django.utils.crypto import get_random_string
 from django.db import transaction
 from django.http import HttpResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -82,7 +83,7 @@ def _create_tenant(email, data, created_by):
         django_user = User.objects.create_user(
             username=email, email=email,
             first_name=first_name, last_name=last_name,
-            password=User.objects.make_random_password(),
+            password=get_random_string(12),
         )
         tenant_obj = Tenant.objects.create(
             user=django_user,
