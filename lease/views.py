@@ -864,6 +864,12 @@ def send_negotiation(request):
             ok = send_ses_email(r["email"], subject, body_text, body_html)
             (sent if ok else failed).append(r["email"])
 
+        if not sent:
+            return prepare_response(
+                message=f"Failed to send negotiation emails to: {', '.join(failed)}. Check server logs for SES error details.",
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
         audit_logs(request, f"Sent negotiation email for lease '{lease.code}' to {sent}", constants.CREATED)
 
         return prepare_response(
@@ -1103,6 +1109,12 @@ def send_for_signature(request):
             )
             ok = send_ses_email(r["email"], subject, body_text, body_html)
             (sent if ok else failed).append(r["email"])
+
+        if not sent:
+            return prepare_response(
+                message=f"Failed to send signature emails to: {', '.join(failed)}. Check server logs for SES error details.",
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
 
         audit_logs(request, f"Sent signature request emails for lease '{lease.code}' to {sent}", constants.CREATED)
 
@@ -2196,7 +2208,7 @@ def lease_documents(request):
                     "type": doc_type
                 })
 
-            lease_obj.lease_stage = "UPLOAD_EJARI"
+            lease_obj.lease_stage = constants.EJARI_DOCUMENT_UPLOAD
             lease_obj.save()
 
             audit_logs(
@@ -3373,3 +3385,275 @@ def manager_approval_view(request):
         content={"approval_id": approval.id},
         status=status.HTTP_201_CREATED,
     )
+
+
+# ── Step 11: Verify cheque documents ──────────────────────────────────────────
+
+@is_request_authenticated
+def verify_cheque_view(request):
+    """POST: PM confirms cheque documents are valid → CHEQUE_VERIFIED."""
+    if request.method != "POST":
+        return prepare_response(message="Method not allowed", status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    try:
+        body     = json.loads(request.body)
+        lease_id = body.get("lease_id")
+        if not lease_id:
+            return prepare_response(message="lease_id is required", status=status.HTTP_400_BAD_REQUEST)
+
+        lease = Lease.objects.filter(id=lease_id, is_active=True).first()
+        if not lease:
+            return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
+
+        if lease.lease_stage != constants.CHEQUE_COLLECTED:
+            return prepare_response(
+                message=f"Cannot verify cheque: lease is in '{lease.lease_stage}' stage, expected CHEQUE_COLLECTED.",
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        lease.lease_stage = constants.CHEQUE_VERIFIED
+        lease.save(update_fields=["lease_stage"])
+
+        audit_logs(request, f"Cheque documents verified for lease '{lease.code}'", constants.UPDATED)
+
+        return prepare_response(
+            message="Cheque documents verified. Lease can now proceed to Agreement.",
+            status=status.HTTP_200_OK,
+        )
+    except Exception as e:
+        return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ── Step 14: Send Ejari for signature ─────────────────────────────────────────
+
+@is_request_authenticated
+def send_ejari_for_signature(request):
+    """POST: PM triggers Ejari signature request → EJARI_SIGNING. Sends OTP to tenant."""
+    if request.method != "POST":
+        return prepare_response(message="Method not allowed", status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    try:
+        body     = json.loads(request.body)
+        lease_id = body.get("lease_id")
+        if not lease_id:
+            return prepare_response(message="lease_id is required", status=status.HTTP_400_BAD_REQUEST)
+
+        lease = Lease.objects.select_related(
+            "tenant__user", "unit__property_block_tower__property"
+        ).filter(id=lease_id, is_active=True).first()
+        if not lease:
+            return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
+
+        if lease.lease_stage not in (constants.EJARI_DOCUMENT_UPLOAD, constants.EJARI):
+            return prepare_response(
+                message=f"Cannot send Ejari for signature: lease is in '{lease.lease_stage}' stage.",
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        tenant_email = lease.tenant.user.email if lease.tenant and lease.tenant.user else None
+        if not tenant_email:
+            return prepare_response(message="Tenant email not found", status=status.HTTP_400_BAD_REQUEST)
+
+        frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:4200")
+        sign_url = f"{frontend_url}/ejari-sign?lease_id={lease.id}&role=tenant&email={tenant_email}"
+
+        prop = lease.unit.property_block_tower.property if lease.unit and lease.unit.property_block_tower else None
+        ctx = {
+            "tenant_name":   f"{lease.tenant.user.first_name} {lease.tenant.user.last_name}".strip(),
+            "lease_code":    lease.code,
+            "property_name": prop.property_name if prop else "",
+            "unit_name":     lease.unit.unit_name if lease.unit else "",
+            "sign_url":      sign_url,
+        }
+        subject   = f"Ejari Signature Required – {lease.code}"
+        body_text = f"Please sign the Ejari document for lease {lease.code}: {sign_url}"
+        body_html = render_to_string("email_templates/lease_approval_otp.html", ctx)
+        send_ses_email(tenant_email, subject, body_text, body_html)
+
+        lease.lease_stage = constants.EJARI_SIGNING
+        lease.save(update_fields=["lease_stage"])
+
+        audit_logs(request, f"Ejari sent for signature for lease '{lease.code}'", constants.UPDATED)
+
+        return prepare_response(message="Ejari sent for signature successfully.", status=status.HTTP_200_OK)
+    except Exception as e:
+        return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@csrf_exempt
+def ejari_signature_otp(request):
+    """POST: Send OTP to tenant for Ejari signing. No auth required."""
+    if request.method != "POST":
+        return prepare_response(message="Method not allowed", status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    try:
+        from user_service.utils import request_otp_sent
+        from django.core.cache import cache
+
+        body     = json.loads(request.body)
+        lease_id = body.get("lease_id")
+        email    = (body.get("email") or "").strip().lower()
+        if not lease_id or not email:
+            return prepare_response(message="lease_id and email are required", status=status.HTTP_400_BAD_REQUEST)
+
+        lease = Lease.objects.select_related("tenant__user").get(id=lease_id)
+
+        expected = lease.tenant.user.email.strip().lower() if lease.tenant and lease.tenant.user else None
+        if not expected or expected != email:
+            return prepare_response(message="Email does not match the tenant for this lease.", status=status.HTTP_403_FORBIDDEN)
+
+        otp       = request_otp_sent()
+        cache_key = f"otp_ejari_signature_{lease_id}_{email}"
+        cache.set(cache_key, otp, timeout=600)
+
+        subject   = f"Ejari Signing OTP – {lease.code}"
+        body_text = f"Your OTP for Ejari signing ({lease.code}) is: {otp}. Expires in 10 minutes."
+        body_html = render_to_string("email_templates/lease_approval_otp.html", {
+            "otp": otp, "lease_code": lease.code,
+            "recipient_name": email, "role_label": "Tenant", "role_label_ar": "المستأجر",
+        })
+        send_ses_email(email, subject, body_text, body_html)
+
+        return prepare_response(message="OTP sent successfully", status=status.HTTP_200_OK)
+    except Lease.DoesNotExist:
+        return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@csrf_exempt
+def ejari_signature_verify_otp(request):
+    """POST: Verify OTP for Ejari signing. No auth required."""
+    if request.method != "POST":
+        return prepare_response(message="Method not allowed", status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    try:
+        from django.core.cache import cache
+
+        body     = json.loads(request.body)
+        lease_id = body.get("lease_id")
+        email    = (body.get("email") or "").strip().lower()
+        otp      = body.get("otp")
+        if not lease_id or not email or not otp:
+            return prepare_response(message="lease_id, email and otp are required", status=status.HTTP_400_BAD_REQUEST)
+
+        cache_key = f"otp_ejari_signature_{lease_id}_{email}"
+        stored    = cache.get(cache_key)
+        if not stored or str(stored) != str(otp):
+            return prepare_response(message="Invalid or expired OTP", status=status.HTTP_400_BAD_REQUEST)
+
+        verified_key = f"otp_ejari_signature_verified_{lease_id}_{email}"
+        cache.set(verified_key, True, timeout=600)
+
+        lease = Lease.objects.select_related(
+            "tenant__user", "unit__property_block_tower__property"
+        ).get(id=lease_id)
+        unit = lease.unit
+        prop = unit.property_block_tower.property if unit and unit.property_block_tower else None
+
+        ejari_docs = lease.lease_documents.select_related("document").filter(
+            document_choice=constants.EJARI_CERTIFICATE
+        ).order_by("-id")
+        ejari_url = (
+            fetch_s3_presigned_url(ejari_docs.first().document.file_path, file_name=ejari_docs.first().document.file_name)
+            if ejari_docs.exists() else ""
+        )
+
+        return prepare_response(
+            message="OTP verified",
+            content={
+                "ejari_url":     ejari_url,
+                "lease_code":    lease.code,
+                "tenant_name":   f"{lease.tenant.user.first_name} {lease.tenant.user.last_name}".strip() if lease.tenant and lease.tenant.user else "",
+                "property_name": prop.property_name if prop else "",
+                "unit_name":     unit.unit_name if unit else "",
+            },
+            status=status.HTTP_200_OK,
+        )
+    except Lease.DoesNotExist:
+        return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@csrf_exempt
+def submit_ejari_signature(request):
+    """POST: Tenant submits Ejari signature → lease ACTIVATED. No auth required."""
+    if request.method != "POST":
+        return prepare_response(message="Method not allowed", status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    try:
+        from django.core.cache import cache
+
+        body           = json.loads(request.body)
+        lease_id       = body.get("lease_id")
+        email          = (body.get("email") or "").strip().lower()
+        signature_data = body.get("signature_data", "")
+
+        if not lease_id or not email or not signature_data:
+            return prepare_response(message="lease_id, email and signature_data are required", status=status.HTTP_400_BAD_REQUEST)
+
+        verified_key = f"otp_ejari_signature_verified_{lease_id}_{email}"
+        if not cache.get(verified_key):
+            return prepare_response(message="OTP not verified. Please verify OTP first.", status=status.HTTP_400_BAD_REQUEST)
+
+        lease = Lease.objects.get(id=lease_id)
+
+        # Store signature record via the existing Documents model
+        sig_obj_name = f"lease_documents/{lease_id}/ejari_signature_{email}.png"
+        sig_url = upload_file_to_s3_base64(signature_data, sig_obj_name)
+        sig_doc = Documents.objects.create(
+            file_name=f"ejari_signature_{email}.png",
+            file_path=sig_url,
+            created_by=lease.tenant.user if lease.tenant else None,
+        )
+        LeaseDocuments.objects.create(
+            lease=lease,
+            document=sig_doc,
+            document_choice="EJARI_SIGNATURE",
+            created_by=lease.tenant.user if lease.tenant else None,
+        )
+
+        cache.delete(verified_key)
+
+        # Activate the lease
+        lease.lease_stage  = constants.ACTIVATED
+        lease.lease_status = "ACTIVE"
+        lease.save(update_fields=["lease_stage", "lease_status"])
+
+        return prepare_response(
+            message="Ejari signed successfully. Lease is now active.",
+            content={"lease_id": lease.id, "lease_stage": lease.lease_stage},
+            status=status.HTTP_200_OK,
+        )
+    except Lease.DoesNotExist:
+        return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+# ── Step 16: Activate lease (admin-triggered fallback) ────────────────────────
+
+@is_request_authenticated
+def activate_lease_view(request):
+    """POST: Manually activate a lease (e.g. after all steps are complete)."""
+    if request.method != "POST":
+        return prepare_response(message="Method not allowed", status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    try:
+        body     = json.loads(request.body)
+        lease_id = body.get("lease_id")
+        if not lease_id:
+            return prepare_response(message="lease_id is required", status=status.HTTP_400_BAD_REQUEST)
+
+        lease = Lease.objects.filter(id=lease_id, is_active=True).first()
+        if not lease:
+            return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
+
+        lease.lease_stage  = constants.ACTIVATED
+        lease.lease_status = "ACTIVE"
+        lease.save(update_fields=["lease_stage", "lease_status"])
+
+        audit_logs(request, f"Lease '{lease.code}' manually activated", constants.UPDATED)
+
+        return prepare_response(
+            message="Lease activated successfully.",
+            content={"lease_id": lease.id, "lease_stage": constants.ACTIVATED},
+            status=status.HTTP_200_OK,
+        )
+    except Exception as e:
+        return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)

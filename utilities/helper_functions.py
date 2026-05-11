@@ -195,7 +195,7 @@ def resize_image(photo_base64, target_size_kb):
     return resized_photo
 
 
-def send_ses_email(to_email, subject, body_text, body_html,cc=None):
+def send_ses_email(to_email, subject, body_text, body_html, cc=None):
     try:
         send(
             recipient=to_email,
@@ -206,7 +206,9 @@ def send_ses_email(to_email, subject, body_text, body_html,cc=None):
         )
         return True
     except Exception as e:
-        print(f"Error sending email via SES: {str(e)}")
+        logging.getLogger(__name__).error(
+            f"SES send failed | to='{to_email}' subject='{subject}' error={e}"
+        )
         return False
     
 

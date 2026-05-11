@@ -415,14 +415,15 @@ def get_property_images(property_id, single=False):
         return {
             "error": False,
             "property": property_obj,
-            "images": []  
+            "images": []
         }
 
     final_images = []
 
- 
     if single:
-        images_qs = images_qs[:1]  
+        # Prefer EXTERIOR image as thumbnail; fall back to first available
+        thumbnail = images_qs.filter(image_type="EXTERIOR").first() or images_qs.first()
+        images_qs = PropertyImages.objects.filter(pk=thumbnail.pk)
 
     for img in images_qs:
         final_images.append({
