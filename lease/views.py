@@ -300,6 +300,10 @@ def lease_view(request):
 
             other_charges = body.get("other_charges")
             if other_charges is not None:
+                lease_cheque_doc_type = (
+                    DocumentType.objects.filter(section=constants.LEASE_CHEQUE).first()
+                    or DocumentType.objects.first()
+                )
                 incoming_charge_ids = {item["charge_id"] for item in other_charges if item.get("charge_id")}
                 # Delete removed other-charge transactions
                 lease.lease_cheques.filter(
@@ -326,6 +330,7 @@ def lease_view(request):
                             cheque_type=constants.OTHER_CHARGE,
                             charge=charge,
                             amount=float(amount),
+                            document_type=lease_cheque_doc_type,
                             file_name='',
                             file_path='',
                             created_by=user.user,
@@ -2870,10 +2875,15 @@ def property_lease_payment(request):
 
             origin_bank = Bank.objects.filter(id=body.get("origin_bank_id")).first() if body.get("origin_bank_id") else None
             settlement_bank = Bank.objects.filter(id=body.get("settlement_bank_id")).first() if body.get("settlement_bank_id") else None
+            lease_cheque_doc_type = (
+                DocumentType.objects.filter(section=constants.LEASE_CHEQUE).first()
+                or DocumentType.objects.first()
+            )
 
             transaction = LeaseTransaction.objects.create(
                 created_by=user.user,
                 lease=lease,
+                document_type=lease_cheque_doc_type,
                 origin_bank=origin_bank,
                 selltlement_bank=settlement_bank,
                 cheque_type=body.get("cheque_type", constants.RENT_CHEQUE),
