@@ -449,7 +449,7 @@ def dashboard_overview(request):
         else:
             units_qs = Unit.objects.none()
 
-        # ── Properties summary: property-level counts ────────────────
+        # ── Properties summary: unit-level counts for the logged-in user ─
         if pm_instance:
             properties_qs = Property.objects.filter(pmc=company)
         elif owner_instance:
@@ -460,14 +460,14 @@ def dashboard_overview(request):
         else:
             properties_qs = Property.objects.none()
 
-        total_properties = properties_qs.count()
-        rented_property_ids = (
+        total_units = units_qs.count()
+        rented_unit_ids = (
             Lease.objects.filter(unit__in=units_qs, lease_status=constants.ACTIVE)
-            .values_list("unit__property_block_tower__property_id", flat=True)
+            .values_list("unit_id", flat=True)
             .distinct()
         )
-        rented_count = rented_property_ids.count()
-        vacant_count = total_properties - rented_count
+        rented_count = rented_unit_ids.count()
+        vacant_count = total_units - rented_count
 
         # ── Tenants stats ────────────────────────────────────────────
         lease_queryset = Lease.objects.filter(unit__in=units_qs)
@@ -567,7 +567,7 @@ def dashboard_overview(request):
 
         content = {
             "properties": {
-                "total": total_properties,
+                "total": total_units,
                 "rented": rented_count,
                 "vacant": vacant_count,
             },
