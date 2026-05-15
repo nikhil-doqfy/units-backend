@@ -18,9 +18,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure--w_9ca8o1wlh-l3foy8=g*x%9ay90j@2#3&pntlrv$wausuo8&'
 DEBUG = True
 ALLOWED_HOSTS = ['*']
-CSRF_TRUSTED_ORIGINS = ["https://*.doqfy.in"] 
+CSRF_TRUSTED_ORIGINS = ["https://*.getunits.ai"] 
 
-# CSRF_TRUSTED_ORIGINS = ["https://units-api.doqfy.in",  "https://34.14.170.254"]
+# CSRF_TRUSTED_ORIGINS = ["https://units-api.getunits.ai",  "https://34.14.170.254"]
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -108,7 +108,7 @@ USE_TZ = True
 CORS_ALLOWED_ORIGINS = [
  "http://localhost:4200",
  "http://192.168.1.6:4200",
- "https://units.doqfy.in",
+ "https://units.getunits.ai",
 ]
  
 CORS_ALLOW_CREDENTIALS = True

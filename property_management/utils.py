@@ -299,9 +299,9 @@ def create_and_send_invitation(invited_by_profile, email, invitation_type, templ
     )
     user_exists = User.objects.filter(email=email).exists()
     if user_exists:
-        base_url = "https://units.doqfy.in/auth/login"
+        base_url = "https://units.getunits.ai/auth/login"
     else:
-        base_url = "https://units.doqfy.in/auth/new-user"
+        base_url = "https://units.getunits.ai/auth/new-user"
     invite_link = base_url 
     subject = "Invitation to Join Property Management Portal"
     property_context = {}

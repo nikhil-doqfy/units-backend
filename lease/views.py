@@ -774,7 +774,7 @@ def send_lease_invite(request):
             f"Dear {tenant_name},\n\n"
             f"Your lease {lease.code} is currently being processed.\n"
             f"Please sign up and complete your profile at: {signup_url}\n\n"
-            f"Thank you,\nThe Doqfy Team"
+            f"Thank you,\nThe Units Team"
         )
 
         ok = send_ses_email(tenant_email, f"Your Lease is in Progress – {lease.code}", body_text, body_html)
@@ -864,7 +864,7 @@ def send_negotiation(request):
                 f"A lease negotiation document has been prepared for lease {lease.code}.\n"
                 f"Tenant: {tenant_name} | Property: {ctx['property_name']} | Unit: {ctx['unit_name']}\n"
                 + (f"View document: {ctx['pdf_url']}\n" if ctx["pdf_url"] else "")
-                + "\nThank you,\nThe Doqfy Team"
+                + "\nThank you,\nThe Units Team"
             )
             ok = send_ses_email(r["email"], subject, body_text, body_html)
             (sent if ok else failed).append(r["email"])
@@ -1110,7 +1110,7 @@ def send_for_signature(request):
                 f"Dear {r['name']},\n\n"
                 f"Your signature is required for lease agreement {lease.code}.\n"
                 f"Tenant: {tenant_name} | Property: {ctx_base['property_name']} | Unit: {ctx_base['unit_name']}\n"
-                f"Sign here: {ctx['signature_url']}\n\nThank you,\nThe Doqfy Team"
+                f"Sign here: {ctx['signature_url']}\n\nThank you,\nThe Units Team"
             )
             ok = send_ses_email(r["email"], subject, body_text, body_html)
             (sent if ok else failed).append(r["email"])
