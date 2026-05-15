@@ -102,14 +102,7 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
  
-CORS_ALLOWED_ORIGINS = [
-    "http://localhost:4200",
-    "http://192.168.1.6:4200",
-    "https://units.doqfy.in",
-    "https://units-api.doqfy.in",
-    "https://units.getunits.ai",
-]
- 
+CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
  
 STATIC_URL = '/static/'
