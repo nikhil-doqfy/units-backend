@@ -11,6 +11,7 @@ from property.models import (
 from property_management.models import UserInvitation, AuditLog
 from utilities.helper_functions import send_ses_email, fetch_s3_presigned_url, datetime_to_epoch_millis
 from utilities import status ,  constants
+from utilities.config import FRONTEND_URL
 from django.contrib.auth.models import User
 import uuid
 import re
@@ -299,9 +300,9 @@ def create_and_send_invitation(invited_by_profile, email, invitation_type, templ
     )
     user_exists = User.objects.filter(email=email).exists()
     if user_exists:
-        base_url = "https://units.getunits.ai/auth/login"
+        base_url = f"{FRONTEND_URL}/auth/login"
     else:
-        base_url = "https://units.getunits.ai/auth/new-user"
+        base_url = f"{FRONTEND_URL}/auth/new-user"
     invite_link = base_url 
     subject = "Invitation to Join Property Management Portal"
     property_context = {}
