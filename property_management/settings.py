@@ -47,15 +47,14 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     # 'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
 ]
 
 ROOT_URLCONF = 'property_management.urls'
@@ -106,10 +105,10 @@ USE_I18N = True
 USE_TZ = True
  
 CORS_ALLOWED_ORIGINS = [
- "http://localhost:4200",
- "http://192.168.1.6:4200",
- "https://units-api.doqfy.in"
- "https://units.getunits.ai",
+    "http://localhost:4200",
+    "http://192.168.1.6:4200",
+    "https://units-api.doqfy.in",
+    "https://units.getunits.ai",
 ]
  
 CORS_ALLOW_CREDENTIALS = True
