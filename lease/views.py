@@ -3462,8 +3462,8 @@ def send_ejari_for_signature(request):
         if not tenant_email:
             return prepare_response(message="Tenant email not found", status=status.HTTP_400_BAD_REQUEST)
 
-        frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:4200")
-        sign_url = f"{frontend_url}/ejari-sign?lease_id={lease.id}&role=tenant&email={tenant_email}"
+        from utilities.config import FRONTEND_URL
+        sign_url = f"{FRONTEND_URL}/ejari-sign?lease_id={lease.id}&role=tenant&email={tenant_email}"
 
         prop = lease.unit.property_block_tower.property if lease.unit and lease.unit.property_block_tower else None
         ctx = {
