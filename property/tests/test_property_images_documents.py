@@ -3,7 +3,6 @@ from django.test import TestCase, Client
 from django.contrib.auth.models import User
 from django.utils import timezone
 from unittest.mock import patch
-
 from utilities import status
 from property.models import (
     Property, PropertyBlocks, PropertyImages,
@@ -97,13 +96,14 @@ class PropertyImagesDocumentsAPITestCase(TestCase):
         mock_get_token.return_value = "validtoken"
         mock_decode.return_value = {"email": self.user.email}
 
-    # ════════════════════════════════════════════════════════════════
-    #  PROPERTY IMAGES — GET
-    # ════════════════════════════════════════════════════════════════
+    # PROPERTY IMAGES — GET
     @patch("property.views.fetch_s3_presigned_url")
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_property_images_success(self, mock_get_token, mock_decode, mock_s3):
+    def test_get_property_images_with_valid_property_id_returns_success(self, mock_get_token, mock_decode, mock_s3):
+        """
+        Verify property images are fetched successfully for a valid property_id.
+        """
         self._mock_auth(mock_get_token, mock_decode)
         mock_s3.return_value = "https://s3.example.com/exterior.jpg"
 
@@ -120,7 +120,10 @@ class PropertyImagesDocumentsAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_property_images_missing_property_id(self, mock_get_token, mock_decode):
+    def test_get_property_images_without_property_id_returns_400(self, mock_get_token, mock_decode):
+        """
+        Verify GET request without property_id returns 400 bad request.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -133,8 +136,10 @@ class PropertyImagesDocumentsAPITestCase(TestCase):
     @patch("property.views.fetch_s3_presigned_url")
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_property_images_invalid_property(self, mock_get_token, mock_decode, mock_s3):
-        """Invalid property_id → empty list"""
+    def test_get_property_images_with_invalid_property_id_returns_empty_list(self, mock_get_token, mock_decode, mock_s3):
+        """
+        Verify invalid property_id returns an empty images list.
+        """
         self._mock_auth(mock_get_token, mock_decode)
         mock_s3.return_value = "https://s3.example.com/test.jpg"
 
@@ -147,18 +152,25 @@ class PropertyImagesDocumentsAPITestCase(TestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertEqual(res.json()["content"], [])
 
-    def test_get_property_images_no_auth(self):
+    def test_get_property_images_without_authentication_returns_401(self):
+        """
+        test_get_property_images_without_auth_returns_401
+        """
         res = self.client.get(self.url_images)
         self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
 
     # ════════════════════════════════════════════════════════════════
-    #  PROPERTY IMAGES — POST
+    # PROPERTY IMAGES — POST
     # ════════════════════════════════════════════════════════════════
+
     @patch("property.views.upload_file_to_s3_base64")
     @patch("property.views.get_extension_from_base64")
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_upload_property_images_success(self, mock_get_token, mock_decode, mock_ext, mock_upload):
+    def test_upload_property_images_with_valid_data_returns_success(self, mock_get_token, mock_decode, mock_ext, mock_upload):
+        """
+        Verify property images upload succeeds with valid request payload
+        """
         self._mock_auth(mock_get_token, mock_decode)
         mock_ext.return_value = ".jpg"
         mock_upload.return_value = "https://s3.example.com/uploaded.jpg"
@@ -187,7 +199,10 @@ class PropertyImagesDocumentsAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_upload_property_images_missing_property_id(self, mock_get_token, mock_decode):
+    def test_upload_property_images_without_property_id_returns_400(self, mock_get_token, mock_decode):
+        """
+        Verify uploading property images without property_id returns 400 bad request.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.post(
@@ -201,7 +216,10 @@ class PropertyImagesDocumentsAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_upload_property_images_invalid_property(self, mock_get_token, mock_decode):
+    def test_upload_property_images_with_invalid_property_id_returns_404(self, mock_get_token, mock_decode):
+        """
+        Verify uploading property images with invalid property_id returns 404 not found.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         data = {
@@ -222,8 +240,10 @@ class PropertyImagesDocumentsAPITestCase(TestCase):
     @patch("property.views.get_extension_from_base64")
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_upload_property_images_empty_list(self, mock_get_token, mock_decode, mock_ext, mock_upload):
-        """images list empty → 201 पण ids empty"""
+    def test_upload_property_images_with_empty_image_list_returns_empty_ids(self, mock_get_token, mock_decode, mock_ext, mock_upload):
+        """
+        Verify uploading empty images list returns success with empty ids list.
+        """
         self._mock_auth(mock_get_token, mock_decode)
         mock_ext.return_value = ".jpg"
         mock_upload.return_value = "https://s3.example.com/x.jpg"
@@ -243,12 +263,13 @@ class PropertyImagesDocumentsAPITestCase(TestCase):
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
         self.assertEqual(res.json()["content"]["ids"], [])
 
-    # ════════════════════════════════════════════════════════════════
-    #  PROPERTY IMAGES — DELETE
-    # ════════════════════════════════════════════════════════════════
+    # PROPERTY IMAGES — DELETE
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_delete_property_image_success(self, mock_get_token, mock_decode):
+    def test_delete_property_image_with_valid_image_id_returns_success(self, mock_get_token, mock_decode):
+        """
+        Verify property image is deleted successfully for a valid image_id.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.delete(
@@ -261,7 +282,10 @@ class PropertyImagesDocumentsAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_delete_property_image_missing_id(self, mock_get_token, mock_decode):
+    def test_delete_property_image_without_image_id_returns_400(self, mock_get_token, mock_decode):
+        """
+        Verify DELETE request without image_id returns 400 bad request.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.delete(
@@ -273,7 +297,10 @@ class PropertyImagesDocumentsAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_property_images_invalid_method(self, mock_get_token, mock_decode):
+    def test_property_images_put_method_returns_405(self, mock_get_token, mock_decode):
+        """
+        Verify PUT method is not allowed on property images API endpoint.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.put(
@@ -285,12 +312,13 @@ class PropertyImagesDocumentsAPITestCase(TestCase):
 
         self.assertEqual(res.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
 
-    # ════════════════════════════════════════════════════════════════
-    #  PROPERTY DOCUMENT TYPES — GET
-    # ════════════════════════════════════════════════════════════════
+    # PROPERTY DOCUMENT TYPES — GET
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_property_document_types(self, mock_get_token, mock_decode):
+    def test_get_property_document_types_returns_success(self, mock_get_token, mock_decode):
+        """
+        Verify property document types are fetched successfully.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -306,7 +334,10 @@ class PropertyImagesDocumentsAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_property_document_types_invalid_method(self, mock_get_token, mock_decode):
+    def test_property_document_types_post_method_returns_405(self, mock_get_token, mock_decode):
+        """
+         Verify POST method is not allowed on property document types API endpoin
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.post(
@@ -316,17 +347,21 @@ class PropertyImagesDocumentsAPITestCase(TestCase):
 
         self.assertEqual(res.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
 
-    def test_property_document_types_no_auth(self):
+    def test_property_document_types_without_authentication_returns_401(self):
+        """
+        Verify unauthenticated request to property document types API returns 401 unauthorized.
+        """
         res = self.client.get(self.url_doc_types)
         self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
 
-    # ════════════════════════════════════════════════════════════════
-    #  PROPERTY DOCUMENTS — GET
-    # ════════════════════════════════════════════════════════════════
+    # PROPERTY DOCUMENTS — GET
     @patch("property.views.fetch_s3_presigned_url")
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_property_documents_success(self, mock_get_token, mock_decode, mock_s3):
+    def test_get_property_documents_with_valid_property_id_returns_success(self, mock_get_token, mock_decode, mock_s3):
+        """
+        Verify property documents are fetched successfully for a valid property_id.
+        """
         self._mock_auth(mock_get_token, mock_decode)
         mock_s3.return_value = "https://s3.example.com/title_deed.pdf"
 
@@ -343,7 +378,10 @@ class PropertyImagesDocumentsAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_property_documents_missing_property_id(self, mock_get_token, mock_decode):
+    def test_get_property_documents_without_property_id_returns_400(self, mock_get_token, mock_decode):
+        """
+        Verify GET request without property_id returns 400 bad request.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -353,18 +391,22 @@ class PropertyImagesDocumentsAPITestCase(TestCase):
 
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_get_property_documents_no_auth(self):
+    def test_get_property_documents_without_authentication_returns_401(self):
+        """
+        Verify unauthenticated request to property documents API returns 401 unauthorized.
+        """
         res = self.client.get(self.url_docs)
         self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
 
-    # ════════════════════════════════════════════════════════════════
-    #  PROPERTY DOCUMENTS — POST
-    # ════════════════════════════════════════════════════════════════
+    # PROPERTY DOCUMENTS — POST
     @patch("property.views.upload_file_to_s3_base64")
     @patch("property.views.get_extension_from_base64")
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_upload_property_documents_success(self, mock_get_token, mock_decode, mock_ext, mock_upload):
+    def test_upload_property_documents_with_valid_data_returns_success(self, mock_get_token, mock_decode, mock_ext, mock_upload):
+        """
+        Verify property documents upload succeeds with valid request payload.
+        """
         self._mock_auth(mock_get_token, mock_decode)
         mock_ext.return_value = ".pdf"
         mock_upload.return_value = "https://s3.example.com/uploaded.pdf"
@@ -393,7 +435,10 @@ class PropertyImagesDocumentsAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_upload_property_documents_missing_property_id(self, mock_get_token, mock_decode):
+    def test_upload_property_documents_without_property_id_returns_400(self, mock_get_token, mock_decode):
+        """
+        Verify uploading property documents without property_id returns 400 bad request.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.post(
@@ -407,7 +452,10 @@ class PropertyImagesDocumentsAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_upload_property_documents_invalid_property(self, mock_get_token, mock_decode):
+    def test_upload_property_documents_with_invalid_property_id_returns_404(self, mock_get_token, mock_decode):
+        """
+        Verify uploading property documents with invalid property_id returns 404 not found.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         data = {
@@ -428,8 +476,10 @@ class PropertyImagesDocumentsAPITestCase(TestCase):
     @patch("property.views.get_extension_from_base64")
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_upload_property_documents_empty_list(self, mock_get_token, mock_decode, mock_ext, mock_upload):
-        """documents list empty → 201 पण ids empty"""
+    def test_upload_property_documents_with_empty_list_returns_empty_ids(self, mock_get_token, mock_decode, mock_ext, mock_upload):
+        """
+        Verify uploading empty documents list returns success with empty ids list.
+        """
         self._mock_auth(mock_get_token, mock_decode)
         mock_ext.return_value = ".pdf"
         mock_upload.return_value = "https://s3.example.com/x.pdf"
@@ -449,12 +499,13 @@ class PropertyImagesDocumentsAPITestCase(TestCase):
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
         self.assertEqual(res.json()["content"]["ids"], [])
 
-    # ════════════════════════════════════════════════════════════════
-    #  PROPERTY DOCUMENTS — DELETE
-    # ════════════════════════════════════════════════════════════════
+    # PROPERTY DOCUMENTS — DELETE
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_delete_property_document_success(self, mock_get_token, mock_decode):
+    def test_delete_property_document_with_valid_document_id_returns_success(self, mock_get_token, mock_decode):
+        """
+        Verify property document is deleted successfully for a valid document_id.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.delete(
@@ -467,7 +518,10 @@ class PropertyImagesDocumentsAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_delete_property_document_missing_id(self, mock_get_token, mock_decode):
+    def test_delete_property_document_without_document_id_returns_400(self, mock_get_token, mock_decode):
+        """
+        Verify DELETE request without document_id returns 400 bad request.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.delete(
@@ -479,7 +533,10 @@ class PropertyImagesDocumentsAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_property_documents_invalid_method(self, mock_get_token, mock_decode):
+    def test_property_documents_put_method_returns_405(self, mock_get_token, mock_decode):
+        """
+        Verify PUT method is not allowed on property documents API endpoint.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.put(

@@ -14,7 +14,7 @@ class PropertyBlocksAPITestCase(TestCase):
     def setUp(self):
         self.client = Client()
 
-        # ── Users ─────────────────────────────────────────────────────
+        # Users 
         self.admin_user = User.objects.create_user(
             username="admin",
             password="adminpass",
@@ -27,7 +27,7 @@ class PropertyBlocksAPITestCase(TestCase):
             email="testuser@test.com"
         )
 
-        # ── Company ───────────────────────────────────────────────────
+        # Company 
         self.company = PropertyManagmentCompany.objects.create(
             name="Test Company",
             address_line_1="addr1",
@@ -38,7 +38,7 @@ class PropertyBlocksAPITestCase(TestCase):
             created_by=self.admin_user,
         )
 
-        # ── PropertyManager ───────────────────────────────────────────
+        # PropertyManager 
         self.pm = PropertyManager.objects.create(
             user=self.user,
             email=self.user.email,
@@ -47,7 +47,7 @@ class PropertyBlocksAPITestCase(TestCase):
             created_by=self.admin_user,
         )
 
-        # ── Property ──────────────────────────────────────────────────
+        # Property 
         self.property = Property.objects.create(
             property_name="Test Property",
             address_line_1="addr1",
@@ -60,7 +60,7 @@ class PropertyBlocksAPITestCase(TestCase):
             created_by=self.admin_user,
         )
 
-        # ── Block ─────────────────────────────────────────────────────
+        # Block 
         # FLOOR_CHOICES: 0-50, PARKING_CHOICES: 0-10, UNITS_CHOICES: 1-100
         self.block = PropertyBlocks.objects.create(
             property=self.property,
@@ -71,7 +71,7 @@ class PropertyBlocksAPITestCase(TestCase):
             created_by=self.admin_user,
         )
 
-        # ── URL ───────────────────────────────────────────────────────
+        # URL 
         self.url = "/property/blocks"
 
     # ── Auth mock helper ──────────────────────────────────────────────
@@ -79,12 +79,13 @@ class PropertyBlocksAPITestCase(TestCase):
         mock_get_token.return_value = "validtoken"
         mock_decode.return_value = {"email": self.user.email}
 
-    # ════════════════════════════════════════════════════════════════
     #  GET
-    # ════════════════════════════════════════════════════════════════
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_blocks_success(self, mock_get_token, mock_decode):
+    def test_get_property_blocks_with_valid_property_id_returns_success(self, mock_get_token, mock_decode):
+        """
+        Verify property blocks are fetched successfully for a valid property_id.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -101,8 +102,10 @@ class PropertyBlocksAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_blocks_missing_property_id(self, mock_get_token, mock_decode):
-        """property_id नाही → 400"""
+    def test_get_property_blocks_without_property_id_returns_400(self, mock_get_token, mock_decode):
+        """
+        Verify GET request without property_id returns 400 bad request.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -114,8 +117,10 @@ class PropertyBlocksAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_blocks_invalid_property(self, mock_get_token, mock_decode):
-        """Invalid property_id → empty list (view 404 देत नाही, empty content देतो)"""
+    def test_get_property_blocks_with_invalid_property_id_returns_empty_list(self, mock_get_token, mock_decode):
+        """
+        Verify invalid property_id returns an empty blocks list. 
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -127,17 +132,20 @@ class PropertyBlocksAPITestCase(TestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertEqual(res.json()["content"], [])
 
-    def test_get_blocks_no_auth(self):
-        """Token नाही → 401"""
+    def test_get_property_blocks_without_auth_returns_401(self):
+        """
+        Verify unauthenticated request to property blocks API returns 401 unauthorized.
+        """
         res = self.client.get(self.url)
         self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
 
-    # ════════════════════════════════════════════════════════════════
     #  POST
-    # ════════════════════════════════════════════════════════════════
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_create_blocks_success(self, mock_get_token, mock_decode):
+    def test_create_property_blocks_with_valid_data_returns_success(self, mock_get_token, mock_decode):
+        """
+        verify block created
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         data = {
@@ -171,15 +179,17 @@ class PropertyBlocksAPITestCase(TestCase):
         self.assertIn("ids", resp["content"])
         self.assertEqual(len(resp["content"]["ids"]), 2)
 
-        # DB मध्ये actually create झाले का verify कर
+        # verify in DB created or not
         self.assertEqual(
             PropertyBlocks.objects.filter(property=self.property).count(), 3
         )
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_create_blocks_missing_property_id(self, mock_get_token, mock_decode):
-        """property_id नाही → 400"""
+    def test_create_property_blocks_without_property_id_returns_400(self, mock_get_token, mock_decode):
+        """
+        Verify creating property blocks without property_id returns 400 bad request.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         data = {
@@ -197,8 +207,10 @@ class PropertyBlocksAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_create_blocks_invalid_property(self, mock_get_token, mock_decode):
-        """Invalid property_id → 404"""
+    def test_create_property_blocks_with_invalid_property_id_returns_404(self, mock_get_token, mock_decode):
+        """
+        Verify creating property blocks with invalid property_id returns 404 not found.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         data = {
@@ -217,8 +229,10 @@ class PropertyBlocksAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_create_blocks_empty_blocks_list(self, mock_get_token, mock_decode):
-        """blocks list empty → 201 पण कोणतेही block create होत नाहीत"""
+    def test_create_property_blocks_with_empty_blocks_list_returns_empty_ids(self, mock_get_token, mock_decode):
+        """
+        Verify creating property blocks with empty blocks list returns success with empty ids list.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         data = {
@@ -236,18 +250,20 @@ class PropertyBlocksAPITestCase(TestCase):
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
         self.assertEqual(res.json()["content"]["ids"], [])
 
-    def test_create_blocks_no_auth(self):
-        """Token नाही → 401"""
+    def test_create_property_blocks_without_auth_returns_401(self):
+        """
+        Verify unauthenticated request to create property blocks returns 401 unauthorized.
+        """
         res = self.client.post(self.url, content_type="application/json")
         self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
 
-    # ════════════════════════════════════════════════════════════════
     #  PUT
-    # ════════════════════════════════════════════════════════════════
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_update_blocks_success(self, mock_get_token, mock_decode):
-        """PUT → existing blocks delete होतात + नवीन create होतात"""
+    def test_update_property_blocks_with_valid_data_returns_success(self, mock_get_token, mock_decode):
+        """
+        Verify existing property blocks are replaced successfully with updated block details.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         data = {
@@ -271,15 +287,16 @@ class PropertyBlocksAPITestCase(TestCase):
 
         self.assertEqual(res.status_code, status.HTTP_200_OK)
 
-        # जुना block गेला + नवीन आला
         blocks = PropertyBlocks.objects.filter(property=self.property)
         self.assertEqual(blocks.count(), 1)
         self.assertEqual(blocks.first().block_name, "Updated Block A")
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_update_blocks_missing_property_id(self, mock_get_token, mock_decode):
-        """property_id नाही → 400"""
+    def test_update_property_blocks_without_property_id_returns_400(self, mock_get_token, mock_decode):
+        """
+        Verify updating property blocks without property_id returns 400 bad request.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         data = {
@@ -297,8 +314,10 @@ class PropertyBlocksAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_update_blocks_invalid_property(self, mock_get_token, mock_decode):
-        """Invalid property_id → 404"""
+    def test_update_property_blocks_with_invalid_property_id_returns_404(self, mock_get_token, mock_decode):
+        """
+        Verify updating property blocks with invalid property_id returns 404 not found.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         data = {
@@ -317,8 +336,10 @@ class PropertyBlocksAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_update_blocks_clears_existing(self, mock_get_token, mock_decode):
-        """PUT empty blocks → सगळे existing blocks delete होतात"""
+    def test_update_property_blocks_with_empty_blocks_list_removes_existing_blocks(self, mock_get_token, mock_decode):
+        """
+        Verify updating property with empty blocks list removes all existing blocks.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         data = {
@@ -338,17 +359,20 @@ class PropertyBlocksAPITestCase(TestCase):
             PropertyBlocks.objects.filter(property=self.property).count(), 0
         )
 
-    def test_update_blocks_no_auth(self):
-        """Token नाही → 401"""
+    def test_update_property_blocks_without_auth_returns_401(self):
+        """
+        Verify unauthenticated request to update property blocks returns 401 unauthorized.
+        """
         res = self.client.put(self.url, content_type="application/json")
         self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
 
-    # ════════════════════════════════════════════════════════════════
     #  Invalid method → 405
-    # ════════════════════════════════════════════════════════════════
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
     def test_invalid_method_returns_405(self, mock_get_token, mock_decode):
+        """
+        invalid method return 405
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.delete(

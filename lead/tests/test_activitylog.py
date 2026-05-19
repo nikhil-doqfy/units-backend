@@ -102,7 +102,10 @@ class ActivityLogAPITestCase(TestCase):
     # GET
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_activity_logs(self, mock_get_token, mock_decode):
+    def test_get_activity_logs_by_lead_id_returns_success_response(self, mock_get_token, mock_decode):
+        """
+        Verify activity logs are fetched successfully when valid lead_id is provided.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -114,7 +117,10 @@ class ActivityLogAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_logs_missing_lead_id(self, mock_get_token, mock_decode):
+    def test_get_activity_logs_without_lead_id_returns_bad_request(self, mock_get_token, mock_decode):
+        """
+        Verify API returns bad request when lead_id is missing in query parameters
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(self.url, HTTP_AUTHORIZATION="Bearer validtoken")
@@ -123,7 +129,10 @@ class ActivityLogAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_logs_invalid_lead(self, mock_get_token, mock_decode):
+    def test_get_activity_logs_with_invalid_lead_id_returns_not_found(self, mock_get_token, mock_decode):
+        """
+        Verify API returns not found when invalid lead_id is provided.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -136,7 +145,10 @@ class ActivityLogAPITestCase(TestCase):
     # POST
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_create_activity_log(self, mock_get_token, mock_decode):
+    def test_create_activity_log_with_valid_data_returns_created_response(self, mock_get_token, mock_decode):
+        """
+        Verify activity log is created successfully with valid request payload.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         data = {
@@ -157,7 +169,10 @@ class ActivityLogAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_create_log_missing_lead_id(self, mock_get_token, mock_decode):
+    def test_create_activity_log_without_required_fields_returns_bad_request(self, mock_get_token, mock_decode):
+        """
+        Verify activity log creation fails when required fields are missing in request
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.post(
@@ -172,7 +187,10 @@ class ActivityLogAPITestCase(TestCase):
     # PUT
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_update_activity_log(self, mock_get_token, mock_decode):
+    def test_update_activity_log_with_valid_data_returns_success_response(self, mock_get_token, mock_decode):
+        """
+        Verify activity log is updated successfully when valid log_id and data are provided.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         data = {
@@ -191,7 +209,10 @@ class ActivityLogAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_update_log_missing_id(self, mock_get_token, mock_decode):
+    def test_update_activity_log_without_log_id_returns_bad_request(self, mock_get_token, mock_decode):
+        """
+        Verify activity log update fails when log_id is missing in request payload.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.put(
@@ -206,7 +227,10 @@ class ActivityLogAPITestCase(TestCase):
     # DELETE
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_delete_activity_log(self, mock_get_token, mock_decode):
+    def test_delete_activity_log_with_valid_id_returns_success_response(self, mock_get_token, mock_decode):
+        """
+        Verify activity log is deleted successfully when valid log_id is provided.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.delete(
@@ -218,7 +242,10 @@ class ActivityLogAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_delete_log_missing_id(self, mock_get_token, mock_decode):
+    def test_delete_activity_log_without_log_id_returns_bad_request(self, mock_get_token, mock_decode):
+        """
+        Verify activity log deletion fails when log_id is not provided in request    
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.delete(
@@ -230,7 +257,10 @@ class ActivityLogAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_delete_log_not_found(self, mock_get_token, mock_decode):
+    def test_delete_activity_log_with_invalid_id_returns_not_found(self, mock_get_token, mock_decode):
+        """
+        Verify activity log deletion fails when invalid log_id is provided.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.delete(
@@ -241,7 +271,10 @@ class ActivityLogAPITestCase(TestCase):
         self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)
 
     # AUTH FAIL
-    def test_no_auth(self):
+    def test_activity_log_api_without_auth_token_returns_unauthorized(self):
+        """
+        Verify API returns unauthorized response when authentication token is missing.
+        """
         res = self.client.get(self.url)
         self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
 

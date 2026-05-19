@@ -67,7 +67,10 @@ class UserLoginTestCase(TestCase):
     # 1. TENANT LOGIN (PASSWORD)
    
     @patch("auth_service.views.create_jwt_token")
-    def test_tenant_login_success(self, mock_token):
+    def test_login_with_valid_tenant_credentials_returns_success(self, mock_token):
+        """
+        Verify tenant user can login successfully using valid email and password.
+        """
         mock_token.return_value = "fake-token"
 
         response = self.client.post(
@@ -86,7 +89,10 @@ class UserLoginTestCase(TestCase):
     # 2. COMPANY USER LOGIN (PASSWORD)
    
     @patch("auth_service.views.create_jwt_token")
-    def test_company_login_success(self, mock_token):
+    def test_login_with_valid_company_user_credentials_returns_success(self, mock_token):
+        """
+        Verify company user can login successfully and receives company details in response.
+        """
         mock_token.return_value = "fake-token"
 
         response = self.client.post(
@@ -109,7 +115,10 @@ class UserLoginTestCase(TestCase):
     # 3. OWNER LOGIN
 
     @patch("auth_service.views.create_jwt_token")
-    def test_owner_login_success(self, mock_token):
+    def test_login_with_valid_company_owner_credentials_returns_success(self, mock_token):
+        """
+        Verify company user can login successfully using valid credential.
+        """
         mock_token.return_value = "fake-token"
 
         response = self.client.post(
@@ -125,7 +134,10 @@ class UserLoginTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
 
     # 4. WRONG PASSWORD
-    def test_wrong_password(self):
+    def test_login_with_invalid_password_returns_bad_request(self):
+        """
+        Verify login fails when incorrect password is provided for an existing user.
+        """
         response = self.client.post(
             self.url,
             data=json.dumps({
@@ -139,7 +151,10 @@ class UserLoginTestCase(TestCase):
         self.assertEqual(response.status_code, 400)
 
     # 5. USER NOT FOUND
-    def test_user_not_found(self):
+    def test_login_with_unregistered_email_returns_bad_request(self):
+        """
+        Verify login fails when user email does not exist in the system.
+        """
         response = self.client.post(
             self.url,
             data=json.dumps({
@@ -153,12 +168,18 @@ class UserLoginTestCase(TestCase):
         self.assertEqual(response.status_code, 400)
 
     # 6. INVALID METHOD
-    def test_invalid_method(self):
+    def test_get_request_on_login_api_returns_method_not_allowed(self):
+        """
+        Verify GET request is not allowed on login API endpoint.
+        """
         response = self.client.get(self.url)
         self.assertEqual(response.status_code, 405)
 
     # 7. MISSING FIELDS
-    def test_missing_fields(self):
+    def test_login_with_missing_required_fields_returns_bad_request(self):
+        """
+        Verify login fails when required fields are missing in request payload.
+        """
         response = self.client.post(
             self.url,
             data=json.dumps({}),
@@ -168,7 +189,10 @@ class UserLoginTestCase(TestCase):
         self.assertEqual(response.status_code, 400)
 
     # 8. INACTIVE USER
-    def test_inactive_user(self):
+    def test_login_with_inactive_user_returns_forbidden(self):
+        """
+        Verify inactive users are not allowed to login into the system.
+        """
         self.tenant_user.is_active = False
         self.tenant_user.save()
 
@@ -187,7 +211,10 @@ class UserLoginTestCase(TestCase):
 
     # 9. OTP LOGIN SUCCESS
     @patch("auth_service.views.create_jwt_token")
-    def test_tenant_otp_login_success(self, mock_token):
+    def test_otp_login_with_verified_otp_returns_success(self, mock_token):
+        """
+        Verify user can login successfully using a verified OTP.
+        """
         mock_token.return_value = "fake-token"
 
         UserVerification.objects.create(
@@ -210,7 +237,10 @@ class UserLoginTestCase(TestCase):
         self.assertEqual(response.status_code, 200)
 
     # 10. OTP WRONG
-    def test_wrong_otp(self):
+    def test_otp_login_with_invalid_otp_returns_bad_request(self):
+        """
+        Verify OTP login fails when incorrect OTP is provided.
+        """
         UserVerification.objects.create(
             user_profile=self.tenant,
             otp="123456",

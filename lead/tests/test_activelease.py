@@ -107,7 +107,10 @@ class LeadActiveAPITestCase(TestCase):
     # ACTIVE LEASE CHECK TESTS
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_active_lease_true(self, mock_get_token, mock_decode):
+    def test_check_active_lease_returns_true_when_active_lease_exists(self, mock_get_token, mock_decode):
+        """
+        Verify has_active_lease is True when an ACTIVE lease exists for the lead's unit.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         Lease.objects.create(
@@ -127,7 +130,10 @@ class LeadActiveAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_active_lease_false(self, mock_get_token, mock_decode):
+    def test_check_active_lease_returns_false_when_no_active_lease(self, mock_get_token, mock_decode):
+        """
+        Verify has_active_lease is False when no active lease exists for the lead's unit.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -140,7 +146,10 @@ class LeadActiveAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_active_lease_missing_id(self, mock_get_token, mock_decode):
+    def test_check_active_lease_without_lead_id_returns_bad_request(self, mock_get_token, mock_decode):
+        """
+        Verify 400 is returned when lead_id is not provided in the request.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -152,7 +161,10 @@ class LeadActiveAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_active_lease_not_found(self, mock_get_token, mock_decode):
+    def test_check_active_lease_with_invalid_lead_id_returns_not_found(self, mock_get_token, mock_decode):
+        """
+        Verify 404 is returned when the provided lead_id does not exist.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -168,7 +180,10 @@ class LeadActiveAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_bulk_import_success(self, mock_get_token, mock_decode):
+    def test_bulk_import_with_valid_csv_creates_leads_successfully(self, mock_get_token, mock_decode):
+        """
+        Verify bulk import creates leads when valid CSV with correct columns is provided.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         csv_data = f"""unit_id,name,email,contact_number,platform,lead_type
@@ -187,7 +202,10 @@ class LeadActiveAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_bulk_import_missing_file(self, mock_get_token, mock_decode):
+    def test_bulk_import_without_file_returns_bad_request(self, mock_get_token, mock_decode):
+        """
+        Verify 400 is returned when no file is provided in the bulk import request.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.post(
@@ -201,7 +219,10 @@ class LeadActiveAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_bulk_import_invalid_base64(self, mock_get_token, mock_decode):
+    def test_bulk_import_with_invalid_base64_returns_bad_request(self, mock_get_token, mock_decode):
+        """
+        Verify 400 is returned when the provided file data is not valid base64.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.post(
@@ -215,7 +236,10 @@ class LeadActiveAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_bulk_import_missing_columns(self, mock_get_token, mock_decode):
+    def test_bulk_import_with_missing_required_columns_returns_bad_request(self, mock_get_token, mock_decode):
+        """
+        Verify bulk import fails when CSV file contains missing required columns.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         csv_data = "name,email\nJohn,john@test.com"
@@ -231,7 +255,10 @@ class LeadActiveAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_bulk_import_invalid_unit(self, mock_get_token, mock_decode):
+    def test_bulk_import_with_invalid_unit_id_skips_that_row(self, mock_get_token, mock_decode):
+        """
+        Verify rows with non-existent unit_id are skipped and counted in skipped field.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         csv_data = """unit_id,name,email,contact_number,platform,lead_type
@@ -250,7 +277,10 @@ class LeadActiveAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_bulk_import_wrong_method(self, mock_get_token, mock_decode):
+    def test_bulk_import_with_get_method_returns_method_not_allowed(self, mock_get_token, mock_decode):
+        """
+        Verify 405 is returned when GET method is used instead of POST for bulk import.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(

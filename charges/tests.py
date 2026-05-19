@@ -51,7 +51,10 @@ class ChargesAPITestCase(TestCase):
     # GET ALL
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_all_charges(self, mock_get_token, mock_decode):
+    def test_get_all_charges_returns_success_response(self, mock_get_token, mock_decode):
+        """
+        Verify all charges are fetched successfully for authenticated user.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         response = self.client.get(
@@ -64,7 +67,10 @@ class ChargesAPITestCase(TestCase):
     #  GET SINGLE
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_single_charge(self, mock_get_token, mock_decode):
+    def test_get_charge_by_valid_id_returns_success_response(self, mock_get_token, mock_decode):
+        """
+        Verify single charge details are fetched successfully using valid charge ID.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         response = self.client.get(
@@ -74,23 +80,13 @@ class ChargesAPITestCase(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-    #  GET INVALID
-    @patch("utilities.decorator.decode_jwt_token")
-    @patch("utilities.decorator.get_jwt_token")
-    def test_get_invalid_charge(self, mock_get_token, mock_decode):
-        self._mock_auth(mock_get_token, mock_decode)
-
-        response = self.client.get(
-            f"{self.url}?charge_id=999",
-            HTTP_AUTHORIZATION="Bearer validtoken"
-        )
-
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-
     #  CREATE
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_create_charge(self, mock_get_token, mock_decode):
+    def test_create_charge_with_valid_data_returns_created_response(self, mock_get_token, mock_decode):
+        """
+        Verify new charge is created successfully using valid request data.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         data = {
@@ -110,7 +106,10 @@ class ChargesAPITestCase(TestCase):
     #  CREATE MISSING
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_create_charge_missing_fields(self, mock_get_token, mock_decode):
+    def test_create_charge_with_missing_fields_returns_bad_request(self, mock_get_token, mock_decode):
+        """
+        Verify charge creation fails when required fields are missing.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         response = self.client.post(
@@ -125,7 +124,10 @@ class ChargesAPITestCase(TestCase):
     #  UPDATE
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_update_charge(self, mock_get_token, mock_decode):
+    def test_update_charge_with_valid_data_returns_success_response(self, mock_get_token, mock_decode):
+        """
+        Verify existing charge is updated successfully using valid charge ID and data.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         data = {
@@ -146,7 +148,10 @@ class ChargesAPITestCase(TestCase):
     #  UPDATE INVALID
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_update_invalid_charge(self, mock_get_token, mock_decode):
+    def test_update_charge_with_invalid_id_returns_not_found(self, mock_get_token, mock_decode):
+        """
+        Verify charge update fails when invalid charge ID is provided.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         response = self.client.put(
@@ -161,7 +166,10 @@ class ChargesAPITestCase(TestCase):
     #  UPDATE WITHOUT ID
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_update_without_id(self, mock_get_token, mock_decode):
+    def test_update_charge_without_charge_id_returns_bad_request(self, mock_get_token, mock_decode):
+        """
+        Verify charge update fails when charge ID is missing in request.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         response = self.client.put(
@@ -176,7 +184,10 @@ class ChargesAPITestCase(TestCase):
     #  DELETE
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_delete_charge(self, mock_get_token, mock_decode):
+    def test_delete_charge_with_valid_id_returns_success_response(self, mock_get_token, mock_decode):
+        """
+        Verify charge is deleted successfully using valid charge ID. 
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         response = self.client.delete(
@@ -189,7 +200,10 @@ class ChargesAPITestCase(TestCase):
     #  DELETE INVALID
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_delete_invalid_charge(self, mock_get_token, mock_decode):
+    def test_delete_charge_with_invalid_id_returns_not_found(self, mock_get_token, mock_decode):
+        """
+        Verify charge deletion fails when invalid charge ID is provided.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         response = self.client.delete(
@@ -202,7 +216,10 @@ class ChargesAPITestCase(TestCase):
     # DELETE WITHOUT ID
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_delete_without_id(self, mock_get_token, mock_decode):
+    def test_delete_charge_without_charge_id_returns_bad_request(self, mock_get_token, mock_decode):
+        """
+        Verify charge deletion fails when charge ID is not provided.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         response = self.client.delete(

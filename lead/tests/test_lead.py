@@ -91,7 +91,10 @@ class LeadAPITestCase(TestCase):
     #  GET — list all leads
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_all_leads(self, mock_get_token, mock_decode):
+    def test_get_all_leads_returns_success_response(self, mock_get_token, mock_decode):
+        """
+        Verify all leads are fetched successfully for authenticated user.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -104,7 +107,10 @@ class LeadAPITestCase(TestCase):
     #  GET — single lead by id
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_single_lead(self, mock_get_token, mock_decode):
+    def test_get_lead_by_valid_id_returns_success_response(self, mock_get_token, mock_decode):
+        """
+        Verify single lead details are fetched successfully using valid lead ID.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -117,7 +123,10 @@ class LeadAPITestCase(TestCase):
     #  GET — lead not found
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_single_lead_not_found(self, mock_get_token, mock_decode):
+    def test_get_lead_with_invalid_id_returns_not_found(self, mock_get_token, mock_decode):
+        """
+        Verify API returns not found response when invalid lead ID is provided.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -130,7 +139,10 @@ class LeadAPITestCase(TestCase):
     #  GET — search filter
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_leads_with_search(self, mock_get_token, mock_decode):
+    def test_get_leads_with_search_filter_returns_success_response(self, mock_get_token, mock_decode):
+        """
+        Verify leads are filtered successfully using search query parameter.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -143,7 +155,10 @@ class LeadAPITestCase(TestCase):
     #  GET — status filter
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_leads_with_status_filter(self, mock_get_token, mock_decode):
+    def test_get_leads_with_status_filter_returns_success_response(self, mock_get_token, mock_decode):
+        """
+        Verify leads are filtered successfully using status query parameter.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -156,7 +171,10 @@ class LeadAPITestCase(TestCase):
     #  GET — CSV export
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_csv_export(self, mock_get_token, mock_decode):
+    def test_export_leads_as_csv_returns_csv_file_response(self, mock_get_token, mock_decode):
+        """
+        Verify leads are exported successfully as CSV file response.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -171,7 +189,10 @@ class LeadAPITestCase(TestCase):
     #  POST — create lead success
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_create_lead(self, mock_get_token, mock_decode):
+    def test_create_lead_with_valid_data_returns_created_response(self, mock_get_token, mock_decode):
+        """
+        Verify new lead is created successfully using valid request payload.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         data = {
@@ -194,7 +215,10 @@ class LeadAPITestCase(TestCase):
     #  POST — missing required fields → 400
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_create_lead_missing_fields(self, mock_get_token, mock_decode):
+    def test_create_lead_with_missing_required_fields_returns_bad_request(self, mock_get_token, mock_decode):
+        """
+        Verify lead creation fails when required fields are missing.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         data = {
@@ -215,7 +239,10 @@ class LeadAPITestCase(TestCase):
     #  POST — invalid unit → 404
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_create_lead_invalid_unit(self, mock_get_token, mock_decode):
+    def test_create_lead_with_invalid_unit_id_returns_not_found(self, mock_get_token, mock_decode):
+        """
+        Verify lead creation fails when invalid unit ID is provided.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         data = {
@@ -239,7 +266,10 @@ class LeadAPITestCase(TestCase):
     #  PUT — update lead name
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_update_lead(self, mock_get_token, mock_decode):
+    def test_update_lead_with_valid_data_returns_success_response(self, mock_get_token, mock_decode):
+        """
+        Verify existing lead is updated successfully using valid lead ID and data.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         data = {
@@ -259,7 +289,10 @@ class LeadAPITestCase(TestCase):
     #  PUT — block NOT_INTERESTED → LEASE_TENANCY
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_update_lead_blocked_status_transition(self, mock_get_token, mock_decode):
+    def test_update_lead_from_not_interested_to_lease_tenancy_returns_bad_request(self, mock_get_token, mock_decode):
+        """
+        Verify lead status update fails when attempting to change status from NOT_INTERESTED to LEASE_TENANCY.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         # First set lead to NOT_INTERESTED
@@ -283,7 +316,10 @@ class LeadAPITestCase(TestCase):
     #  PUT — missing lead_id → 400
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_update_lead_missing_id(self, mock_get_token, mock_decode):
+    def test_update_lead_without_lead_id_returns_bad_request(self, mock_get_token, mock_decode):
+        """
+        Verify lead update fails when lead ID is missing in request payload.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         data = {"name": "No ID Given"}
@@ -300,7 +336,10 @@ class LeadAPITestCase(TestCase):
     #  DELETE — success
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_delete_lead(self, mock_get_token, mock_decode):
+    def test_delete_lead_with_valid_id_returns_success_response(self, mock_get_token, mock_decode):
+        """
+        verify lead is deleted successfully using valid lead ID.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.delete(
@@ -316,7 +355,10 @@ class LeadAPITestCase(TestCase):
     #  DELETE — missing lead_id → 400
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_delete_lead_missing_id(self, mock_get_token, mock_decode):
+    def test_delete_lead_without_lead_id_returns_bad_request(self, mock_get_token, mock_decode):
+        """
+        Verify lead deletion fails when lead ID is not provided.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.delete(
@@ -329,7 +371,10 @@ class LeadAPITestCase(TestCase):
     #  DELETE — lead not found → 404
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_delete_lead_not_found(self, mock_get_token, mock_decode):
+    def test_delete_lead_with_invalid_id_returns_not_found(self, mock_get_token, mock_decode):
+        """
+        Verify lead deletion fails when invalid lead ID is provided.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.delete(
@@ -340,6 +385,9 @@ class LeadAPITestCase(TestCase):
         self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)
 
     #  No auth token → 401
-    def test_no_auth_token_returns_401(self):
+    def test_request_without_auth_token_returns_unauthorized(self):
+        """
+        Verify API returns unauthorized response when authentication token is missing.
+        """
         res = self.client.get(self.url)   # no HTTP_AUTHORIZATION header
         self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)

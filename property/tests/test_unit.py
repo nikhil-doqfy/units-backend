@@ -3,7 +3,6 @@ from django.test import TestCase, Client
 from django.contrib.auth.models import User
 from django.utils import timezone
 from unittest.mock import patch, MagicMock
-
 from utilities import status
 from property.models import (
     Property, PropertyBlocks, Unit, UnitImages,
@@ -17,7 +16,7 @@ class UnitAPITestCase(TestCase):
     def setUp(self):
         self.client = Client()
 
-        # ── Users ─────────────────────────────────────────────────────
+        # Users
         self.admin_user = User.objects.create_user(
             username="admin",
             password="adminpass",
@@ -29,7 +28,7 @@ class UnitAPITestCase(TestCase):
             email="testuser@test.com"
         )
 
-        # ── Company ───────────────────────────────────────────────────
+        # Company
         self.company = PropertyManagmentCompany.objects.create(
             name="Test Company",
             address_line_1="addr1",
@@ -40,7 +39,7 @@ class UnitAPITestCase(TestCase):
             created_by=self.admin_user,
         )
 
-        # ── PropertyManager (= UserProfile) ───────────────────────────
+        # PropertyManager (= UserProfile)
         self.pm = PropertyManager.objects.create(
             user=self.user,
             email=self.user.email,
@@ -49,7 +48,7 @@ class UnitAPITestCase(TestCase):
             created_by=self.admin_user,
         )
 
-        # ── Property ──────────────────────────────────────────────────
+        # Property
         self.property = Property.objects.create(
             property_name="Test Property",
             address_line_1="addr1",
@@ -62,7 +61,7 @@ class UnitAPITestCase(TestCase):
             created_by=self.admin_user,
         )
 
-        # ── Block ─────────────────────────────────────────────────────
+        # Block
         self.block = PropertyBlocks.objects.create(
             property=self.property,
             block_name="Block A",
@@ -72,21 +71,21 @@ class UnitAPITestCase(TestCase):
             created_by=self.admin_user,
         )
 
-        # ── Unit ──────────────────────────────────────────────────────
+        # Unit
         self.unit = Unit.objects.create(
             property_block_tower=self.block,
             unit_name="101",
             created_by=self.admin_user,
         )
 
-        # ── DocumentType (needed for UnitDocuments) ───────────────────
+        # DocumentType
         self.doc_type = DocumentType.objects.create(
             name="Lease Agreement",
             section="UNIT",
             created_by=self.admin_user,
         )
 
-        # ── UnitImages ────────────────────────────────────────────────
+        # UnitImages
         self.unit_image = UnitImages.objects.create(
             unit=self.unit,
             image_path="path/to/image",
@@ -95,7 +94,7 @@ class UnitAPITestCase(TestCase):
             created_by=self.admin_user,
         )
 
-        # ── UnitDocuments ─────────────────────────────────────────────
+        # UnitDocuments
         self.unit_doc = UnitDocuments.objects.create(
             unit=self.unit,
             document_type=self.doc_type,
@@ -104,23 +103,24 @@ class UnitAPITestCase(TestCase):
             created_by=self.admin_user,
         )
 
-        # ── URLs ──────────────────────────────────────────────────────
+        # URLs
         self.url_unit       = "/property/unit"
         self.url_images     = "/property/unit/images"
         self.url_doc_types  = "/property/unit/document-types"
         self.url_docs       = "/property/unit/documents"
 
-    # ── Auth mock helper ──────────────────────────────────────────────
+    # Auth mock helper
     def _mock_auth(self, mock_get_token, mock_decode):
         mock_get_token.return_value = "validtoken"
         mock_decode.return_value = {"email": self.user.email}
 
-    # ════════════════════════════════════════════════════════════════
-    #  UNIT — GET
-    # ════════════════════════════════════════════════════════════════
+    # UNIT — GET
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_all_units(self, mock_get_token, mock_decode):
+    def test_get_all_units_returns_success_response(self, mock_get_token, mock_decode):
+        """
+        Verify GET /property/unit without filters returns all units with a 200 
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -133,7 +133,10 @@ class UnitAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_single_unit(self, mock_get_token, mock_decode):
+    def test_get_single_unit_by_unit_id_returns_correct_unit(self, mock_get_token, mock_decode):
+        """
+        Verify GET /property/unit?unit_id=X returns the specific unit matching the given unit_id
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -147,7 +150,10 @@ class UnitAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_unit_not_found(self, mock_get_token, mock_decode):
+    def test_get_unit_with_invalid_unit_id_returns_404(self, mock_get_token, mock_decode):
+        """
+        Verify GET /property/unit?unit_id=99999 returns 404 when the unit does not exist in the database.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -160,7 +166,10 @@ class UnitAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_units_by_property_filter(self, mock_get_token, mock_decode):
+    def test_get_units_filtered_by_property_id_returns_200(self, mock_get_token, mock_decode):
+        """
+        Verify GET /property/unit?property_id=X filters and returns units belonging to the specified property.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -173,7 +182,10 @@ class UnitAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_units_by_block_filter(self, mock_get_token, mock_decode):
+    def test_get_units_filtered_by_block_id_returns_200(self, mock_get_token, mock_decode):
+        """
+        Verify GET /property/unit?block_id=X filters and returns units belonging to the specified block.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -186,7 +198,10 @@ class UnitAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_units_csv_export(self, mock_get_token, mock_decode):
+    def test_get_units_with_csv_export_returns_csv_file(self, mock_get_token, mock_decode):
+        """
+        Verify GET /property/unit?export=csv returns a CSV file with correct Content-Type and Content-Disposition headers.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -201,7 +216,10 @@ class UnitAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_units_pagination(self, mock_get_token, mock_decode):
+    def test_get_units_with_pagination_params_returns_pagination_info(self, mock_get_token, mock_decode):
+        """
+        Verify GET /property/unit?page=1&page_size=5 returns paginated response with pagination metadata in the response.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -213,16 +231,20 @@ class UnitAPITestCase(TestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertIn("pagination", res.json())
 
-    def test_get_unit_no_auth(self):
+    def test_get_unit_without_auth_token_returns_401(self):
+        """
+        Verify GET /property/unit without Authorization header returns 401 Unauthorized.
+        """
         res = self.client.get(self.url_unit)
         self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
 
-    # ════════════════════════════════════════════════════════════════
-    #  UNIT — POST
-    # ════════════════════════════════════════════════════════════════
+    # UNIT — POST
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_create_unit_success(self, mock_get_token, mock_decode):
+    def test_create_unit_with_valid_data_returns_201(self, mock_get_token, mock_decode):
+        """
+        Verify POST /property/unit with valid block_id and unit_name creates the unit successfully and returns 201 with unit id.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         data = {
@@ -243,7 +265,10 @@ class UnitAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_create_unit_missing_block_id(self, mock_get_token, mock_decode):
+    def test_create_unit_without_block_id_returns_400(self, mock_get_token, mock_decode):
+        """
+        Verify POST /property/unit without block_id returns 400 Bad Request since block_id is a required field.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         data = {"unit_name": "103"}
@@ -259,7 +284,10 @@ class UnitAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_create_unit_missing_unit_name(self, mock_get_token, mock_decode):
+    def test_create_unit_without_unit_name_returns_400(self, mock_get_token, mock_decode):
+        """
+        Verify POST /property/unit without unit_name returns 400 Bad Request since unit_name is a required field.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         data = {"block_id": self.block.id}
@@ -275,7 +303,10 @@ class UnitAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_create_unit_invalid_block(self, mock_get_token, mock_decode):
+    def test_create_unit_with_non_existent_block_returns_404(self, mock_get_token, mock_decode):
+        """
+        Verify POST /property/unit with a block_id that does not exist returns 404 Not Found.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         data = {"block_id": 99999, "unit_name": "104"}
@@ -290,11 +321,15 @@ class UnitAPITestCase(TestCase):
         self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)
 
     # ════════════════════════════════════════════════════════════════
-    #  UNIT — PUT
+    # UNIT — PUT
     # ════════════════════════════════════════════════════════════════
+
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_update_unit_success(self, mock_get_token, mock_decode):
+    def test_update_unit_with_valid_data_returns_200_and_updates_db(self, mock_get_token, mock_decode):
+        """
+        Verify PUT /property/unit with valid unit_id updates unit_name and rent in the database and returns 200 OK.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         data = {
@@ -316,7 +351,10 @@ class UnitAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_update_unit_missing_id(self, mock_get_token, mock_decode):
+    def test_update_unit_without_unit_id_returns_400(self, mock_get_token, mock_decode):
+        """
+        Verify PUT /property/unit without unit_id returns 400 Bad Request since unit_id is required to identify which unit to update.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.put(
@@ -330,7 +368,10 @@ class UnitAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_update_unit_not_found(self, mock_get_token, mock_decode):
+    def test_update_unit_with_non_existent_unit_id_returns_404(self, mock_get_token, mock_decode):
+        """
+        Verify PUT /property/unit with a unit_id that does not exist returns 404 Not Found.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.put(
@@ -344,7 +385,10 @@ class UnitAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_unit_invalid_method(self, mock_get_token, mock_decode):
+    def test_unit_delete_method_returns_405_method_not_allowed(self, mock_get_token, mock_decode):
+        """
+        Verify DELETE /property/unit returns 405 Method Not Allowed since DELETE is not supported on this endpoint.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.delete(
@@ -355,12 +399,16 @@ class UnitAPITestCase(TestCase):
         self.assertEqual(res.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
 
     # ════════════════════════════════════════════════════════════════
-    #  UNIT IMAGES — GET
+    # UNIT IMAGES — GET
     # ════════════════════════════════════════════════════════════════
+
     @patch("property.views.fetch_s3_presigned_url")
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_unit_images_success(self, mock_get_token, mock_decode, mock_s3):
+    def test_get_unit_images_by_unit_id_returns_200(self, mock_get_token, mock_decode, mock_s3):
+        """
+        Verify GET /property/unit/images?unit_id=X returns all images for the specified unit with presigned S3 URLs.
+        """
         self._mock_auth(mock_get_token, mock_decode)
         mock_s3.return_value = "https://s3.example.com/test.jpg"
 
@@ -375,7 +423,10 @@ class UnitAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_unit_images_missing_unit_id(self, mock_get_token, mock_decode):
+    def test_get_unit_images_without_unit_id_returns_400(self, mock_get_token, mock_decode):
+        """
+        Verify GET /property/unit/images without unit_id returns 400 since unit_id is required to fetch images.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -386,13 +437,17 @@ class UnitAPITestCase(TestCase):
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
 
     # ════════════════════════════════════════════════════════════════
-    #  UNIT IMAGES — POST (S3 upload mock करतो)
+    # UNIT IMAGES — POST
     # ════════════════════════════════════════════════════════════════
+
     @patch("property.views.upload_file_to_s3_base64")
     @patch("property.views.get_extension_from_base64")
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_upload_unit_images_success(self, mock_get_token, mock_decode, mock_ext, mock_upload):
+    def test_upload_unit_images_with_valid_data_returns_201(self, mock_get_token, mock_decode, mock_ext, mock_upload):
+        """
+        Verify POST /property/unit/images with valid unit_id and base64 image uploads the image to S3 and returns 201 with created image ids.
+        """
         self._mock_auth(mock_get_token, mock_decode)
         mock_ext.return_value = ".jpg"
         mock_upload.return_value = "https://s3.example.com/uploaded.jpg"
@@ -420,7 +475,10 @@ class UnitAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_upload_unit_images_missing_unit_id(self, mock_get_token, mock_decode):
+    def test_upload_unit_images_without_unit_id_returns_400(self, mock_get_token, mock_decode):
+        """
+        Verify POST /property/unit/images without unit_id returns 400 since unit_id is required to associate images with a unit.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.post(
@@ -434,7 +492,10 @@ class UnitAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_upload_unit_images_invalid_unit(self, mock_get_token, mock_decode):
+    def test_upload_unit_images_with_non_existent_unit_returns_404(self, mock_get_token, mock_decode):
+        """
+        Verify POST /property/unit/images with a unit_id that does not exist returns 404 Not Found.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         data = {
@@ -451,12 +512,13 @@ class UnitAPITestCase(TestCase):
 
         self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)
 
-    # ════════════════════════════════════════════════════════════════
-    #  UNIT IMAGES — DELETE
-    # ════════════════════════════════════════════════════════════════
+    # UNIT IMAGES — DELETE
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_delete_unit_image_success(self, mock_get_token, mock_decode):
+    def test_delete_unit_image_by_image_id_removes_from_db(self, mock_get_token, mock_decode):
+        """
+        Verify DELETE /property/unit/images?image_id=X deletes the image from the database and returns 200 OK.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.delete(
@@ -469,7 +531,10 @@ class UnitAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_delete_unit_image_missing_id(self, mock_get_token, mock_decode):
+    def test_delete_unit_image_without_image_id_returns_400(self, mock_get_token, mock_decode):
+        """
+        Verify DELETE /property/unit/images without image_id returns 400 since image_id is required to identify which image to delete.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.delete(
@@ -479,12 +544,13 @@ class UnitAPITestCase(TestCase):
 
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
 
-    # ════════════════════════════════════════════════════════════════
-    #  UNIT DOCUMENT TYPES — GET
-    # ════════════════════════════════════════════════════════════════
+    # UNIT DOCUMENT TYPES — GET
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_unit_document_types(self, mock_get_token, mock_decode):
+    def test_get_unit_document_types_returns_list_with_id_and_name(self, mock_get_token, mock_decode):
+        """
+        Verify GET /property/unit/document-types returns all available document types with id and name fields in each item.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -500,7 +566,10 @@ class UnitAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_unit_document_types_invalid_method(self, mock_get_token, mock_decode):
+    def test_unit_document_types_post_method_returns_405(self, mock_get_token, mock_decode):
+        """
+        Verify POST /property/unit/document-types returns 405 Method Not Allowed since only GET is supported on this endpoint.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.post(
@@ -510,13 +579,14 @@ class UnitAPITestCase(TestCase):
 
         self.assertEqual(res.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
 
-    # ════════════════════════════════════════════════════════════════
-    #  UNIT DOCUMENTS — GET
-    # ════════════════════════════════════════════════════════════════
+    # UNIT DOCUMENTS — GET
     @patch("property.views.fetch_s3_presigned_url")
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_unit_documents_success(self, mock_get_token, mock_decode, mock_s3):
+    def test_get_unit_documents_by_unit_id_returns_200(self, mock_get_token, mock_decode, mock_s3):
+        """
+        Verify GET /property/unit/documents?unit_id=X returns all documents for the specified unit with presigned S3 URLs.
+        """
         self._mock_auth(mock_get_token, mock_decode)
         mock_s3.return_value = "https://s3.example.com/test.pdf"
 
@@ -531,7 +601,10 @@ class UnitAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_unit_documents_missing_unit_id(self, mock_get_token, mock_decode):
+    def test_get_unit_documents_without_unit_id_returns_400(self, mock_get_token, mock_decode):
+        """
+        Verify GET /property/unit/documents without unit_id returns 400 since unit_id is required to fetch documents.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -541,14 +614,15 @@ class UnitAPITestCase(TestCase):
 
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
 
-    # ════════════════════════════════════════════════════════════════
-    #  UNIT DOCUMENTS — POST (S3 mock)
-    # ════════════════════════════════════════════════════════════════
+    # UNIT DOCUMENTS — POST
     @patch("property.views.upload_file_to_s3_base64")
     @patch("property.views.get_extension_from_base64")
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_upload_unit_documents_success(self, mock_get_token, mock_decode, mock_ext, mock_upload):
+    def test_upload_unit_documents_with_valid_data_returns_201(self, mock_get_token, mock_decode, mock_ext, mock_upload):
+        """
+        Verify POST /property/unit/documents with valid unit_id, base64 data, and document_type_id uploads the document and returns 201 with ids.
+        """
         self._mock_auth(mock_get_token, mock_decode)
         mock_ext.return_value = ".pdf"
         mock_upload.return_value = "https://s3.example.com/uploaded.pdf"
@@ -576,7 +650,10 @@ class UnitAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_upload_unit_documents_missing_unit_id(self, mock_get_token, mock_decode):
+    def test_upload_unit_documents_without_unit_id_returns_400(self, mock_get_token, mock_decode):
+        """
+        Verify POST /property/unit/documents without unit_id returns 400 since unit_id is required to associate documents with a unit.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.post(
@@ -590,7 +667,10 @@ class UnitAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_upload_unit_documents_invalid_unit(self, mock_get_token, mock_decode):
+    def test_upload_unit_documents_with_non_existent_unit_returns_404(self, mock_get_token, mock_decode):
+        """
+        Verify POST /property/unit/documents with a unit_id that does not exist returns 404 Not Found.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         data = {
@@ -607,12 +687,14 @@ class UnitAPITestCase(TestCase):
 
         self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)
 
-    # ════════════════════════════════════════════════════════════════
-    #  UNIT DOCUMENTS — DELETE
-    # ════════════════════════════════════════════════════════════════
+    # UNIT DOCUMENTS — DELETE
+
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_delete_unit_document_success(self, mock_get_token, mock_decode):
+    def test_delete_unit_document_by_document_id_removes_from_db(self, mock_get_token, mock_decode):
+        """
+        Verify DELETE /property/unit/documents?document_id=X deletes the document from the database and returns 200 OK.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.delete(
@@ -625,7 +707,10 @@ class UnitAPITestCase(TestCase):
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_delete_unit_document_missing_id(self, mock_get_token, mock_decode):
+    def test_delete_unit_document_without_document_id_returns_400(self, mock_get_token, mock_decode):
+        """
+        Verify DELETE /property/unit/documents without document_id returns 400 since document_id is required to identify which document to delete.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.delete(
@@ -636,20 +721,33 @@ class UnitAPITestCase(TestCase):
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
 
     # ════════════════════════════════════════════════════════════════
-    #  No auth → 401
+    # AUTH GUARD — No auth → 401
     # ════════════════════════════════════════════════════════════════
-    def test_no_auth_unit(self):
+
+    def test_get_unit_without_auth_token_returns_401(self):
+        """
+        Verify GET /property/unit without Authorization header returns 401 Unauthorized.
+        """
         res = self.client.get(self.url_unit)
         self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
 
-    def test_no_auth_images(self):
+    def test_get_unit_images_without_auth_token_returns_401(self):
+        """
+        Verify GET /property/unit/images without Authorization header returns 401 Unauthorized.
+        """
         res = self.client.get(self.url_images)
         self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
 
-    def test_no_auth_doc_types(self):
+    def test_get_unit_document_types_without_auth_token_returns_401(self):
+        """
+        Verify GET /property/unit/document-types without Authorization header returns 401 Unauthorized.
+        """
         res = self.client.get(self.url_doc_types)
         self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
 
-    def test_no_auth_documents(self):
+    def test_get_unit_documents_without_auth_token_returns_401(self):
+        """
+        Verify GET /property/unit/documents without Authorization header returns 401 Unauthorized.
+        """
         res = self.client.get(self.url_docs)
         self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)

@@ -39,7 +39,7 @@ class PropertyAPITestCase(TestCase):
         )
 
         # ── PropertyManager ───────────────────────────────────────────
-        # ✅ PropertyManager IS the UserProfile — no separate UserProfile
+        # PropertyManager IS the UserProfile — no separate UserProfile
         # decorator: request.user = UserProfile.filter(user__email=email).first()
         # token must match what we send in HTTP_AUTHORIZATION
         self.pm = PropertyManager.objects.create(
@@ -71,12 +71,13 @@ class PropertyAPITestCase(TestCase):
         mock_get_token.return_value = "validtoken"
         mock_decode.return_value = {"email": self.user.email}
 
-    # ════════════════════════════════════════════════════════════════
-    #  GET — list all properties
-    # ════════════════════════════════════════════════════════════════
+    # GET — list all properties
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_all_properties(self, mock_get_token, mock_decode):
+    def test_get_all_properties_returns_success_response(self, mock_get_token, mock_decode):
+        """
+        Verify GET /property without filters returns all properties with 200 OK status and content key in response.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -88,12 +89,13 @@ class PropertyAPITestCase(TestCase):
         data = res.json()
         self.assertIn("content", data)
 
-    # ════════════════════════════════════════════════════════════════
-    #  GET — single property by id
-    # ════════════════════════════════════════════════════════════════
+    # GET — single property by id
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_single_property(self, mock_get_token, mock_decode):
+    def test_get_single_property_by_valid_id_returns_correct_property(self, mock_get_token, mock_decode):
+        """
+        Verify GET /property?property_id=X returns the specific property matching the given property_id with correct id in response.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -107,12 +109,13 @@ class PropertyAPITestCase(TestCase):
         self.assertIn("content", data)
         self.assertEqual(data["content"]["id"], self.property.id)
 
-    # ════════════════════════════════════════════════════════════════
-    #  GET — property not found → 404
-    # ════════════════════════════════════════════════════════════════
+    # GET — property not found → 404
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_property_not_found(self, mock_get_token, mock_decode):
+    def test_get_property_with_invalid_id_returns_404(self, mock_get_token, mock_decode):
+        """
+        Verify GET /property?property_id=99999 returns 404 Not Found when the property does not exist in the database.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -123,12 +126,13 @@ class PropertyAPITestCase(TestCase):
 
         self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)
 
-    # ════════════════════════════════════════════════════════════════
-    #  GET — search filter
-    # ════════════════════════════════════════════════════════════════
+    # GET — search filter
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_properties_with_search(self, mock_get_token, mock_decode):
+    def test_get_properties_with_search_keyword_returns_200(self, mock_get_token, mock_decode):
+        """
+        Verify GET /property?search=Test filters and returns properties matching the search keyword with 200 OK status.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -139,12 +143,13 @@ class PropertyAPITestCase(TestCase):
 
         self.assertEqual(res.status_code, status.HTTP_200_OK)
 
-    # ════════════════════════════════════════════════════════════════
-    #  GET — CSV export
-    # ════════════════════════════════════════════════════════════════
+    # GET — CSV export
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_csv_export(self, mock_get_token, mock_decode):
+    def test_get_properties_csv_export_returns_csv_file(self, mock_get_token, mock_decode):
+        """
+        Verify GET /property?export=csv returns a CSV file with correct Content-Type and Content-Disposition headers.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -157,12 +162,13 @@ class PropertyAPITestCase(TestCase):
         self.assertEqual(res["Content-Type"], "text/csv")
         self.assertIn("properties.csv", res["Content-Disposition"])
 
-    # ════════════════════════════════════════════════════════════════
-    #  GET — pagination
-    # ════════════════════════════════════════════════════════════════
+    # GET — pagination
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_get_properties_pagination(self, mock_get_token, mock_decode):
+    def test_get_properties_with_pagination_params_returns_pagination_info(self, mock_get_token, mock_decode):
+        """
+        Verify GET /property?page=1&page_size=5 returns paginated response with pagination metadata included in the response.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.get(
@@ -175,12 +181,13 @@ class PropertyAPITestCase(TestCase):
         data = res.json()
         self.assertIn("pagination", data)
 
-    # ════════════════════════════════════════════════════════════════
-    #  POST — create property success
-    # ════════════════════════════════════════════════════════════════
+    # POST — create property success
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_create_property_success(self, mock_get_token, mock_decode):
+    def test_create_property_with_valid_data_returns_201(self, mock_get_token, mock_decode):
+        """
+        Verify POST /property with valid data creates the property successfully and returns 201 Created with the new property id.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         data = {
@@ -205,12 +212,13 @@ class PropertyAPITestCase(TestCase):
         self.assertIn("content", resp_data)
         self.assertIn("id", resp_data["content"])
 
-    # ════════════════════════════════════════════════════════════════
-    #  POST — missing property_name → 400
-    # ════════════════════════════════════════════════════════════════
+    # POST — missing property_name → 400
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_create_property_missing_name(self, mock_get_token, mock_decode):
+    def test_create_property_without_property_name_returns_400(self, mock_get_token, mock_decode):
+        """
+        Verify POST /property without property_name returns 400 Bad Request since property_name is a required field.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         data = {
@@ -228,12 +236,13 @@ class PropertyAPITestCase(TestCase):
 
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
 
-    # ════════════════════════════════════════════════════════════════
-    #  POST — no PMC (user is not a PropertyManager) → 403
-    # ════════════════════════════════════════════════════════════════
+    # POST — no PMC (user is not a PropertyManager) → 403
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_create_property_no_pmc(self, mock_get_token, mock_decode):
+    def test_create_property_by_user_without_pmc_returns_403(self, mock_get_token, mock_decode):
+        """
+        Verify POST /property by a user who is not linked to any PMC returns 403 Forbidden since only PropertyManagers can create properties.
+        """
         other_user = User.objects.create_user(
             username="nopm",
             password="pass",
@@ -261,12 +270,13 @@ class PropertyAPITestCase(TestCase):
 
         self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
 
-    # ════════════════════════════════════════════════════════════════
-    #  PUT — update property success
-    # ════════════════════════════════════════════════════════════════
+    # PUT — update property success
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_update_property_success(self, mock_get_token, mock_decode):
+    def test_update_property_with_valid_data_returns_200_and_updates_db(self, mock_get_token, mock_decode):
+        """
+        Verify PUT /property with valid property_id updates the property_name in the database and returns 200 OK.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         data = {
@@ -285,12 +295,13 @@ class PropertyAPITestCase(TestCase):
         self.property.refresh_from_db()
         self.assertEqual(self.property.property_name, "Updated Property Name")
 
-    # ════════════════════════════════════════════════════════════════
-    #  PUT — missing property_id → 400
-    # ════════════════════════════════════════════════════════════════
+    # PUT — missing property_id → 400
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_update_property_missing_id(self, mock_get_token, mock_decode):
+    def test_update_property_without_property_id_returns_400(self, mock_get_token, mock_decode):
+        """
+        Verify PUT /property without property_id returns 400 Bad Request since property_id is required to identify which property to update.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         data = {"property_name": "No ID Given"}
@@ -304,12 +315,13 @@ class PropertyAPITestCase(TestCase):
 
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
 
-    # ════════════════════════════════════════════════════════════════
-    #  PUT — property not found → 404
-    # ════════════════════════════════════════════════════════════════
+    # PUT — property not found → 404
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_update_property_not_found(self, mock_get_token, mock_decode):
+    def test_update_property_with_non_existent_id_returns_404(self, mock_get_token, mock_decode):
+        """
+        Verify PUT /property with a property_id that does not exist returns 404 Not Found.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         data = {
@@ -326,12 +338,13 @@ class PropertyAPITestCase(TestCase):
 
         self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)
 
-    # ════════════════════════════════════════════════════════════════
-    #  Invalid method → 405
-    # ════════════════════════════════════════════════════════════════
+     #  Invalid method → 405
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_invalid_method_returns_405(self, mock_get_token, mock_decode):
+    def test_delete_method_returns_405_method_not_allowed(self, mock_get_token, mock_decode):
+        """
+        Verify DELETE /property returns 405 Method Not Allowed since DELETE is not supported on this endpoint.
+        """
         self._mock_auth(mock_get_token, mock_decode)
 
         res = self.client.delete(
@@ -342,6 +355,9 @@ class PropertyAPITestCase(TestCase):
         self.assertEqual(res.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
 
     #  No auth token → 401
-    def test_no_auth_returns_401(self):
+    def test_get_property_without_auth_token_returns_401(self):
+        """
+        Verify GET /property without Authorization header returns 401 Unauthorized.
+        """
         res = self.client.get(self.url)
         self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
