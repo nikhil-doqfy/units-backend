@@ -18,9 +18,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure--w_9ca8o1wlh-l3foy8=g*x%9ay90j@2#3&pntlrv$wausuo8&'
 DEBUG = True
 ALLOWED_HOSTS = ['*']
-CSRF_TRUSTED_ORIGINS = ["https://*.doqfy.in"] 
-
-# CSRF_TRUSTED_ORIGINS = ["https://units-api.doqfy.in",  "https://34.14.170.254"]
+CSRF_TRUSTED_ORIGINS = ["https://*.doqfy.in", "https://*.getunits.ai"]
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -47,15 +45,14 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
     # 'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
 ]
 
 ROOT_URLCONF = 'property_management.urls'
@@ -105,12 +102,7 @@ TIME_ZONE = 'UTC'
 USE_I18N = True
 USE_TZ = True
  
-CORS_ALLOWED_ORIGINS = [
- "http://localhost:4200",
- "http://192.168.1.6:4200",
- "https://units.doqfy.in",
-]
- 
+CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
  
 STATIC_URL = '/static/'

@@ -1465,7 +1465,7 @@ def _serialize_tenant(tenant):
         lease__tenant=tenant
     ).select_related("document_type")
     for d in lease_docs:
-        key = d.document_type.name if d.document_type else "Lease Documents"
+        key = (d.document_type.name or "Documents") if d.document_type else "Lease Documents"
         groups.setdefault(key, []).append(_doc_entry(d))
 
     document_groups = [

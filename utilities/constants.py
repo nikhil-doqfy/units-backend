@@ -435,15 +435,17 @@ PAYMENT_TYPE_CHOICES = (
     (PAYMENT_TYPE_PDC,            "PDC"),
 )
 
-WAITING_CHEQUE      = "WAITING_CHEQUE"
-CHEQUE_REQUESTED    = "CHEQUE_REQUESTED"
-CHEQUE_COLLECTED    = "CHEQUE_COLLECTED"
-AGREEMENT           = "AGREEMENT"
-AGREEMENT_SIGNING   = "AGREEMENT_SIGNING"
-AGREEMENT_SIGNED    = "AGREEMENT_SIGNED"
-EJARI               = "EJARI"
-EJARI_SIGNING       = "EJARI_SIGNING"
-ACTIVATED           = "ACTIVATED"
+WAITING_CHEQUE          = "WAITING_CHEQUE"
+CHEQUE_REQUESTED        = "CHEQUE_REQUESTED"
+CHEQUE_COLLECTED        = "CHEQUE_COLLECTED"
+CHEQUE_VERIFIED         = "CHEQUE_VERIFIED"
+AGREEMENT               = "AGREEMENT"
+AGREEMENT_SIGNING       = "AGREEMENT_SIGNING"
+AGREEMENT_SIGNED        = "AGREEMENT_SIGNED"
+EJARI                   = "EJARI"
+EJARI_DOCUMENT_UPLOAD   = "EJARI_DOCUMENT_UPLOAD"
+EJARI_SIGNING           = "EJARI_SIGNING"
+ACTIVATED               = "ACTIVATED"
 
 BASIC_DETAILS               = "BASIC_DETAILS"
 COMMERCIAL_DETAILS          = "COMMERCIAL_DETAILS"
@@ -461,15 +463,17 @@ LEASE_STAGE_CHOICES = (
     (NEGOTIATION_SENT,  "Negotiation Sent"),
     (OWNER_APPROVED,    "Owner Approved"),
     (TENANT_APPROVED,   "Tenant Approved"),
-    (WAITING_CHEQUE,    "Waiting for Cheque"),
-    (CHEQUE_REQUESTED,  "Cheque Requested"),
-    (CHEQUE_COLLECTED,  "Cheque Collected"),
-    (AGREEMENT,         "Agreement"),
-    (AGREEMENT_SIGNING, "Agreement Signing"),
-    (AGREEMENT_SIGNED,  "Agreement Signed"),
-    (EJARI,             "Ejari"),
-    (EJARI_SIGNING,     "Ejari Signing"),
-    (ACTIVATED,         "Activated"),
+    (WAITING_CHEQUE,        "Waiting for Cheque"),
+    (CHEQUE_REQUESTED,      "Cheque Requested"),
+    (CHEQUE_COLLECTED,      "Cheque Collected"),
+    (CHEQUE_VERIFIED,       "Cheque Verified"),
+    (AGREEMENT,             "Agreement"),
+    (AGREEMENT_SIGNING,     "Agreement Signing"),
+    (AGREEMENT_SIGNED,      "Agreement Signed"),
+    (EJARI,                 "Ejari"),
+    (EJARI_DOCUMENT_UPLOAD, "Ejari Document Upload"),
+    (EJARI_SIGNING,         "Ejari Signing"),
+    (ACTIVATED,             "Activated"),
 )
 
 LAYOUT_CHOICES = [

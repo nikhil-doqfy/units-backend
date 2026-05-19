@@ -81,7 +81,10 @@ class Property(Base):
         return self.property_name or f"Property #{self.id}"
 
     def _get_thumbnail(self):
-        img = self.property_images.filter(image_type="EXTERIOR").first()
+        img = (
+            self.property_images.filter(image_type="EXTERIOR").first()
+            or self.property_images.first()
+        )
         if not img:
             return None
         from utilities.helper_functions import fetch_s3_presigned_url

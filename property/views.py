@@ -1036,8 +1036,8 @@ def property_table_view(request):
         tenant_name = lease_obj.tenant.user.get_full_name() if lease_obj else None
         owner_name = prop.owner.user.get_full_name() if prop.owner else None
         lease_status = get_lease_status(lease_obj)
-        image_data = get_property_images(prop.id, single=True)
-        property_image = image_data["images"][0]["data"] if image_data["images"] else None
+        image_data = get_property_images(prop.property.id, single=True) if prop.property else {"images": []}
+        property_image = image_data["images"][0]["data"] if image_data.get("images") else None
         tenant_profile_image = lease_obj.tenant.profile_image if lease_obj else None
 
         data.append({

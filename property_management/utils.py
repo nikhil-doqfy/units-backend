@@ -11,6 +11,7 @@ from property.models import (
 from property_management.models import UserInvitation, AuditLog
 from utilities.helper_functions import send_ses_email, fetch_s3_presigned_url, datetime_to_epoch_millis
 from utilities import status ,  constants
+from utilities.config import FRONTEND_URL
 from django.contrib.auth.models import User
 import uuid
 import re
@@ -299,9 +300,9 @@ def create_and_send_invitation(invited_by_profile, email, invitation_type, templ
     )
     user_exists = User.objects.filter(email=email).exists()
     if user_exists:
-        base_url = "https://units.doqfy.in/auth/login"
+        base_url = f"{FRONTEND_URL}/auth/login"
     else:
-        base_url = "https://units.doqfy.in/auth/new-user"
+        base_url = f"{FRONTEND_URL}/auth/new-user"
     invite_link = base_url 
     subject = "Invitation to Join Property Management Portal"
     property_context = {}
@@ -415,14 +416,15 @@ def get_property_images(property_id, single=False):
         return {
             "error": False,
             "property": property_obj,
-            "images": []  
+            "images": []
         }
 
     final_images = []
 
- 
     if single:
-        images_qs = images_qs[:1]  
+        # Prefer EXTERIOR image as thumbnail; fall back to first available
+        thumbnail = images_qs.filter(image_type="EXTERIOR").first() or images_qs.first()
+        images_qs = PropertyImages.objects.filter(pk=thumbnail.pk)
 
     for img in images_qs:
         final_images.append({

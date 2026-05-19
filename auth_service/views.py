@@ -118,7 +118,7 @@ def send_otp(request):
             {"otp": otp, "purpose": purpose_text, "expiry_minutes": constants.OTP_EXPIRY_MINUTES}
         )
 
-        subject = f"{purpose_text.capitalize()} OTP - DOQFY"
+        subject = f"{purpose_text.capitalize()} OTP - UNITS"
         body_text = f"Your OTP is: {otp}"
         print(f"Generated OTP for {email} is {otp}")  # Debug log
 
