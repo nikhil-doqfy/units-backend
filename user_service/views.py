@@ -11,6 +11,7 @@ from utilities.decorator import is_request_authenticated
 from django.core.paginator import Paginator, EmptyPage
 from django.db.models import Q, Count, Prefetch
 from django.contrib.auth.models import User
+from django.utils.crypto import get_random_string
 from django.db import transaction
 from property_management.utils import get_staff_details, get_property_images, get_full_user_data
 from user_service.utils import upload_document, process_rent_approval
@@ -1343,7 +1344,7 @@ def owner_crud(request):
             user = User.objects.create_user(
                 username=email, email=email,
                 first_name=first_name, last_name=last_name,
-                password=User.objects.make_random_password()
+                password=get_random_string(12)
             )
             def _parse_dt(val):
                 if not val:
@@ -1464,7 +1465,7 @@ def _serialize_tenant(tenant):
         lease__tenant=tenant
     ).select_related("document_type")
     for d in lease_docs:
-        key = d.document_type.name if d.document_type else "Lease Documents"
+        key = (d.document_type.name or "Documents") if d.document_type else "Lease Documents"
         groups.setdefault(key, []).append(_doc_entry(d))
 
     document_groups = [
@@ -1709,7 +1710,7 @@ def tenant_crud(request):
             user = User.objects.create_user(
                 username=email, email=email,
                 first_name=first_name, last_name=last_name,
-                password=User.objects.make_random_password(),
+                password=get_random_string(12),
             )
             tenant = Tenant.objects.create(
                 user=user,

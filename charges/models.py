@@ -3,7 +3,7 @@ from django.forms.models import model_to_dict
 from property_management.models import Base, Country
 
 
-class Charge(Base): 
+class Charge(Base):
 
     description = models.CharField(max_length=255)
 
@@ -11,6 +11,14 @@ class Charge(Base):
         Country,
         on_delete=models.CASCADE,
         related_name="charges"
+    )
+
+    pmc = models.ForeignKey(
+        "property.PropertyManagmentCompany",
+        on_delete=models.CASCADE,
+        related_name="charges",
+        null=True,
+        blank=True,
     )
 
     tax_code = models.FloatField(default=0)

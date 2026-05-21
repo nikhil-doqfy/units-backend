@@ -5,6 +5,26 @@ from django.contrib.auth.hashers import make_password
 from utilities import status, constants
 from utilities.helper_functions import prepare_response, validate_password, send_ses_email
 from user_service.models import UserProfile, UserVerification, Owner, Tenant, PropertyManager
+
+
+def _build_permissions(profile):
+    """Return permission map for a PropertyManager, empty dict otherwise."""
+    if not isinstance(profile, PropertyManager):
+        return {}
+    pm = PropertyManager.objects.filter(pk=profile.pk).prefetch_related("roles__permissions").first()
+    if not pm:
+        return {}
+    permissions = {}
+    for role in pm.roles.all():
+        for perm in role.permissions.all():
+            existing = permissions.get(perm.module_name, {"create": False, "edit": False, "delete": False, "view": False})
+            permissions[perm.module_name] = {
+                "create": existing["create"] or perm.create,
+                "edit":   existing["edit"]   or perm.edit,
+                "delete": existing["delete"] or perm.delete,
+                "view":   existing["view"]   or perm.view,
+            }
+    return permissions
 from user_service.utils import request_otp_sent
 from utilities.decorator import is_request_authenticated
 from utilities.jwt_token import create_jwt_token, get_jwt_token
@@ -98,7 +118,7 @@ def send_otp(request):
             {"otp": otp, "purpose": purpose_text, "expiry_minutes": constants.OTP_EXPIRY_MINUTES}
         )
 
-        subject = f"{purpose_text.capitalize()} OTP - DOQFY"
+        subject = f"{purpose_text.capitalize()} OTP - UNITS"
         body_text = f"Your OTP is: {otp}"
         print(f"Generated OTP for {email} is {otp}")  # Debug log
 
@@ -413,6 +433,7 @@ def user_login(request):
                 "last_name": user.last_name,
                 "profile_image": profile.profile_image,
                 "company_name": company_name,
+                "permissions": _build_permissions(profile),
             },
             message=constants.LOGIN_SUCCESSFUL,
             status=status.HTTP_200_OK
@@ -475,6 +496,7 @@ def user_login(request):
                 "last_name": user.last_name,
                 "profile_image": profile.profile_image,
                 "company_name": company_name,
+                "permissions": _build_permissions(profile),
             },
             message=constants.LOGIN_SUCCESSFUL_WITH_OTP,
             status=status.HTTP_200_OK

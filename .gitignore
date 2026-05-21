@@ -10,3 +10,7 @@ static
 .venv
 venv/
 test_weasy.py
+
+.django_cache
+.github
+.DS_Store

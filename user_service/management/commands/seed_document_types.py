@@ -37,8 +37,8 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument(
             "--user",
-            default="nikhil@doqfy.in",
-            help="Email of the user to set as created_by (default: nikhil@doqfy.in)",
+            default="nikhil@getunits.ai",
+            help="Email of the user to set as created_by (default: nikhil@getunits.ai)",
         )
 
     def handle(self, *args, **options):

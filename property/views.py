@@ -189,6 +189,8 @@ def property(request):
             no_of_blocks=no_of_blocks,
             no_of_units=no_of_units,
             property_type=data.get("property_type") or constants.APARTMENT,
+            no_of_blocks=data.get("no_of_blocks") or 0,
+            no_of_units=data.get("no_of_units") or 0,
             land_area=data.get("land_area"),
             land_area_unit=data.get("land_area_unit") or constants.SQ_FT,
             land_dm_no=data.get("land_dm_no"),
@@ -1038,8 +1040,8 @@ def property_table_view(request):
         tenant_name = lease_obj.tenant.user.get_full_name() if lease_obj else None
         owner_name = prop.owner.user.get_full_name() if prop.owner else None
         lease_status = get_lease_status(lease_obj)
-        image_data = get_property_images(prop.id, single=True)
-        property_image = image_data["images"][0]["data"] if image_data["images"] else None
+        image_data = get_property_images(prop.property.id, single=True) if prop.property else {"images": []}
+        property_image = image_data["images"][0]["data"] if image_data.get("images") else None
         tenant_profile_image = lease_obj.tenant.profile_image if lease_obj else None
 
         data.append({
