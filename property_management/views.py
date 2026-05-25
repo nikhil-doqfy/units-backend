@@ -30,6 +30,9 @@ from utilities.helper_functions import (
 from utilities import status, constants
 from property_management import settings
 from property_management.utils import create_and_send_invitation
+from django.http import FileResponse, Http404
+from django.contrib.admin.views.decorators import staff_member_required
+from django.shortcuts import render
 
 @is_request_authenticated
 def serve_media(request, path):
@@ -1406,3 +1409,26 @@ def global_search(request):
 
     return prepare_response(content={"results": results}, message="OK", status=status.HTTP_200_OK)
 
+@staff_member_required
+def admin_report_file(request, filename):
+    safe_filename = os.path.basename(filename)
+    file_path = os.path.join(settings.MEDIA_ROOT, "reports", safe_filename)
+
+    if not os.path.exists(file_path):
+        raise Http404("Report not found")
+
+    return FileResponse(open(file_path, "rb"))
+
+@staff_member_required 
+def reports_view(request):
+    reports_path = os.path.join(settings.MEDIA_ROOT, "reports")
+
+    files = []
+    if os.path.exists(reports_path):
+        files = os.listdir(reports_path)
+
+    return render(
+        request,
+        "email_templates/report_list.html",
+        {"files": files}
+    )

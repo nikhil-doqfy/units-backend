@@ -52,7 +52,6 @@ class Property(Base):
     )
     land_dm_no = models.CharField(max_length=100, null=True, blank=True)
     plot_no = models.CharField(max_length=100, null=True, blank=True)
-    makani_no = models.CharField(max_length=100, null=True, blank=True)
     dewa_no = models.CharField(max_length=100, null=True, blank=True)
     address_line_1 = models.CharField(max_length=255)
     address_line_2 = models.CharField(max_length=255)
@@ -102,7 +101,6 @@ class Property(Base):
             "land_area_unit": self.land_area_unit,
             "land_dm_no": self.land_dm_no,
             "plot_no": self.plot_no,
-            "makani_no": self.makani_no,
             "dewa_no": self.dewa_no,
             "address_line_1": self.address_line_1,
             "address_line_2": self.address_line_2,
