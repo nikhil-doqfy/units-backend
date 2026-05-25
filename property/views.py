@@ -269,6 +269,7 @@ def property_blocks(request):
             {
                 "id": b.id,
                 "block_name": b.block_name,
+                "makani_no": b.makani_no,
                 "no_of_floors": b.no_of_floors,
                 "no_of_parking": b.no_of_parking,
                 "no_of_units": b.no_of_units,
@@ -301,6 +302,7 @@ def property_blocks(request):
                 created_by=user_profile.user,
                 property=prop,
                 block_name=block.get("block_name", ""),
+                makani_no=block.get("makani_no") or "",
                 no_of_floors=block.get("no_of_floors") or 0,
                 no_of_parking=block.get("no_of_parking") or 0,
                 no_of_units=block.get("no_of_units") or 0,
@@ -338,6 +340,7 @@ def property_blocks(request):
                 created_by=user_profile.user,
                 property=prop,
                 block_name=block.get("block_name", ""),
+                makani_no=block.get("makani_no") or "",
                 no_of_floors=block.get("no_of_floors") or 0,
                 no_of_parking=block.get("no_of_parking") or 0,
                 no_of_units=block.get("no_of_units") or 0,
