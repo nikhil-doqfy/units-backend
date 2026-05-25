@@ -547,3 +547,62 @@ class PropertyImagesDocumentsAPITestCase(TestCase):
         )
 
         self.assertEqual(res.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    def _create_other_company_property_assets(self):
+        other_company = PropertyManagmentCompany.objects.create(
+            name="Other Company",
+            address_line_1="other addr1",
+            address_line_2="other addr2",
+            licence_number="LIC999",
+            licence_expiry_date=timezone.now(),
+            licence_issuer="Gov",
+            created_by=self.admin_user,
+        )
+        other_property = Property.objects.create(
+            property_name="Other Property",
+            address_line_1="other addr1",
+            address_line_2="other addr2",
+            landmark="other landmark",
+            pincode="654321",
+            no_of_blocks=1,
+            no_of_units=1,
+            pmc=other_company,
+            created_by=self.admin_user,
+        )
+        other_image = PropertyImages.objects.create(
+            property=other_property,
+            image_path="path/to/other/image",
+            image_type="EXTERIOR",
+            file_name="other.jpg",
+            created_by=self.admin_user,
+        )
+        other_doc = PropertyDocuments.objects.create(
+            property=other_property,
+            document_type=self.doc_type,
+            file_name="other.pdf",
+            file_path="path/to/other/doc",
+            created_by=self.admin_user,
+        )
+        return other_property, other_image, other_doc
+
+    @patch("property.views.fetch_s3_presigned_url")
+    @patch("utilities.decorator.decode_jwt_token")
+    @patch("utilities.decorator.get_jwt_token")
+    def test_property_manager_cannot_get_other_company_property_images(
+        self, mock_get_token, mock_decode, mock_s3
+    ):
+        """
+        Verify PropertyManager cannot see another company's property images.
+        """
+        other_property, _, _ = self._create_other_company_property_assets()
+        self._mock_auth(mock_get_token, mock_decode)
+        mock_s3.return_value = "https://s3.example.com/other.jpg"
+
+        res = self.client.get(
+            self.url_images,
+            {"property_id": other_property.id},
+            HTTP_AUTHORIZATION="Bearer validtoken"
+        )
+
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.json()["content"], [])

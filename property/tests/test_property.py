@@ -361,3 +361,96 @@ class PropertyAPITestCase(TestCase):
         """
         res = self.client.get(self.url)
         self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    # GET — PropertyManager cannot access another company's property
+    @patch("utilities.decorator.decode_jwt_token")
+    @patch("utilities.decorator.get_jwt_token")
+    def test_property_manager_cannot_access_other_company_property(
+        self, mock_get_token, mock_decode
+    ):
+        """
+        Verify PropertyManager from one company cannot access properties belonging to another company and receives 404 Not Found.
+        """
+
+        # ── Second company ──────────────────────────────────────────
+        other_company = PropertyManagmentCompany.objects.create(
+            name="Other Company",
+            address_line_1="other addr1",
+            address_line_2="other addr2",
+            licence_number="LIC999",
+            licence_expiry_date=timezone.now(),
+            licence_issuer="Gov",
+            created_by=self.admin_user,
+        )
+
+        # ── Second user ────────────────────────────────────────────
+        other_user = User.objects.create_user(
+            username="otherpm",
+            password="testpass",
+            email="otherpm@test.com"
+        )
+
+        # ── PropertyManager of second company ──────────────────────
+        PropertyManager.objects.create(
+            user=other_user,
+            email=other_user.email,
+            token="othervalidtoken",
+            company=other_company,
+            created_by=self.admin_user,
+        )
+
+        # ── Mock auth for second company's manager ────────────────
+        mock_get_token.return_value = "othervalidtoken"
+        mock_decode.return_value = {"email": other_user.email}
+
+        # Try accessing first company's property
+        res = self.client.get(
+            self.url,
+            {"property_id": self.property.id},
+            HTTP_AUTHORIZATION="Bearer othervalidtoken"
+        )
+
+        # Should not be accessible
+        self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)
+
+    @patch("utilities.decorator.decode_jwt_token")
+    @patch("utilities.decorator.get_jwt_token")
+    def test_property_manager_property_list_shows_only_own_company_properties(
+        self, mock_get_token, mock_decode
+    ):
+        """
+        Verify PropertyManager sees only properties from their own PMC company.
+        """
+        other_company = PropertyManagmentCompany.objects.create(
+            name="Other Company",
+            address_line_1="other addr1",
+            address_line_2="other addr2",
+            licence_number="LIC999",
+            licence_expiry_date=timezone.now(),
+            licence_issuer="Gov",
+            created_by=self.admin_user,
+        )
+
+        other_property = Property.objects.create(
+            property_name="Other Property",
+            address_line_1="other addr1",
+            address_line_2="other addr2",
+            landmark="other landmark",
+            pincode="654321",
+            no_of_blocks=1,
+            no_of_units=1,
+            pmc=other_company,
+            created_by=self.admin_user,
+        )
+
+        self._mock_auth(mock_get_token, mock_decode)
+
+        res = self.client.get(
+            self.url,
+            HTTP_AUTHORIZATION="Bearer validtoken"
+        )
+
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        property_ids = [prop["id"] for prop in res.json()["content"]]
+        self.assertIn(self.property.id, property_ids)
+        self.assertNotIn(other_property.id, property_ids)

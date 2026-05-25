@@ -1,0 +1,41 @@
+<!-- <ul>
+    {% for file in files %}
+        <li>
+            <a href="/media/reports/{{ file }}" target="_blank">
+                {{ file }}
+            </a>
+        </li>
+    {% endfor %}
+</ul>
+ -->
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Reports</title>
+</head>
+<body>
+
+<h1>Generated Reports</h1>
+
+<ul>
+
+    {% for file in files %}
+
+        <li>
+
+            <a href="/admin/reports/{{ file }}/"
+               target="_blank">
+
+               {{ file }}
+
+            </a>
+
+        </li>
+
+    {% endfor %}
+
+</ul>
+
+</body>
+</html>

@@ -381,3 +381,54 @@ class PropertyBlocksAPITestCase(TestCase):
         )
 
         self.assertEqual(res.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    def _create_other_company_property(self):
+        other_company = PropertyManagmentCompany.objects.create(
+            name="Other Company",
+            address_line_1="other addr1",
+            address_line_2="other addr2",
+            licence_number="LIC999",
+            licence_expiry_date=timezone.now(),
+            licence_issuer="Gov",
+            created_by=self.admin_user,
+        )
+        other_property = Property.objects.create(
+            property_name="Other Property",
+            address_line_1="other addr1",
+            address_line_2="other addr2",
+            landmark="other landmark",
+            pincode="654321",
+            no_of_blocks=1,
+            no_of_units=1,
+            pmc=other_company,
+            created_by=self.admin_user,
+        )
+        other_block = PropertyBlocks.objects.create(
+            property=other_property,
+            block_name="Other Block",
+            no_of_floors=5,
+            no_of_parking=2,
+            no_of_units=10,
+            created_by=self.admin_user,
+        )
+        return other_property, other_block
+
+    @patch("utilities.decorator.decode_jwt_token")
+    @patch("utilities.decorator.get_jwt_token")
+    def test_property_manager_cannot_get_other_company_property_blocks(
+        self, mock_get_token, mock_decode
+    ):
+        """
+        Verify PropertyManager cannot see blocks for another company's property.
+        """
+        other_property, _ = self._create_other_company_property()
+        self._mock_auth(mock_get_token, mock_decode)
+
+        res = self.client.get(
+            self.url,
+            {"property_id": other_property.id},
+            HTTP_AUTHORIZATION="Bearer validtoken"
+        )
+
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.json()["content"], [])

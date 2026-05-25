@@ -3,9 +3,8 @@ import unittest
 import pandas as pd
 
 from datetime import datetime
-
 from django.test.runner import DiscoverRunner
-
+from django.conf import settings
 from HtmlTestRunner import HTMLTestRunner
 from HtmlTestRunner.result import HtmlTestResult
 # ============================================================================
@@ -90,10 +89,14 @@ class ExcelTestResult(unittest.TextTestResult):
 
 # CUSTOM DJANGO TEST RUNNER
 class CustomHTMLAndExcelRunner(DiscoverRunner):
-
+    def build_suite(self, test_labels=None, extra_tests=None, **kwargs):
+        self._test_labels = test_labels
+        self._extra_tests = extra_tests
+        return super().build_suite(test_labels, extra_tests, **kwargs)
     def run_suite(self, suite, **kwargs):
 
-        os.makedirs("reports", exist_ok=True)
+        reports_dir = os.path.join(settings.MEDIA_ROOT, "reports")
+        os.makedirs(reports_dir, exist_ok=True)
         timestamp = datetime.now().strftime(
             "%Y-%m-%d_%H-%M-%S"
         )
@@ -110,8 +113,9 @@ class CustomHTMLAndExcelRunner(DiscoverRunner):
         # STEP 2 — GENERATE EXCEL REPORT
         try:
 
-            excel_file = (
-                f"reports/test_report_{timestamp}.xlsx"
+            excel_file = os.path.join(
+                reports_dir,
+                f"test_report_{timestamp}.xlsx"
             )
 
             df = pd.DataFrame(result.rows)
@@ -198,12 +202,13 @@ class CustomHTMLAndExcelRunner(DiscoverRunner):
             # Build fresh suite for HTML report
             # otherwise suite gets consumed
             new_suite = self.build_suite(
-                test_labels=None
+                test_labels=getattr(self, "_test_labels", None),
+                extra_tests=getattr(self, "_extra_tests", None),
             )
 
             HTMLTestRunner(
                 combine_reports=True,
-                output="reports",
+                output=reports_dir,
                 report_name=(
                     f"html_report_{timestamp}"
                 ),

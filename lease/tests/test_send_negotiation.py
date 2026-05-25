@@ -178,17 +178,15 @@ class SendNegotiationTestCase(TestCase):
     @patch("lease.views.send_ses_email")
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
-    def test_send_negotiation_all_fail_still_returns_200(self, mock_get_token, mock_decode, mock_email, mock_audit):
-        """All emails failing still returns 200 — sent=[], failed=[both]."""
+    def test_send_negotiation_all_fail_returns_500(self, mock_get_token, mock_decode, mock_email, mock_audit):
+        """If all emails fail, endpoint returns 500."""
         self._mock_auth(mock_get_token, mock_decode)
         mock_email.return_value = False
 
         res = self._post({"lease_id": self.lease.id})
 
-        self.assertEqual(res.status_code, 200)
-        content = res.json()["content"]
-        self.assertEqual(content["sent"], [])
-        self.assertEqual(len(content["failed"]), 2)
+        self.assertEqual(res.status_code, status.HTTP_500_INTERNAL_SERVER_ERROR)
+        self.assertIn("failed to send negotiation emails", res.json()["message"].lower())
 
     # No recipients at all
     @patch("lease.views.send_ses_email")

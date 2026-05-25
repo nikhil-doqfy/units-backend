@@ -179,6 +179,11 @@ class UnitAPITestCase(TestCase):
         )
 
         self.assertEqual(res.status_code, status.HTTP_200_OK)
+        data = res.json()
+        self.assertIn("content", data)
+        self.assertTrue(len(data["content"]) >= 1)
+        for unit in data["content"]:
+            self.assertEqual(unit["property_id"], self.property.id)
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
@@ -195,6 +200,11 @@ class UnitAPITestCase(TestCase):
         )
 
         self.assertEqual(res.status_code, status.HTTP_200_OK)
+        data = res.json()
+        self.assertIn("content", data)
+        self.assertTrue(len(data["content"]) >= 1)
+        for unit in data["content"]:
+            self.assertEqual(unit["block_id"], self.block.id)
 
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
@@ -231,12 +241,6 @@ class UnitAPITestCase(TestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertIn("pagination", res.json())
 
-    def test_get_unit_without_auth_token_returns_401(self):
-        """
-        Verify GET /property/unit without Authorization header returns 401 Unauthorized.
-        """
-        res = self.client.get(self.url_unit)
-        self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
 
     # UNIT — POST
     @patch("utilities.decorator.decode_jwt_token")
@@ -398,10 +402,7 @@ class UnitAPITestCase(TestCase):
 
         self.assertEqual(res.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
 
-    # ════════════════════════════════════════════════════════════════
     # UNIT IMAGES — GET
-    # ════════════════════════════════════════════════════════════════
-
     @patch("property.views.fetch_s3_presigned_url")
     @patch("utilities.decorator.decode_jwt_token")
     @patch("utilities.decorator.get_jwt_token")
@@ -436,10 +437,7 @@ class UnitAPITestCase(TestCase):
 
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
 
-    # ════════════════════════════════════════════════════════════════
     # UNIT IMAGES — POST
-    # ════════════════════════════════════════════════════════════════
-
     @patch("property.views.upload_file_to_s3_base64")
     @patch("property.views.get_extension_from_base64")
     @patch("utilities.decorator.decode_jwt_token")
@@ -720,9 +718,7 @@ class UnitAPITestCase(TestCase):
 
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
 
-    # ════════════════════════════════════════════════════════════════
     # AUTH GUARD — No auth → 401
-    # ════════════════════════════════════════════════════════════════
 
     def test_get_unit_without_auth_token_returns_401(self):
         """
@@ -751,3 +747,51 @@ class UnitAPITestCase(TestCase):
         """
         res = self.client.get(self.url_docs)
         self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    # UNIT — Cross company access restriction
+    @patch("utilities.decorator.decode_jwt_token")
+    @patch("utilities.decorator.get_jwt_token")
+    def test_property_manager_unit_list_shows_only_own_company_units(self, mock_get_token, mock_decode):
+        other_company = PropertyManagmentCompany.objects.create(
+            name="Other Company",
+            address_line_1="other addr1",
+            address_line_2="other addr2",
+            licence_number="LIC999",
+            licence_expiry_date=timezone.now(),
+            licence_issuer="Gov",
+            created_by=self.admin_user,
+        )
+
+        other_property = Property.objects.create(
+            property_name="Other Property",
+            address_line_1="other addr1", 
+            address_line_2="other addr2",
+            landmark="other landmark",
+            pincode="654321",
+            no_of_blocks=1,
+            no_of_units=1,
+            pmc=other_company,
+            created_by=self.admin_user, 
+        )
+
+        other_block = PropertyBlocks.objects.create(
+            property=other_property,
+            block_name="Other Block",
+            no_of_floors=5,
+            no_of_parking=2,
+            no_of_units=10,
+            created_by=self.admin_user,
+        )
+
+        other_unit = Unit.objects.create( 
+            property_block_tower=other_block,
+            unit_name="999",
+            created_by=self.admin_user,
+        )
+
+        self._mock_auth(mock_get_token, mock_decode)
+        res = self.client.get(self.url_unit,HTTP_AUTHORIZATION="Bearer validtoken")
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        unit_ids = [unit["id"] for unit in res.json()["content"]]
+        self.assertIn(self.unit.id, unit_ids)
+        self.assertNotIn(other_unit.id, unit_ids)

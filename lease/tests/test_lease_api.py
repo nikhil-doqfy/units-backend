@@ -431,8 +431,7 @@ class LeaseViewTestCase(TestCase):
     @patch("utilities.decorator.get_jwt_token")
     def test_update_soft_deleted_lease_returns_not_found(self, mock_get_token, mock_decode):
         """
-        Verify updating soft-deleted lease
-        returns 404 response.
+        Verify updating soft-deleted lease returns 404 response.
         """
         self._mock_auth(mock_get_token, mock_decode)
 
@@ -453,8 +452,7 @@ class LeaseViewTestCase(TestCase):
     @patch("utilities.decorator.get_jwt_token")
     def test_update_lease_date_fields_returns_success(self, mock_get_token, mock_decode):
         """
-        Verify lease start_date and end_date
-        are updated successfully.
+        Verify lease start_date and end_date are updated successfully.
         """
         self._mock_auth(mock_get_token, mock_decode)
 

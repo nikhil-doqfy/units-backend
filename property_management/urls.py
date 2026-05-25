@@ -25,6 +25,8 @@ from user_service.views import (
 
 
 urlpatterns = [
+    path("admin/reports/<str:filename>/", views.admin_report_file),
+    path("admin/reports/", views.reports_view),
     path('admin/', admin.site.urls),
     path('user/', include(user_service_urls)),
     path('auth/', include(auth_service_urls)),
