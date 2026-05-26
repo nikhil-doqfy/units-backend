@@ -114,7 +114,6 @@ def _get_or_create_owner(owner_data, created_by):
 
 
 @is_request_authenticated
-@is_request_authenticated
 def property(request):
     user_profile = request.user
 
