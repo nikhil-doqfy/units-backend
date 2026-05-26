@@ -195,20 +195,12 @@ def options(request):
                 for lease in leases
             ]    
         elif option_type == "OWNER_COMPANY_USER":
+            companies = PropertyManagmentCompany.objects.none()
             if pm_profile and pm_profile.company:
                 companies = PropertyManagmentCompany.objects.filter(
                     id=pm_profile.company.id,
                     is_active=True
                 )
-            else:
-                own_company = PropertyManagmentCompany.objects.filter(
-                    created_by=user.user,
-                    is_active=True
-                ).first()
-                companies = PropertyManagmentCompany.objects.filter(
-                    id=own_company.id,
-                    is_active=True
-                ) if own_company else PropertyManagmentCompany.objects.none()
 
             content["company_user"] = [
                 {"key": c.id, "value": c.name or f"Company #{c.id}"}

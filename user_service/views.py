@@ -1762,190 +1762,22 @@ def tenant_crud(request):
     return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
 @csrf_exempt
-# @is_request_authenticated
-# def approval_view(request):
-#     user_profile = request.user
-
-#     if request.method == "GET":
-
-#         lease_id_param = request.GET.get("lease_id")
-#         if lease_id_param:
-#             lease = Lease.objects.select_related("tenant", "unit").filter(id=lease_id_param).first()
-#             if not lease:
-#                 return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
-#             approval = Approval.objects.select_related(
-#                 "tenant__user", "unit", "unit__property_block_tower__property", "created_by"
-#             ).filter(tenant=lease.tenant, unit=lease.unit).order_by("-id").first()
-#             if not approval:
-#                 return prepare_response(message="No approval found for this lease", status=status.HTTP_404_NOT_FOUND)
-#             content = {
-#                 "id": approval.id,
-#                 "requested_date": approval.created,
-#                 "tenant": f"{approval.tenant.user.first_name} {approval.tenant.user.last_name}".strip() if approval.tenant and approval.tenant.user else None,
-#                 "created_by": (approval.created_by.get_full_name() or approval.created_by.username) if approval.created_by else None,
-#                 "property": approval.unit.property_block_tower.property.property_name if approval.unit.property_block_tower and approval.unit.property_block_tower.property else None,
-#                 "property_image": approval.unit.property_block_tower.property._get_thumbnail() if approval.unit.property_block_tower and approval.unit.property_block_tower.property else None,
-#                 "block": approval.unit.property_block_tower.block_name if approval.unit.property_block_tower else None,
-#                 "unit": approval.unit.unit_name,
-#                 "requested_rent": approval.requested_rent,
-#                 "requested_tenure": approval.requested_tenure,
-#                 "actual_rent": approval.unit.rent,
-#                 "actual_tenure": approval.unit.cycle,
-#                 "approved": approval.approved,
-#                 "status": "APPROVED" if approval.approved else ("REJECTED" if approval.approved_by_id else "PENDING"),
-#             }
-#             return prepare_response(content=content, status=status.HTTP_200_OK)
-
-#         approval_id = request.GET.get("approval_id")
-
-#         if approval_id:
-
-#             approval = Approval.objects.select_related(
-#                 "tenant",
-#                 "unit",
-#                 "unit__property_block_tower__property"
-#             ).filter(id=approval_id).first()
-
-#             if not approval:
-#                 return prepare_response(
-#                     message="Approval request not found",
-#                     status=status.HTTP_404_NOT_FOUND
-#                 )
-
-#             content = {
-#                 "id": approval.id,
-#                 "requested_date": approval.created,
-#                 "tenant": str(approval.tenant),
-#                 "property": approval.unit.property_block_tower.property.property_name
-#                 if approval.unit.property_block_tower and approval.unit.property_block_tower.property else None,
-#                 "block": approval.unit.property_block_tower.block_name if approval.unit.property_block_tower else None,
-#                 "unit": approval.unit.unit_name,
-#                 "requested_rent": approval.requested_rent,
-#                 "requested_tenure": approval.requested_tenure,
-#                 "actual_rent": approval.unit.rent,
-#                 "actual_tenure": approval.unit.cycle,
-#                 "approved": approval.approved,
-#                 "approved_by": str(approval.approved_by) if approval.approved_by else None,
-#                 "approved_at": approval.approved_at
-#             }
-
-#             return prepare_response(content=content, status=status.HTTP_200_OK)
-
-#         approval_status = request.GET.get("status")
-#         page = int(request.GET.get("page", 1))
-#         page_size = int(request.GET.get("page_size", 10))
-
-#         approvals_qs = Approval.objects.select_related(
-#             "tenant__user",
-#             "unit",
-#             "unit__property_block_tower__property",
-#             "created_by",
-#         ).order_by("-id")
-
-#         if approval_status == "PENDING":
-#             approvals_qs = approvals_qs.filter(approved=False, approved_by_id__isnull=True)
-#         elif approval_status == "APPROVED":
-#             approvals_qs = approvals_qs.filter(approved=True)
-#         elif approval_status == "REJECTED":
-#             approvals_qs = approvals_qs.filter(approved=False, approved_by_id__isnull=False)
-
-#         total_records = approvals_qs.count()
-#         paginator_obj = Paginator(approvals_qs, page_size)
-#         try:
-#             page_obj = paginator_obj.page(page)
-#         except EmptyPage:
-#             page_obj = paginator_obj.page(paginator_obj.num_pages)
-
-#         content = [
-#             {
-#                 "id": a.id,
-#                 "requested_date": a.created,
-#                 "created_by": (
-#                     a.created_by.get_full_name() or a.created_by.username
-#                 ) if a.created_by else None,
-#                 "tenant": (
-#                     f"{a.tenant.user.first_name} {a.tenant.user.last_name}".strip()
-#                     or a.tenant.user.username
-#                 ) if a.tenant and a.tenant.user else None,
-#                 "property": a.unit.property_block_tower.property.property_name
-#                 if a.unit.property_block_tower and a.unit.property_block_tower.property else None,
-#                 "property_image": a.unit.property_block_tower.property._get_thumbnail()
-#                 if a.unit.property_block_tower and a.unit.property_block_tower.property else None,
-#                 "block": a.unit.property_block_tower.block_name if a.unit.property_block_tower else None,
-#                 "unit": a.unit.unit_name,
-#                 "requested_rent": a.requested_rent,
-#                 "requested_tenure": a.requested_tenure,
-#                 "actual_rent": a.unit.rent,
-#                 "actual_tenure": a.unit.cycle,
-#                 "approved": a.approved,
-#                 "status": "APPROVED" if a.approved else ("REJECTED" if a.approved_by_id else "PENDING"),
-#             }
-#             for a in page_obj
-#         ]
-
-#         return prepare_response(
-#             content=content,
-#             pagination={
-#                 "total_records": total_records,
-#                 "page": page,
-#                 "page_size": page_size,
-#                 "total_pages": paginator_obj.num_pages,
-#             },
-#             status=status.HTTP_200_OK,
-#         )
-
 @is_request_authenticated
 def approval_view(request):
     user_profile = request.user
-
-    pm_profile = PropertyManager.objects.filter(
-        pk=user_profile.pk
-    ).select_related('company').first()
-
-    is_pm = pm_profile is not None
-    company = pm_profile.company if pm_profile else None
-
+ 
     if request.method == "GET":
-
+ 
         lease_id_param = request.GET.get("lease_id")
         if lease_id_param:
-            lease_qs = Lease.objects.select_related("tenant", "unit")
-
-            if is_pm and company:
-                lease_qs = lease_qs.filter(
-                    id=lease_id_param,
-                    unit__property_block_tower__property__pmc=company
-                )
-            else:
-                lease_qs = lease_qs.filter(
-                    id=lease_id_param,
-                    tenant__created_by=user_profile
-                )
-
-            lease = lease_qs.first()
-
+            lease = Lease.objects.select_related("tenant", "unit").filter(id=lease_id_param).first()
             if not lease:
-                return prepare_response(
-                    message="Lease not found",
-                    status=status.HTTP_404_NOT_FOUND
-                )
-
+                return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
             approval = Approval.objects.select_related(
-                "tenant__user",
-                "unit",
-                "unit__property_block_tower__property",
-                "created_by"
-            ).filter(
-                tenant=lease.tenant,
-                unit=lease.unit
-            ).order_by("-id").first()
-
+                "tenant__user", "unit", "unit__property_block_tower__property", "created_by"
+            ).filter(tenant=lease.tenant, unit=lease.unit).order_by("-id").first()
             if not approval:
-                return prepare_response(
-                    message="No approval found for this lease",
-                    status=status.HTTP_404_NOT_FOUND
-                )
-
+                return prepare_response(message="No approval found for this lease", status=status.HTTP_404_NOT_FOUND)
             content = {
                 "id": approval.id,
                 "requested_date": approval.created,
@@ -1962,38 +1794,24 @@ def approval_view(request):
                 "approved": approval.approved,
                 "status": "APPROVED" if approval.approved else ("REJECTED" if approval.approved_by_id else "PENDING"),
             }
-
             return prepare_response(content=content, status=status.HTTP_200_OK)
-
+ 
         approval_id = request.GET.get("approval_id")
-
+ 
         if approval_id:
-
-            approval_qs = Approval.objects.select_related(
+ 
+            approval = Approval.objects.select_related(
                 "tenant",
                 "unit",
                 "unit__property_block_tower__property"
-            )
-
-            if is_pm and company:
-                approval_qs = approval_qs.filter(
-                    id=approval_id,
-                    unit__property_block_tower__property__pmc=company
-                )
-            else:
-                approval_qs = approval_qs.filter(
-                    id=approval_id,
-                    tenant__created_by=user_profile
-                )
-
-            approval = approval_qs.first()
-
+            ).filter(id=approval_id).first()
+ 
             if not approval:
                 return prepare_response(
                     message="Approval request not found",
                     status=status.HTTP_404_NOT_FOUND
                 )
-
+ 
             content = {
                 "id": approval.id,
                 "requested_date": approval.created,
@@ -2010,44 +1828,34 @@ def approval_view(request):
                 "approved_by": str(approval.approved_by) if approval.approved_by else None,
                 "approved_at": approval.approved_at
             }
-
+ 
             return prepare_response(content=content, status=status.HTTP_200_OK)
-
+ 
         approval_status = request.GET.get("status")
         page = int(request.GET.get("page", 1))
         page_size = int(request.GET.get("page_size", 10))
-
+ 
         approvals_qs = Approval.objects.select_related(
             "tenant__user",
             "unit",
             "unit__property_block_tower__property",
             "created_by",
         ).order_by("-id")
-
-        if is_pm and company:
-            approvals_qs = approvals_qs.filter(
-                unit__property_block_tower__property__pmc=company
-            )
-        else:
-            approvals_qs = approvals_qs.filter(
-                tenant__created_by=user_profile
-            )
-
+ 
         if approval_status == "PENDING":
             approvals_qs = approvals_qs.filter(approved=False, approved_by_id__isnull=True)
         elif approval_status == "APPROVED":
             approvals_qs = approvals_qs.filter(approved=True)
         elif approval_status == "REJECTED":
             approvals_qs = approvals_qs.filter(approved=False, approved_by_id__isnull=False)
-
+ 
         total_records = approvals_qs.count()
         paginator_obj = Paginator(approvals_qs, page_size)
-
         try:
             page_obj = paginator_obj.page(page)
         except EmptyPage:
             page_obj = paginator_obj.page(paginator_obj.num_pages)
-
+ 
         content = [
             {
                 "id": a.id,
@@ -2074,7 +1882,7 @@ def approval_view(request):
             }
             for a in page_obj
         ]
-
+ 
         return prepare_response(
             content=content,
             pagination={
@@ -2085,7 +1893,7 @@ def approval_view(request):
             },
             status=status.HTTP_200_OK,
         )
-    
+
     elif request.method == "POST":
 
         if not PropertyManager.objects.filter(user=user_profile.user).exists():
