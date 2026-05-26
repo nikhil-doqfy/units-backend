@@ -195,9 +195,13 @@ def options(request):
                 for lease in leases
             ]    
         elif option_type == "OWNER_COMPANY_USER":
-            companies = PropertyManagmentCompany.objects.filter(is_active=True)
-            content["company_user"] = [{"key": c.id, "value": c.name or f"PropertyManagmentCompany #{c.id}"} for c in companies]
-            
+
+            companies = []
+            #whose id matches logged-in user's company
+            if pm_profile and pm_profile.company:
+                companies = PropertyManagmentCompany.objects.filter(id=pm_profile.company.id,is_active=True)
+
+            content["company_user"] = [{"key": c.id, "value": c.name or f"Company #{c.id}"}for c in companies]    
         elif option_type == "LEASE_STATUS":
             content["lease_status"] = [{"key": status_key,"value": status_value}for status_key, status_value in constants.LEASE_STATUS_CHOICES]
         elif option_type == "OWNER_DETAILS":

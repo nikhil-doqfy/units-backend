@@ -114,6 +114,7 @@ def _get_or_create_owner(owner_data, created_by):
 
 
 @is_request_authenticated
+@is_request_authenticated
 def property(request):
     user_profile = request.user
 
@@ -135,7 +136,19 @@ def property(request):
         page_size = int(request.GET.get("page_size", 10))
         export = request.GET.get("export", "").strip()
 
-        properties = Property.objects.all().order_by("-id")
+        # ── Scope to logged-in user's company only ─────────────
+        #Finds logged-in user's PropertyManager profile and its company.
+        pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).select_related('company').first()
+        #If company exists, fetch that company’s active properties.
+        if pm_profile and pm_profile.company:
+            properties = Property.objects.filter(pmc=pm_profile.company,is_active=True).order_by("-id")
+        #Otherwise, find company created by logged-in user, else return empty list.
+        else:
+            own_company = PropertyManagmentCompany.objects.filter(created_by=user_profile.user,is_active=True).first()
+            properties = []
+
+            if own_company:
+                properties = Property.objects.filter(pmc=own_company,is_active=True).order_by("-id")
         if search:
             properties = properties.filter(property_name__icontains=search)
         if property_type:
