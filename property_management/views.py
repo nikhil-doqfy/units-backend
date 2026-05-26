@@ -335,7 +335,6 @@ def options(request):
             tenants = (tenants_created | tenants_interested).distinct()
             content["tenant"] = [{"key": t.id, "value": f"{t.user.first_name} {t.user.last_name}"} for t in tenants]
 
-            
         elif option_type == "TIMEZONE":
             content["timezone"] = [{"key": key, "value": value} for key, value in constants.TIMEZONE_CHOICES]
 
