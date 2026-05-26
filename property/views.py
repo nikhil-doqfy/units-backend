@@ -165,10 +165,10 @@ def property(request):
             response = HttpResponse(content_type="text/csv")
             response["Content-Disposition"] = 'attachment; filename="properties.csv"'
             writer = csv.writer(response)
-            writer.writerow(["Property ID", "Property Name", "Type", "Status", "Address", "Blocks", "Units", "Plot No", "Makani No", "Dewa No"])
+            writer.writerow(["Property ID", "Property Name", "Type", "Status", "Address", "Blocks", "Units", "Plot No", "Dewa No"])
             for p in properties:
                 s = p._serialize_property()
-                writer.writerow([s.get("code"), s.get("property_name"), s.get("property_type"), s.get("status"), s.get("address_line_1"), s.get("no_of_blocks"), s.get("no_of_units"), s.get("plot_no"), s.get("makani_no"), s.get("dewa_no")])
+                writer.writerow([s.get("code"), s.get("property_name"), s.get("property_type"), s.get("status"), s.get("address_line_1"), s.get("no_of_blocks"), s.get("no_of_units"), s.get("plot_no"), s.get("dewa_no")])
             return response
 
         total = properties.count()
@@ -301,7 +301,6 @@ def property(request):
             land_area_unit=data.get("land_area_unit") or constants.SQ_FT,
             land_dm_no=data.get("land_dm_no"),
             plot_no=data.get("plot_no"),
-            makani_no=data.get("makani_no"),
             dewa_no=data.get("dewa_no"),
             address_line_1=data.get("address_line_1") or '',
             address_line_2=data.get("address_line_2") or '',
@@ -338,7 +337,7 @@ def property(request):
             )
 
         for field in ["property_name", "property_type", "no_of_blocks", "no_of_units",
-                      "land_area", "land_area_unit", "land_dm_no", "plot_no", "makani_no",
+                      "land_area", "land_area_unit", "land_dm_no", "plot_no",
                       "dewa_no", "address_line_1", "address_line_2", "landmark", "pincode",
                       "latitude", "longitude", "map_address", "approx_rent"]:
             if field in data and data[field] is not None:
@@ -379,6 +378,7 @@ def property_blocks(request):
             {
                 "id": b.id,
                 "block_name": b.block_name,
+                "makani_no": b.makani_no,
                 "no_of_floors": b.no_of_floors,
                 "no_of_parking": b.no_of_parking,
                 "no_of_units": b.no_of_units,
@@ -411,6 +411,7 @@ def property_blocks(request):
                 created_by=user_profile.user,
                 property=prop,
                 block_name=block.get("block_name", ""),
+                makani_no=block.get("makani_no") or "",
                 no_of_floors=block.get("no_of_floors") or 0,
                 no_of_parking=block.get("no_of_parking") or 0,
                 no_of_units=block.get("no_of_units") or 0,
@@ -448,6 +449,7 @@ def property_blocks(request):
                 created_by=user_profile.user,
                 property=prop,
                 block_name=block.get("block_name", ""),
+                makani_no=block.get("makani_no") or "",
                 no_of_floors=block.get("no_of_floors") or 0,
                 no_of_parking=block.get("no_of_parking") or 0,
                 no_of_units=block.get("no_of_units") or 0,
@@ -1212,7 +1214,6 @@ def parent_property_view(request):
             "land_area_unit": prop.land_area_unit,
             "land_dm_no": prop.land_dm_no,
             "plot_no": prop.plot_no,
-            "makani_no": prop.makani_no,
             "dewa_no": prop.dewa_no,
             "address_line_1": prop.address_line_1,
             "address_line_2": prop.address_line_2,
