@@ -1,3 +1,5 @@
+#################THIS IS PROPERTY VIEWS##################
+
 import csv
 import json
 import uuid
@@ -135,7 +137,23 @@ def property(request):
         page_size = int(request.GET.get("page_size", 10))
         export = request.GET.get("export", "").strip()
 
-        properties = Property.objects.all().order_by("-id")
+        pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).select_related('company').first()
+
+        if pm_profile and pm_profile.company:
+            properties = Property.objects.filter(
+                pmc=pm_profile.company,
+                is_active=True
+            ).order_by("-id")
+        else:
+            own_company = PropertyManagmentCompany.objects.filter(
+                created_by=user_profile.user,
+                is_active=True
+            ).first()
+            properties = Property.objects.filter(
+                pmc=own_company,
+                is_active=True
+            ).order_by("-id") if own_company else Property.objects.none()
+
         if search:
             properties = properties.filter(property_name__icontains=search)
         if property_type:
@@ -186,8 +204,96 @@ def property(request):
         prop = Property.objects.create(
             created_by=user_profile.user,
             property_name=property_name,
-            no_of_blocks=no_of_blocks,
-            no_of_units=no_of_units,
+            property_type=data.get("property_type") or constants.APARTMENT,
+            no_of_blocks=data.get("no_of_blocks") or 0,
+            no_of_units=data.get("no_of_units") or 0,
+            land_area=data.get("land_area"),
+            land_area_unit=data.get("land_area_unit") or constants.SQ_FT,
+            land_dm_no=data.get("land_dm_no"),
+            plot_no=data.get("plot_no"),
+            makani_no=data.get("makani_no"),
+            dewa_no=data.get("dewa_no"),
+            address_line_1=data.get("address_line_1") or '',
+            address_line_2=data.get("address_line_2") or '',
+            landmark=data.get("landmark") or '',
+            pincode=data.get("pincode") or '',
+            latitude=data.get("latitude"),
+            longitude=data.get("longitude"),
+            map_address=data.get("map_address"),
+            approx_rent=data.get("approx_rent"),
+            pmc=pmc,
+        )
+
+        audit_logs(request, f"Property '{prop.property_name}' created", constants.CREATED)
+        return prepare_response(
+            message=constants.PROPERTY_ADDED,
+            content={"id": prop.id},
+            status=status.HTTP_201_CREATED
+        )
+
+    elif request.method == "PUT":
+        data = json.loads(request.body)
+        property_id = data.get("property_id")
+        if not property_id:
+            return prepare_response(
+                message=constants.PROPERTY_ID_REQUIRED,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        prop = Property.objects.filter(id=property_id).first()
+        if not prop:
+            return prepare_response(
+                message=constants.PROPERTY_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        for field in ["property_name", "property_type", "no_of_blocks", "no_of_units",
+                      "land_area", "land_area_unit", "land_dm_no", "plot_no", "makani_no",
+                      "dewa_no", "address_line_1", "address_line_2", "landmark", "pincode",
+                      "latitude", "longitude", "map_address", "approx_rent"]:
+            if field in data and data[field] is not None:
+                setattr(prop, field, data[field])
+
+        pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).select_related('company').first()
+        if pm_profile and pm_profile.company:
+            prop.pmc = pm_profile.company
+
+        prop.save()
+
+        audit_logs(request, f"Parent property '{prop.property_name}' updated", constants.UPDATED)
+        return prepare_response(
+            message=constants.PROPERTY_UPDATE_SUCCESS,
+            content={"id": prop.id},
+            status=status.HTTP_200_OK
+        )
+  
+
+
+
+
+    elif request.method == "POST":
+        data = json.loads(request.body)
+
+        property_name = data.get("property_name")
+        no_of_blocks = data.get("no_of_blocks")
+        no_of_units = data.get("no_of_units")
+        if not property_name:
+            return prepare_response(
+                message=constants.PROPERTY_NAME_REQUIRED,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).select_related('company').first()
+        pmc = pm_profile.company if pm_profile else None
+        if not pmc:
+            return prepare_response(
+                message=constants.NOT_VERIFIED_PROPERTY_MANAGER,
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        prop = Property.objects.create(
+            created_by=user_profile.user,
+            property_name=property_name,
             property_type=data.get("property_type") or constants.APARTMENT,
             no_of_blocks=data.get("no_of_blocks") or 0,
             no_of_units=data.get("no_of_units") or 0,
