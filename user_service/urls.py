@@ -3,7 +3,7 @@ from user_service import views as user_serviceviews
 from user_service import views
 
 urlpatterns = [
-    path("signup", user_serviceviews.user_sign_up),
+    path("signup", user_serviceviews.user_sign_up, name="signup"),
     path("profile", views.userprofile_view, name='userprofile_view'),
     path("management", views.user_management, name='user_management'),
     path('add_role', views.create_role, name='create_role'),
