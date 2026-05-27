@@ -1,6 +1,7 @@
 import os
 import json
 import calendar
+import math
 from datetime import timedelta, datetime, date
 from calendar import monthrange
 from dateutil.relativedelta import relativedelta
@@ -1242,6 +1243,119 @@ def dashboard_yearly_dues(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
+@is_request_authenticated
+def dashboard_property_owned(request):
+    if request.method != "GET":
+        return prepare_response(
+            message=constants.INVALID_REQUEST_METHOD,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
+    try:
+        user = request.user
+        # PAGINATION
+        page = int(request.GET.get("page", 1))
+        limit = int(request.GET.get("limit", 5))
+        start = (page - 1) * limit
+        end = start + limit
+
+        # ROLE BASED ACCESS
+        pm_instance = PropertyManager.objects.filter(
+            pk=user.pk
+        ).select_related("company").first()
+        owner_instance = Owner.objects.filter(
+            pk=user.pk
+        ).first()
+
+        # PROPERTY QUERYSET
+        properties = Property.objects.filter(is_active=True)
+        # PMC
+        if pm_instance:
+            company = pm_instance.company
+
+            properties = properties.filter(
+                pmc=company
+            )
+
+        # OWNER
+        elif owner_instance:
+            properties = properties.filter(
+                property_block_towers__units__unit_owners__owner=owner_instance
+            ).distinct()
+
+        # NO ACCESS
+        else:
+            properties = Property.objects.none()
+        total_properties = properties.count()
+
+        # PAGINATION
+        paginated_properties = properties.order_by("id")[start:end]
+        property_list = []
+
+        for prop in paginated_properties:
+
+            property_units = Unit.objects.filter(
+                is_active=True,
+                property_block_tower__property=prop
+            ).distinct()
+
+            # OWNER FILTER
+            if owner_instance:
+
+                property_units = property_units.filter(
+                    unit_owners__owner=owner_instance
+                ).distinct()
+
+            # TOTAL UNITS
+            total_units = property_units.count()
+
+            # RENTED UNITS
+            rented_unit_ids = list(
+                Lease.objects.filter(
+                    unit__in=property_units,
+                    lease_status=constants.ACTIVE
+                )
+                .values_list("unit_id", flat=True)
+                .distinct()
+            )
+
+            rented_units = len(rented_unit_ids)
+            # VACANT UNITS
+            vacant_units = total_units - rented_units
+            property_list.append({
+                "property_id": prop.id,
+                "property_name": prop.property_name,
+                "total_units": total_units,
+                "rented_units": rented_units,
+                "vacant_units": vacant_units
+            })
+
+        # PAGINATION DETAILS
+        total_pages = math.ceil(total_properties / limit) if limit else 1
+        data = {
+
+            "view_type": "property_summary",
+            "pagination": {
+                "page": page,
+                "limit": limit,
+                "total_records": total_properties,
+                "total_pages": total_pages,
+                "has_next": page < total_pages,
+                "has_previous": page > 1
+            },
+
+            "properties": property_list
+        }
+        return prepare_response(
+            message="Property summary fetched successfully",
+            status=status.HTTP_200_OK,
+            content=data
+        )
+    except Exception as e:
+        print("Dashboard Property Owned Error:", e)
+        return prepare_response(
+            message=str(e),
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
 
 @is_request_authenticated
 def audit_log(request):
