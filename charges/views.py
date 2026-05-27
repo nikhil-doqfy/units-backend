@@ -3,14 +3,7 @@ from utilities.helper_functions import prepare_response
 from utilities import status, constants
 from utilities.decorator import is_request_authenticated
 from property_management.utils import audit_logs
-from user_service.models import PropertyManager
 from .models import Charge
-
-
-def _resolve_pmc(user_profile):
-    """Return the PMC company for the logged-in user, or None."""
-    pm = PropertyManager.objects.filter(pk=user_profile.pk).select_related("company").first()
-    return pm.company if pm and pm.company else None
 
 
 @is_request_authenticated
@@ -24,17 +17,10 @@ def charges(request):
         )
 
     user_country = user_profile.city.state.country
-    pmc = _resolve_pmc(user_profile)
-
-    if not pmc:
-        return prepare_response(
-            message="PMC company not found for this user",
-            status=status.HTTP_400_BAD_REQUEST
-        )
 
     if request.method == "GET":
         charge_id = request.GET.get("charge_id")
-        filters = {"country": user_country, "pmc": pmc}
+        filters = {"country": user_country}
 
         if charge_id:
             filters["id"] = charge_id
@@ -78,7 +64,6 @@ def charges(request):
             tax_code=float(data.get("tax_code", 0)),
             is_editable=bool(data.get("is_editable", True)),
             country=user_country,
-            pmc=pmc,
             created_by=user_profile.user,
         )
 
@@ -99,7 +84,7 @@ def charges(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        charge = Charge.objects.filter(id=charge_id, country=user_country, pmc=pmc).first()
+        charge = Charge.objects.filter(id=charge_id, country=user_country).first()
         if not charge:
             return prepare_response(
                 message=constants.NOT_FOUND,
@@ -134,7 +119,7 @@ def charges(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        charge = Charge.objects.filter(id=charge_id, country=user_country, pmc=pmc).first()
+        charge = Charge.objects.filter(id=charge_id, country=user_country).first()
         if not charge:
             return prepare_response(
                 message=constants.NOT_FOUND,

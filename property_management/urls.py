@@ -25,6 +25,8 @@ from user_service.views import (
 
 
 urlpatterns = [
+    path("admin/reports/<str:filename>/", views.admin_report_file),
+    path("admin/reports/", views.reports_view),
     path('admin/', admin.site.urls),
     path('user/', include(user_service_urls)),
     path('auth/', include(auth_service_urls)),
@@ -48,6 +50,7 @@ urlpatterns = [
     path('cheque_aging', views.dashboard_cheque_aging, name='dashboard_cheque_aging'),
     path('other_type_payments', views.dashboard_other_type_payments, name='dashboard_other_type_payments'),
     path('dashboard_graph_due', views.dashboard_yearly_dues, name='dashboard_yearly_due'),
+    path('dashboard_property_owned', views.dashboard_property_owned, name='dashboard_property_owned'),
 
     # User-service views at root level (original paths, before user/ prefix migration)
     path('api/approval', approval_view, name='approval_view'),

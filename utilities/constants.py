@@ -239,7 +239,7 @@ LOGGED_IN_USER_NOT_PM = "Logged-in user is not a property manager."
 PROPERTY_NO_OWNER_ASSIGNED = "Property has no owner assigned."
 LEASE_DOCUMENTS_UPLOADED_SUCCESS = "Lease documents uploaded successfully."
 INVALID_LAESE_ID="Invalid lease id"
-
+INVALID_USER_ROLE = "Invalid user role"
 
 INVALID_LEASE_DATE = "Invalid lease start or end date."
 PMC_NOT_FOUND = "PMC not found for this user."

@@ -13,14 +13,6 @@ class Charge(Base):
         related_name="charges"
     )
 
-    pmc = models.ForeignKey(
-        "property.PropertyManagmentCompany",
-        on_delete=models.CASCADE,
-        related_name="charges",
-        null=True,
-        blank=True,
-    )
-
     tax_code = models.FloatField(default=0)
     amount = models.FloatField()
     vat_amount = models.FloatField(default=0)
@@ -49,5 +41,4 @@ class Charge(Base):
 
         data["country"] = self.country._get_country_info()
 
-        return data 
-        
+        return data
