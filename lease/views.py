@@ -24,8 +24,8 @@ from utilities.helper_functions import (
     fetch_s3_presigned_url_for_download, translate_to_arabic,
 )
 from utilities import status, constants
-from property.models import Unit
-from user_service.models import Tenant, TenantDocuments, DocumentType, UserProfile, Documents, Approval
+from property.models import Unit, PropertyManagmentCompany
+from user_service.models import Tenant, TenantDocuments, DocumentType, UserProfile, Documents, Approval, PropertyManager
 from property_management import settings
 from property_management.utils import audit_logs, get_tenant_detail_by_id
 from property_management.models import TermAndCondition
@@ -1370,26 +1370,73 @@ def submit_lease_signature(request):
 def lease_cheque_view(request):
     """CRUD for LeaseTransaction. GET ?lease_id=X, POST/PUT body JSON, DELETE ?cheque_id=X"""
 
-    # ── GET list / single ─────────────────────────────────────────────────────
     if request.method == "GET":
+
+        user_profile = request.user
+
+        # ── Get logged-in user's company ───────────────────────
+        pm_profile = PropertyManager.objects.filter(
+            pk=user_profile.pk
+        ).select_related("company").first()
+
+        company = pm_profile.company if pm_profile else None
+
+        if not company:
+            own_company = PropertyManagmentCompany.objects.filter(
+                created_by=user_profile.user,
+                is_active=True
+            ).first()
+
+            company = own_company
+
+        if not company:
+            return prepare_response(
+                message=constants.COMPANY_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # ── Single cheque ──────────────────────────────────────
         cheque_id = request.GET.get("cheque_id")
+
         if cheque_id:
             try:
                 cheque = LeaseTransaction.objects.select_related(
-                    "origin_bank", "selltlement_bank"
-                ).get(id=cheque_id)
+                    "origin_bank",
+                    "selltlement_bank",
+                    "document_type",
+                    "lease__unit__property_block_tower__property"
+                ).get(
+                    id=cheque_id,
+                    lease__unit__property_block_tower__property__pmc=company
+                )
+
             except LeaseTransaction.DoesNotExist:
-                return prepare_response(message="Cheque not found", status=status.HTTP_404_NOT_FOUND)
-            return prepare_response(content=serialize_lease_cheque(cheque), status=status.HTTP_200_OK)
+                return prepare_response(message="Cheque not found",status=status.HTTP_404_NOT_FOUND)
 
+            return prepare_response(
+                content=serialize_lease_cheque(cheque),
+                status=status.HTTP_200_OK
+            )
+
+        # ── Lease cheque list ──────────────────────────────────
         lease_id = request.GET.get("lease_id")
-        if not lease_id:
-            return prepare_response(message="lease_id or cheque_id is required", status=status.HTTP_400_BAD_REQUEST)
-        cheques = LeaseTransaction.objects.filter(lease_id=lease_id).select_related(
-            "origin_bank", "selltlement_bank", "document_type"
-        )
-        return prepare_response(content=group_lease_cheques(cheques), status=status.HTTP_200_OK)
 
+        if not lease_id:
+            return prepare_response(
+                message="lease_id or cheque_id is required",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        cheques = LeaseTransaction.objects.filter(
+            lease_id=lease_id,
+            lease__unit__property_block_tower__property__pmc=company
+        ).select_related(
+            "origin_bank",
+            "selltlement_bank",
+            "document_type"
+        )
+
+        return prepare_response(content=group_lease_cheques(cheques),status=status.HTTP_200_OK)
     # ── POST create ───────────────────────────────────────────────────────────
     elif request.method == "POST":
         try:
@@ -1589,9 +1636,31 @@ def cheque_summary_view(request):
 @is_request_authenticated
 @csrf_exempt
 def all_cheques_view(request):
-    """GET all cheques across all leases with pagination and search."""
+    """GET all cheques (company scoped) with pagination and search."""
+
     if request.method != "GET":
-        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD,status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    user_profile = request.user
+
+    # ── Get logged-in user's company ─────────────────────
+    pm_profile = PropertyManager.objects.filter(
+        pk=user_profile.pk
+    ).select_related("company").first()
+
+    company = pm_profile.company if pm_profile else None
+
+    if not company:
+        company = PropertyManagmentCompany.objects.filter(
+            created_by=user_profile.user,
+            is_active=True
+        ).first()
+
+    if not company:
+        return prepare_response(
+            message=constants.COMPANY_NOT_FOUND,
+            status=status.HTTP_404_NOT_FOUND
+        )
 
     page        = int(request.GET.get("page", 1))
     page_size   = int(request.GET.get("page_size", 10))
@@ -1606,6 +1675,7 @@ def all_cheques_view(request):
         "lease__unit__property_block_tower__property",
         "lease__tenant__user",
         "selltlement_bank",
+    ).filter(lease__unit__property_block_tower__property__pmc=company
     ).order_by("-id")
 
     if cheque_status_filter:
@@ -1630,38 +1700,66 @@ def all_cheques_view(request):
         )
 
     from django.core.paginator import Paginator
-    paginator   = Paginator(qs, page_size)
-    page_obj    = paginator.get_page(page)
-    rows        = [serialize_cheque_list_row(c) for c in page_obj]
+    paginator = Paginator(qs, page_size)
+    page_obj  = paginator.get_page(page)
+
+    rows = [serialize_cheque_list_row(c) for c in page_obj]
 
     return prepare_response(
         content=rows,
         pagination={
             "total_records": paginator.count,
-            "total_pages":   paginator.num_pages,
-            "current_page":  page,
-            "page_size":     page_size,
+            "total_pages": paginator.num_pages,
+            "current_page": page,
+            "page_size": page_size,
         },
         status=status.HTTP_200_OK,
     )
 
-
 @is_request_authenticated
 @csrf_exempt
 def cheque_monthly_view(request):
-    """GET month-wise cheque amount totals for a given year."""
+
     if request.method != "GET":
-        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+        return prepare_response(
+            message=constants.INVALID_REQUEST_METHOD,
+            status=status.HTTP_405_METHOD_NOT_ALLOWED
+        )
 
     from django.db.models import Sum
     from django.db.models.functions import ExtractMonth
+    from datetime import datetime
 
-    year        = request.GET.get("year", "").strip() or str(datetime.now().year)
+    user_profile = request.user
+
+    # ── Get logged-in user's company ─────────────────────
+    pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).select_related("company").first()
+
+    company = pm_profile.company if pm_profile else None
+
+    if not company:
+        own_company = PropertyManagmentCompany.objects.filter(
+            created_by=user_profile.user,
+            is_active=True
+        ).first()
+        company = own_company
+
+    if not company:
+        return prepare_response(
+            message=constants.COMPANY_NOT_FOUND,
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    year = request.GET.get("year", "").strip() or str(datetime.now().year)
     property_id = request.GET.get("property_id", "").strip()
-    block_id    = request.GET.get("block_id", "").strip()
-    unit_id     = request.GET.get("unit_id", "").strip()
+    block_id = request.GET.get("block_id", "").strip()
+    unit_id = request.GET.get("unit_id", "").strip()
 
-    qs = LeaseTransaction.objects.filter(cheque_date__year=year)
+    qs = LeaseTransaction.objects.filter(
+        lease__unit__property_block_tower__property__pmc=company,
+        cheque_date__year=year
+    )
+
     if property_id:
         qs = qs.filter(lease__unit__property_block_tower__property_id=property_id)
     if block_id:
@@ -1671,19 +1769,20 @@ def cheque_monthly_view(request):
 
     monthly = (
         qs.annotate(month=ExtractMonth("cheque_date"))
-          .values("month")
-          .annotate(total=Sum("amount"))
-          .order_by("month")
+        .values("month")
+        .annotate(total=Sum("amount"))
+        .order_by("month")
     )
 
     month_names = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
+
     result = {m: 0 for m in range(1, 13)}
     for row in monthly:
         result[row["month"]] = float(row["total"] or 0)
 
-    data = [{"month": month_names[m - 1], "amount": result[m]} for m in range(1, 13)]
-    return prepare_response(content=data, status=status.HTTP_200_OK)
+    data = [{"month": month_names[m - 1], "amount": result[m]}for m in range(1, 13)]
 
+    return prepare_response(content=data, status=status.HTTP_200_OK)
 
 @is_request_authenticated
 @csrf_exempt
