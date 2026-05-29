@@ -135,7 +135,22 @@ def property(request):
         page_size = int(request.GET.get("page_size", 10))
         export = request.GET.get("export", "").strip()
 
-        properties = Property.objects.all().order_by("-id")
+        # ── Scope to logged-in user's company only ─────────────
+        # Finds logged-in user's PropertyManager profile and its company.
+        pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).select_related('company').first()
+
+        properties = []
+
+        # If company exists, fetch that company’s active properties.
+        if pm_profile and pm_profile.company:
+            properties = Property.objects.filter(pmc=pm_profile.company,is_active=True).order_by("-id")
+
+        # Otherwise, find company created by logged-in user.
+        if not properties:
+            own_company = PropertyManagmentCompany.objects.filter(created_by=user_profile.user,is_active=True).first()
+
+            if own_company:
+                properties = Property.objects.filter(pmc=own_company,is_active=True).order_by("-id")
         if search:
             properties = properties.filter(property_name__icontains=search)
         if property_type:
@@ -577,7 +592,23 @@ def unit(request):
         page_size = int(request.GET.get("page_size", 10))
         export = request.GET.get("export", "").strip()
 
-        units = Unit.objects.all().select_related(
+        # ── Get logged-in user's company ───────────────────────
+        pm = PropertyManager.objects.filter(id=user_profile.id).select_related("company").first()
+        company = pm.company if pm else None
+
+        if not company:
+            company = PropertyManagmentCompany.objects.filter(created_by=user_profile.user,is_active=True).first()
+
+        if not company:
+            return prepare_response(
+                message=constants.COMPANY_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # ── Only units under this company's properties ─────────
+        units = Unit.objects.filter(
+            property_block_tower__property__pmc=company
+        ).select_related(
             "property_block_tower__property"
         ).prefetch_related("unit_owners").order_by("-id")
 
