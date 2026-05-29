@@ -431,7 +431,6 @@ def dashboard_overview(request):
         )
     try:
         user = request.user
-        _ensure_visualizations_exist(user)
         show_overview       = is_dashboard_enabled(user, "OVERVIEW")
         show_occupancy      = is_dashboard_enabled(user, "OCCUPANCY")
         show_top_revenue    = is_dashboard_enabled(user, "TOP_REVENUE_PROPERTIES")
@@ -649,7 +648,6 @@ def dashboard_monthly_revenue(request):
 
     try:
         user = request.user
-        _ensure_visualizations_exist(user)
         if not is_dashboard_enabled(user, "MONTHLY_REVENUE"):
             return prepare_response(
                 message="Monthly revenue dashboard disabled",
@@ -807,7 +805,6 @@ def dashboard_cheque_visibility(request):
 
     try:
         user = request.user
-        _ensure_visualizations_exist(user)
         if not is_dashboard_enabled(user, "CHEQUE_VISIBILITY"):
             return prepare_response(
                 message="Cheque visibility dashboard disabled",
@@ -928,7 +925,6 @@ def dashboard_cheque_aging(request):
         )
     try:
         user = request.user
-        _ensure_visualizations_exist(user)
         if not is_dashboard_enabled(user, "CHEQUE_AGING"):
             return prepare_response(
                 message="Cheque aging dashboard disabled",
@@ -1032,7 +1028,6 @@ def dashboard_other_type_payments(request):
 
     try:
         user = request.user
-        _ensure_visualizations_exist(user)
         if not is_dashboard_enabled(user, "OTHER_TYPE_PAYMENTS"):
             return prepare_response(
                 message="Other type payments dashboard disabled",
@@ -1168,7 +1163,6 @@ def dashboard_yearly_dues(request):
 
     try:
         user = request.user
-        _ensure_visualizations_exist(user)
         if not is_dashboard_enabled(user, "YEARLY_DUES"):
             return prepare_response(
                 message="Yearly dues dashboard disabled",
@@ -1291,7 +1285,6 @@ def dashboard_property_owned(request):
         )
     try:
         user = request.user
-        _ensure_visualizations_exist(user)
         if not is_dashboard_enabled(user, "PROPERTY_OWNED"):
             return prepare_response(
                 message="Property owned dashboard disabled",
