@@ -24,8 +24,8 @@ from utilities.helper_functions import (
     fetch_s3_presigned_url_for_download, translate_to_arabic,
 )
 from utilities import status, constants
-from property.models import Unit
-from user_service.models import Tenant, TenantDocuments, DocumentType, UserProfile, Documents, Approval
+from property.models import Unit, PropertyManagmentCompany
+from user_service.models import Tenant, TenantDocuments, DocumentType, UserProfile, Documents, Approval, PropertyManager
 from property_management import settings
 from property_management.utils import audit_logs, get_tenant_detail_by_id
 from property_management.models import TermAndCondition
@@ -1370,26 +1370,73 @@ def submit_lease_signature(request):
 def lease_cheque_view(request):
     """CRUD for LeaseTransaction. GET ?lease_id=X, POST/PUT body JSON, DELETE ?cheque_id=X"""
 
-    # ── GET list / single ─────────────────────────────────────────────────────
     if request.method == "GET":
+
+        user_profile = request.user
+
+        # ── Get logged-in user's company ───────────────────────
+        pm_profile = PropertyManager.objects.filter(
+            pk=user_profile.pk
+        ).select_related("company").first()
+
+        company = pm_profile.company if pm_profile else None
+
+        if not company:
+            own_company = PropertyManagmentCompany.objects.filter(
+                created_by=user_profile.user,
+                is_active=True
+            ).first()
+
+            company = own_company
+
+        if not company:
+            return prepare_response(
+                message=constants.COMPANY_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # ── Single cheque ──────────────────────────────────────
         cheque_id = request.GET.get("cheque_id")
+
         if cheque_id:
             try:
                 cheque = LeaseTransaction.objects.select_related(
-                    "origin_bank", "selltlement_bank"
-                ).get(id=cheque_id)
+                    "origin_bank",
+                    "selltlement_bank",
+                    "document_type",
+                    "lease__unit__property_block_tower__property"
+                ).get(
+                    id=cheque_id,
+                    lease__unit__property_block_tower__property__pmc=company
+                )
+
             except LeaseTransaction.DoesNotExist:
-                return prepare_response(message="Cheque not found", status=status.HTTP_404_NOT_FOUND)
-            return prepare_response(content=serialize_lease_cheque(cheque), status=status.HTTP_200_OK)
+                return prepare_response(message="Cheque not found",status=status.HTTP_404_NOT_FOUND)
 
+            return prepare_response(
+                content=serialize_lease_cheque(cheque),
+                status=status.HTTP_200_OK
+            )
+
+        # ── Lease cheque list ──────────────────────────────────
         lease_id = request.GET.get("lease_id")
-        if not lease_id:
-            return prepare_response(message="lease_id or cheque_id is required", status=status.HTTP_400_BAD_REQUEST)
-        cheques = LeaseTransaction.objects.filter(lease_id=lease_id).select_related(
-            "origin_bank", "selltlement_bank", "document_type"
-        )
-        return prepare_response(content=group_lease_cheques(cheques), status=status.HTTP_200_OK)
 
+        if not lease_id:
+            return prepare_response(
+                message="lease_id or cheque_id is required",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        cheques = LeaseTransaction.objects.filter(
+            lease_id=lease_id,
+            lease__unit__property_block_tower__property__pmc=company
+        ).select_related(
+            "origin_bank",
+            "selltlement_bank",
+            "document_type"
+        )
+
+        return prepare_response(content=group_lease_cheques(cheques),status=status.HTTP_200_OK)
     # ── POST create ───────────────────────────────────────────────────────────
     elif request.method == "POST":
         try:
