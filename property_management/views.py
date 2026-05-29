@@ -16,7 +16,7 @@ from django.utils.dateparse import parse_date
 
 from user_service.models import Role, FAQ, Owner, Tenant, PropertyManager, DocumentType
 from property.models import Unit, Property, PropertyManagmentCompany, UnitOwner
-from property_management.models import Country, State, City, AuditLog
+from property_management.models import Country, State, City, AuditLog, DashboardVisualization
 from lease.models import Lease, Template, LeaseTransaction
 from lead.models import Lead
 from complaint.models import Complaint
@@ -30,7 +30,7 @@ from utilities.helper_functions import (
 )
 from utilities import status, constants
 from property_management import settings
-from property_management.utils import create_and_send_invitation
+from property_management.utils import create_and_send_invitation,is_dashboard_enabled
 from django.http import FileResponse, Http404
 from django.contrib.admin.views.decorators import staff_member_required
 from django.shortcuts import render
@@ -431,6 +431,12 @@ def dashboard_overview(request):
         )
     try:
         user = request.user
+        _ensure_visualizations_exist(user)
+        show_overview       = is_dashboard_enabled(user, "OVERVIEW")
+        show_occupancy      = is_dashboard_enabled(user, "OCCUPANCY")
+        show_top_revenue    = is_dashboard_enabled(user, "TOP_REVENUE_PROPERTIES")
+        if not show_overview and not show_occupancy and not show_top_revenue:
+            return prepare_response(message="Dashboard disabled", status=status.HTTP_403_FORBIDDEN)
         now = timezone.now()
         renewal_window = now + timedelta(days=30)
         property_id = request.GET.get("property_id")
@@ -568,30 +574,34 @@ def dashboard_overview(request):
             active_leads_count = 0
             active_complaints_count = 0
 
-        content = {
-            "properties": {
+        content = {}
+
+        if show_overview:
+            content["properties"] = {
                 "total": total_units,
                 "rented": rented_count,
                 "vacant": vacant_count,
-            },
-            "tenants": {
+            }
+            content["tenants"] = {
                 "active": active_count,
                 "upcoming_renewals": upcoming_renewals_count,
                 "negotiations": negotiations_count,
-            },
-            "top_properties": top_properties,
-            "top_revenue_properties": top_revenue_properties,
-            "occupancy_data": {
+            }
+            content["active_leads_count"] = active_leads_count
+            content["active_complaints_count"] = active_complaints_count
+
+        if show_occupancy:
+            content["top_properties"] = top_properties
+            content["occupancy_data"] = {
                 "total_units": f_total,
                 "occupied_units": f_occupied,
                 "vacant_units": f_vacant,
                 "occupied_percent": occupied_percent,
                 "vacant_percent": vacant_percent,
-            },
-            "active_leads_count": active_leads_count,
-            "active_complaints_count": active_complaints_count,
-        }
+            }
 
+        if show_top_revenue:
+            content["top_revenue_properties"] = top_revenue_properties
         return prepare_response(
             content=content,
             message="Dashboard overview fetched successfully",
@@ -639,7 +649,12 @@ def dashboard_monthly_revenue(request):
 
     try:
         user = request.user
-
+        _ensure_visualizations_exist(user)
+        if not is_dashboard_enabled(user, "MONTHLY_REVENUE"):
+            return prepare_response(
+                message="Monthly revenue dashboard disabled",
+                status=status.HTTP_403_FORBIDDEN
+            )
         city_id = request.GET.get("city_id")
         unit_id = request.GET.get("property_unit_id")
         from_date = request.GET.get("from_date")   # epoch in ms
@@ -792,6 +807,12 @@ def dashboard_cheque_visibility(request):
 
     try:
         user = request.user
+        _ensure_visualizations_exist(user)
+        if not is_dashboard_enabled(user, "CHEQUE_VISIBILITY"):
+            return prepare_response(
+                message="Cheque visibility dashboard disabled",
+                status=status.HTTP_403_FORBIDDEN
+            )
         city_id        = request.GET.get("city_id")
         unit_id        = request.GET.get("property_unit_id")
         property_id    = request.GET.get("property_id")
@@ -907,6 +928,12 @@ def dashboard_cheque_aging(request):
         )
     try:
         user = request.user
+        _ensure_visualizations_exist(user)
+        if not is_dashboard_enabled(user, "CHEQUE_AGING"):
+            return prepare_response(
+                message="Cheque aging dashboard disabled",
+                status=status.HTTP_403_FORBIDDEN
+            )
         property_id = request.GET.get("property_id")
         today = now().date()
 
@@ -1005,6 +1032,12 @@ def dashboard_other_type_payments(request):
 
     try:
         user = request.user
+        _ensure_visualizations_exist(user)
+        if not is_dashboard_enabled(user, "OTHER_TYPE_PAYMENTS"):
+            return prepare_response(
+                message="Other type payments dashboard disabled",
+                status=status.HTTP_403_FORBIDDEN
+            )
         year = int(request.GET.get("year", datetime.now().year))
         property_unit_id = request.GET.get("property_unit_id")
         year_start = date(year, 1, 1)
@@ -1135,6 +1168,12 @@ def dashboard_yearly_dues(request):
 
     try:
         user = request.user
+        _ensure_visualizations_exist(user)
+        if not is_dashboard_enabled(user, "YEARLY_DUES"):
+            return prepare_response(
+                message="Yearly dues dashboard disabled",
+                status=status.HTTP_403_FORBIDDEN
+            )
         year = int(request.GET.get("year", datetime.now().year))
         property_unit_id = request.GET.get("property_unit_id")  #  ADDED
 
@@ -1252,6 +1291,12 @@ def dashboard_property_owned(request):
         )
     try:
         user = request.user
+        _ensure_visualizations_exist(user)
+        if not is_dashboard_enabled(user, "PROPERTY_OWNED"):
+            return prepare_response(
+                message="Property owned dashboard disabled",
+                status=status.HTTP_403_FORBIDDEN
+            )
         # PAGINATION
         page = int(request.GET.get("page", 1))
         limit = int(request.GET.get("limit", 5))
@@ -1356,6 +1401,92 @@ def dashboard_property_owned(request):
             message=str(e),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
+
+def _ensure_visualizations_exist(user):
+    """
+    Auto-create DashboardVisualization records for user if they don't exist.
+    Called on every GET so first-time users see all checkboxes checked by default.
+    """
+    existing = set(
+        DashboardVisualization.objects.filter(user=user)
+        .values_list("visualization", flat=True)
+    )
+
+    to_create = []
+    for choice_key, _ in constants.DASHBOARD_CHOICES:
+        if choice_key not in existing:
+            to_create.append(
+                DashboardVisualization(
+                    user=user,
+                    visualization=choice_key,
+                    is_visible=True,   
+                    created_by=user.user,
+                )
+            )
+    if to_create:
+        DashboardVisualization.objects.bulk_create(to_create)
+
+
+@is_request_authenticated
+def dashboard_visualization(request):
+    user = request.user
+    if request.method == "GET":
+        _ensure_visualizations_exist(user)
+        all_viz = DashboardVisualization.objects.filter(user=user)
+
+        data = [
+            {
+                "key": v.visualization,
+                # "label": dict(constants.DASHBOARD_CHOICES).get(v.visualization, v.visualization),
+                "is_visible": v.is_visible,
+            }
+            for v in all_viz
+        ]
+        visible = [v["key"] for v in data if v["is_visible"]]
+        return prepare_response(
+            message="Fetched successfully",
+            status=status.HTTP_200_OK,
+            content={
+                "all_visualizations": data,   
+                "visible": visible,          
+            }
+        )
+    if request.method == "POST":
+        try:
+            body = json.loads(request.body)
+        except (json.JSONDecodeError, TypeError):
+            return prepare_response(
+                message="Invalid JSON body",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        selected = body.get("visualization", []) or []
+        valid_keys = {key for key, _ in constants.DASHBOARD_CHOICES}
+        invalid = [s for s in selected if s not in valid_keys]
+        if invalid:
+            return prepare_response(
+                message=f"Invalid visualization keys: {invalid}",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Auto-create records if not exist
+        _ensure_visualizations_exist(user)
+        DashboardVisualization.objects.filter(user=user).update(is_visible=False)
+        # Enable only selected ones
+        if selected:
+            DashboardVisualization.objects.filter(
+                user=user,
+                visualization__in=selected
+            ).update(is_visible=True)
+
+        return prepare_response(
+            message="Preferences saved successfully",
+            status=status.HTTP_200_OK,
+            content={"visible": selected}
+        )
+    return prepare_response(
+        message="Invalid method",
+        status=status.HTTP_405_METHOD_NOT_ALLOWED
+    )
 
 @is_request_authenticated
 def audit_log(request):

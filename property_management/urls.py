@@ -51,6 +51,7 @@ urlpatterns = [
     path('other_type_payments', views.dashboard_other_type_payments, name='dashboard_other_type_payments'),
     path('dashboard_graph_due', views.dashboard_yearly_dues, name='dashboard_yearly_due'),
     path('dashboard_property_owned', views.dashboard_property_owned, name='dashboard_property_owned'),
+    path('dashboard_visualization', views.dashboard_visualization, name='dashboard_visualization'),
 
     # User-service views at root level (original paths, before user/ prefix migration)
     path('api/approval', approval_view, name='approval_view'),
