@@ -136,15 +136,18 @@ def property(request):
         export = request.GET.get("export", "").strip()
 
         # ── Scope to logged-in user's company only ─────────────
-        #Finds logged-in user's PropertyManager profile and its company.
+        # Finds logged-in user's PropertyManager profile and its company.
         pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).select_related('company').first()
-        #If company exists, fetch that company’s active properties.
+
+        properties = []
+
+        # If company exists, fetch that company’s active properties.
         if pm_profile and pm_profile.company:
             properties = Property.objects.filter(pmc=pm_profile.company,is_active=True).order_by("-id")
-        #Otherwise, find company created by logged-in user, else return empty list.
-        else:
+
+        # Otherwise, find company created by logged-in user.
+        if not properties:
             own_company = PropertyManagmentCompany.objects.filter(created_by=user_profile.user,is_active=True).first()
-            properties = []
 
             if own_company:
                 properties = Property.objects.filter(pmc=own_company,is_active=True).order_by("-id")
