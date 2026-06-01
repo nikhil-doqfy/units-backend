@@ -1751,16 +1751,20 @@ def tenant_crud(request):
 def approval_view(request):
     user_profile = request.user
 
+
+    pm_profile = PropertyManager.objects.select_related("company").filter(pk=user_profile.pk).first()
+
+    company = pm_profile.company
     if request.method == "GET":
 
         lease_id_param = request.GET.get("lease_id")
         if lease_id_param:
-            lease = Lease.objects.select_related("tenant", "unit").filter(id=lease_id_param).first()
+            lease = Lease.objects.select_related("tenant", "unit").filter(id=lease_id_param,unit__property_block_tower__property__pmc=company).first()
             if not lease:
                 return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
             approval = Approval.objects.select_related(
                 "tenant__user", "unit", "unit__property_block_tower__property", "created_by"
-            ).filter(tenant=lease.tenant, unit=lease.unit).order_by("-id").first()
+            ).filter(tenant=lease.tenant, unit=lease.unit,unit__property_block_tower__property__pmc=company).order_by("-id").first()
             if not approval:
                 return prepare_response(message="No approval found for this lease", status=status.HTTP_404_NOT_FOUND)
             content = {

@@ -8,7 +8,7 @@ from property.models import (
     PropertyManagmentCompany,
     PropertyImages
 )
-from property_management.models import UserInvitation, AuditLog
+from property_management.models import UserInvitation, AuditLog, DashboardVisualization
 from utilities.helper_functions import send_ses_email, fetch_s3_presigned_url, datetime_to_epoch_millis
 from utilities import status ,  constants
 from utilities.config import FRONTEND_URL
@@ -554,3 +554,10 @@ def audit_logs(request, message, action_type):
         message=message,
         action_type=action_type
     )
+
+def is_dashboard_enabled(user, key):
+    return DashboardVisualization.objects.filter(
+        user=user,
+        visualization=key,
+        is_visible=True
+    ).exists()
