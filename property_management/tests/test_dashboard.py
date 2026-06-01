@@ -35,6 +35,22 @@ class DashboardTestCase(TestCase):
    
         # Create Owner for owner-role tests
         self.owner = OwnerFactory(created_by=self.admin)
+        from property_management.models import DashboardVisualization
+        for key, _ in constants.DASHBOARD_CHOICES:
+            DashboardVisualization.objects.create(
+                user=self.pm,
+                visualization=key,
+                is_visible=True,
+                created_by=self.admin,
+            )
+        for key, _ in constants.DASHBOARD_CHOICES:
+            DashboardVisualization.objects.create(
+                user=self.owner,
+                visualization=key,
+                is_visible=True,
+                created_by=self.admin,
+            )
+
 
         # Create Tenant for lease tests
         self.tenant = TenantFactory(created_by=self.admin)

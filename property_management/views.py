@@ -425,59 +425,33 @@ def send_invitation(request):
 @is_request_authenticated
 def dashboard_overview(request):
     if request.method != "GET":
-        return prepare_response(
-            message=constants.INVALID_REQUEST_METHOD,
-            status=status.HTTP_405_METHOD_NOT_ALLOWED
-        )
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
     try:
         user = request.user
-        show_overview       = is_dashboard_enabled(user, "OVERVIEW")
-        show_occupancy      = is_dashboard_enabled(user, "OCCUPANCY")
-        show_top_revenue    = is_dashboard_enabled(user, "TOP_REVENUE_PROPERTIES")
-        if not show_overview and not show_occupancy and not show_top_revenue:
-            return prepare_response(message="Dashboard disabled", status=status.HTTP_403_FORBIDDEN)
+        if not is_dashboard_enabled(user, constants.DASH_OVERVIEW):
+            return prepare_response(message="Overview dashboard disabled", status=status.HTTP_403_FORBIDDEN)
         now = timezone.now()
         renewal_window = now + timedelta(days=30)
-        property_id = request.GET.get("property_id")
-
-        # ── Resolve unit queryset by checking which subclass user is ─
         pm_instance = PropertyManager.objects.filter(pk=user.pk).select_related("company").first()
         owner_instance = Owner.objects.filter(pk=user.pk).first()
 
         if pm_instance:
             company = pm_instance.company
             if not company:
-                return prepare_response(
-                    message=constants.COMPANY_NOT_FOUND,
-                    status=status.HTTP_404_NOT_FOUND
-                )
+                return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
             units_qs = Unit.objects.filter(property_block_tower__property__pmc=company)
         elif owner_instance:
             units_qs = Unit.objects.filter(unit_owners__owner=owner_instance)
         else:
             units_qs = Unit.objects.none()
 
-        # ── Properties summary: unit-level counts for the logged-in user ─
-        if pm_instance:
-            properties_qs = Property.objects.filter(pmc=company)
-        elif owner_instance:
-            owned_prop_ids = units_qs.values_list(
-                "property_block_tower__property_id", flat=True
-            ).distinct()
-            properties_qs = Property.objects.filter(id__in=owned_prop_ids)
-        else:
-            properties_qs = Property.objects.none()
-
         total_units = units_qs.count()
-        rented_unit_ids = (
+        rented_count = (
             Lease.objects.filter(unit__in=units_qs, lease_status=constants.ACTIVE)
-            .values_list("unit_id", flat=True)
-            .distinct()
+            .values_list("unit_id", flat=True).distinct().count()
         )
-        rented_count = rented_unit_ids.count()
         vacant_count = total_units - rented_count
 
-        # ── Tenants stats ────────────────────────────────────────────
         lease_queryset = Lease.objects.filter(unit__in=units_qs)
         active_count = lease_queryset.filter(lease_status=constants.ACTIVE).count()
         upcoming_renewals_count = lease_queryset.filter(
@@ -485,14 +459,61 @@ def dashboard_overview(request):
             end_date__gte=now,
             end_date__lte=renewal_window,
         ).count()
-        negotiations_count = lease_queryset.filter(
-            lease_stage=constants.NEGOTIATION_SENT,
-        ).count()
+        negotiations_count = lease_queryset.filter(lease_stage=constants.NEGOTIATION_SENT).count()
 
-        # ── Top properties by occupancy rate (all properties, not just those with units)
-        property_stats = properties_qs.annotate(
-            total_units=Count("property_blocks__block_towers", distinct=True),
+        if pm_instance:
+            active_leads_count = Lead.objects.filter(pmc=company).count()
+            active_complaints_count = Complaint.objects.filter(company=company, is_active=True).count()
+        elif owner_instance:
+            active_leads_count = 0
+            active_complaints_count = Complaint.objects.filter(unit__in=units_qs, is_active=True).count()
+        else:
+            active_leads_count = 0
+            active_complaints_count = 0
+
+        return prepare_response(
+            content={
+                "properties": {"total": total_units, "rented": rented_count, "vacant": vacant_count},
+                "tenants": {"active": active_count, "upcoming_renewals": upcoming_renewals_count, "negotiations": negotiations_count},
+                "active_leads_count": active_leads_count,
+                "active_complaints_count": active_complaints_count,
+            },
+            message="Dashboard overview fetched successfully",
+            status=status.HTTP_200_OK
         )
+    except Exception as e:
+        return prepare_response(message={"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@is_request_authenticated
+def dashboard_occupancy(request):
+    if request.method != "GET":
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    try:
+        user = request.user
+        if not is_dashboard_enabled(user, constants.OCCUPANCY):
+            return prepare_response(message="Occupancy dashboard disabled", status=status.HTTP_403_FORBIDDEN)
+
+        property_id = request.GET.get("property_id")
+        pm_instance = PropertyManager.objects.filter(pk=user.pk).select_related("company").first()
+        owner_instance = Owner.objects.filter(pk=user.pk).first()
+
+        if pm_instance:
+            company = pm_instance.company
+            if not company:
+                return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+            units_qs = Unit.objects.filter(property_block_tower__property__pmc=company)
+            properties_qs = Property.objects.filter(pmc=company)
+        elif owner_instance:
+            units_qs = Unit.objects.filter(unit_owners__owner=owner_instance)
+            owned_prop_ids = units_qs.values_list("property_block_tower__property_id", flat=True).distinct()
+            properties_qs = Property.objects.filter(id__in=owned_prop_ids)
+        else:
+            units_qs = Unit.objects.none()
+            properties_qs = Property.objects.none()
+
+        # top properties by occupancy
+        property_stats = properties_qs.annotate(total_units=Count("property_blocks__block_towers", distinct=True))
         rented_per_prop = {
             r["unit__property_block_tower__property_id"]: r["rented"]
             for r in (
@@ -520,23 +541,57 @@ def dashboard_overview(request):
             })
         top_properties = sorted(top_properties, key=lambda x: x["occupancy_rate"], reverse=True)[:5]
 
-        # ── Occupancy data (per property_id if given, else all) ──────
-        filtered_units = units_qs.filter(
-            property_block_tower__property_id=property_id
-        ) if property_id else units_qs
-
+        # filtered occupancy
+        filtered_units = units_qs.filter(property_block_tower__property_id=property_id) if property_id else units_qs
         f_total = filtered_units.count()
         f_occupied = (
             Lease.objects.filter(unit__in=filtered_units, lease_status=constants.ACTIVE)
-            .values_list("unit_id", flat=True)
-            .distinct()
-            .count()
+            .values_list("unit_id", flat=True).distinct().count()
         )
         f_vacant = f_total - f_occupied
         occupied_percent = round((f_occupied / f_total) * 100, 2) if f_total > 0 else 0
         vacant_percent = round((f_vacant / f_total) * 100, 2) if f_total > 0 else 0
 
-        # ── Top revenue-generating properties ────────────────────────
+        return prepare_response(
+            content={
+                "top_properties": top_properties,
+                "occupancy_data": {
+                    "total_units": f_total,
+                    "occupied_units": f_occupied,
+                    "vacant_units": f_vacant,
+                    "occupied_percent": occupied_percent,
+                    "vacant_percent": vacant_percent,
+                },
+            },
+            message="Occupancy data fetched successfully",
+            status=status.HTTP_200_OK
+        )
+    except Exception as e:
+        return prepare_response(message={"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@is_request_authenticated
+def dashboard_top_revenue_properties(request):
+    if request.method != "GET":
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    try:
+        user = request.user
+        if not is_dashboard_enabled(user, constants.TOP_REVENUE_PROPERTIES):
+            return prepare_response(message="Top revenue properties dashboard disabled", status=status.HTTP_403_FORBIDDEN)
+
+        pm_instance = PropertyManager.objects.filter(pk=user.pk).select_related("company").first()
+        owner_instance = Owner.objects.filter(pk=user.pk).first()
+
+        if pm_instance:
+            company = pm_instance.company
+            if not company:
+                return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+            units_qs = Unit.objects.filter(property_block_tower__property__pmc=company)
+        elif owner_instance:
+            units_qs = Unit.objects.filter(unit_owners__owner=owner_instance)
+        else:
+            units_qs = Unit.objects.none()
+
         revenue_rows = (
             LeaseTransaction.objects.filter(
                 lease__unit__in=units_qs,
@@ -562,57 +617,13 @@ def dashboard_overview(request):
             for idx, r in enumerate(revenue_rows, start=1)
         ]
 
-        # ── Leads & Complaints counts ────────────────────────────────
-        if pm_instance:
-            active_leads_count = Lead.objects.filter(pmc=company).count()
-            active_complaints_count = Complaint.objects.filter(company=company, is_active=True).count()
-        elif owner_instance:
-            active_leads_count = 0
-            active_complaints_count = Complaint.objects.filter(unit__in=units_qs, is_active=True).count()
-        else:
-            active_leads_count = 0
-            active_complaints_count = 0
-
-        content = {}
-
-        if show_overview:
-            content["properties"] = {
-                "total": total_units,
-                "rented": rented_count,
-                "vacant": vacant_count,
-            }
-            content["tenants"] = {
-                "active": active_count,
-                "upcoming_renewals": upcoming_renewals_count,
-                "negotiations": negotiations_count,
-            }
-            content["active_leads_count"] = active_leads_count
-            content["active_complaints_count"] = active_complaints_count
-
-        if show_occupancy:
-            content["top_properties"] = top_properties
-            content["occupancy_data"] = {
-                "total_units": f_total,
-                "occupied_units": f_occupied,
-                "vacant_units": f_vacant,
-                "occupied_percent": occupied_percent,
-                "vacant_percent": vacant_percent,
-            }
-
-        if show_top_revenue:
-            content["top_revenue_properties"] = top_revenue_properties
         return prepare_response(
-            content=content,
-            message="Dashboard overview fetched successfully",
+            content={"top_revenue_properties": top_revenue_properties},
+            message="Top revenue properties fetched successfully",
             status=status.HTTP_200_OK
         )
-
     except Exception as e:
-        return prepare_response(
-            message={"error": str(e)},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
+        return prepare_response(message={"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 def faq_api(request):
 
