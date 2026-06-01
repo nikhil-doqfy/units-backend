@@ -130,6 +130,14 @@ class AuditLog(Base):
     def __str__(self):
         return f"{self.userprofile} - {self.action_type}"
 
+class DashboardVisualization(Base):
+    user = models.ForeignKey("user_service.UserProfile", on_delete=models.CASCADE, related_name="dashboard_visualizations")
+    visualization = models.CharField(max_length=50, choices=constants.DASHBOARD_CHOICES)
+    is_visible = models.BooleanField(default=True)
+    class Meta:
+        unique_together = ("user", "visualization")
+    def __str__(self):
+        return f"{self.user} - {self.visualization}"
 
 #==========================================================
 #--------------- Role Permission management ---------------
