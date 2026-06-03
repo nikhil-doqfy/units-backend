@@ -9,4 +9,6 @@ urlpatterns = [
     path('complaint/start/<str:code>', views.start_work, name='start_work'),
     path('complaint/complete/<str:code>', views.complete_work, name='complete_work'),
     path('complaint/verify/<str:code>', views.verify_complaint, name='verify_complaint'),
+    path ('complaint/edit/<str:code>', views.complaint_detail_api, name='edit_complaint'),
+
 ]

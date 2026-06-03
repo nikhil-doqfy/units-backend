@@ -281,22 +281,225 @@ def complaint_detail_api(request, code):
             }
             for b in complaint.broadcasts.all().order_by('-priority_score')
         ]
+        # --------------------------------------------------
+        # Assigned Engineer
+        # --------------------------------------------------
+        provider = complaint.assigned_to.first()
+
+        data["assigned_engineer"] = {
+            "id": provider.id,
+            "name": provider.name,
+            "phone": provider.phone,
+            "avg_rating": str(provider.avg_rating)
+        } if provider else None
+
+        # --------------------------------------------------
+        # Appointment Details
+        # --------------------------------------------------
+        appointment = complaint.current_appointment
+
+        if appointment:
+
+            selected_slot = AppointmentSlot.objects.filter(
+                appointment=appointment,
+                is_selected=True
+            ).first()
+
+            data["appointment"] = {
+                "id": appointment.id,
+                "status": appointment.status,
+                "note": appointment.note,
+                "selected_slot": (
+                    int(selected_slot.proposed_time.timestamp())
+                    if selected_slot else None
+                ),
+                "all_slots": [
+                    {
+                        "id": slot.id,
+                        "proposed_time": int(
+                            slot.proposed_time.timestamp()
+                        ),
+                        "is_selected": slot.is_selected
+                    }
+                    for slot in AppointmentSlot.objects.filter(
+                        appointment=appointment
+                    )
+                ]
+            }
+        else:
+            data["appointment"] = None
+
+        # --------------------------------------------------
+        # Rating
+        # --------------------------------------------------
+        rating = ComplaintRating.objects.filter(
+            complaint=complaint
+        ).first()
+
+        data["rating"] = {
+            "rating": rating.rating,
+            "feedback": rating.feedback
+        } if rating else None
+
+        # --------------------------------------------------
+# Previous Complaints
+# --------------------------------------------------
+        previous_complaints = Complaint.objects.filter(
+            unit=complaint.unit,
+            is_active=True
+        ).exclude(
+            id=complaint.id
+        ).order_by("-id")
+
+        data["previous_complaints"] = [
+            {
+                "id": c.id,
+                "code": c.code,
+                "description": c.description,
+                "status": c.status,
+                "priority": c.priority,
+                "service_type": c.service_type,
+                "created": (
+                    int(c.created.timestamp())
+                    if c.created else None
+                )
+            }
+            for c in previous_complaints
+        ]
+
+        # --------------------------------------------------
+        # Summary
+        # --------------------------------------------------
+        data["summary"] = {
+            "complaint_code": complaint.code,
+            "created": int(complaint.created.timestamp()) if complaint.created else None,
+            "broadcasted_at": int(complaint.broadcasted_at.timestamp()) if complaint.broadcasted_at else None,
+            "work_started_at": int(complaint.work_started_at.timestamp()) if complaint.work_started_at else None,
+            "work_completed_at": int(complaint.work_completed_at.timestamp()) if complaint.work_completed_at else None,
+            "issue_closed_on": int(complaint.issue_closed_on.timestamp()) if complaint.issue_closed_on else None,
+            "ticket_aging": data.get("ticket_aging"),
+            "work_duration": (
+                format_work_duration(complaint.work_duration())
+                if complaint.work_duration()
+                else None
+            )
+            }
 
         return prepare_response(
             content=data,
             message=constants.COMPLAINT_FETCHED_SUCCESSFULLY,
             status=status.HTTP_200_OK
         )
-
     # ── PUT ───────────────────────────────────────────────────────
     elif request.method == "PUT":
         body = json.loads(request.body)
 
+        # Update unit
+        unit_id = body.get("unit_id")
+        if unit_id:
+            unit = Unit.objects.filter(id=unit_id).first()
+            if not unit:
+                return prepare_response(
+                    message=constants.UNIT_NOT_FOUND,
+                    status=status.HTTP_404_NOT_FOUND
+                )
+            complaint.unit = unit
+
+        # Update complaint fields
         complaint.description = body.get("description", complaint.description)
         complaint.service_type = body.get("service_type", complaint.service_type)
         complaint.priority = body.get("priority", complaint.priority)
+        complaint.status = body.get("status", complaint.status)
+
         complaint.save()
 
+        # --------------------------------------------------
+        # Update Appointment Note
+        # --------------------------------------------------
+        appointment = complaint.current_appointment
+
+        if appointment:
+            appointment.note = body.get("note", appointment.note)
+            appointment.save()
+
+        # --------------------------------------------------
+        # Replace Appointment Slots
+        # --------------------------------------------------
+        slots = body.get("slots")
+
+        if slots is not None and appointment:
+
+            AppointmentSlot.objects.filter(
+                appointment=appointment
+            ).delete()
+
+            for slot_epoch in slots:
+                slot_time = timezone.datetime.fromtimestamp(
+                    slot_epoch,
+                    tz=timezone.utc
+                )
+
+                AppointmentSlot.objects.create(
+                    appointment=appointment,
+                    proposed_time=slot_time,
+                    created_by=request.user.user
+                )
+
+        # --------------------------------------------------
+        # Delete Selected Images
+        # --------------------------------------------------
+        delete_image_ids = body.get("delete_image_ids", [])
+
+        if delete_image_ids:
+            ComplaintImages.objects.filter(
+                complaint=complaint,
+                id__in=delete_image_ids
+            ).delete()
+
+        # --------------------------------------------------
+        # Upload New Images
+        # --------------------------------------------------
+        images = body.get("images", [])
+
+        for image in images:
+
+            file_name = image.get("file_name")
+            file_data = image.get("file_data")
+
+            if file_name and file_data:
+
+                object_name = (
+                    f"complaints/"
+                    f"{complaint.code}/"
+                    f"{uuid.uuid4()}_{file_name}"
+                )
+
+                file_url = upload_file_to_s3_base64(
+                    file_data=file_data,
+                    object_name=object_name
+                )
+
+                ComplaintImages.objects.create(
+                    complaint=complaint,
+                    image_path=file_url,
+                    file_name=file_name,
+                    created_by=request.user.user
+                )
+
+        # --------------------------------------------------
+        # Timeline
+        # --------------------------------------------------
+        ComplaintTimeline.objects.create(
+            complaint=complaint,
+            user=request.user,
+            timeline_status=constants.UPDATED,
+            note="Complaint details updated.",
+            created_by=request.user.user
+        )
+
+        # --------------------------------------------------
+        # Activity History
+        # --------------------------------------------------
         ComplaintActivityHistory.objects.create(
             complaint=complaint,
             user=request.user,
@@ -305,14 +508,15 @@ def complaint_detail_api(request, code):
         )
 
         return prepare_response(
+            content=serialize_complaint(complaint),
             message=constants.COMPLAINT_UPDATED_SUCCESSFULLY,
             status=status.HTTP_200_OK
         )
 
     # ── DELETE ────────────────────────────────────────────────────
     elif request.method == "DELETE":
-        complaint.is_active = False
-        complaint.save()
+
+        complaint.delete()
 
         return prepare_response(
             message=constants.COMPLAINT_DELETED_SUCCESSFULLY,
@@ -322,8 +526,7 @@ def complaint_detail_api(request, code):
     return prepare_response(
         message=constants.METHOD_NOT_ALLOWED,
         status=status.HTTP_405_METHOD_NOT_ALLOWED
-    )
-
+)
 
 # =====================================================
 # STEP 2A - accept_complaint
