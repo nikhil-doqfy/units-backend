@@ -34,11 +34,10 @@ from notification.utils import (
     notify_complaint_resolved,
     notify_complaint_closed,
 )
-
+from django.db.models import Q
 
 # =====================================================
 # STEP 1 - complaint_api (GET ALL + POST CREATE)
-# Owner creates complaint + uploads images + proposes slots
 # =====================================================
 
 @is_request_authenticated
@@ -61,9 +60,55 @@ def complaint_api(request):
             is_active=True
         ).order_by('-id')
 
+        # ── Filters ───────────────────────────────────────────────
+        complaint_status = request.GET.get("status", "").strip().upper()
+        property_id = request.GET.get("property_id", "").strip()
+        search = request.GET.get("search", "").strip()
+
+        if complaint_status:
+            complaints = complaints.filter(status=complaint_status)
+
+        if property_id:
+            complaints = complaints.filter(
+                unit__property_block_tower__property_id=property_id
+            )
+
+        if search:
+            complaints = complaints.filter(
+                Q(code__icontains=search) |
+                Q(unit__unit_name__icontains=search) |
+                Q(unit__dm_no__icontains=search) |
+                Q(unit__property_block_tower__property__property_name__icontains=search) |
+                Q(raised_by__user__first_name__icontains=search) |
+                Q(raised_by__user__last_name__icontains=search)
+            ).distinct()
+
+        # ── Stats ─────────────────────────────────────────────────
+        total = complaints.count()
+        completed = complaints.filter(status=constants.CLOSED).count()
+        in_progress = complaints.filter(status=constants.IN_PROGRESS).count()
+        rejected = complaints.filter(status=constants.PENDING).count()
+
+        # ── Pagination ────────────────────────────────────────────
+        page = int(request.GET.get("page", 1))
+        page_size = int(request.GET.get("page_size", 10))
+        start = (page - 1) * page_size
+        paginated = complaints[start:start + page_size]
+
         return prepare_response(
-            content=[serialize_complaint(c) for c in complaints],
+            content=[serialize_complaint(c) for c in paginated],
             message=constants.COMPLAINT_FETCHED_SUCCESSFULLY,
+            pagination={
+                "total_records": total,
+                "page": page,
+                "page_size": page_size,
+                "stats": {
+                    "total_complaints": total,
+                    "completed": completed,
+                    "in_progress": in_progress,
+                    "rejected": rejected,
+                }
+            },
             status=status.HTTP_200_OK
         )
 
@@ -197,6 +242,109 @@ def complaint_api(request):
             status=status.HTTP_201_CREATED
         )
 
+    # ── PUT ───────────────────────────────────────────────────────
+    elif request.method == "PUT":
+        body = json.loads(request.body)
+        code = body.get("code")
+        if not code:
+            return prepare_response(message="code is required", status=status.HTTP_400_BAD_REQUEST)
+
+        company = PropertyManagmentCompany.objects.filter(company_staff=request.user, is_active=True).first()
+        if not company:
+            return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+
+        complaint = Complaint.objects.filter(code=code, company=company, is_active=True).first()
+        if not complaint:
+            return prepare_response(message=constants.COMPLAINT_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+
+        unit_id = body.get("unit_id")
+        if unit_id:
+            unit = Unit.objects.filter(id=unit_id).first()
+            if not unit:
+                return prepare_response(message=constants.UNIT_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+            complaint.unit = unit
+
+        complaint.description = body.get("description", complaint.description)
+        complaint.service_type = body.get("service_type", complaint.service_type)
+        complaint.priority = body.get("priority", complaint.priority)
+        complaint.status = body.get("status", complaint.status)
+        complaint.save()
+
+        appointment = complaint.current_appointment
+        if appointment:
+            appointment.note = body.get("note", appointment.note)
+            appointment.save()
+
+        slots = body.get("slots")
+        if slots is not None and appointment:
+            AppointmentSlot.objects.filter(appointment=appointment).delete()
+            for slot_epoch in slots:
+                slot_time = timezone.datetime.fromtimestamp(slot_epoch, tz=timezone.utc)
+                AppointmentSlot.objects.create(
+                    appointment=appointment,
+                    proposed_time=slot_time,
+                    created_by=request.user.user
+                )
+
+        delete_image_ids = body.get("delete_image_ids", [])
+        if delete_image_ids:
+            ComplaintImages.objects.filter(complaint=complaint, id__in=delete_image_ids).delete()
+
+        images = body.get("images", [])
+        for image in images:
+            file_name = image.get("file_name")
+            file_data = image.get("file_data")
+            if file_name and file_data:
+                object_name = f"complaints/{complaint.code}/{uuid.uuid4()}_{file_name}"
+                file_url = upload_file_to_s3_base64(file_data=file_data, object_name=object_name)
+                ComplaintImages.objects.create(
+                    complaint=complaint,
+                    image_path=file_url,
+                    file_name=file_name,
+                    created_by=request.user.user
+                )
+
+        ComplaintTimeline.objects.create(
+            complaint=complaint,
+            user=request.user,
+            timeline_status=constants.UPDATED,
+            note="Complaint details updated.",
+            created_by=request.user.user
+        )
+
+        ComplaintActivityHistory.objects.create(
+            complaint=complaint,
+            user=request.user,
+            message=f"{request.user.user.first_name} updated the complaint.",
+            created_by=request.user.user
+        )
+
+        return prepare_response(
+            content=serialize_complaint(complaint),
+            message=constants.COMPLAINT_UPDATED_SUCCESSFULLY,
+            status=status.HTTP_200_OK
+        )
+
+    # ── DELETE ────────────────────────────────────────────────────
+    elif request.method == "DELETE":
+        code = request.GET.get("code")
+        if not code:
+            return prepare_response(message="code is required", status=status.HTTP_400_BAD_REQUEST)
+
+        company = PropertyManagmentCompany.objects.filter(company_staff=request.user, is_active=True).first()
+        if not company:
+            return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+
+        complaint = Complaint.objects.filter(code=code, company=company, is_active=True).first()
+        if not complaint:
+            return prepare_response(message=constants.COMPLAINT_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+
+        complaint.delete()
+        return prepare_response(
+            message=constants.COMPLAINT_DELETED_SUCCESSFULLY,
+            status=status.HTTP_200_OK
+        )
+
     return prepare_response(
         message=constants.METHOD_NOT_ALLOWED,
         status=status.HTTP_405_METHOD_NOT_ALLOWED
@@ -205,10 +353,12 @@ def complaint_api(request):
 
 # =====================================================
 # complaint_detail_api - GET + PUT + DELETE
+# code comes from query param (?code=CMP001) for GET/DELETE
+# code comes from body for PUT
 # =====================================================
 
 @is_request_authenticated
-def complaint_detail_api(request, code):
+def complaint_detail_api(request):
 
     company = PropertyManagmentCompany.objects.filter(
         company_staff=request.user,
@@ -220,19 +370,26 @@ def complaint_detail_api(request, code):
             status=status.HTTP_404_NOT_FOUND
         )
 
-    complaint = Complaint.objects.filter(
-        code=code,
-        company=company,
-        is_active=True
-    ).first()
-    if not complaint:
-        return prepare_response(
-            message=constants.COMPLAINT_NOT_FOUND,
-            status=status.HTTP_404_NOT_FOUND
-        )
-
     # ── GET ───────────────────────────────────────────────────────
     if request.method == "GET":
+        code = request.GET.get("code")
+        if not code:
+            return prepare_response(
+                message="code is required",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        complaint = Complaint.objects.filter(
+            code=code,
+            company=company,
+            is_active=True
+        ).first()
+        if not complaint:
+            return prepare_response(
+                message=constants.COMPLAINT_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
+
         data = serialize_complaint(complaint)
         data["timeline"] = [
             {
@@ -282,58 +439,101 @@ def complaint_detail_api(request, code):
             for b in complaint.broadcasts.all().order_by('-priority_score')
         ]
 
+        provider = complaint.assigned_to.first()
+        data["assigned_engineer"] = {
+            "id": provider.id,
+            "name": provider.name,
+            "phone": provider.phone,
+            "avg_rating": str(provider.avg_rating)
+        } if provider else None
+
+        appointment = complaint.current_appointment
+        if appointment:
+            selected_slot = AppointmentSlot.objects.filter(
+                appointment=appointment,
+                is_selected=True
+            ).first()
+            data["appointment"] = {
+                "id": appointment.id,
+                "status": appointment.status,
+                "note": appointment.note,
+                "selected_slot": (
+                    int(selected_slot.proposed_time.timestamp())
+                    if selected_slot else None
+                ),
+                "all_slots": [
+                    {
+                        "id": slot.id,
+                        "proposed_time": int(slot.proposed_time.timestamp()),
+                        "is_selected": slot.is_selected
+                    }
+                    for slot in AppointmentSlot.objects.filter(appointment=appointment)
+                ]
+            }
+        else:
+            data["appointment"] = None
+
+        rating = ComplaintRating.objects.filter(complaint=complaint).first()
+        data["rating"] = {
+            "rating": rating.rating,
+            "feedback": rating.feedback
+        } if rating else None
+
+        previous_complaints = Complaint.objects.filter(
+            unit=complaint.unit,
+            is_active=True
+        ).exclude(id=complaint.id).order_by("-id")
+
+        data["previous_complaints"] = [
+            {
+                "id": c.id,
+                "code": c.code,
+                "description": c.description,
+                "status": c.status,
+                "priority": c.priority,
+                "service_type": c.service_type,
+                "created": int(c.created.timestamp()) if c.created else None
+            }
+            for c in previous_complaints
+        ]
+
+        data["summary"] = {
+            "complaint_code": complaint.code,
+            "created": int(complaint.created.timestamp()) if complaint.created else None,
+            "broadcasted_at": int(complaint.broadcasted_at.timestamp()) if complaint.broadcasted_at else None,
+            "work_started_at": int(complaint.work_started_at.timestamp()) if complaint.work_started_at else None,
+            "work_completed_at": int(complaint.work_completed_at.timestamp()) if complaint.work_completed_at else None,
+            "issue_closed_on": int(complaint.issue_closed_on.timestamp()) if complaint.issue_closed_on else None,
+            "ticket_aging": data.get("ticket_aging"),
+            "work_duration": (
+                format_work_duration(complaint.work_duration())
+                if complaint.work_duration() else None
+            )
+        }
+
         return prepare_response(
             content=data,
             message=constants.COMPLAINT_FETCHED_SUCCESSFULLY,
             status=status.HTTP_200_OK
         )
 
-    # ── PUT ───────────────────────────────────────────────────────
-    elif request.method == "PUT":
-        body = json.loads(request.body)
-
-        complaint.description = body.get("description", complaint.description)
-        complaint.service_type = body.get("service_type", complaint.service_type)
-        complaint.priority = body.get("priority", complaint.priority)
-        complaint.save()
-
-        ComplaintActivityHistory.objects.create(
-            complaint=complaint,
-            user=request.user,
-            message=f"{request.user.user.first_name} updated the complaint.",
-            created_by=request.user.user
-        )
-
-        return prepare_response(
-            message=constants.COMPLAINT_UPDATED_SUCCESSFULLY,
-            status=status.HTTP_200_OK
-        )
-
-    # ── DELETE ────────────────────────────────────────────────────
-    elif request.method == "DELETE":
-        complaint.is_active = False
-        complaint.save()
-
-        return prepare_response(
-            message=constants.COMPLAINT_DELETED_SUCCESSFULLY,
-            status=status.HTTP_200_OK
-        )
-
-    return prepare_response(
-        message=constants.METHOD_NOT_ALLOWED,
-        status=status.HTTP_405_METHOD_NOT_ALLOWED
-    )
-
-
 # =====================================================
 # STEP 2A - accept_complaint
-# Technician accepts + selects slot in one step
+# code comes from body
 # =====================================================
 
 @is_request_authenticated
-def accept_complaint(request, code):
+def accept_complaint(request):
 
     if request.method == "PATCH":
+        body = json.loads(request.body)
+        code = body.get("code")
+        if not code:
+            return prepare_response(
+                message="code is required",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         complaint = Complaint.objects.filter(
             code=code,
             is_active=True
@@ -350,7 +550,6 @@ def accept_complaint(request, code):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        body = json.loads(request.body)
         service_provider_id = body.get("service_provider_id")
         slot_id = body.get("slot_id")
 
@@ -374,7 +573,6 @@ def accept_complaint(request, code):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # ── Check expiry ───────────────────────────────────────────
         if broadcast.expires_at and timezone.now() > broadcast.expires_at:
             broadcast.is_expired = True
             broadcast.save()
@@ -383,7 +581,6 @@ def accept_complaint(request, code):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # ── Validate slot ──────────────────────────────────────────
         slot = AppointmentSlot.objects.filter(
             id=slot_id,
             appointment=complaint.current_appointment
@@ -395,30 +592,25 @@ def accept_complaint(request, code):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        # ── Accept broadcast ───────────────────────────────────────
         broadcast.is_accepted = True
         broadcast.accepted_at = timezone.now()
         broadcast.save()
 
-        # ── Reject all other pending broadcasts ────────────────────
         ComplaintBroadcast.objects.filter(
             complaint=complaint,
             is_accepted=False,
             is_rejected=False
         ).update(is_rejected=True, rejected_at=timezone.now())
 
-        # ── Select slot ────────────────────────────────────────────
         slot.is_selected = True
         slot.selected_at = timezone.now()
         slot.save()
 
-        # ── Update appointment ─────────────────────────────────────
         appointment = complaint.current_appointment
         appointment.service_provider = broadcast.service_provider
         appointment.status = constants.APPOINTMENT_CONFIRMED
         appointment.save()
 
-        # ── Update complaint ───────────────────────────────────────
         complaint.assigned_to.add(broadcast.service_provider)
         complaint.status = constants.ASSIGNED
         complaint.save()
@@ -429,7 +621,6 @@ def accept_complaint(request, code):
             broadcast.service_provider.name
         )
 
-        # ── Timeline ───────────────────────────────────────────────
         ComplaintTimeline.objects.create(
             complaint=complaint,
             user=request.user,
@@ -438,7 +629,6 @@ def accept_complaint(request, code):
             created_by=request.user.user
         )
 
-        # ── Activity ───────────────────────────────────────────────
         ComplaintActivityHistory.objects.create(
             complaint=complaint,
             user=request.user,
@@ -446,7 +636,6 @@ def accept_complaint(request, code):
             created_by=request.user.user
         )
 
-        # ── Emails ─────────────────────────────────────────────────
         email_complaint_accepted(complaint, broadcast.service_provider, slot=slot)
         email_slot_selected(complaint, slot)
 
@@ -467,12 +656,21 @@ def accept_complaint(request, code):
 
 # =====================================================
 # STEP 2B - decline_complaint
+# code comes from body
 # =====================================================
 
 @is_request_authenticated
-def decline_complaint(request, code):
+def decline_complaint(request):
 
     if request.method == "PATCH":
+        body = json.loads(request.body)
+        code = body.get("code")
+        if not code:
+            return prepare_response(
+                message="code is required",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         complaint = Complaint.objects.filter(
             code=code,
             is_active=True
@@ -483,7 +681,6 @@ def decline_complaint(request, code):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        body = json.loads(request.body)
         service_provider_id = body.get("service_provider_id")
 
         broadcast = ComplaintBroadcast.objects.filter(
@@ -501,9 +698,7 @@ def decline_complaint(request, code):
         service_provider = broadcast.service_provider
         company = complaint.company
 
-        # =====================================================
         # CASE 1 - Decline AFTER accepting
-        # =====================================================
         if broadcast.is_accepted:
             broadcast.is_accepted = False
             broadcast.is_rejected = True
@@ -523,7 +718,6 @@ def decline_complaint(request, code):
 
             excluded = get_excluded_providers(complaint)
 
-            # ── attempt_count >= 2 → auto assign ──────────────────
             if complaint.attempt_count >= 2:
                 best = auto_assign_best_technician(complaint, company, excluded)
                 if best:
@@ -552,9 +746,7 @@ def decline_complaint(request, code):
                 else:
                     email_no_technician_available(complaint)
 
-        # =====================================================
         # CASE 2 - Normal decline (before accepting)
-        # =====================================================
         else:
             broadcast.is_rejected = True
             broadcast.rejected_at = timezone.now()
@@ -577,7 +769,6 @@ def decline_complaint(request, code):
             if not pending.exists():
                 excluded = get_excluded_providers(complaint)
 
-                # ── attempt_count >= 2 → auto assign ──────────────
                 if complaint.attempt_count >= 2:
                     best = auto_assign_best_technician(complaint, company, excluded)
                     if best:
@@ -619,12 +810,21 @@ def decline_complaint(request, code):
 
 # =====================================================
 # STEP 3 - start_work
+# code comes from body
 # =====================================================
 
 @is_request_authenticated
-def start_work(request, code):
+def start_work(request):
 
     if request.method == "PATCH":
+        body = json.loads(request.body)
+        code = body.get("code")
+        if not code:
+            return prepare_response(
+                message="code is required",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         complaint = Complaint.objects.filter(
             code=code,
             is_active=True
@@ -676,14 +876,21 @@ def start_work(request, code):
 
 
 # =====================================================
-# STEP 4 - complete_work (Technician + upload images)
+# STEP 4 - complete_work
+# code comes from body
 # =====================================================
 
 @is_request_authenticated
-def complete_work(request, code):
+def complete_work(request):
 
     if request.method == "PATCH":
         body = json.loads(request.body)
+        code = body.get("code")
+        if not code:
+            return prepare_response(
+                message="code is required",
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         complaint = Complaint.objects.filter(
             code=code,
@@ -705,7 +912,6 @@ def complete_work(request, code):
         complaint.work_completed_at = timezone.now()
         complaint.save()
 
-        # ── Upload completion images ───────────────────────────────
         images = body.get("images", [])
         for image in images:
             file_name = image.get("file_name")
@@ -757,14 +963,21 @@ def complete_work(request, code):
 
 
 # =====================================================
-# STEP 5 - verify_complaint (Owner verifies + rates)
+# STEP 5 - verify_complaint
+# code comes from body
 # =====================================================
 
 @is_request_authenticated
-def verify_complaint(request, code):
+def verify_complaint(request):
 
     if request.method == "PATCH":
         body = json.loads(request.body)
+        code = body.get("code")
+        if not code:
+            return prepare_response(
+                message="code is required",
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
         complaint = Complaint.objects.filter(
             code=code,
@@ -789,7 +1002,6 @@ def verify_complaint(request, code):
         complaint.issue_closed_on = timezone.now()
         complaint.save()
 
-        # ── Save rating + update avg ───────────────────────────────
         if rating:
             service_provider = complaint.assigned_to.first()
             if service_provider:
@@ -802,9 +1014,7 @@ def verify_complaint(request, code):
                     created_by=request.user.user
                 )
 
-                all_ratings = ComplaintRating.objects.filter(
-                    service_provider=service_provider
-                )
+                all_ratings = ComplaintRating.objects.filter(service_provider=service_provider)
                 avg = sum([r.rating for r in all_ratings]) / all_ratings.count()
                 service_provider.avg_rating = round(avg, 2)
                 service_provider.save()
@@ -826,7 +1036,6 @@ def verify_complaint(request, code):
             created_by=request.user.user
         )
 
-        # ── Email with rating and feedback ─────────────────────────
         email_complaint_closed(complaint, rating=rating, feedback=feedback)
         notify_complaint_closed(complaint.raised_by, complaint)
 
@@ -839,6 +1048,7 @@ def verify_complaint(request, code):
         message=constants.METHOD_NOT_ALLOWED,
         status=status.HTTP_405_METHOD_NOT_ALLOWED
     )
+
 
 # =====================================================
 # UPLOAD IMAGES (standalone)
