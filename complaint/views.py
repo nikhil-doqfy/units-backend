@@ -34,7 +34,7 @@ from notification.utils import (
     notify_complaint_resolved,
     notify_complaint_closed,
 )
-
+from django.db.models import Q
 
 # =====================================================
 # STEP 1 - complaint_api (GET ALL + POST CREATE)
@@ -60,9 +60,55 @@ def complaint_api(request):
             is_active=True
         ).order_by('-id')
 
+        # ── Filters ───────────────────────────────────────────────
+        complaint_status = request.GET.get("status", "").strip().upper()
+        property_id = request.GET.get("property_id", "").strip()
+        search = request.GET.get("search", "").strip()
+
+        if complaint_status:
+            complaints = complaints.filter(status=complaint_status)
+
+        if property_id:
+            complaints = complaints.filter(
+                unit__property_block_tower__property_id=property_id
+            )
+
+        if search:
+            complaints = complaints.filter(
+                Q(code__icontains=search) |
+                Q(unit__unit_name__icontains=search) |
+                Q(unit__dm_no__icontains=search) |
+                Q(unit__property_block_tower__property__property_name__icontains=search) |
+                Q(raised_by__user__first_name__icontains=search) |
+                Q(raised_by__user__last_name__icontains=search)
+            ).distinct()
+
+        # ── Stats ─────────────────────────────────────────────────
+        total = complaints.count()
+        completed = complaints.filter(status=constants.CLOSED).count()
+        in_progress = complaints.filter(status=constants.IN_PROGRESS).count()
+        rejected = complaints.filter(status=constants.PENDING).count()
+
+        # ── Pagination ────────────────────────────────────────────
+        page = int(request.GET.get("page", 1))
+        page_size = int(request.GET.get("page_size", 10))
+        start = (page - 1) * page_size
+        paginated = complaints[start:start + page_size]
+
         return prepare_response(
-            content=[serialize_complaint(c) for c in complaints],
+            content=[serialize_complaint(c) for c in paginated],
             message=constants.COMPLAINT_FETCHED_SUCCESSFULLY,
+            pagination={
+                "total_records": total,
+                "page": page,
+                "page_size": page_size,
+                "stats": {
+                    "total_complaints": total,
+                    "completed": completed,
+                    "in_progress": in_progress,
+                    "rejected": rejected,
+                }
+            },
             status=status.HTTP_200_OK
         )
 
