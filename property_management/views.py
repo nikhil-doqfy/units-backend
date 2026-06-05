@@ -1516,7 +1516,15 @@ def audit_log(request):
     page_size  = int(request.GET.get("page_size", 20))
     export     = request.GET.get("export") == "true"
 
-    logs_qs = AuditLog.objects.select_related("userprofile__user").order_by("-created")
+    user_profile = request.user
+    pm_profile = PropertyManager.objects.select_related("company").filter(pk=user_profile.pk).first()
+    if not pm_profile:
+        return prepare_response(message="Company not found for this user", status=status.HTTP_400_BAD_REQUEST)
+    company = pm_profile.company
+
+    logs_qs = AuditLog.objects.select_related("userprofile__user").filter(
+        userprofile__propertymanager__company=company
+    ).order_by("-created")
 
     if user_id:
         logs_qs = logs_qs.filter(userprofile_id=user_id)
