@@ -40,7 +40,8 @@ INSTALLED_APPS = [
     'lease',
     'terms',
     "notification",
- 
+    'drf_yasg',
+    'rest_framework',
 
 ]
 
@@ -132,3 +133,27 @@ EMAIL_HOST_PASSWORD = ''
 EMAIL_PORT = 587
 # --------------------------------------------------------------------------------------------------------------------------------------------
 TEST_RUNNER = "utilities.test_runner.CustomHTMLAndExcelRunner"
+
+
+APPEND_SLASH = False
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [],
+    'DEFAULT_PERMISSION_CLASSES': [],
+}
+
+SWAGGER_SETTINGS = {
+    'SECURITY_DEFINITIONS': {
+        'Bearer': {
+            'type': 'apiKey',
+            'name': 'Authorization',
+            'in': 'header',
+            'description': 'Enter: **Bearer &lt;token&gt;**',
+        }
+    },
+    'USE_SESSION_AUTH': False,
+    'JSON_EDITOR': True,
+    'DEFAULT_AUTO_SCHEMA_CLASS': 'drf_yasg.inspectors.SwaggerAutoSchema',
+}
+LOGIN_REDIRECT_URL = "/swagger/"
+LOGOUT_REDIRECT_URL = "/accounts/login/"

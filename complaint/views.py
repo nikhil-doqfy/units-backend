@@ -35,11 +35,22 @@ from notification.utils import (
     notify_complaint_closed,
 )
 from django.db.models import Q
+from complaint.swagger_docs import (
+    complaint_get, complaint_post, complaint_put, complaint_delete,
+    complaint_detail_get, complaint_accept, complaint_decline,
+    complaint_start, complaint_complete, complaint_verify,
+    complaint_upload_images,
+)
+from rest_framework.decorators import api_view
 
 # =====================================================
 # STEP 1 - complaint_api (GET ALL + POST CREATE)
 # =====================================================
-
+@complaint_get
+@complaint_post
+@complaint_put
+@complaint_delete
+@api_view(['GET', 'POST', 'PUT', 'DELETE'])
 @is_request_authenticated
 def complaint_api(request):
 
@@ -356,7 +367,8 @@ def complaint_api(request):
 # code comes from query param (?code=CMP001) for GET/DELETE
 # code comes from body for PUT
 # =====================================================
-
+@complaint_detail_get
+@api_view(['GET'])
 @is_request_authenticated
 def complaint_detail_api(request):
 
@@ -521,7 +533,8 @@ def complaint_detail_api(request):
 # STEP 2A - accept_complaint
 # code comes from body
 # =====================================================
-
+@complaint_accept
+@api_view(['PATCH'])
 @is_request_authenticated
 def accept_complaint(request):
 
@@ -658,7 +671,8 @@ def accept_complaint(request):
 # STEP 2B - decline_complaint
 # code comes from body
 # =====================================================
-
+@complaint_decline
+@api_view(['PATCH'])
 @is_request_authenticated
 def decline_complaint(request):
 
@@ -812,7 +826,8 @@ def decline_complaint(request):
 # STEP 3 - start_work
 # code comes from body
 # =====================================================
-
+@complaint_start
+@api_view(['PATCH'])
 @is_request_authenticated
 def start_work(request):
 
@@ -879,7 +894,8 @@ def start_work(request):
 # STEP 4 - complete_work
 # code comes from body
 # =====================================================
-
+@complaint_complete
+@api_view(['PATCH'])
 @is_request_authenticated
 def complete_work(request):
 
@@ -966,7 +982,8 @@ def complete_work(request):
 # STEP 5 - verify_complaint
 # code comes from body
 # =====================================================
-
+@complaint_verify
+@api_view(['PATCH'])
 @is_request_authenticated
 def verify_complaint(request):
 
@@ -1053,7 +1070,8 @@ def verify_complaint(request):
 # =====================================================
 # UPLOAD IMAGES (standalone)
 # =====================================================
-
+@complaint_upload_images
+@api_view(['POST'])
 @is_request_authenticated
 def upload_complaint_images(request):
 

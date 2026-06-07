@@ -34,6 +34,25 @@ from property_management.utils import create_and_send_invitation,is_dashboard_en
 from django.http import FileResponse, Http404
 from django.contrib.admin.views.decorators import staff_member_required
 from django.shortcuts import render
+from rest_framework.decorators import api_view
+from .swagger import (
+    options_get,
+    send_invitation_post,
+    dashboard_overview_get,
+    dashboard_occupancy_get,
+    dashboard_top_revenue_properties_get,
+    dashboard_monthly_revenue_get,
+    dashboard_cheque_visibility_get,
+    dashboard_cheque_aging_get,
+    dashboard_other_type_payments_get,
+    dashboard_yearly_dues_get,
+    dashboard_property_owned_get,
+    dashboard_visualization_get,
+    dashboard_visualization_post,
+    faq_get,
+    audit_log_get,
+    global_search_get,
+)
 
 @is_request_authenticated
 def serve_media(request, path):
@@ -42,6 +61,8 @@ def serve_media(request, path):
     return response
 
 
+@options_get
+@api_view(["GET"])
 @is_request_authenticated
 def options(request):
     if request.method != "GET":
@@ -359,6 +380,8 @@ def options(request):
 # owner_pmc_view moved to user_service/views.py
 
 
+@send_invitation_post
+@api_view(["POST"])
 @is_request_authenticated
 def send_invitation(request):
     if request.method != "POST":
@@ -426,6 +449,8 @@ def send_invitation(request):
         )
 
 
+@dashboard_overview_get
+@api_view(["GET"])
 @is_request_authenticated
 def dashboard_overview(request):
     if request.method != "GET":
@@ -489,6 +514,8 @@ def dashboard_overview(request):
         return prepare_response(message={"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@dashboard_occupancy_get
+@api_view(["GET"])
 @is_request_authenticated
 def dashboard_occupancy(request):
     if request.method != "GET":
@@ -574,6 +601,8 @@ def dashboard_occupancy(request):
         return prepare_response(message={"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@dashboard_top_revenue_properties_get
+@api_view(["GET"])
 @is_request_authenticated
 def dashboard_top_revenue_properties(request):
     if request.method != "GET":
@@ -629,6 +658,8 @@ def dashboard_top_revenue_properties(request):
     except Exception as e:
         return prepare_response(message={"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+@faq_get
+@api_view(["GET"])
 def faq_api(request):
 
     if request.method == "GET":
@@ -653,6 +684,8 @@ def faq_api(request):
 
 #--------------------------------------------> Dashboard API<------------------------------------------------------------------
 
+@dashboard_monthly_revenue_get
+@api_view(["GET"])
 @is_request_authenticated
 def dashboard_monthly_revenue(request):
     if request.method != "GET":
@@ -810,6 +843,8 @@ from datetime import datetime
 
 from django.utils.dateparse import parse_date
 
+@dashboard_cheque_visibility_get
+@api_view(["GET"])
 @is_request_authenticated
 def dashboard_cheque_visibility(request):
     if request.method != "GET":
@@ -931,6 +966,8 @@ def dashboard_cheque_visibility(request):
         )
 
 
+@dashboard_cheque_aging_get
+@api_view(["GET"])
 @is_request_authenticated
 def dashboard_cheque_aging(request):
     if request.method != "GET":
@@ -1033,6 +1070,8 @@ def dashboard_cheque_aging(request):
         )
 
 
+@dashboard_other_type_payments_get
+@api_view(["GET"])
 @is_request_authenticated
 def dashboard_other_type_payments(request):
     if request.method != "GET":
@@ -1168,6 +1207,8 @@ def dashboard_other_type_payments(request):
 # """
 
 
+@dashboard_yearly_dues_get
+@api_view(["GET"])
 @is_request_authenticated
 def dashboard_yearly_dues(request):
     if request.method != "GET":
@@ -1291,6 +1332,8 @@ def dashboard_yearly_dues(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
+@dashboard_property_owned_get
+@api_view(["GET"])
 @is_request_authenticated
 def dashboard_property_owned(request):
     if request.method != "GET":
@@ -1435,6 +1478,9 @@ def _ensure_visualizations_exist(user):
         DashboardVisualization.objects.bulk_create(to_create)
 
 
+@dashboard_visualization_get
+@dashboard_visualization_post
+@api_view(["GET", "POST"])
 @is_request_authenticated
 def dashboard_visualization(request):
     user = request.user
@@ -1496,6 +1542,8 @@ def dashboard_visualization(request):
         status=status.HTTP_405_METHOD_NOT_ALLOWED
     )
 
+@audit_log_get
+@api_view(["GET"])
 @is_request_authenticated
 def audit_log(request):
 
@@ -1592,6 +1640,8 @@ def audit_log(request):
     )
 
 
+@global_search_get
+@api_view(["GET"])
 @is_request_authenticated
 def global_search(request):
     if request.method != "GET":

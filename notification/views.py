@@ -5,6 +5,16 @@ from utilities.helper_functions import prepare_response
 from utilities.decorator import is_request_authenticated
 from utilities import status
 from notification.models import Notification
+from rest_framework.decorators import api_view
+
+from .swagger import (
+    notification_list_get,
+    notification_read_patch,
+    notification_read_all_patch,
+    notification_clear_patch,
+    notification_clear_all_patch,
+    notification_unread_count_get,
+)
 
 
 def serialize_notification(n):
@@ -27,6 +37,8 @@ def serialize_notification(n):
 # GET ALL NOTIFICATIONS (user + global)
 # =====================================================
 
+@notification_list_get
+@api_view(["GET"])
 @is_request_authenticated
 def notification_list(request):
 
@@ -92,6 +104,8 @@ def notification_list(request):
 # MARK SINGLE AS READ
 # =====================================================
 
+@notification_read_patch
+@api_view(["PATCH"])
 @is_request_authenticated
 def notification_read(request, pk):
 
@@ -124,6 +138,8 @@ def notification_read(request, pk):
 # MARK ALL AS READ
 # =====================================================
 
+@notification_read_all_patch
+@api_view(["PATCH"])
 @is_request_authenticated
 def notification_read_all(request):
 
@@ -152,6 +168,8 @@ def notification_read_all(request):
 # CLEAR SINGLE NOTIFICATION
 # =====================================================
 
+@notification_clear_patch
+@api_view(["PATCH"])
 @is_request_authenticated
 def notification_clear(request, pk):
 
@@ -184,6 +202,8 @@ def notification_clear(request, pk):
 # CLEAR ALL NOTIFICATIONS
 # =====================================================
 
+@notification_clear_all_patch
+@api_view(["PATCH"])
 @is_request_authenticated
 def notification_clear_all(request):
 
@@ -211,6 +231,8 @@ def notification_clear_all(request):
 # UNREAD COUNT (for badge)
 # =====================================================
 
+@notification_unread_count_get
+@api_view(["GET"])
 @is_request_authenticated
 def notification_unread_count(request):
 

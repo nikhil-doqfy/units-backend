@@ -12,6 +12,27 @@ from lead import urls as lead_urls
 from lease import urls as lease_urls
 from complaint import urls as complaint_urls
 from notification import urls as notification_urls
+from rest_framework import permissions
+from drf_yasg.views import get_schema_view
+from drf_yasg import openapi
+from rest_framework import permissions
+from rest_framework.authentication import SessionAuthentication, BasicAuthentication
+from django.contrib.auth import views as auth_views
+from django.contrib.auth import logout
+from django.shortcuts import redirect
+
+schema_view = get_schema_view(
+    openapi.Info(
+        title="Units API",
+        default_version="v1",
+        description="API documentation for Units Property Management System",
+        contact=openapi.Contact(email="admin@doqfy.in"),
+    ),
+    public=False,
+    permission_classes=(permissions.IsAuthenticated,),
+    authentication_classes=(SessionAuthentication, BasicAuthentication),
+    validators=[],
+)
 
 # User-service views kept here because user_service/urls.py is under the 'user/' prefix
 from user_service.views import (
@@ -22,6 +43,9 @@ from user_service.views import (
     company_tenants,
     approval_view,
 )
+def swagger_logout(request):
+    logout(request)
+    return redirect("/accounts/login/")
 
 
 urlpatterns = [
@@ -62,9 +86,16 @@ urlpatterns = [
     path('company_owners_csv', export_company_owners_csv, name='export_company_owners_csv'),
     path('tenant_csv', export_tenant_csv, name='export_tenant_csv'),
     path('tenants_Approved_Rejected', company_tenants, name='company_tenants'),
-
+    
     # path('complaint_list', views.complaint_list, name='complaint_list'),
+    # Swagger UI
+    re_path(r'^swagger(?P<format>\.json|\.yaml)$', schema_view.without_ui(cache_timeout=0), name='schema-json'),
+    re_path(r'^swagger/$', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
+    re_path(r'^redoc/$', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
+    path("accounts/login/",auth_views.LoginView.as_view(template_name="email_templates/swagger_login.html"),name="login"),
+    path("accounts/logout/", swagger_logout, name="logout"),
 ]
+
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

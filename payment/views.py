@@ -3,11 +3,19 @@ from utilities.helper_functions import prepare_response, datetime_to_epoch_milli
 from utilities import status, constants
 from utilities.decorator import is_request_authenticated
 from django.core.paginator import Paginator
+from rest_framework.decorators import api_view
 
+from .swagger import (
+    access_rental_account_get,
+    owner_rent_amounts_get,
+    rental_payments_get,
+)
 
 #=====================================
 #PAYMENT METHOD VIEWS
 #=====================================
+@access_rental_account_get
+@api_view(["GET"])
 @is_request_authenticated
 def access_rental_account(request):
     if request.method == "GET":
@@ -38,6 +46,8 @@ def access_rental_account(request):
         )
 
 
+@owner_rent_amounts_get
+@api_view(["GET"])
 @is_request_authenticated
 def owner_rent_amounts(request):
     if request.method != "GET":
@@ -100,6 +110,8 @@ def owner_rent_amounts(request):
         )
 
 
+@rental_payments_get
+@api_view(["GET"])
 @is_request_authenticated
 def rental_payments(request):
     user_profile = request.user

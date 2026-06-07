@@ -33,7 +33,37 @@ from payment.models import Bank
 from .models import Lease, LeaseDocuments, LeaseTransaction, Template, TemplateField, TemplateValue
 from charges.models import Charge
 from .serializers import serialize_lease, serialize_tenant_lease, group_lease_cheques, serialize_cheque_list_row, serialize_lease_cheque
+from rest_framework.decorators import api_view
 
+from rest_framework.decorators import api_view
+
+from .swagger import (
+    lease_get, lease_post, lease_put, lease_delete,
+    lease_onboarding_documents_get,
+    lease_onboarding_documents_post,
+    lease_onboarding_documents_delete,
+    templates_get,
+    template_fields_get,
+    generate_contract_post,
+    send_lease_invite_post,
+    send_negotiation_post,
+    send_for_signature_post,
+    lease_approval_otp_post,
+    lease_approval_verify_otp_post,
+    approve_lease_post,
+    lease_signature_otp_post,
+    lease_signature_verify_otp_post,
+    submit_lease_signature_post,
+    lease_cheque_get,
+    lease_cheque_post,
+    lease_cheque_put,
+    lease_cheque_delete,
+    cheque_summary_get,
+    all_cheques_get,
+    cheque_monthly_get,
+    rent_analytics_get,
+    activate_lease_post,
+)
 
 def _parse_date(value):
     if not value:
@@ -101,7 +131,11 @@ def _create_tenant(email, data, created_by):
         )
     return tenant_obj
 
-
+@lease_get
+@lease_post
+@lease_put
+@lease_delete
+@api_view(['GET', 'POST', 'PUT', 'DELETE'])
 @is_request_authenticated
 def lease_view(request):
     user = request.user
@@ -374,6 +408,10 @@ def lease_view(request):
         )
 
 
+@lease_onboarding_documents_get
+@lease_onboarding_documents_post
+@lease_onboarding_documents_delete
+@api_view(['GET', 'POST', 'DELETE'])
 @is_request_authenticated
 def lease_onboarding_documents_view(request):
     """
@@ -483,7 +521,8 @@ def lease_onboarding_documents_view(request):
 
 
 # ── Template views ─────────────────────────────────────────────────────────
-
+@templates_get
+@api_view(['GET'])
 @is_request_authenticated
 def get_templates(request):
     if request.method == "GET":
@@ -498,7 +537,8 @@ def get_templates(request):
             return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
-
+@template_fields_get
+@api_view(['GET'])
 @is_request_authenticated
 def get_template_fields(request):
     if request.method == "GET":
@@ -637,7 +677,8 @@ def get_template_fields(request):
 
     return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
-
+@generate_contract_post
+@api_view(['POST'])
 @is_request_authenticated
 def generate_contract(request):
     if request.method != "POST":
@@ -721,7 +762,8 @@ def generate_contract(request):
     except Exception as e:
         return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
+@send_lease_invite_post
+@api_view(['POST'])
 @is_request_authenticated
 def send_lease_invite(request):
     if request.method != "POST":
@@ -793,6 +835,8 @@ def send_lease_invite(request):
         return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@send_negotiation_post
+@api_view(['POST'])
 @is_request_authenticated
 def send_negotiation(request):
     if request.method != "POST":
@@ -888,7 +932,8 @@ def send_negotiation(request):
     except Exception as e:
         return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
+@lease_approval_otp_post
+@api_view(['POST'])
 @csrf_exempt
 def lease_approval_otp(request):
     """Send OTP to owner/tenant for lease approval. No auth required."""
@@ -948,7 +993,8 @@ def lease_approval_otp(request):
     except Exception as e:
         return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
+@lease_approval_verify_otp_post
+@api_view(['POST'])
 @csrf_exempt
 def lease_approval_verify_otp(request):
     """Verify OTP and return lease PDF + details. No auth required."""
@@ -995,6 +1041,8 @@ def lease_approval_verify_otp(request):
         return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@approve_lease_post
+@api_view(['POST'])
 @csrf_exempt
 def approve_lease_view(request):
     """Mark owner or tenant approval. No auth required."""
@@ -1037,9 +1085,10 @@ def approve_lease_view(request):
     except Exception as e:
         return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
-@is_request_authenticated
+@send_for_signature_post
+@api_view(['POST'])
 @csrf_exempt
+@is_request_authenticated
 def send_for_signature(request):
     """Send signature-request emails to tenant and owners. Requires auth."""
     if request.method != "POST":
@@ -1134,7 +1183,8 @@ def send_for_signature(request):
     except Exception as e:
         return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
+@lease_signature_otp_post
+@api_view(['POST'])
 @csrf_exempt
 def lease_signature_otp(request):
     """Send OTP to owner/tenant for lease signature. No auth required."""
@@ -1195,7 +1245,8 @@ def lease_signature_otp(request):
     except Exception as e:
         return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
+@lease_signature_verify_otp_post
+@api_view(['POST'])
 @csrf_exempt
 def lease_signature_verify_otp(request):
     """Verify OTP and return lease PDF + details for signing. No auth required."""
@@ -1244,7 +1295,8 @@ def lease_signature_verify_otp(request):
     except Exception as e:
         return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-
+@submit_lease_signature_post
+@api_view(['POST'])
 @csrf_exempt
 def submit_lease_signature(request):
     """Emboss signature onto lease PDF and save. No auth required."""
@@ -1364,7 +1416,11 @@ def submit_lease_signature(request):
         return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-@is_request_authenticated
+@lease_cheque_get
+@lease_cheque_post
+@lease_cheque_put
+@lease_cheque_delete
+@api_view(['GET', 'POST', 'PUT', 'DELETE'])
 @csrf_exempt
 @is_request_authenticated
 def lease_cheque_view(request):
@@ -1590,7 +1646,8 @@ def _scope_transactions_to_user(qs, user):
         return qs.filter(lease__unit__unit_owners__owner=owner)
     return qs.none()
 
-
+@cheque_summary_get
+@api_view(['GET'])
 @is_request_authenticated
 @csrf_exempt
 def cheque_summary_view(request):
@@ -1632,7 +1689,8 @@ def cheque_summary_view(request):
     }
     return prepare_response(content=summary, status=status.HTTP_200_OK)
 
-
+@all_cheques_get
+@api_view(['GET'])
 @is_request_authenticated
 @csrf_exempt
 def all_cheques_view(request):
@@ -1716,6 +1774,8 @@ def all_cheques_view(request):
         status=status.HTTP_200_OK,
     )
 
+@cheque_monthly_get
+@api_view(['GET'])
 @is_request_authenticated
 @csrf_exempt
 def cheque_monthly_view(request):
@@ -1784,6 +1844,8 @@ def cheque_monthly_view(request):
 
     return prepare_response(content=data, status=status.HTTP_200_OK)
 
+@rent_analytics_get
+@api_view(['GET'])
 @is_request_authenticated
 @csrf_exempt
 def rent_analytics_view(request):
@@ -3746,7 +3808,8 @@ def submit_ejari_signature(request):
 
 
 # ── Step 16: Activate lease (admin-triggered fallback) ────────────────────────
-
+@activate_lease_post
+@api_view(['POST'])
 @is_request_authenticated
 def activate_lease_view(request):
     """POST: Manually activate a lease (e.g. after all steps are complete)."""

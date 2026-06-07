@@ -15,6 +15,12 @@ def _get_pmc(user_profile):
 from utilities.decorator import is_request_authenticated
 from utilities.helper_functions import prepare_response
 from utilities import status, constants
+from lead.swagger import (
+    lead_get, lead_post, lead_put, lead_delete,
+    activity_get, activity_post, activity_put, activity_delete,
+    lead_check_active_lease_get, lead_bulk_import_post
+)
+from rest_framework.decorators import api_view
 
 
 def _get_property_thumbnail(prop):
@@ -102,7 +108,11 @@ def _serialize_lead_with_lease(lead):
     data["lease_stage"] = lease.lease_stage if lease else None
     return data
 
-
+@lead_get
+@lead_post
+@lead_put
+@lead_delete
+@api_view(['GET', 'POST', 'PUT', 'DELETE'])
 @is_request_authenticated
 def lead_view(request):
     user_profile = request.user
@@ -310,7 +320,11 @@ def _serialize_activity(log):
         "created_by_name": f"{created_by.first_name} {created_by.last_name}".strip() if created_by else "System",
     }
 
-
+@activity_get
+@activity_post
+@activity_put
+@activity_delete
+@api_view(['GET', 'POST', 'PUT', 'DELETE'])
 @is_request_authenticated
 def activity_log_view(request):
     user_profile = request.user
@@ -387,7 +401,8 @@ def activity_log_view(request):
 
     return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
-
+@lead_check_active_lease_get
+@api_view(['GET'])
 @is_request_authenticated
 def lead_check_active_lease(request):
     if request.method != "GET":
@@ -406,7 +421,8 @@ def lead_check_active_lease(request):
 
     return prepare_response(content={"has_active_lease": has_active_lease}, status=status.HTTP_200_OK)
 
-
+@lead_bulk_import_post
+@api_view(['POST'])
 @is_request_authenticated
 def lead_bulk_import(request):
     if request.method != "POST":
