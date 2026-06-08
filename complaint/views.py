@@ -37,7 +37,8 @@ from notification.utils import (
 )
 from django.db.models import Q
 import datetime
-
+import csv
+from django.http import HttpResponse
 # =====================================================
 # STEP 1 - complaint_api (GET ALL + POST CREATE)
 # =====================================================
@@ -423,6 +424,8 @@ def complaint_detail_api(request):
                 } if t.user else None,
                 "note": t.note,
                 "time": int(t.time.timestamp()) if t.time else None,
+                "date": t.time.strftime("%d %b %Y") if t.time else None,
+                "formatted_time": t.time.strftime("%I:%M %p") if t.time else None,
             }
             for t in complaint.timeline.all().order_by("created")
         ]
@@ -485,6 +488,8 @@ def complaint_detail_api(request):
             {
                 "title": "Issue raised",
                 "date": int(complaint.created.timestamp()) if complaint.created else None,
+                "formatted_date": complaint.created.strftime("%d %b %Y") if complaint.created else None,
+                "formatted_time": complaint.created.strftime("%I:%M %p") if complaint.created else None,
                 "name": (
                     f"{complaint.raised_by.user.first_name} {complaint.raised_by.user.last_name}".strip()
                     if complaint.raised_by else None
@@ -496,16 +501,28 @@ def complaint_detail_api(request):
                     int(assigned_broadcast.accepted_at.timestamp())
                     if assigned_broadcast and assigned_broadcast.accepted_at else None
                 ),
+                "formatted_date": (
+                    assigned_broadcast.accepted_at.strftime("%d %b %Y")
+                    if assigned_broadcast and assigned_broadcast.accepted_at else None
+                ),
+                "formatted_time": (
+                    assigned_broadcast.accepted_at.strftime("%I:%M %p")
+                    if assigned_broadcast and assigned_broadcast.accepted_at else None
+                ),
                 "name": provider.name if provider else None,
             },
             {
                 "title": "In Progress",
                 "date": int(complaint.work_started_at.timestamp()) if complaint.work_started_at else None,
+                "formatted_date": complaint.work_started_at.strftime("%d %b %Y") if complaint.work_started_at else None,
+                "formatted_time": complaint.work_started_at.strftime("%I:%M %p") if complaint.work_started_at else None,
                 "name": provider.name if provider else None,
             },
             {
                 "title": "Completed",
                 "date": int(complaint.work_completed_at.timestamp()) if complaint.work_completed_at else None,
+                "formatted_date": complaint.work_completed_at.strftime("%d %b %Y") if complaint.work_completed_at else None,
+                "formatted_time": complaint.work_completed_at.strftime("%I:%M %p") if complaint.work_completed_at else None,
                 "name": provider.name if provider else None,
             },
         ]
@@ -561,6 +578,61 @@ def complaint_detail_api(request):
         if previous_status:
             previous_complaints = previous_complaints.filter(status=previous_status)
 
+        if previous_status:
+            previous_complaints = previous_complaints.filter(status=previous_status)
+
+        previous_export = request.GET.get("previous_export", "").strip()
+
+        if previous_export == "csv":
+            response = HttpResponse(content_type="text/csv")
+            response["Content-Disposition"] = 'attachment; filename="previous_complaints.csv"'
+
+            writer = csv.writer(response)
+
+            writer.writerow([
+                "Sl.No",
+            "Complaint ID",
+            "Raised Date",
+            "Description",
+            "Photos",
+            "Status",
+        ])
+
+        for index, c in enumerate(previous_complaints, start=1):
+
+            image_urls = ", ".join(
+                [
+                    fetch_s3_presigned_url(img.image_path)
+                    for img in c.complaint_images.all()
+                ]
+            )
+
+            writer.writerow([
+                index,
+                c.code,
+                c.created.strftime("%d/%m/%Y") if c.created else "",
+                c.description,
+                image_urls,
+                c.status,
+            ])
+
+            return response
+
+        previous_page = int(request.GET.get("previous_page", 1))
+        previous_page_size = int(request.GET.get("previous_page_size", 10))
+
+
+
+        previous_page = int(request.GET.get("previous_page", 1))
+        previous_page_size = int(request.GET.get("previous_page_size", 10))
+
+        previous_total = previous_complaints.count()
+
+        previous_start = (previous_page - 1) * previous_page_size
+        previous_end = previous_start + previous_page_size
+
+        previous_complaints_paginated = previous_complaints[previous_start:previous_end]
+
         data["previous_complaints"] = [
             {
                 "id": c.id,
@@ -569,14 +641,34 @@ def complaint_detail_api(request):
                 "status": c.status,
                 "priority": c.priority,
                 "service_type": c.service_type,
-                "created": int(c.created.timestamp()) if c.created else None
+                "created": int(c.created.timestamp()) if c.created else None,
+                "formatted_date": c.created.strftime("%d %b %Y") if c.created else None,
+                "formatted_time": c.created.strftime("%I:%M %p") if c.created else None,
+                "images": [
+                    {
+                        "id": img.id,
+                        "file_name": img.file_name,
+                        "url": fetch_s3_presigned_url(img.image_path)
+                    }
+                    for img in c.complaint_images.all()
+                ],
+                "images_count": c.complaint_images.count(),
             }
-            for c in previous_complaints
+            for c in previous_complaints_paginated
         ]
+
+        data["previous_complaints_pagination"] = {
+            "total_records": previous_total,
+            "page": previous_page,
+            "page_size": previous_page_size,
+            "total_pages": (previous_total + previous_page_size - 1) // previous_page_size
+        }
 
         data["summary"] = {
             "complaint_code": complaint.code,
             "created": int(complaint.created.timestamp()) if complaint.created else None,
+            "created_date": complaint.created.strftime("%d %b %Y") if complaint.created else None,
+            "created_time": complaint.created.strftime("%I:%M %p") if complaint.created else None,
             "broadcasted_at": int(complaint.broadcasted_at.timestamp()) if complaint.broadcasted_at else None,
             "work_started_at": int(complaint.work_started_at.timestamp()) if complaint.work_started_at else None,
             "work_completed_at": int(complaint.work_completed_at.timestamp()) if complaint.work_completed_at else None,
