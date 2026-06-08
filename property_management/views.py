@@ -323,11 +323,12 @@ def options(request):
                 content["property_unit"] = [{"key": unit.id, "value": unit.unit_name or f"Unit #{unit.id}"} for unit in units]
 
         elif option_type == "COMPLAINT_STATUS":
-            content["complaint_status"] = [{"key": constants.IN_PROGRESS, "value": "In Progress"},
-        {"key": constants.COMPLETED, "value": "Completed"},
-        {"key": constants.ASSIGNED_ENGINEER, "value": "Assigned to Engineer"},
-        {"key": constants.REJECTED, "value": "Rejected"},]
-        
+            content["complaint_status"] = [
+                {"key": constants.IN_PROGRESS, "value": "In Progress"},
+                {"key": constants.COMPLETED, "value": "Completed"},
+                {"key": constants.ASSIGNED_ENGINEER, "value": "Assigned to Engineer"},
+                {"key": constants.REJECTED, "value": "Rejected"},
+            ]
         elif option_type == "TENANT_DOCUMENT_TYPE":
             doc_types = DocumentType.objects.filter(section=constants.TENANT).order_by("id")
             content["tenant_document_type"] = [{"key": dt.id, "value": dt.name} for dt in doc_types]
