@@ -1,6 +1,7 @@
 import json
 import uuid
 from django.utils import timezone
+from property_management.utils import audit_logs
 from utilities.helper_functions import prepare_response, fetch_s3_presigned_url, upload_file_to_s3_base64
 from utilities.decorator import is_request_authenticated
 from utilities import constants, status
@@ -35,6 +36,7 @@ from notification.utils import (
     notify_complaint_closed,
 )
 from django.db.models import Q
+import datetime
 
 # =====================================================
 # STEP 1 - complaint_api (GET ALL + POST CREATE)
@@ -198,7 +200,7 @@ def complaint_api(request):
 
         slot_count = 0
         for slot_epoch in slots:
-            slot_time = timezone.datetime.fromtimestamp(slot_epoch, tz=timezone.utc)
+            slot_time = timezone.datetime.fromtimestamp(slot_epoch, tz=datetime.timezone.utc)
             AppointmentSlot.objects.create(
                 appointment=appointment,
                 proposed_time=slot_time,
@@ -228,7 +230,12 @@ def complaint_api(request):
             message=f"{request.user.user.first_name} raised a {complaint.get_service_type_display()} complaint.",
             created_by=request.user.user
         )
-
+        
+        audit_logs(
+            request,
+            f"{request.user.user.first_name} raised complaint {complaint.code}.",
+            "COMPLAINT_CREATED"
+        )
         # ── Emails ─────────────────────────────────────────────────
         email_complaint_created(complaint)
         if providers_count > 0:
@@ -279,7 +286,7 @@ def complaint_api(request):
         if slots is not None and appointment:
             AppointmentSlot.objects.filter(appointment=appointment).delete()
             for slot_epoch in slots:
-                slot_time = timezone.datetime.fromtimestamp(slot_epoch, tz=timezone.utc)
+                slot_time = timezone.datetime.fromtimestamp(slot_epoch, tz=datetime.timezone.utc)
                 AppointmentSlot.objects.create(
                     appointment=appointment,
                     proposed_time=slot_time,
@@ -319,6 +326,12 @@ def complaint_api(request):
             created_by=request.user.user
         )
 
+        audit_logs(
+            request,
+            f"{request.user.user.first_name} updated complaint {complaint.code}.",
+            "COMPLAINT_UPDATED"
+        )
+
         return prepare_response(
             content=serialize_complaint(complaint),
             message=constants.COMPLAINT_UPDATED_SUCCESSFULLY,
@@ -339,6 +352,12 @@ def complaint_api(request):
         if not complaint:
             return prepare_response(message=constants.COMPLAINT_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
 
+        audit_logs(
+            request,
+            f"{request.user.user.first_name} deleted complaint {complaint.code}.",
+            "COMPLAINT_DELETED"
+        )
+        
         complaint.delete()
         return prepare_response(
             message=constants.COMPLAINT_DELETED_SUCCESSFULLY,
@@ -370,7 +389,6 @@ def complaint_detail_api(request):
             status=status.HTTP_404_NOT_FOUND
         )
 
-    # ── GET ───────────────────────────────────────────────────────
     if request.method == "GET":
         code = request.GET.get("code")
         if not code:
@@ -391,6 +409,7 @@ def complaint_detail_api(request):
             )
 
         data = serialize_complaint(complaint)
+
         data["timeline"] = [
             {
                 "id": t.id,
@@ -405,8 +424,9 @@ def complaint_detail_api(request):
                 "note": t.note,
                 "time": int(t.time.timestamp()) if t.time else None,
             }
-            for t in complaint.timeline.all().order_by('created')
+            for t in complaint.timeline.all().order_by("created")
         ]
+
         data["activity_history"] = [
             {
                 "id": a.id,
@@ -417,8 +437,9 @@ def complaint_detail_api(request):
                 } if a.user else None,
                 "created": int(a.created.timestamp()) if a.created else None,
             }
-            for a in complaint.activity_history.all().order_by('-created')
+            for a in complaint.activity_history.all().order_by("-created")
         ]
+
         data["broadcasts"] = [
             {
                 "id": b.id,
@@ -436,16 +457,58 @@ def complaint_detail_api(request):
                 "expires_at": int(b.expires_at.timestamp()) if b.expires_at else None,
                 "accepted_at": int(b.accepted_at.timestamp()) if b.accepted_at else None,
             }
-            for b in complaint.broadcasts.all().order_by('-priority_score')
+            for b in complaint.broadcasts.all().order_by("-priority_score")
         ]
 
         provider = complaint.assigned_to.first()
+
+        assigned_broadcast = None
+        if provider:
+            assigned_broadcast = ComplaintBroadcast.objects.filter(
+                complaint=complaint,
+                service_provider=provider,
+                is_accepted=True
+            ).order_by("-accepted_at").first()
+
         data["assigned_engineer"] = {
             "id": provider.id,
             "name": provider.name,
             "phone": provider.phone,
-            "avg_rating": str(provider.avg_rating)
+            "avg_rating": str(provider.avg_rating),
+            "assigned_at": (
+                int(assigned_broadcast.accepted_at.timestamp())
+                if assigned_broadcast and assigned_broadcast.accepted_at else None
+            ),
         } if provider else None
+
+        data["timeline_summary"] = [
+            {
+                "title": "Issue raised",
+                "date": int(complaint.created.timestamp()) if complaint.created else None,
+                "name": (
+                    f"{complaint.raised_by.user.first_name} {complaint.raised_by.user.last_name}".strip()
+                    if complaint.raised_by else None
+                ),
+            },
+            {
+                "title": "Assigned Engineer",
+                "date": (
+                    int(assigned_broadcast.accepted_at.timestamp())
+                    if assigned_broadcast and assigned_broadcast.accepted_at else None
+                ),
+                "name": provider.name if provider else None,
+            },
+            {
+                "title": "In Progress",
+                "date": int(complaint.work_started_at.timestamp()) if complaint.work_started_at else None,
+                "name": provider.name if provider else None,
+            },
+            {
+                "title": "Completed",
+                "date": int(complaint.work_completed_at.timestamp()) if complaint.work_completed_at else None,
+                "name": provider.name if provider else None,
+            },
+        ]
 
         appointment = complaint.current_appointment
         if appointment:
@@ -453,6 +516,7 @@ def complaint_detail_api(request):
                 appointment=appointment,
                 is_selected=True
             ).first()
+
             data["appointment"] = {
                 "id": appointment.id,
                 "status": appointment.status,
@@ -483,6 +547,19 @@ def complaint_detail_api(request):
             unit=complaint.unit,
             is_active=True
         ).exclude(id=complaint.id).order_by("-id")
+
+        previous_search = request.GET.get("previous_search", "").strip()
+        previous_status = request.GET.get("previous_status", "").strip().upper()
+
+        if previous_search:
+            previous_complaints = previous_complaints.filter(
+                Q(code__icontains=previous_search) |
+                Q(description__icontains=previous_search) |
+                Q(service_type__icontains=previous_search)
+            )
+
+        if previous_status:
+            previous_complaints = previous_complaints.filter(status=previous_status)
 
         data["previous_complaints"] = [
             {
@@ -516,6 +593,11 @@ def complaint_detail_api(request):
             message=constants.COMPLAINT_FETCHED_SUCCESSFULLY,
             status=status.HTTP_200_OK
         )
+
+    return prepare_response(
+        message=constants.METHOD_NOT_ALLOWED,
+        status=status.HTTP_405_METHOD_NOT_ALLOWED
+    )
 
 # =====================================================
 # STEP 2A - accept_complaint
@@ -636,6 +718,12 @@ def accept_complaint(request):
             created_by=request.user.user
         )
 
+        audit_logs(
+            request,
+            f"{broadcast.service_provider.name} accepted complaint {complaint.code} and selected slot {slot.proposed_time}.",
+            "COMPLAINT_ASSIGNED"
+        )
+
         email_complaint_accepted(complaint, broadcast.service_provider, slot=slot)
         email_slot_selected(complaint, slot)
 
@@ -716,6 +804,12 @@ def decline_complaint(request):
                 created_by=request.user.user
             )
 
+            audit_logs(
+                request,
+                f"{service_provider.name} declined complaint {complaint.code} after accepting.",
+                "COMPLAINT_DECLINED"
+            )
+
             excluded = get_excluded_providers(complaint)
 
             if complaint.attempt_count >= 2:
@@ -730,6 +824,13 @@ def decline_complaint(request):
                         message=f"Auto-assigned to {best.name} (best rated).",
                         created_by=request.user.user
                     )
+
+                    audit_logs(
+                        request,
+                        f"Complaint {complaint.code} auto-assigned to {best.name}.",
+                        "COMPLAINT_AUTO_ASSIGNED"
+                    )
+
                     email_complaint_accepted(complaint, best)
                 else:
                     email_no_technician_available(complaint)
@@ -742,6 +843,13 @@ def decline_complaint(request):
                         message=f"Re-broadcasted to {providers_count} providers. Attempt #{complaint.attempt_count}",
                         created_by=request.user.user
                     )
+    
+                    audit_logs(
+                        request,
+                        f"Complaint {complaint.code} re-broadcasted to {providers_count} providers.",
+                        "COMPLAINT_REBROADCASTED"
+                    )
+
                     email_complaint_declined(complaint, service_provider)
                 else:
                     email_no_technician_available(complaint)
@@ -757,6 +865,12 @@ def decline_complaint(request):
                 user=request.user,
                 message=f"{service_provider.name} declined.",
                 created_by=request.user.user
+            )
+
+            audit_logs(
+                request,
+                f"{service_provider.name} declined complaint {complaint.code}.",
+                "COMPLAINT_DECLINED"
             )
 
             pending = ComplaintBroadcast.objects.filter(
@@ -781,6 +895,13 @@ def decline_complaint(request):
                             message=f"Auto-assigned to {best.name} (best rated).",
                             created_by=request.user.user
                         )
+
+                        audit_logs(
+                            request,
+                            f"Complaint {complaint.code} auto-assigned to {best.name}.",
+                            "COMPLAINT_AUTO_ASSIGNED"
+                        )
+
                         email_complaint_accepted(complaint, best)
                     else:
                         email_no_technician_available(complaint)
@@ -793,6 +914,13 @@ def decline_complaint(request):
                             message=f"All declined. Re-broadcasted to {providers_count} providers. Attempt #{complaint.attempt_count}",
                             created_by=request.user.user
                         )
+
+                        audit_logs(
+                            request,
+                            f"All providers declined complaint {complaint.code}. Re-broadcasted to {providers_count} providers. Attempt #{complaint.attempt_count}.",
+                            "COMPLAINT_REBROADCASTED"
+                        )
+                        
                         email_complaint_declined(complaint, service_provider)
                     else:
                         email_no_technician_available(complaint)
@@ -860,6 +988,12 @@ def start_work(request):
             user=request.user,
             message=f"{service_provider.name if service_provider else 'Technician'} started work.",
             created_by=request.user.user
+        )
+
+        audit_logs(
+            request,
+            f"Work started for complaint {complaint.code}.",
+            "WORK_STARTED"
         )
 
         email_work_started(complaint)
@@ -945,6 +1079,12 @@ def complete_work(request):
             user=request.user,
             message=f"{service_provider.name if service_provider else 'Technician'} completed work. Duration: {duration}",
             created_by=request.user.user
+        )
+
+        audit_logs(
+            request,
+            f"Work completed for complaint {complaint.code}.",
+            "WORK_COMPLETED"
         )
 
         email_work_completed(complaint)
@@ -1036,6 +1176,13 @@ def verify_complaint(request):
             created_by=request.user.user
         )
 
+        audit_logs(
+            request,
+            f"{request.user.user.first_name} closed complaint {complaint.code}.",
+            "COMPLAINT_CLOSED"
+        )
+        
+
         email_complaint_closed(complaint, rating=rating, feedback=feedback)
         notify_complaint_closed(complaint.raised_by, complaint)
 
@@ -1111,6 +1258,13 @@ def upload_complaint_images(request):
                 "image_url": img.image_path,
                 "file_presigned_url": fetch_s3_presigned_url(file_url)
             })
+
+        if uploaded_images:
+            audit_logs(
+                request,
+                f"{len(uploaded_images)} image(s) uploaded for complaint {complaint.code}.",
+                "COMPLAINT_IMAGE_UPLOADED"
+            )
 
         return prepare_response(
             content=uploaded_images,
