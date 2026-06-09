@@ -8,9 +8,7 @@ from django.http import HttpResponse
 from .models import Lead, ActivityLog
 from property.models import Unit
 from user_service.models import PropertyManager, Tenant
-import logging
-
-logger = logging.getLogger(__name__)
+from logger_plugin.logger_config import logger
 
 def _get_pmc(user_profile):
     pm = PropertyManager.objects.filter(pk=user_profile.pk).select_related("company").first()

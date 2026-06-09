@@ -1,7 +1,7 @@
 import json
 import uuid
-import logging
 from django.utils import timezone
+from logger_plugin.logger_config import logger
 from property_management.utils import audit_logs
 from utilities.helper_functions import prepare_response, fetch_s3_presigned_url, upload_file_to_s3_base64
 from utilities.decorator import is_request_authenticated
@@ -39,7 +39,7 @@ from notification.utils import (
 from django.db.models import Q
 import datetime
 
-logger = logging.getLogger(__name__)
+
 
 # =====================================================
 # STEP 1 - complaint_api (GET ALL + POST CREATE)

@@ -15,9 +15,9 @@ from utilities.helper_functions import prepare_response, generate_property_code,
 from utilities import status, constants
 from property_management.utils import audit_logs, get_full_property_data, get_property_images, get_lease_status
 from lease.models import Lease
-import logging
+from logger_plugin.logger_config import logger
 
-logger = logging.getLogger(__name__)
+
 def _parse_date(value):
     if not value:
         return None

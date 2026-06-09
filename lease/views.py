@@ -33,9 +33,8 @@ from payment.models import Bank
 from .models import Lease, LeaseDocuments, LeaseTransaction, Template, TemplateField, TemplateValue
 from charges.models import Charge
 from .serializers import serialize_lease, serialize_tenant_lease, group_lease_cheques, serialize_cheque_list_row, serialize_lease_cheque
-import logging
+from logger_plugin.logger_config import logger
 
-logger = logging.getLogger(__name__)
 
 def _parse_date(value):
     if not value:

@@ -18,9 +18,8 @@ from user_service.utils import upload_document, process_rent_approval
 from lease.models import Lease, LeaseDocuments
 from user_service.serializers import serialize_owner_detail, serialize_owner_unit
 from user_service.tasks import send_renewal_email
-import logging
+from logger_plugin.logger_config import logger
 
-logger = logging.getLogger(__name__)
 
 EMIRATES_VISA_DOC_SPECS = [
     ("emirates_id_doc", "emirates_id", "emirates_id_doc_type"),

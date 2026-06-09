@@ -34,9 +34,9 @@ from property_management.utils import create_and_send_invitation,is_dashboard_en
 from django.http import FileResponse, Http404
 from django.contrib.admin.views.decorators import staff_member_required
 from django.shortcuts import render
-import logging
+from logger_plugin.logger_config import logger
 
-logger = logging.getLogger(__name__)
+
 @is_request_authenticated
 def serve_media(request, path):
     file_path = os.path.join(settings.MEDIA_ROOT, path)
