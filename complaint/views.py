@@ -37,6 +37,8 @@ from notification.utils import (
 )
 from django.db.models import Q
 import datetime
+import csv
+from django.http import HttpResponse
 
 # =====================================================
 # STEP 1 - complaint_api (GET ALL + POST CREATE)
@@ -378,7 +380,7 @@ def complaint_api(request):
 
 @is_request_authenticated
 def complaint_detail_api(request):
-
+ 
     company = PropertyManagmentCompany.objects.filter(
         company_staff=request.user,
         is_active=True
@@ -388,7 +390,7 @@ def complaint_detail_api(request):
             message=constants.COMPANY_NOT_FOUND,
             status=status.HTTP_404_NOT_FOUND
         )
-
+ 
     if request.method == "GET":
         code = request.GET.get("code")
         if not code:
@@ -396,7 +398,7 @@ def complaint_detail_api(request):
                 message="code is required",
                 status=status.HTTP_400_BAD_REQUEST
             )
-
+ 
         complaint = Complaint.objects.filter(
             code=code,
             company=company,
@@ -407,9 +409,9 @@ def complaint_detail_api(request):
                 message=constants.COMPLAINT_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
             )
-
+ 
         data = serialize_complaint(complaint)
-
+ 
         data["timeline"] = [
             {
                 "id": t.id,
@@ -423,10 +425,12 @@ def complaint_detail_api(request):
                 } if t.user else None,
                 "note": t.note,
                 "time": int(t.time.timestamp()) if t.time else None,
+                "date": t.time.strftime("%d %b %Y") if t.time else None,
+                "formatted_time": t.time.strftime("%I:%M %p") if t.time else None,
             }
             for t in complaint.timeline.all().order_by("created")
         ]
-
+ 
         data["activity_history"] = [
             {
                 "id": a.id,
@@ -439,7 +443,7 @@ def complaint_detail_api(request):
             }
             for a in complaint.activity_history.all().order_by("-created")
         ]
-
+ 
         data["broadcasts"] = [
             {
                 "id": b.id,
@@ -459,9 +463,9 @@ def complaint_detail_api(request):
             }
             for b in complaint.broadcasts.all().order_by("-priority_score")
         ]
-
+ 
         provider = complaint.assigned_to.first()
-
+ 
         assigned_broadcast = None
         if provider:
             assigned_broadcast = ComplaintBroadcast.objects.filter(
@@ -469,7 +473,7 @@ def complaint_detail_api(request):
                 service_provider=provider,
                 is_accepted=True
             ).order_by("-accepted_at").first()
-
+ 
         data["assigned_engineer"] = {
             "id": provider.id,
             "name": provider.name,
@@ -480,11 +484,13 @@ def complaint_detail_api(request):
                 if assigned_broadcast and assigned_broadcast.accepted_at else None
             ),
         } if provider else None
-
+ 
         data["timeline_summary"] = [
             {
                 "title": "Issue raised",
                 "date": int(complaint.created.timestamp()) if complaint.created else None,
+                "formatted_date": complaint.created.strftime("%d %b %Y") if complaint.created else None,
+                "formatted_time": complaint.created.strftime("%I:%M %p") if complaint.created else None,
                 "name": (
                     f"{complaint.raised_by.user.first_name} {complaint.raised_by.user.last_name}".strip()
                     if complaint.raised_by else None
@@ -496,27 +502,39 @@ def complaint_detail_api(request):
                     int(assigned_broadcast.accepted_at.timestamp())
                     if assigned_broadcast and assigned_broadcast.accepted_at else None
                 ),
+                "formatted_date": (
+                    assigned_broadcast.accepted_at.strftime("%d %b %Y")
+                    if assigned_broadcast and assigned_broadcast.accepted_at else None
+                ),
+                "formatted_time": (
+                    assigned_broadcast.accepted_at.strftime("%I:%M %p")
+                    if assigned_broadcast and assigned_broadcast.accepted_at else None
+                ),
                 "name": provider.name if provider else None,
             },
             {
                 "title": "In Progress",
                 "date": int(complaint.work_started_at.timestamp()) if complaint.work_started_at else None,
+                "formatted_date": complaint.work_started_at.strftime("%d %b %Y") if complaint.work_started_at else None,
+                "formatted_time": complaint.work_started_at.strftime("%I:%M %p") if complaint.work_started_at else None,
                 "name": provider.name if provider else None,
             },
             {
                 "title": "Completed",
                 "date": int(complaint.work_completed_at.timestamp()) if complaint.work_completed_at else None,
+                "formatted_date": complaint.work_completed_at.strftime("%d %b %Y") if complaint.work_completed_at else None,
+                "formatted_time": complaint.work_completed_at.strftime("%I:%M %p") if complaint.work_completed_at else None,
                 "name": provider.name if provider else None,
             },
         ]
-
+ 
         appointment = complaint.current_appointment
         if appointment:
             selected_slot = AppointmentSlot.objects.filter(
                 appointment=appointment,
                 is_selected=True
             ).first()
-
+ 
             data["appointment"] = {
                 "id": appointment.id,
                 "status": appointment.status,
@@ -536,31 +554,106 @@ def complaint_detail_api(request):
             }
         else:
             data["appointment"] = None
-
+ 
         rating = ComplaintRating.objects.filter(complaint=complaint).first()
         data["rating"] = {
             "rating": rating.rating,
             "feedback": rating.feedback
         } if rating else None
-
+ 
         previous_complaints = Complaint.objects.filter(
             unit=complaint.unit,
             is_active=True
         ).exclude(id=complaint.id).order_by("-id")
-
+ 
         previous_search = request.GET.get("previous_search", "").strip()
         previous_status = request.GET.get("previous_status", "").strip().upper()
-
+        previous_date = request.GET.get("previous_date", "").strip()
+        previous_raised_by = request.GET.get("previous_raised_by", "").strip()
+        previous_property = request.GET.get("previous_property", "").strip()
+ 
         if previous_search:
             previous_complaints = previous_complaints.filter(
                 Q(code__icontains=previous_search) |
                 Q(description__icontains=previous_search) |
                 Q(service_type__icontains=previous_search)
             )
+ 
+        if previous_search:
+            previous_complaints = previous_complaints.filter(
+                Q(code__icontains=previous_search) |
+                Q(description__icontains=previous_search)
+            )
+
+        if previous_property:
+            previous_complaints = previous_complaints.filter(
+                property__property_name__icontains=previous_property
+            )
+
+        if previous_raised_by:
+            previous_complaints = previous_complaints.filter(
+                Q(raised_by__user__first_name__icontains=previous_raised_by) |
+                Q(raised_by__user__last_name__icontains=previous_raised_by)
+            )
+
+        if previous_date:
+            previous_complaints = previous_complaints.filter(
+                created__date=previous_date
+            )
 
         if previous_status:
-            previous_complaints = previous_complaints.filter(status=previous_status)
+            previous_complaints = previous_complaints.filter(
+                status=previous_status
+            )
 
+        previous_export = request.GET.get("previous_export", "").strip()
+        
+        if previous_export == "csv":
+            response = HttpResponse(content_type="text/csv")
+            response["Content-Disposition"] = 'attachment; filename="previous_complaints.csv"'
+
+            csv_writer = csv.writer(response)
+
+            csv_writer.writerow([
+                "Sl.No",
+                "Complaint ID",
+                "Raised Date",
+                "Description",
+                "Image URL(s)",
+                "Status",
+            ])
+
+            for index, c in enumerate(previous_complaints, start=1):
+                image_urls = ", ".join([
+                    fetch_s3_presigned_url(img.image_path)
+                    for img in c.complaint_images.all()
+                ])
+
+                csv_writer.writerow([
+                    index,
+                    c.code,
+                    c.created.strftime("%d/%m/%Y") if c.created else "",
+                    c.description,
+                    image_urls,
+                    c.status,
+                ])
+
+            return response
+        previous_page = int(request.GET.get("previous_page", 1))
+        previous_page_size = int(request.GET.get("previous_page_size", 10))
+ 
+ 
+ 
+        previous_page = int(request.GET.get("previous_page", 1))
+        previous_page_size = int(request.GET.get("previous_page_size", 10))
+ 
+        previous_total = previous_complaints.count()
+ 
+        previous_start = (previous_page - 1) * previous_page_size
+        previous_end = previous_start + previous_page_size
+ 
+        previous_complaints_paginated = previous_complaints[previous_start:previous_end]
+ 
         data["previous_complaints"] = [
             {
                 "id": c.id,
@@ -569,14 +662,34 @@ def complaint_detail_api(request):
                 "status": c.status,
                 "priority": c.priority,
                 "service_type": c.service_type,
-                "created": int(c.created.timestamp()) if c.created else None
+                "created": int(c.created.timestamp()) if c.created else None,
+                "formatted_date": c.created.strftime("%d %b %Y") if c.created else None,
+                "formatted_time": c.created.strftime("%I:%M %p") if c.created else None,
+                "images": [
+                    {
+                        "id": img.id,
+                        "file_name": img.file_name,
+                        "url": fetch_s3_presigned_url(img.image_path)
+                    }
+                    for img in c.complaint_images.all()
+                ],
+                "images_count": c.complaint_images.count(),
             }
-            for c in previous_complaints
+            for c in previous_complaints_paginated
         ]
-
+ 
+        data["previous_complaints_pagination"] = {
+            "total_records": previous_total,
+            "page": previous_page,
+            "page_size": previous_page_size,
+            "total_pages": (previous_total + previous_page_size - 1) // previous_page_size
+        }
+ 
         data["summary"] = {
             "complaint_code": complaint.code,
             "created": int(complaint.created.timestamp()) if complaint.created else None,
+            "created_date": complaint.created.strftime("%d %b %Y") if complaint.created else None,
+            "created_time": complaint.created.strftime("%I:%M %p") if complaint.created else None,
             "broadcasted_at": int(complaint.broadcasted_at.timestamp()) if complaint.broadcasted_at else None,
             "work_started_at": int(complaint.work_started_at.timestamp()) if complaint.work_started_at else None,
             "work_completed_at": int(complaint.work_completed_at.timestamp()) if complaint.work_completed_at else None,
@@ -587,18 +700,19 @@ def complaint_detail_api(request):
                 if complaint.work_duration() else None
             )
         }
-
+ 
         return prepare_response(
             content=data,
             message=constants.COMPLAINT_FETCHED_SUCCESSFULLY,
             status=status.HTTP_200_OK
         )
-
+ 
     return prepare_response(
         message=constants.METHOD_NOT_ALLOWED,
         status=status.HTTP_405_METHOD_NOT_ALLOWED
     )
-
+ 
+ 
 # =====================================================
 # STEP 2A - accept_complaint
 # code comes from body
