@@ -15,8 +15,9 @@ from utilities.helper_functions import prepare_response, generate_property_code,
 from utilities import status, constants
 from property_management.utils import audit_logs, get_full_property_data, get_property_images, get_lease_status
 from lease.models import Lease
+import logging
 
-
+logger = logging.getLogger(__name__)
 def _parse_date(value):
     if not value:
         return None
@@ -122,6 +123,9 @@ def property(request):
         if property_id:
             prop = Property.objects.filter(id=property_id).first()
             if not prop:
+                logger.warning(
+                    "PROPERTY_NOT_FOUND | user_id=%d | property_id=%s",
+                    request.user.id, property_id,)
                 return prepare_response(
                     message=constants.PROPERTY_NOT_FOUND,
                     status=status.HTTP_404_NOT_FOUND
@@ -171,7 +175,9 @@ def property(request):
         total = properties.count()
         start = (page - 1) * page_size
         properties = properties[start:start + page_size]
-
+        logger.info(
+            "PROPERTY_LIST_FETCHED | user_id=%d | total_records=%d | page=%d",
+            request.user.id, total, page )
         return prepare_response(
             content=[p._serialize_property() for p in properties],
             pagination={"total_records": total, "page": page, "page_size": page_size},
@@ -183,6 +189,9 @@ def property(request):
 
         property_name = data.get("property_name")
         if not property_name:
+            logger.warning(
+                "PROPERTY_CREATE_FAILED | user_id=%d | reason=PROPERTY_NAME_REQUIRED",
+                request.user.id,)
             return prepare_response(
                 message=constants.PROPERTY_NAME_REQUIRED,
                 status=status.HTTP_400_BAD_REQUEST
@@ -191,6 +200,9 @@ def property(request):
         pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).select_related('company').first()
         pmc = pm_profile.company if pm_profile else None
         if not pmc:
+            logger.warning(
+                "PROPERTY_CREATE_DENIED | user_id=%d | reason=NOT_VERIFIED_PROPERTY_MANAGER",
+                request.user.id,)
             return prepare_response(
                 message=constants.NOT_VERIFIED_PROPERTY_MANAGER,
                 status=status.HTTP_403_FORBIDDEN
@@ -217,6 +229,9 @@ def property(request):
             approx_rent=data.get("approx_rent"),
             pmc=pmc,
         )
+        logger.info(
+            "PROPERTY_CREATED | user_id=%d | property_id=%d | property_name=%s | status=SUCCESS",
+            request.user.id, prop.id, prop.property_name,)
 
         audit_logs(request, f"Property '{prop.property_name}' created", constants.CREATED)
         return prepare_response(
@@ -229,6 +244,9 @@ def property(request):
         data = json.loads(request.body)
         property_id = data.get("property_id")
         if not property_id:
+            logger.warning(
+                "PROPERTY_UPDATE_FAILED | user_id=%d | reason=PROPERTY_ID_REQUIRED",
+                request.user.id,)
             return prepare_response(
                 message=constants.PROPERTY_ID_REQUIRED,
                 status=status.HTTP_400_BAD_REQUEST
@@ -236,6 +254,9 @@ def property(request):
 
         prop = Property.objects.filter(id=property_id).first()
         if not prop:
+            logger.warning(
+                "PROPERTY_UPDATE_FAILED | user_id=%d | property_id=%s | reason=PROPERTY_NOT_FOUND",
+                request.user.id, property_id, )
             return prepare_response(
                 message=constants.PROPERTY_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
@@ -253,6 +274,9 @@ def property(request):
             prop.pmc = pm_profile.company
 
         prop.save()
+        logger.info(
+            "PROPERTY_UPDATED | user_id=%d | property_id=%d | property_name=%s | status=SUCCESS",
+            request.user.id, prop.id, prop.property_name,)
 
         audit_logs(request, f"Parent property '{prop.property_name}' updated", constants.UPDATED)
         return prepare_response(
@@ -261,6 +285,9 @@ def property(request):
             status=status.HTTP_200_OK
         )
     else:
+        logger.warning(
+            "PROPERTY_API_FAILED | user_id=%d | method=%s | reason=METHOD_NOT_ALLOWED",
+            request.user.id, request.method )
         return prepare_response(
             message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
@@ -274,6 +301,9 @@ def property_blocks(request):
     if request.method == "GET":
         property_id = request.GET.get("property_id")
         if not property_id:
+            logger.warning(
+                "BLOCK_FETCH_FAILED | user_id=%d | reason=PROPERTY_ID_REQUIRED",
+                request.user.id,)
             return prepare_response(
                 message="property_id is required",
                 status=status.HTTP_400_BAD_REQUEST
@@ -290,6 +320,9 @@ def property_blocks(request):
             }
             for b in blocks
         ]
+        logger.info(
+            "BLOCKS_FETCHED | user_id=%d | property_id=%s | block_count=%d",
+            request.user.id, property_id, len(content) )
         return prepare_response(content=content, status=status.HTTP_200_OK)
 
     elif request.method == "POST":
@@ -298,6 +331,9 @@ def property_blocks(request):
         blocks_data = data.get("blocks") or []
 
         if not property_id:
+            logger.warning(
+                "BLOCK_CREATE_FAILED | user_id=%d | reason=PROPERTY_ID_REQUIRED",
+                request.user.id,)
             return prepare_response(
                 message="property_id is required",
                 status=status.HTTP_400_BAD_REQUEST
@@ -305,6 +341,9 @@ def property_blocks(request):
 
         prop = Property.objects.filter(id=property_id).first()
         if not prop:
+            logger.warning(
+                "BLOCK_CREATE_FAILED | user_id=%d | property_id=%s | reason=PROPERTY_NOT_FOUND",
+                request.user.id, property_id,)
             return prepare_response(
                 message=constants.PROPERTY_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
@@ -322,6 +361,9 @@ def property_blocks(request):
                 no_of_units=block.get("no_of_units") or 0,
             )
             created.append(b.id)
+        logger.info(
+            "BLOCKS_CREATED | user_id=%d | property_id=%d | status=SUCCESS",
+            request.user.id, prop.id,)
 
         return prepare_response(
             message="Blocks added successfully",
@@ -335,6 +377,9 @@ def property_blocks(request):
         blocks_data = data.get("blocks") or []
 
         if not property_id:
+            logger.warning(
+                "BLOCK_UPDATE_FAILED | user_id=%d | reason=PROPERTY_ID_REQUIRED",
+                request.user.id,)
             return prepare_response(
                 message="property_id is required",
                 status=status.HTTP_400_BAD_REQUEST
@@ -342,6 +387,9 @@ def property_blocks(request):
 
         prop = Property.objects.filter(id=property_id).first()
         if not prop:
+            logger.warning(
+                "BLOCK_UPDATE_FAILED | user_id=%d | property_id=%s | reason=PROPERTY_NOT_FOUND",
+                request.user.id, property_id,)
             return prepare_response(
                 message=constants.PROPERTY_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
@@ -359,6 +407,9 @@ def property_blocks(request):
                 no_of_parking=block.get("no_of_parking") or 0,
                 no_of_units=block.get("no_of_units") or 0,
             )
+        logger.info(
+            "BLOCKS_UPDATED_SUCCESSFULLY | user_id=%d | property_id=%d | status=SUCCESS",
+            request.user.id, prop.id, )
 
         return prepare_response(
             message="Blocks updated successfully",
@@ -366,6 +417,9 @@ def property_blocks(request):
         )
 
     else:
+        logger.warning(
+            "BLOCK_API_FAILED | user_id=%d | method=%s | reason=METHOD_NOT_ALLOWED", 
+            request.user.id, request.method )
         return prepare_response(
             message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
@@ -379,6 +433,8 @@ def property_images(request):
     if request.method == "GET":
         property_id = request.GET.get("property_id")
         if not property_id:
+            logger.warning(
+                "IMAGE_FETCH_FAILED | user_id=%d | reason=PROPERTY_ID_REQUIRED",request.user.id,)
             return prepare_response(
                 message="property_id is required",
                 status=status.HTTP_400_BAD_REQUEST
@@ -401,6 +457,8 @@ def property_images(request):
         images_data = data.get("images") or []
 
         if not property_id:
+            logger.warning(
+                "IMAGE_UPLOAD_FAILED | user_id=%d | reason=PROPERTY_ID_REQUIRED",request.user.id,)
             return prepare_response(
                 message="property_id is required",
                 status=status.HTTP_400_BAD_REQUEST
@@ -408,6 +466,9 @@ def property_images(request):
 
         prop = Property.objects.filter(id=property_id).first()
         if not prop:
+            logger.warning(
+                "IMAGE_UPLOAD_FAILED | user_id=%d | property_id=%s | reason=PROPERTY_NOT_FOUND",
+                request.user.id, property_id, )
             return prepare_response(
                 message=constants.PROPERTY_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
@@ -433,7 +494,9 @@ def property_images(request):
                 file_name=file_name,
             )
             created.append(img.id)
-
+        logger.info(
+            "IMAGES_UPLOADED | user_id=%d | property_id=%d | image_count=%d | status=SUCCESS",
+            request.user.id, prop.id, len(created), )
         return prepare_response(
             message="Images uploaded successfully",
             content={"ids": created},
@@ -443,11 +506,15 @@ def property_images(request):
     elif request.method == "DELETE":
         image_id = request.GET.get("image_id")
         if not image_id:
+            logger.warning(
+                "IMAGE_DELETE_FAILED | user_id=%d | reason=IMAGE_ID_REQUIRED",request.user.id,)
             return prepare_response(
                 message="image_id is required",
                 status=status.HTTP_400_BAD_REQUEST
             )
         PropertyImages.objects.filter(id=image_id).delete()
+        logger.info(
+            "IMAGE_DELETED | user_id=%d | image_id=%d | status=SUCCESS",request.user.id,int(image_id),)
         return prepare_response(
             message="Image deleted successfully",
             status=status.HTTP_200_OK
@@ -480,6 +547,8 @@ def property_documents(request):
     if request.method == "GET":
         property_id = request.GET.get("property_id")
         if not property_id:
+            logger.warning(
+                "DOCUMENT_FETCH_FAILED | user_id=%d | reason=PROPERTY_ID_REQUIRED",request.user.id,)
             return prepare_response(
                 message="property_id is required",
                 status=status.HTTP_400_BAD_REQUEST
@@ -495,6 +564,9 @@ def property_documents(request):
             }
             for doc in docs
         ]
+        logger.info(
+            "DOCUMENTS_FETCHED | user_id=%d | property_id=%s | document_count=%d",
+            request.user.id, property_id, len(content) )
         return prepare_response(content=content, status=status.HTTP_200_OK)
 
     elif request.method == "POST":
@@ -503,6 +575,8 @@ def property_documents(request):
         documents_data = data.get("documents") or []
 
         if not property_id:
+            logger.warning(
+                "DOCUMENT_UPLOAD_FAILED | user_id=%d | reason=PROPERTY_ID_REQUIRED",request.user.id,)
             return prepare_response(
                 message="property_id is required",
                 status=status.HTTP_400_BAD_REQUEST
@@ -510,6 +584,9 @@ def property_documents(request):
 
         prop = Property.objects.filter(id=property_id).first()
         if not prop:
+            logger.warning(
+                "DOCUMENT_UPLOAD_FAILED | user_id=%d | property_id=%s | reason=PROPERTY_NOT_FOUND",
+                request.user.id, property_id, )
             return prepare_response(
                 message=constants.PROPERTY_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
@@ -538,7 +615,9 @@ def property_documents(request):
                 file_path=url,
             )
             created.append(doc.id)
-
+        logger.info(
+            "DOCUMENTS_UPLOADED | user_id=%d | property_id=%d | document_count=%d | status=SUCCESS",
+            request.user.id, prop.id, len(created),)
         return prepare_response(
             message="Documents uploaded successfully",
             content={"ids": created},
@@ -548,11 +627,16 @@ def property_documents(request):
     elif request.method == "DELETE":
         document_id = request.GET.get("document_id")
         if not document_id:
+            logger.warning(
+                "DOCUMENT_DELETE_FAILED | user_id=%d | reason=DOCUMENT_ID_REQUIRED", request.user.id,)
             return prepare_response(
                 message="document_id is required",
                 status=status.HTTP_400_BAD_REQUEST
             )
         PropertyDocuments.objects.filter(id=document_id).delete()
+        logger.info(
+            "DOCUMENT_DELETED | user_id=%d | document_id=%d | status=SUCCESS",
+            request.user.id, int(document_id), )
         return prepare_response(
             message="Document deleted successfully",
             status=status.HTTP_200_OK
@@ -576,10 +660,15 @@ def unit(request):
                 "property_block_tower__property"
             ).prefetch_related("unit_owners").first()
             if not u:
+                logger.warning(
+                    "UNIT_NOT_FOUND | user_id=%d | unit_id=%s", request.user.id, unit_id, )
                 return prepare_response(
                     message=constants.UNIT_NOT_FOUND,
                     status=status.HTTP_404_NOT_FOUND
                 )
+            logger.info(
+                "UNIT_FETCHED | user_id=%d | unit_id=%d",
+                request.user.id, u.id )
             return prepare_response(content=u._serialize_unit(), status=status.HTTP_200_OK)
 
         search = request.GET.get("search", "").strip()
@@ -600,6 +689,8 @@ def unit(request):
             company = PropertyManagmentCompany.objects.filter(created_by=user_profile.user,is_active=True).first()
 
         if not company:
+            logger.warning(
+                "UNIT_FETCH_FAILED | user_id=%d | reason=COMPANY_NOT_FOUND",request.user.id,)
             return prepare_response(
                 message=constants.COMPANY_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
@@ -639,7 +730,9 @@ def unit(request):
         total = units.count()
         start = (page - 1) * page_size
         units = units[start:start + page_size]
-
+        logger.info(
+            "UNIT_LIST_FETCHED | user_id=%d | total_records=%d | page=%d",
+            request.user.id, total, page )
         return prepare_response(
             content=[u._serialize_unit() for u in units],
             pagination={"total_records": total, "page": page, "page_size": page_size},
@@ -652,11 +745,15 @@ def unit(request):
         unit_name = data.get("unit_name")
 
         if not block_id:
+            logger.warning(
+                "UNIT_CREATE_FAILED | user_id=%d | reason=BLOCK_ID_REQUIRED", request.user.id,)
             return prepare_response(
                 message="block_id is required",
                 status=status.HTTP_400_BAD_REQUEST
             )
         if not unit_name:
+            logger.warning(
+                "UNIT_CREATE_FAILED | user_id=%d | reason=UNIT_NAME_REQUIRED", request.user.id,)
             return prepare_response(
                 message="unit_name is required",
                 status=status.HTTP_400_BAD_REQUEST
@@ -664,6 +761,9 @@ def unit(request):
 
         block = PropertyBlocks.objects.filter(id=block_id).first()
         if not block:
+            logger.warning(
+                "UNIT_CREATE_FAILED | user_id=%d | block_id=%s | reason=BLOCK_NOT_FOUND",
+                request.user.id, block_id, )
             return prepare_response(
                 message="Block not found",
                 status=status.HTTP_404_NOT_FOUND
@@ -694,6 +794,9 @@ def unit(request):
             notice_period=data.get("notice_period"),
             commission_percent=data.get("commission_percent"),
         )
+        logger.info(
+            "UNIT_CREATED | user_id=%d | unit_id=%d | unit_name=%s | status=SUCCESS",
+            request.user.id, u.id, u.unit_name, )
 
         for owner in data.get("unit_owners", []):
             owner_obj = _get_or_create_owner(owner, user_profile.user)
@@ -715,6 +818,8 @@ def unit(request):
         data = json.loads(request.body)
         unit_id = data.get("unit_id")
         if not unit_id:
+            logger.warning(
+                "UNIT_UPDATE_FAILED | user_id=%d | reason=UNIT_ID_REQUIRED", request.user.id, )
             return prepare_response(
                 message="unit_id is required",
                 status=status.HTTP_400_BAD_REQUEST
@@ -722,6 +827,9 @@ def unit(request):
 
         u = Unit.objects.filter(id=unit_id).first()
         if not u:
+            logger.warning(
+                "UNIT_UPDATE_FAILED | user_id=%d | unit_id=%s | reason=UNIT_NOT_FOUND",
+                request.user.id, unit_id, )
             return prepare_response(
                 message=constants.UNIT_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
@@ -742,6 +850,9 @@ def unit(request):
                 u.property_block_tower = block
 
         u.save()
+        logger.info(
+            "UNIT_UPDATED | user_id=%d | unit_id=%d | unit_name=%s | status=SUCCESS",
+            request.user.id, u.id, u.unit_name, )
 
         if "unit_owners" in data:
             u.unit_owners.all().delete()
@@ -775,6 +886,8 @@ def unit_images(request):
     if request.method == "GET":
         unit_id = request.GET.get("unit_id")
         if not unit_id:
+            logger.warning(
+                "UNIT_IMAGE_FETCH_FAILED | user_id=%d | reason=UNIT_ID_REQUIRED", request.user.id, )
             return prepare_response(
                 message="unit_id is required",
                 status=status.HTTP_400_BAD_REQUEST
@@ -797,6 +910,8 @@ def unit_images(request):
         images_data = data.get("images") or []
 
         if not unit_id:
+            logger.warning(
+                "UNIT_IMAGE_UPLOAD_FAILED | user_id=%d | reason=UNIT_ID_REQUIRED",request.user.id,)
             return prepare_response(
                 message="unit_id is required",
                 status=status.HTTP_400_BAD_REQUEST
@@ -806,6 +921,9 @@ def unit_images(request):
             "property_block_tower__property"
         ).first()
         if not u:
+            logger.warning(
+                "UNIT_IMAGE_UPLOAD_FAILED | user_id=%d | unit_id=%s | reason=UNIT_NOT_FOUND",
+                request.user.id, unit_id, )
             return prepare_response(
                 message=constants.UNIT_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
@@ -831,7 +949,9 @@ def unit_images(request):
                 file_name=file_name,
             )
             created.append(img.id)
-
+        logger.info(
+            "UNIT_IMAGES_UPLOADED | user_id=%d | unit_id=%d | image_count=%d | status=SUCCESS",
+            request.user.id, u.id, len(created), )
         return prepare_response(
             message="Images uploaded successfully",
             content={"ids": created},
@@ -841,11 +961,16 @@ def unit_images(request):
     elif request.method == "DELETE":
         image_id = request.GET.get("image_id")
         if not image_id:
+            logger.warning(
+                "UNIT_IMAGE_DELETE_FAILED | user_id=%d | reason=IMAGE_ID_REQUIRED",request.user.id, )
             return prepare_response(
                 message="image_id is required",
                 status=status.HTTP_400_BAD_REQUEST
             )
         UnitImages.objects.filter(id=image_id).delete()
+        logger.info(
+            "UNIT_IMAGE_DELETED | user_id=%d | image_id=%d | status=SUCCESS",
+            request.user.id, int(image_id),)
         return prepare_response(
             message="Image deleted successfully",
             status=status.HTTP_200_OK
@@ -877,6 +1002,8 @@ def unit_documents(request):
     if request.method == "GET":
         unit_id = request.GET.get("unit_id")
         if not unit_id:
+            logger.warning(
+                "UNIT_DOCUMENT_FETCH_FAILED | user_id=%d | reason=UNIT_ID_REQUIRED",request.user.id,)
             return prepare_response(
                 message="unit_id is required",
                 status=status.HTTP_400_BAD_REQUEST
@@ -900,6 +1027,8 @@ def unit_documents(request):
         documents_data = data.get("documents") or []
 
         if not unit_id:
+            logger.warning(
+                "UNIT_DOCUMENT_UPLOAD_FAILED | user_id=%d | reason=UNIT_ID_REQUIRED",request.user.id,)
             return prepare_response(
                 message="unit_id is required",
                 status=status.HTTP_400_BAD_REQUEST
@@ -909,6 +1038,9 @@ def unit_documents(request):
             "property_block_tower__property"
         ).first()
         if not u:
+            logger.warning(
+                "UNIT_DOCUMENT_UPLOAD_FAILED | user_id=%d | unit_id=%s | reason=UNIT_NOT_FOUND",
+                request.user.id, unit_id, )
             return prepare_response(
                 message=constants.UNIT_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
@@ -937,7 +1069,9 @@ def unit_documents(request):
                 file_path=url,
             )
             created.append(doc.id)
-
+        logger.info(
+            "UNIT_DOCUMENTS_UPLOADED | user_id=%d | unit_id=%d | document_count=%d | status=SUCCESS",
+            request.user.id, u.id, len(created), )
         return prepare_response(
             message="Documents uploaded successfully",
             content={"ids": created},
@@ -947,11 +1081,16 @@ def unit_documents(request):
     elif request.method == "DELETE":
         document_id = request.GET.get("document_id")
         if not document_id:
+            logger.warning(
+                "UNIT_DOCUMENT_DELETE_FAILED | user_id=%d | reason=DOCUMENT_ID_REQUIRED",request.user.id, )
             return prepare_response(
                 message="document_id is required",
                 status=status.HTTP_400_BAD_REQUEST
             )
         UnitDocuments.objects.filter(id=document_id).delete()
+        logger.info(
+            "UNIT_DOCUMENT_DELETED | user_id=%d | document_id=%d | status=SUCCESS",
+            request.user.id, int(document_id),)
         return prepare_response(
             message="Document deleted successfully",
             status=status.HTTP_200_OK
@@ -987,12 +1126,17 @@ def property_table_view(request):
         .first()
     )
         if not lease_property_id:
+            logger.warning(
+                "PROPERTY_TABLE_FETCH_FAILED | user_id=%d | reason=NO_PROPERTY_ASSIGNED",request.user.id, )
             return prepare_response(
             message=constants.NO_PROPERTY_ASSIGNED_TO_TENANAT,
             status=status.HTTP_404_NOT_FOUND
         )
         full_data, error = get_full_property_data(lease_property_id)
         if error:
+            logger.warning(
+                "PROPERTY_DETAILS_FETCH_FAILED | user_id=%d | property_id=%s | reason=%s",
+                request.user.id, lease_property_id, error,)
             return prepare_response(message=error, status=status.HTTP_404_NOT_FOUND)
         return prepare_response(
         content=full_data,
@@ -1003,6 +1147,9 @@ def property_table_view(request):
     if property_id:
         full_data, error = get_full_property_data(property_id)
         if error:
+            logger.warning(
+                "PROPERTY_DETAILS_FETCH_FAILED | user_id=%d | property_id=%s | reason=%s",
+                request.user.id, property_id, error,)
             return prepare_response(message=error, status=status.HTTP_404_NOT_FOUND)
         return prepare_response(content=full_data, message=constants.PROPERTIES_FETCHED, status=status.HTTP_200_OK)
     if user.user_role == constants.OWNER:
@@ -1012,6 +1159,8 @@ def property_table_view(request):
         companies_qs = PropertyManagmentCompany.objects.filter(company_user=user)
 
         if not companies_qs.exists():
+            logger.warning(
+                "PROPERTY_TABLE_FETCH_FAILED | user_id=%d | reason=COMPANY_NOT_FOUND",request.user.id, )
             return prepare_response(
             message=constants.COMPANY_NOT_FOUND,
             status=status.HTTP_400_BAD_REQUEST
@@ -1024,6 +1173,9 @@ def property_table_view(request):
         # properties_qs = PropertyUnit.objects.filter(lease_details__tenant=user)
         properties_qs = Unit.objects.filter(is_occupied=False)
     else:
+        logger.warning(
+            "PROPERTY_TABLE_FETCH_DENIED | user_id=%d | role=%s",
+            request.user.id, user.user_role,)
         return prepare_response(message=constants.UNAUTHORIZED_ROLE, status=status.HTTP_403_FORBIDDEN)
     properties_qs = properties_qs.select_related("owner__user", "company", "property").prefetch_related(
         Prefetch("lease_details", queryset=Lease.objects.select_related("tenant__user"))
@@ -1095,6 +1247,9 @@ def property_table_view(request):
         "total_records": paginator.count,
         "total_pages": paginator.num_pages
     }
+    logger.info(
+        "PROPERTY_TABLE_FETCHED | user_id=%d | total_records=%d | page=%d",
+        request.user.id, paginator.count, page, )
 
     return prepare_response(
         content=data,
@@ -1109,6 +1264,8 @@ def parent_property_view(request):
         property_id = request.GET.get("id")
 
         if not property_id:
+            logger.warning(
+                "PARENT_PROPERTY_FETCH_FAILED | reason=PROPERTY_ID_REQUIRED")
             return prepare_response(
                 message=constants.PROPERTY_ID_REQUIRED,
                 status=status.HTTP_400_BAD_REQUEST
@@ -1117,6 +1274,8 @@ def parent_property_view(request):
         prop = Property.objects.filter(id=property_id).first()
 
         if not prop:
+            logger.warning(
+                "PARENT_PROPERTY_FETCH_FAILED | property_id=%s | reason=PROPERTY_NOT_FOUND",property_id,)
             return prepare_response(
                 message=constants.PROPERTY_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
@@ -1148,6 +1307,9 @@ def parent_property_view(request):
                 "name": prop.property_pmc.company_name if prop.property_pmc else None,
             }
         }
+        logger.info(
+            "PARENT_PROPERTY_FETCHED | property_id=%d | property_name=%s",
+            prop.id, prop.property_name, )
 
         return prepare_response(
             content=data,
@@ -1179,6 +1341,9 @@ def export_property_table_csv(request):
         elif user.user_role == constants.COMPANY_USER:
             company = PropertyManagmentCompany.objects.filter(company_user=user).first()
             if not company:
+                logger.warning(
+                    "PROPERTY_EXPORT_FAILED | user_id=%d | reason=COMPANY_NOT_FOUND",
+                    request.user.id,)
                 return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_400_BAD_REQUEST)
             properties_qs = Unit.objects.filter(company=company)
 
@@ -1188,6 +1353,8 @@ def export_property_table_csv(request):
             )
 
         else:
+            logger.warning(
+                "PROPERTY_EXPORT_FAILED | user_id=%d | reason=UNAUTHORIZED_ROLE",request.user.id,)
             return prepare_response(
                 message=constants.UNAUTHORIZED_USER_ROLE,
                 status=status.HTTP_403_FORBIDDEN
@@ -1272,7 +1439,8 @@ def export_property_table_csv(request):
                     "Dimension": prop.area_of_property,
                     "PropertyManagmentCompany Name": prop.company.company_name if prop.company else ""
                 })
-
+        logger.info(
+            "PROPERTY_EXPORTED | user_id=%d | records=%d",request.user.id, len(export_data),)
         return export_to_csv(
             filename="property_table",
             field_names=field_names,
@@ -1280,6 +1448,9 @@ def export_property_table_csv(request):
         )
 
     except Exception as e:
+        logger.exception(
+            "PROPERTY_EXPORT_EXCEPTION | user_id=%d | error=%s",
+            request.user.id, str(e) )
         return prepare_response(
             message=f"Error exporting CSV: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -1289,6 +1460,9 @@ def export_property_table_csv(request):
 @is_request_authenticated
 def toggle_property_interest(request):
     if request.method != "PUT":
+        logger.warning(
+            "PROPERTY_INTEREST_UPDATE_FAILED | user_id=%d | method=%s | reason=INVALID_REQUEST_METHOD",
+            request.user.id, request.method,)
         return prepare_response(
             message=constants.INVALID_REQUEST,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
@@ -1301,6 +1475,9 @@ def toggle_property_interest(request):
         is_interested = data.get("is_interested")
 
         if property_unit_id  is None or is_interested is None:
+            logger.warning(
+                "PROPERTY_INTEREST_UPDATE_FAILED | user_id=%d | reason=INVALID_DATA",
+                request.user.id,)
             return prepare_response(
                 message=constants.INVALID_DATA,
                 status=status.HTTP_400_BAD_REQUEST
@@ -1309,6 +1486,9 @@ def toggle_property_interest(request):
         tenant = request.user
 
         if tenant.user_role != constants.TENANT:
+            logger.warning(
+                "PROPERTY_INTEREST_UPDATE_DENIED | user_id=%d | reason=ONLY_TENANT_ALLOWED",
+                request.user.id,)
             return prepare_response(
                 message=constants.ONLY_TENANT_ALLOWED,
                 status=status.HTTP_403_FORBIDDEN
@@ -1320,6 +1500,9 @@ def toggle_property_interest(request):
         ).first()
 
         if not property_unit:
+            logger.warning(
+                "PROPERTY_INTEREST_UPDATE_FAILED | user_id=%d | property_unit_id=%s | reason=PROPERTY_UNIT_NOT_FOUND",
+                request.user.id, property_unit_id,)
             return prepare_response(
                 message=constants.PROPERTY_UNIT_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
@@ -1338,7 +1521,9 @@ def toggle_property_interest(request):
                 PropertyInterest.objects.filter(
                     id=interest_obj.id
                 ).update(created=timezone.now())
-
+        logger.info(
+            "PROPERTY_INTEREST_UPDATED | user_id=%d | property_unit_id=%d | interested=%s",
+            request.user.id, property_unit.id, is_interested,)
         return prepare_response(
             message=constants.INTEREST_UPDATED_SUCCESS,
             status=status.HTTP_200_OK,
@@ -1349,6 +1534,8 @@ def toggle_property_interest(request):
         )
 
     except Exception as e:
+        logger.exception(
+            "PROPERTY_INTEREST_EXCEPTION | user_id=%d",request.user.id,)
         print("Interest API Error:", e)
         return prepare_response(
             message=constants.INTERNAL_SERVER_ERROR,
@@ -1358,6 +1545,8 @@ def toggle_property_interest(request):
 
 def company_list(request):
     if request.method != "GET":
+        logger.warning(
+            "COMPANY_LIST_INVALID_METHOD | method=%s",request.method,)
         return prepare_response(
             message=constants.INVALID_REQUEST_METHOD,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
@@ -1367,4 +1556,6 @@ def company_list(request):
     if search:
         companies = companies.filter(name__icontains=search)
     content = [{"key": c.id, "value": c.name, "code": c.code} for c in companies]
+    logger.info(
+        "COMPANY_LIST_FETCHED | total_records=%d",companies.count(),)
     return prepare_response(content=content, status=status.HTTP_200_OK)
