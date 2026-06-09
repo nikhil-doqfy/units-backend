@@ -2127,7 +2127,16 @@ def rent_analytics_view(request):
     block_id    = request.GET.get("block_id", "").strip()
     unit_id     = request.GET.get("unit_id", "").strip()
 
-    qs = LeaseTransaction.objects.filter(cheque_date__year=year)
+    user_profile = request.user
+    pm_profile = PropertyManager.objects.select_related("company").filter(pk=user_profile.pk).first()
+    if not pm_profile:
+        return prepare_response(message="Company not found for this user", status=status.HTTP_400_BAD_REQUEST)
+    company = pm_profile.company
+
+    qs = LeaseTransaction.objects.filter(
+        cheque_date__year=year,
+        lease__unit__property_block_tower__property__pmc=company  # ← company filter
+    )
     if lease_id:
         qs = qs.filter(lease_id=lease_id)
     if property_id:
