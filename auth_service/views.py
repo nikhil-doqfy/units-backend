@@ -4,9 +4,9 @@ from django.contrib.auth.hashers import make_password
 from utilities import status, constants
 from utilities.helper_functions import prepare_response, validate_password, send_ses_email
 from user_service.models import UserProfile, UserVerification, Owner, Tenant, PropertyManager
-from logger_plugin.logger_config import logger
+from plugins.logger_plugin import get_logger
 
-
+logger = get_logger(__name__)
 def _build_permissions(profile):
     """Return permission map for a PropertyManager, empty dict otherwise."""
     if not isinstance(profile, PropertyManager):

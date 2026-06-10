@@ -8,8 +8,9 @@ from django.http import HttpResponse
 from .models import Lead, ActivityLog
 from property.models import Unit
 from user_service.models import PropertyManager, Tenant
-from logger_plugin.logger_config import logger
+from plugins.logger_plugin import get_logger
 
+logger = get_logger(__name__)
 def _get_pmc(user_profile):
     pm = PropertyManager.objects.filter(pk=user_profile.pk).select_related("company").first()
     return pm.company if pm else None

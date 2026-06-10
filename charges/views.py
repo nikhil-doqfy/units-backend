@@ -4,9 +4,9 @@ from utilities import status, constants
 from utilities.decorator import is_request_authenticated
 from property_management.utils import audit_logs
 from .models import Charge
-from logger_plugin.logger_config import logger
+from plugins.logger_plugin import get_logger
 
-
+logger = get_logger(__name__)
 @is_request_authenticated
 def charges(request):
     user_profile = request.user
