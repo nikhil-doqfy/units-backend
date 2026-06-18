@@ -1576,9 +1576,17 @@ def tenant_crud(request):
         export    = request.GET.get("export", "")
         today     = _date.today()
 
+        pm_profile = PropertyManager.objects.select_related("company").filter(pk=request.user.pk).first()
+        if not pm_profile:
+            return prepare_response(message="Company not found for this user", status=status.HTTP_400_BAD_REQUEST)
+        company = pm_profile.company
+
         latest_ids = (
             Lease.objects
-            .filter(is_active=True)
+            .filter(
+                is_active=True,
+                unit__property_block_tower__property__pmc=company
+            )
             .values("tenant")
             .annotate(latest_id=Max("id"))
             .values_list("latest_id", flat=True)
@@ -1588,7 +1596,10 @@ def tenant_crud(request):
             Lease.objects
             .select_related("tenant__user", "unit__property_block_tower__property")
             .prefetch_related("unit__property_block_tower__property__property_images")
-            .filter(id__in=latest_ids)
+            .filter(
+                id__in=latest_ids,
+                unit__property_block_tower__property__pmc=company  # ← company filter
+            )
         )
 
         if tab == "onboarding":
@@ -1829,6 +1840,8 @@ def approval_view(request):
             "unit",
             "unit__property_block_tower__property",
             "created_by",
+        ).filter(
+            unit__property_block_tower__property__pmc=company
         ).order_by("-id")
 
         if approval_status == "PENDING":
