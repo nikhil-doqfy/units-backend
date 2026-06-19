@@ -1,6 +1,7 @@
 import json
 import uuid
 from django.utils import timezone
+from plugins.logger_plugin import get_logger
 from property_management.utils import audit_logs
 from utilities.helper_functions import prepare_response, fetch_s3_presigned_url, upload_file_to_s3_base64
 from utilities.decorator import is_request_authenticated
@@ -40,6 +41,8 @@ import datetime
 import csv
 from django.http import HttpResponse
 
+
+logger = get_logger(__name__)
 # =====================================================
 # STEP 1 - complaint_api (GET ALL + POST CREATE)
 # =====================================================
@@ -54,6 +57,9 @@ def complaint_api(request):
             is_active=True
         ).first()
         if not company:
+            logger.warning(
+                "COMPLAINT_LIST_FETCH_FAILED | user_id=%s | reason=COMPANY_NOT_FOUND",
+                request.user.id)
             return prepare_response(
                 message=constants.COMPANY_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
@@ -125,6 +131,9 @@ def complaint_api(request):
             is_active=True
         ).first()
         if not company:
+            logger.warning(
+                "COMPLAINT_CREATE_FAILED | user_id=%s | reason=COMPANY_NOT_FOUND",
+                request.user.id)
             return prepare_response(
                 message=constants.COMPANY_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
@@ -133,6 +142,9 @@ def complaint_api(request):
         unit_id = body.get("unit_id")
         unit = Unit.objects.filter(id=unit_id).first()
         if not unit:
+            logger.warning(
+                "COMPLAINT_CREATE_FAILED | user_id=%s | unit_id=%s | reason=UNIT_NOT_FOUND",
+                request.user.id, unit_id)
             return prepare_response(
                 message=constants.UNIT_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
@@ -140,6 +152,9 @@ def complaint_api(request):
 
         description = body.get("description")
         if not description:
+            logger.warning(
+                "COMPLAINT_CREATE_FAILED | user_id=%s | reason=DESCRIPTION_MISSING",
+                request.user.id)
             return prepare_response(
                 message="Description is required.",
                 status=status.HTTP_400_BAD_REQUEST
@@ -147,6 +162,9 @@ def complaint_api(request):
 
         service_type = body.get("service_type")
         if not service_type:
+            logger.warning(
+                "COMPLAINT_CREATE_FAILED | user_id=%s | reason=SERVICE_TYPE_MISSING",
+                request.user.id)
             return prepare_response(
                 message="Service type is required.",
                 status=status.HTTP_400_BAD_REQUEST
@@ -154,6 +172,9 @@ def complaint_api(request):
 
         slots = body.get("slots", [])
         if not slots:
+            logger.warning(
+                "COMPLAINT_CREATE_FAILED | user_id=%s | reason=SLOTS_MISSING",
+                request.user.id)
             return prepare_response(
                 message="At least one appointment slot is required.",
                 status=status.HTTP_400_BAD_REQUEST
@@ -245,6 +266,9 @@ def complaint_api(request):
 
         notify_complaint_created(complaint.raised_by, complaint)
 
+        logger.info(
+            "COMPLAINT_CREATED | user_id=%s | complaint_code=%s | unit_id=%s | image_count=%d | slot_count=%d | providers_broadcasted=%d",
+            request.user.id, complaint.code, unit_id, image_count, slot_count, providers_count)
         return prepare_response(
             content={"code": complaint.code},
             message=constants.COMPLAINT_CREATED_SUCCESSFULLY,
@@ -735,12 +759,18 @@ def accept_complaint(request):
             is_active=True
         ).first()
         if not complaint:
+            logger.warning(
+                "COMPLAINT_ACCEPT_FAILED | user_id=%s | code=%s | reason=COMPLAINT_NOT_FOUND",
+                request.user.id, code)
             return prepare_response(
                 message=constants.COMPLAINT_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
             )
 
         if complaint.status == constants.ASSIGNED:
+            logger.warning(
+                "COMPLAINT_ACCEPT_FAILED | user_id=%s | complaint_code=%s | reason=ALREADY_ASSIGNED",
+                request.user.id, complaint.code)
             return prepare_response(
                 message="Job already taken by another service provider.",
                 status=status.HTTP_400_BAD_REQUEST
@@ -750,6 +780,9 @@ def accept_complaint(request):
         slot_id = body.get("slot_id")
 
         if not slot_id:
+            logger.warning(
+                "COMPLAINT_ACCEPT_FAILED | user_id=%s | complaint_code=%s | reason=SLOT_ID_MISSING",
+                request.user.id, complaint.code)
             return prepare_response(
                 message="Slot ID is required.",
                 status=status.HTTP_400_BAD_REQUEST
@@ -764,6 +797,9 @@ def accept_complaint(request):
         ).first()
 
         if not broadcast:
+            logger.warning(
+                "COMPLAINT_ACCEPT_FAILED | user_id=%s | complaint_code=%s | provider_id=%s | reason=BROADCAST_NOT_FOUND",
+                request.user.id, complaint.code, service_provider_id)
             return prepare_response(
                 message=constants.COMPLAINT_NOT_ASSIGNED_TO_YOU,
                 status=status.HTTP_400_BAD_REQUEST
@@ -772,6 +808,9 @@ def accept_complaint(request):
         if broadcast.expires_at and timezone.now() > broadcast.expires_at:
             broadcast.is_expired = True
             broadcast.save()
+            logger.warning(
+                "COMPLAINT_ACCEPT_FAILED | user_id=%s | complaint_code=%s | reason=BROADCAST_EXPIRED",
+                request.user.id, complaint.code)
             return prepare_response(
                 message="Broadcast has expired.",
                 status=status.HTTP_400_BAD_REQUEST
@@ -783,6 +822,9 @@ def accept_complaint(request):
         ).first()
 
         if not slot:
+            logger.warning(
+                "COMPLAINT_ACCEPT_FAILED | user_id=%s | complaint_code=%s | slot_id=%s | reason=SLOT_NOT_FOUND",
+                request.user.id, complaint.code, slot_id)
             return prepare_response(
                 message="Slot not found.",
                 status=status.HTTP_404_NOT_FOUND
@@ -841,6 +883,9 @@ def accept_complaint(request):
         email_complaint_accepted(complaint, broadcast.service_provider, slot=slot)
         email_slot_selected(complaint, slot)
 
+        logger.info(
+            "COMPLAINT_ACCEPTED | user_id=%s | complaint_code=%s | provider_id=%s | slot_id=%s",
+            request.user.id, complaint.code, service_provider_id, slot_id)
         return prepare_response(
             content={
                 "service_provider_id": broadcast.service_provider.id,
@@ -850,6 +895,9 @@ def accept_complaint(request):
             status=status.HTTP_200_OK
         )
 
+    logger.warning(
+        "COMPLAINT_ACCEPT_FAILED | user_id=%s | method=%s | reason=METHOD_NOT_ALLOWED",
+        request.user.id, request.method)
     return prepare_response(
         message=constants.METHOD_NOT_ALLOWED,
         status=status.HTTP_405_METHOD_NOT_ALLOWED
@@ -878,6 +926,9 @@ def decline_complaint(request):
             is_active=True
         ).first()
         if not complaint:
+            logger.warning(
+                "COMPLAINT_DECLINE_FAILED | user_id=%s | code=%s | reason=COMPLAINT_NOT_FOUND",
+                request.user.id, code)
             return prepare_response(
                 message=constants.COMPLAINT_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
@@ -892,6 +943,9 @@ def decline_complaint(request):
         ).first()
 
         if not broadcast:
+            logger.warning(
+                "COMPLAINT_DECLINE_FAILED | user_id=%s | complaint_code=%s | provider_id=%s | reason=BROADCAST_NOT_FOUND",
+                request.user.id, complaint.code, service_provider_id)
             return prepare_response(
                 message=constants.COMPLAINT_NOT_ASSIGNED_TO_YOU,
                 status=status.HTTP_400_BAD_REQUEST
@@ -917,6 +971,9 @@ def decline_complaint(request):
                 message=f"{service_provider.name} declined after accepting.",
                 created_by=request.user.user
             )
+            logger.info(
+                "COMPLAINT_DECLINED_AFTER_ACCEPT | user_id=%s | complaint_code=%s | provider=%s",
+                request.user.id, complaint.code, service_provider.name)
 
             audit_logs(
                 request,
@@ -947,6 +1004,9 @@ def decline_complaint(request):
 
                     email_complaint_accepted(complaint, best)
                 else:
+                    logger.warning(
+                        "COMPLAINT_NO_PROVIDER_AVAILABLE | complaint_code=%s",
+                        complaint.code)
                     email_no_technician_available(complaint)
             else:
                 providers_count = auto_broadcast(complaint, company, excluded)
@@ -966,6 +1026,9 @@ def decline_complaint(request):
 
                     email_complaint_declined(complaint, service_provider)
                 else:
+                    logger.warning(
+                        "COMPLAINT_NO_PROVIDER_AVAILABLE | complaint_code=%s",
+                        complaint.code)
                     email_no_technician_available(complaint)
 
         # CASE 2 - Normal decline (before accepting)
@@ -980,6 +1043,9 @@ def decline_complaint(request):
                 message=f"{service_provider.name} declined.",
                 created_by=request.user.user
             )
+            logger.info(
+                "COMPLAINT_DECLINED | user_id=%s | complaint_code=%s | provider=%s",
+                request.user.id, complaint.code, service_provider.name)
 
             audit_logs(
                 request,
@@ -1018,6 +1084,9 @@ def decline_complaint(request):
 
                         email_complaint_accepted(complaint, best)
                     else:
+                        logger.warning(
+                            "COMPLAINT_NO_PROVIDER_AVAILABLE | complaint_code=%s",
+                            complaint.code)
                         email_no_technician_available(complaint)
                 else:
                     providers_count = auto_broadcast(complaint, company, excluded)
@@ -1037,6 +1106,9 @@ def decline_complaint(request):
                         
                         email_complaint_declined(complaint, service_provider)
                     else:
+                        logger.warning(
+                            "COMPLAINT_NO_PROVIDER_AVAILABLE | complaint_code=%s",
+                            complaint.code)
                         email_no_technician_available(complaint)
 
         return prepare_response(
@@ -1044,6 +1116,9 @@ def decline_complaint(request):
             status=status.HTTP_200_OK
         )
 
+    logger.warning(
+        "COMPLAINT_DECLINE_FAILED | user_id=%s | method=%s | reason=METHOD_NOT_ALLOWED",
+        request.user.id, request.method)
     return prepare_response(
         message=constants.METHOD_NOT_ALLOWED,
         status=status.HTTP_405_METHOD_NOT_ALLOWED
@@ -1072,12 +1147,18 @@ def start_work(request):
             is_active=True
         ).first()
         if not complaint:
+            logger.warning(
+                "WORK_START_FAILED | user_id=%s | code=%s | reason=COMPLAINT_NOT_FOUND",
+                request.user.id, code)
             return prepare_response(
                 message=constants.COMPLAINT_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
             )
 
         if complaint.status != constants.ASSIGNED:
+            logger.warning(
+                "WORK_START_FAILED | user_id=%s | complaint_code=%s | current_status=%s | reason=INVALID_STATUS",
+                request.user.id, complaint.code, complaint.status)
             return prepare_response(
                 message="Complaint must be assigned before starting work.",
                 status=status.HTTP_400_BAD_REQUEST
@@ -1112,11 +1193,18 @@ def start_work(request):
 
         email_work_started(complaint)
 
+        logger.info(
+            "WORK_STARTED | user_id=%s | complaint_code=%s | provider=%s",
+            request.user.id, complaint.code,
+            service_provider.name if service_provider else "unknown")
         return prepare_response(
             message="Work started successfully.",
             status=status.HTTP_200_OK
         )
 
+    logger.warning(
+        "WORK_START_FAILED | user_id=%s | method=%s | reason=METHOD_NOT_ALLOWED",
+        request.user.id, request.method)
     return prepare_response(
         message=constants.METHOD_NOT_ALLOWED,
         status=status.HTTP_405_METHOD_NOT_ALLOWED
@@ -1145,12 +1233,18 @@ def complete_work(request):
             is_active=True
         ).first()
         if not complaint:
+            logger.warning(
+                "WORK_COMPLETE_FAILED | user_id=%s | code=%s | reason=COMPLAINT_NOT_FOUND",
+                request.user.id, code)
             return prepare_response(
                 message=constants.COMPLAINT_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
             )
 
         if complaint.status != constants.IN_PROGRESS:
+            logger.warning(
+                "WORK_COMPLETE_FAILED | user_id=%s | complaint_code=%s | current_status=%s | reason=INVALID_STATUS",
+                request.user.id, complaint.code, complaint.status)
             return prepare_response(
                 message="Complaint must be in progress before completing.",
                 status=status.HTTP_400_BAD_REQUEST
@@ -1161,6 +1255,7 @@ def complete_work(request):
         complaint.save()
 
         images = body.get("images", [])
+        image_count = 0
         for image in images:
             file_name = image.get("file_name")
             file_data = image.get("file_data")
@@ -1176,6 +1271,7 @@ def complete_work(request):
                     file_name=file_name,
                     created_by=request.user.user
                 )
+                image_count += 1
 
         service_provider = complaint.assigned_to.first()
         duration = format_work_duration(complaint.work_duration())
@@ -1204,12 +1300,20 @@ def complete_work(request):
         email_work_completed(complaint)
         notify_complaint_resolved(complaint.raised_by, complaint)
 
+        logger.info(
+            "WORK_COMPLETED | user_id=%s | complaint_code=%s | provider=%s | duration=%s | completion_images=%d",
+            request.user.id, complaint.code,
+            service_provider.name if service_provider else "unknown",
+            duration, image_count)
         return prepare_response(
             content={"work_duration": duration},
             message="Work completed successfully.",
             status=status.HTTP_200_OK
         )
 
+    logger.warning(
+        "WORK_COMPLETE_FAILED | user_id=%s | method=%s | reason=METHOD_NOT_ALLOWED",
+        request.user.id, request.method)
     return prepare_response(
         message=constants.METHOD_NOT_ALLOWED,
         status=status.HTTP_405_METHOD_NOT_ALLOWED
@@ -1238,12 +1342,18 @@ def verify_complaint(request):
             is_active=True
         ).first()
         if not complaint:
+            logger.warning(
+                "COMPLAINT_VERIFY_FAILED | user_id=%s | code=%s | reason=COMPLAINT_NOT_FOUND",
+                request.user.id, code)
             return prepare_response(
                 message=constants.COMPLAINT_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
             )
 
         if complaint.status != constants.RESOLVED:
+            logger.warning(
+                "COMPLAINT_VERIFY_FAILED | user_id=%s | complaint_code=%s | current_status=%s | reason=INVALID_STATUS",
+                request.user.id, complaint.code, complaint.status)
             return prepare_response(
                 message="Complaint must be resolved before closing.",
                 status=status.HTTP_400_BAD_REQUEST
@@ -1272,6 +1382,9 @@ def verify_complaint(request):
                 avg = sum([r.rating for r in all_ratings]) / all_ratings.count()
                 service_provider.avg_rating = round(avg, 2)
                 service_provider.save()
+                logger.info(
+                    "COMPLAINT_RATED | user_id=%s | complaint_code=%s | provider=%s | rating=%s | new_avg=%s",
+                    request.user.id, complaint.code, service_provider.name, rating, service_provider.avg_rating)
 
         duration = format_work_duration(complaint.work_duration())
 
@@ -1300,11 +1413,17 @@ def verify_complaint(request):
         email_complaint_closed(complaint, rating=rating, feedback=feedback)
         notify_complaint_closed(complaint.raised_by, complaint)
 
+        logger.info(
+            "COMPLAINT_VERIFIED_AND_CLOSED | user_id=%s | complaint_code=%s | duration=%s | rating=%s",
+            request.user.id, complaint.code, duration, rating or "no_rating")
         return prepare_response(
             message="Complaint verified and closed successfully.",
             status=status.HTTP_200_OK
         )
 
+    logger.warning(
+        "COMPLAINT_VERIFY_FAILED | user_id=%s | method=%s | reason=METHOD_NOT_ALLOWED",
+        request.user.id, request.method)
     return prepare_response(
         message=constants.METHOD_NOT_ALLOWED,
         status=status.HTTP_405_METHOD_NOT_ALLOWED
@@ -1325,6 +1444,9 @@ def upload_complaint_images(request):
         images = body.get("images", [])
 
         if not code:
+            logger.warning(
+                "COMPLAINT_IMAGE_UPLOAD_FAILED | user_id=%s | reason=CODE_MISSING",
+                request.user.id)
             return prepare_response(
                 message=constants.COMPLAINT_NOT_FOUND,
                 status=status.HTTP_400_BAD_REQUEST
@@ -1335,12 +1457,18 @@ def upload_complaint_images(request):
             is_active=True
         ).first()
         if not complaint:
+            logger.warning(
+                "COMPLAINT_IMAGE_UPLOAD_FAILED | user_id=%s | code=%s | reason=COMPLAINT_NOT_FOUND",
+                request.user.id, code)
             return prepare_response(
                 message=constants.COMPLAINT_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
             )
 
         if not images:
+            logger.warning(
+                "COMPLAINT_IMAGE_UPLOAD_FAILED | user_id=%s | complaint_code=%s | reason=IMAGES_MISSING",
+                request.user.id, complaint.code)
             return prepare_response(
                 message=constants.COMPLAINT_IMAGES_REQUIRED,
                 status=status.HTTP_400_BAD_REQUEST
@@ -1386,6 +1514,9 @@ def upload_complaint_images(request):
             status=status.HTTP_201_CREATED
         )
 
+    logger.warning(
+        "COMPLAINT_IMAGE_UPLOAD_FAILED | user_id=%s | method=%s | reason=METHOD_NOT_ALLOWED",
+        request.user.id, request.method)
     return prepare_response(
         message=constants.METHOD_NOT_ALLOWED,
         status=status.HTTP_405_METHOD_NOT_ALLOWED
