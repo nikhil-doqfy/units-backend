@@ -15,6 +15,18 @@ from utilities.helper_functions import prepare_response, generate_property_code,
 from utilities import status, constants
 from property_management.utils import audit_logs, get_full_property_data, get_property_images, get_lease_status
 from lease.models import Lease
+from rest_framework.decorators import api_view
+from .swagger import (
+    property_get, property_post, property_put,
+    property_blocks_get, property_blocks_post, property_blocks_put,
+    property_images_get, property_images_post, property_images_delete,
+    property_document_types_get,
+    property_documents_get, property_documents_post, property_documents_delete,
+    unit_get, unit_post, unit_put,
+    unit_images_get, unit_images_post, unit_images_delete,
+    unit_document_types_get,
+    unit_documents_get, unit_documents_post, unit_documents_delete,
+)
 from plugins.logger_plugin import get_logger
 
 logger = get_logger(__name__)
@@ -114,6 +126,10 @@ def _get_or_create_owner(owner_data, created_by):
     return owner_obj
 
 
+@property_get
+@property_post
+@property_put
+@api_view(["GET", "POST", "PUT"])
 @is_request_authenticated
 def property(request):
     user_profile = request.user
@@ -294,6 +310,10 @@ def property(request):
         )
 
 
+@property_blocks_get
+@property_blocks_post
+@property_blocks_put
+@api_view(["GET", "POST", "PUT"])
 @is_request_authenticated
 def property_blocks(request):
     user_profile = request.user
@@ -426,6 +446,10 @@ def property_blocks(request):
         )
 
 
+@property_images_get
+@property_images_post
+@property_images_delete
+@api_view(["GET", "POST", "DELETE"])
 @is_request_authenticated
 def property_images(request):
     user_profile = request.user
@@ -527,6 +551,8 @@ def property_images(request):
         )
 
 
+@property_document_types_get
+@api_view(["GET"])
 @is_request_authenticated
 def property_document_types(request):
     """GET /property/document-types — returns DocumentType records for the PROPERTY section."""
@@ -540,6 +566,10 @@ def property_document_types(request):
     return prepare_response(content=content, status=status.HTTP_200_OK)
 
 
+@property_documents_get
+@property_documents_post
+@property_documents_delete
+@api_view(["GET", "POST", "DELETE"])
 @is_request_authenticated
 def property_documents(request):
     user_profile = request.user
@@ -649,6 +679,10 @@ def property_documents(request):
         )
 
 
+@unit_get
+@unit_post
+@unit_put
+@api_view(["GET", "POST", "PUT"])
 @is_request_authenticated
 def unit(request):
     user_profile = request.user
@@ -879,6 +913,10 @@ def unit(request):
         )
 
 
+@unit_images_get
+@unit_images_post
+@unit_images_delete
+@api_view(["GET", "POST", "DELETE"])
 @is_request_authenticated
 def unit_images(request):
     user_profile = request.user
@@ -983,6 +1021,8 @@ def unit_images(request):
         )
 
 
+@unit_document_types_get
+@api_view(["GET"])
 @is_request_authenticated
 def unit_document_types(request):
     if request.method != "GET":
@@ -995,6 +1035,10 @@ def unit_document_types(request):
     return prepare_response(content=content, status=status.HTTP_200_OK)
 
 
+@unit_documents_get
+@unit_documents_post
+@unit_documents_delete
+@api_view(["GET", "POST", "DELETE"])
 @is_request_authenticated
 def unit_documents(request):
     user_profile = request.user

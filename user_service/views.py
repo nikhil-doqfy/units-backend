@@ -18,6 +18,13 @@ from user_service.utils import upload_document, process_rent_approval
 from lease.models import Lease, LeaseDocuments
 from user_service.serializers import serialize_owner_detail, serialize_owner_unit
 from user_service.tasks import send_renewal_email
+from rest_framework.decorators import api_view
+from user_service.swagger import (user_sign_up_post,userprofile_get,userprofile_put,user_management_get,user_management_post,
+user_management_put,user_management_delete,create_role_post,role_table_get,role_table_put,staff_get,staff_post,staff_put,
+contact_list_get,owner_get,owner_post,owner_put,owner_delete,tenant_get,tenant_post,tenant_put,approval_get,approval_post,
+approval_put,owner_pmc_get,export_owner_pmc_csv_get,export_company_owners_csv_get,export_tenant_csv_get,export_staff_csv_get,export_users_csv_get,
+company_tenants_get,company_tenants_put,agreement_get,agreement_post,agreement_detail_get,agreement_detail_put,agreement_detail_delete,
+renew_agreement_patch,upload_agreement_document_post,share_profile_post,reset_user_password_post,)
 from plugins.logger_plugin import get_logger
 
 logger = get_logger(__name__)
@@ -31,6 +38,8 @@ from django.utils import timezone
 from utilities.helper_functions import prepare_response, fetch_s3_presigned_url, upload_file_to_s3_base64
 import uuid
 
+@user_sign_up_post
+@api_view(["POST"])
 def user_sign_up(request):
     if request.method != "POST":
         return prepare_response(
@@ -122,6 +131,9 @@ def user_sign_up(request):
 
 
 
+@userprofile_get
+@userprofile_put
+@api_view(["GET", "PUT"])
 @is_request_authenticated
 def userprofile_view(request):
     user_profile = request.user  
@@ -261,6 +273,11 @@ def userprofile_view(request):
 
 
 
+@user_management_get
+@user_management_post
+@user_management_put
+@user_management_delete
+@api_view(["GET", "POST", "PUT", "DELETE"])
 @is_request_authenticated
 def user_management(request):
     user = request.user 
@@ -577,6 +594,8 @@ def _save_role_permissions(role, permissions_data, created_by):
             "ROLE_PERMISSIONS_UPDATED | role_id=%s | permission_count=%s",
             role.id, len(new_perms) )
 
+@create_role_post
+@api_view(["POST"])
 @is_request_authenticated
 def create_role(request):
     if request.method != "POST":
@@ -640,6 +659,9 @@ def create_role(request):
         )
 
 
+@role_table_get
+@role_table_put
+@api_view(["GET", "PUT"])
 @is_request_authenticated
 def role_table_view(request):
     user = request.user
@@ -758,6 +780,8 @@ def role_table_view(request):
         return prepare_response(message=constants.SOMETHING_WENT_WRONG, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@export_users_csv_get
+@api_view(["GET"])
 @is_request_authenticated
 def export_users_csv(request):
     try:
@@ -841,6 +865,10 @@ def export_users_csv(request):
 
 
 
+@staff_get
+@staff_post
+@staff_put
+@api_view(["GET", "POST", "PUT"])
 @is_request_authenticated
 def staff_view(request):
     user = request.user
@@ -1135,6 +1163,8 @@ def staff_view(request):
         return prepare_response(message=f"Error: {str(e)}", status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@export_staff_csv_get
+@api_view(["GET"])
 @is_request_authenticated
 def export_staff_csv(request):
     try:
@@ -1266,8 +1296,10 @@ def export_staff_csv(request):
         )
 
 
+@contact_list_get
+@api_view(["GET"])
 @is_request_authenticated
-def contact_list_view(request):
+def contact_list_view(request): 
 
     if request.method == "GET":
         search = request.GET.get("search")
@@ -1400,6 +1432,11 @@ def _serialize_owner(owner):
     }
 
 
+@owner_get
+@owner_post
+@owner_put
+@owner_delete
+@api_view(["GET", "POST", "PUT", "DELETE"])
 @is_request_authenticated
 def owner_crud(request):
     if request.method == "GET":
@@ -1703,6 +1740,10 @@ def _serialize_tenant(tenant):
     }
 
 
+@tenant_get
+@tenant_post
+@tenant_put
+@api_view(["GET", "POST", "PUT"])
 @is_request_authenticated
 def tenant_crud(request):
     from datetime import datetime as dt
@@ -1997,6 +2038,10 @@ def tenant_crud(request):
 
     return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
+@approval_get
+@approval_post
+@approval_put
+@api_view(["GET", "POST", "PUT"])
 @csrf_exempt
 @is_request_authenticated
 def approval_view(request):
@@ -2292,6 +2337,8 @@ def approval_view(request):
 
 # This view is for the logged-in user with role "OWNER".
 # It provides details of all PMC (Property Management PropertyManagmentCompany) associated with the owner's properties.
+@owner_pmc_get
+@api_view(["GET"])
 @is_request_authenticated
 def owner_pmc_view(request):
     if request.method == "GET":
@@ -2445,6 +2492,8 @@ def owner_pmc_view(request):
         )
 
 
+@export_owner_pmc_csv_get
+@api_view(["GET"])
 @is_request_authenticated
 def export_owner_pmc_csv(request):
 
@@ -2603,6 +2652,8 @@ def export_owner_pmc_csv(request):
         )
 
 
+@export_company_owners_csv_get
+@api_view(["GET"])
 @is_request_authenticated
 def export_company_owners_csv(request):
     try:
@@ -2738,6 +2789,8 @@ def export_company_owners_csv(request):
         )
 
 
+@export_tenant_csv_get
+@api_view(["GET"])
 @is_request_authenticated
 def export_tenant_csv(request):
     """
@@ -2825,6 +2878,9 @@ def export_tenant_csv(request):
         )
 
 
+@company_tenants_get
+@company_tenants_put
+@api_view(["GET", "PUT"])
 @is_request_authenticated
 def company_tenants(request):
     user = request.user
@@ -3012,6 +3068,9 @@ def serialize_agreement(a):
 # STEP 1 - agreement_api (GET ALL + POST)
 # =====================================================
 
+@agreement_get
+@agreement_post
+@api_view(["GET", "POST"])
 @is_request_authenticated
 def agreement_api(request):
 
@@ -3156,6 +3215,10 @@ def agreement_api(request):
 # STEP 2 - agreement_detail_api (GET + PUT + DELETE)
 # =====================================================
 
+@agreement_detail_get
+@agreement_detail_put
+@agreement_detail_delete
+@api_view(["GET", "PUT", "DELETE"])
 @is_request_authenticated
 def agreement_detail_api(request, pk):
 
@@ -3249,6 +3312,8 @@ def agreement_detail_api(request, pk):
 # =====================================================
 # STEP 3 - renew_agreement
 # =====================================================
+@renew_agreement_patch
+@api_view(["PATCH"])
 @is_request_authenticated
 def renew_agreement(request, pk):
 
@@ -3332,6 +3397,8 @@ def renew_agreement(request, pk):
 # STEP 4 - upload_agreement_document
 # =====================================================
 
+@upload_agreement_document_post
+@api_view(["POST"])
 @is_request_authenticated
 def upload_agreement_document(request, pk):
 
@@ -3401,6 +3468,10 @@ def upload_agreement_document(request, pk):
         message=constants.METHOD_NOT_ALLOWED,
         status=status.HTTP_405_METHOD_NOT_ALLOWED
     )
+
+
+@share_profile_post
+@api_view(["POST"])
 @is_request_authenticated
 def share_profile(request):
     if request.method != "POST":
@@ -3489,6 +3560,8 @@ def share_profile(request):
         return prepare_response(message=constants.INTERNAL_SERVER_ERROR, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
+@reset_user_password_post
+@api_view(["POST"])
 @is_request_authenticated
 def reset_user_password(request):
     if request.method != "POST":
