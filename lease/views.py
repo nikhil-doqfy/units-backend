@@ -33,7 +33,6 @@ from payment.models import Bank
 from .models import Lease, LeaseDocuments, LeaseTransaction, Template, TemplateField, TemplateValue
 from charges.models import Charge
 from .serializers import serialize_lease, serialize_tenant_lease, group_lease_cheques, serialize_cheque_list_row, serialize_lease_cheque
-from rest_framework.decorators import api_view
 
 from rest_framework.decorators import api_view
 
@@ -65,6 +64,9 @@ from .swagger import (
     activate_lease_post,
 )
 
+from plugins.logger_plugin import get_logger
+
+logger = get_logger(__name__)
 def _parse_date(value):
     if not value:
         return None
@@ -154,10 +156,15 @@ def lease_view(request):
                     .first()
                 )
                 if not lease:
+                    logger.warning(
+                        "LEASE_FETCH_FAILED | user_id=%d | lease_id=%s | reason=LEASE_NOT_FOUND",
+                        request.user.id, lease_id)
                     return prepare_response(
                         message="Lease not found",
                         status=status.HTTP_404_NOT_FOUND,
                     )
+                logger.info(
+                    "LEASE_FETCHED | user_id=%d | lease_id=%d", request.user.id, lease.id)
                 return prepare_response(content=serialize_lease(lease))
 
             # List with optional filters + pagination
@@ -189,7 +196,8 @@ def lease_view(request):
             page_size = int(request.GET.get("page_size", 20))
             paginator = Paginator(qs, page_size)
             page_obj = paginator.get_page(page)
-
+            logger.info(
+                "LEASE_LIST_FETCHED | user_id=%d | total=%d", request.user.id, paginator.count )
             return prepare_response(
                 content=[serialize_lease(l) for l in page_obj],
                 paginator=page_obj,
@@ -205,6 +213,8 @@ def lease_view(request):
             email = (body.get("email") or "").strip()
 
             if not unit_id:
+                logger.warning(
+                    "LEASE_CREATE_FAILED | user_id=%d | reason=UNIT_ID_MISSING",request.user.id)
                 return prepare_response(
                     message="unit_id is required",
                     status=status.HTTP_400_BAD_REQUEST,
@@ -212,6 +222,9 @@ def lease_view(request):
 
             unit_obj = Unit.objects.select_related("property_block_tower__property").filter(id=unit_id).first()
             if not unit_obj:
+                logger.warning(
+                    "LEASE_CREATE_FAILED | user_id=%d | unit_id=%s | reason=UNIT_NOT_FOUND",
+                    request.user.id, unit_id)
                 return prepare_response(
                     message="Unit not found",
                     status=status.HTTP_400_BAD_REQUEST,
@@ -234,6 +247,9 @@ def lease_view(request):
             elif email:
                 tenant_obj = _create_tenant(email, body, user)
             else:
+                logger.warning(
+                    "LEASE_CREATE_FAILED | user_id=%d | reason=TENANT_ID_OR_EMAIL_REQUIRED",
+                    request.user.id)
                 return prepare_response(
                     message="tenant_id or email is required",
                     status=status.HTTP_400_BAD_REQUEST,
@@ -246,6 +262,9 @@ def lease_view(request):
                 is_active=True,
             ).first()
             if active_lease:
+                logger.warning(
+                    "LEASE_CREATE_FAILED | user_id=%d | tenant_id=%d | reason=ACTIVE_LEASE_EXISTS_ALREADY",
+                    request.user.id, tenant_obj.id )
                 return prepare_response(
                     message=f"Tenant already has an active lease ({active_lease.code}). A new lease cannot be created while an active lease exists.",
                     status=status.HTTP_400_BAD_REQUEST,
@@ -276,7 +295,9 @@ def lease_view(request):
                 lease_stage=body.get("lease_stage") or constants.INVITE,
                 platform=body.get("platform") or None,
             )
-
+            logger.info(
+                "LEASE_CREATED_SUCCESSFULLY | user_id=%d | lease_id=%d | tenant_id=%d | unit_id=%d",
+                request.user.id,lease.id,tenant_obj.id,unit_obj.id)
             return prepare_response(
                 content=serialize_lease(lease),
                 message="Lease created successfully",
@@ -288,6 +309,8 @@ def lease_view(request):
             body = json.loads(request.body)
             lease_id = body.get("lease_id") or body.get("id")
             if not lease_id:
+                logger.warning(
+                    "LEASE_UPDATE_FAILED | user_id=%d | reason=LEASE_ID_MISSING",request.user.id)
                 return prepare_response(
                     message="lease_id is required",
                     status=status.HTTP_400_BAD_REQUEST,
@@ -295,6 +318,8 @@ def lease_view(request):
 
             lease = Lease.objects.filter(id=lease_id, is_active=True).first()
             if not lease:
+                logger.warning("LEASE_UPDATE_FAILED | user_id=%d | lease_id=%s | reason=NOT_FOUND",    
+                request.user.id, lease_id )
                 return prepare_response(
                     message="Lease not found",
                     status=status.HTTP_404_NOT_FOUND,
@@ -331,6 +356,9 @@ def lease_view(request):
                     setattr(lease, field, value)
 
             lease.save()
+            logger.info(
+                "LEASE_UPDATED_SUCCESSFULLY | user_id=%d | lease_id=%d | lease_status=%s | lease_stage=%s",
+                request.user.id ,lease.id , lease.lease_status, lease.lease_stage)
 
             other_charges = body.get("other_charges")
             if other_charges is not None:
@@ -379,6 +407,8 @@ def lease_view(request):
         elif request.method == "DELETE":
             lease_id = request.GET.get("lease_id")
             if not lease_id:
+                logger.warning(
+                    "LEASE_DELETE_FAILED | user_id=%d | reason=LEASE_ID_MISSING",request.user.id)
                 return prepare_response(
                     message="lease_id is required",
                     status=status.HTTP_400_BAD_REQUEST,
@@ -386,6 +416,9 @@ def lease_view(request):
 
             lease = Lease.objects.filter(id=lease_id, is_active=True).first()
             if not lease:
+                logger.warning(
+                    "LEASE_DELETE_FAILED | user_id=%d | lease_id=%s | reason=LEASE_NOT_FOUND",
+                    request.user.id, lease_id )
                 return prepare_response(
                     message="Lease not found",
                     status=status.HTTP_404_NOT_FOUND,
@@ -393,8 +426,14 @@ def lease_view(request):
 
             lease.is_active = False
             lease.save(update_fields=["is_active"])
+            logger.info(
+                "LEASE_DELETED_SUCCESSFULLY | user_id=%d | lease_id=%d",
+                request.user.id, lease.id)
 
             return prepare_response(message="Lease deleted successfully")
+        logger.warning(
+            "LEASE_API_FAILED | user_id=%d | method=%s | reason=METHOD_NOT_ALLOWED",
+            request.user.id, request.method )
 
         return prepare_response(
             message="Method not allowed",
@@ -402,6 +441,9 @@ def lease_view(request):
         )
 
     except Exception as e:
+        logger.exception(
+            "LEASE_API_ERROR | user_id=%d | error=%s",
+            request.user.id, str(e) )
         return prepare_response(
             message=str(e),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -427,10 +469,15 @@ def lease_onboarding_documents_view(request):
     if request.method == "GET":
         lease_id = request.GET.get("lease_id")
         if not lease_id:
+            logger.warning(
+                "LEASE_DOCUMENT_FETCH_FAILED | user_id=%d | reason=LEASE_ID_MISSING", request.user.id)
             return prepare_response(message=constants.LEASE_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
 
         lease = Lease.objects.filter(id=lease_id, is_active=True).select_related("tenant").first()
         if not lease:
+            logger.warning(
+                "LEASE_DOCUMENT_FETCH_FAILED | user_id=%d | lease_id=%s | reason=LEASE_NOT_FOUND",
+                request.user.id, lease_id )
             return prepare_response(message=constants.LEASE_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
 
         def _doc(doc, source):
@@ -453,7 +500,9 @@ def lease_onboarding_documents_view(request):
             .filter(lease=lease, is_active=True)
             .select_related("document_type")
         )
-
+        logger.info(
+            "LEASE_DOCUMENT_FETCHED | user_id=%d | lease_id=%s",
+            request.user.id, lease_id)
         return prepare_response(content={
             "tenant_documents": [_doc(d, "tenant") for d in tenant_docs],
             "lease_documents":  [_doc(d, "lease")  for d in lease_docs],
@@ -463,16 +512,24 @@ def lease_onboarding_documents_view(request):
         try:
             data = json.loads(request.body)
         except Exception:
+            logger.warning(
+                "LEASE_DOCUMENT_UPLOAD_FAILED | user_id=%d | reason=INVALID_JSON",
+                request.user.id)
             return prepare_response(message="Invalid JSON", status=status.HTTP_400_BAD_REQUEST)
 
         lease_id       = data.get("lease_id")
         documents_data = data.get("documents") or []
 
         if not lease_id:
+            logger.warning(
+                "LEASE_DOCUMENT_UPLOAD_FAILED | user_id=%d | reason=LEASE_ID_MISSING",request.user.id)
             return prepare_response(message=constants.LEASE_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
 
         lease = Lease.objects.filter(id=lease_id, is_active=True).first()
         if not lease:
+            logger.warning(
+                "LEASE_DOCUMENT_UPLOAD_FAILED | user_id=%d | lease_id=%s | reason=LEASE_NOT_FOUND",
+                request.user.id, lease_id )
             return prepare_response(message=constants.LEASE_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
 
         created_ids = []
@@ -500,7 +557,9 @@ def lease_onboarding_documents_view(request):
                 file_path     = url,
             )
             created_ids.append(doc.id)
-
+        logger.info(
+            "LEASE_DOCUMENT_UPLOADED | user_id=%d | lease_id=%d | documents_count=%d",
+            request.user.id, lease.id, len(created_ids) )
         return prepare_response(
             message="Documents uploaded successfully",
             content={"ids": created_ids},
@@ -510,8 +569,14 @@ def lease_onboarding_documents_view(request):
     elif request.method == "DELETE":
         document_id = request.GET.get("document_id")
         if not document_id:
+            logger.warning(
+                "LEASE_DOCUMENT_DELETE_FAILED | user_id=%d | reason=DOCUMENT_ID_MISSING",
+                request.user.id)
             return prepare_response(message="document_id is required", status=status.HTTP_400_BAD_REQUEST)
         LeaseDocuments.objects.filter(id=document_id).delete()
+        logger.info(
+            "LEASE_DOCUMENT_DELETED | user_id=%d | document_id=%s",
+            request.user.id, document_id )
         return prepare_response(message="Document deleted successfully")
 
     return prepare_response(
@@ -528,12 +593,18 @@ def get_templates(request):
     if request.method == "GET":
         try:
             templates = Template.objects.filter(is_active=True).values("id", "name").order_by("id")
+            logger.info(
+                "TEMPLATE_LIST_FETCHED | user_id=%d | total=%d",
+                request.user.id, templates.count())
             return prepare_response(
                 content={"templates": list(templates)},
                 message="Templates fetched successfully",
                 status=status.HTTP_200_OK,
             )
         except Exception as e:
+            logger.exception(
+                "TEMPLATE_LIST_FETCH_FAILED | user_id=%d | error=%s",
+                request.user.id, str(e))
             return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
@@ -546,6 +617,9 @@ def get_template_fields(request):
             template_id = request.GET.get("template_id")
             lease_id    = request.GET.get("lease_id")
             if not template_id:
+                logger.warning(
+                    "TEMPLATE_FIELD_FETCH_FAILED | user_id=%d | reason=TEMPLATE_ID_MISSING",
+                    request.user.id )
                 return prepare_response(
                     message=constants.TEMPLATE_ID_REQUIRED,
                     status=status.HTTP_400_BAD_REQUEST,
@@ -651,7 +725,9 @@ def get_template_fields(request):
                         pdf_url = fetch_s3_presigned_url(lease_obj.pdf_path)
                 except Lease.DoesNotExist:
                     pass
-
+            logger.info(
+                "TEMPLATE_FIELD_FETCHED | user_id=%d | template_id=%s | lease_id=%s",
+                request.user.id, template_id, lease_id )
             return prepare_response(
                 content={
                     "template_id":    template.id,
@@ -668,11 +744,17 @@ def get_template_fields(request):
             )
 
         except Template.DoesNotExist:
+            logger.warning(
+                "TEMPLATE_FIELD_FETCH_FAILED | user_id=%d | template_id=%s | reason=TEMPLATE_NOT_FOUND",
+                request.user.id, template_id)
             return prepare_response(
                 message=constants.INVALID_TEMPLATE_ID,
                 status=status.HTTP_404_NOT_FOUND,
             )
         except Exception as e:
+            logger.exception(
+                "TEMPLATE_FIELD_FETCH_ERROR | user_id=%d | template_id=%s | error=%s",
+                request.user.id, request.GET.get("template_id"), str(e))
             return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
@@ -690,6 +772,8 @@ def generate_contract(request):
         values_dict = body.get("values")
 
         if not template_id or not lease_id or not values_dict:
+            logger.warning(
+                "CONTRACT_GENERATION_FAILED | user_id=%d | reason=REQUIRED_FIELDS_MISSING",request.user.id)
             return prepare_response(
                 message=constants.TEMPLATE_LEASE_VALUES_REQUIRED,
                 status=status.HTTP_400_BAD_REQUEST,
@@ -697,10 +781,16 @@ def generate_contract(request):
 
         template = Template.objects.filter(id=template_id, is_active=True).first()
         if not template:
+            logger.warning(
+                "CONTRACT_GENERATION_FAILED | user_id=%d | template_id=%s | reason=TEMPLATE_NOT_FOUND",
+                request.user.id, template_id )
             return prepare_response(message=constants.INVALID_TEMPLATE_ID, status=status.HTTP_404_NOT_FOUND)
 
         lease = Lease.objects.filter(id=lease_id).first()
         if not lease:
+            logger.warning(
+                "CONTRACT_GENERATION_FAILED | user_id=%d | lease_id=%s | reason=LEASE_NOT_FOUND",
+                request.user.id, lease_id )
             return prepare_response(message=constants.INVALID_LAESE_ID, status=status.HTTP_404_NOT_FOUND)
 
         fields = TemplateField.objects.filter(template=template, is_active=True)
@@ -717,6 +807,9 @@ def generate_contract(request):
 
         template_path = template.template_path
         if not template_path or not os.path.exists(template_path):
+            logger.warning(
+                "CONTRACT_GENERATION_FAILED | user_id=%d | template_id=%d | reason=TEMPLATE_FILE_NOT_FOUND",
+                request.user.id, template.id )
             return prepare_response(
                 message=f"Template not found: {template_path}",
                 status=status.HTTP_404_NOT_FOUND,
@@ -750,7 +843,9 @@ def generate_contract(request):
 
         lease.pdf_path = pdf_s3_url
         lease.save(update_fields=["pdf_path"])
-
+        logger.info(
+            "CONTRACT_GENERATED_SUCCESSFULLY | user_id=%d | lease_id=%d | template_id=%d",
+            request.user.id, lease.id, template.id )
         audit_logs(request, f"Generated lease contract for lease '{lease.code}'", constants.CREATED)
 
         return prepare_response(
@@ -760,6 +855,9 @@ def generate_contract(request):
         )
 
     except Exception as e:
+        logger.exception(
+            "CONTRACT_GENERATION_ERROR | user_id=%d | lease_id=%s | error=%s",
+            request.user.id, lease_id if 'lease_id' in locals() else None, str(e))
         return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @send_lease_invite_post
@@ -772,6 +870,9 @@ def send_lease_invite(request):
         body     = json.loads(request.body)
         lease_id = body.get("lease_id")
         if not lease_id:
+            logger.warning(
+                "LEASE_INVITE_FAILED | user_id=%d | reason=LEASE_ID_MISSING",
+                request.user.id )
             return prepare_response(message="lease_id is required", status=status.HTTP_400_BAD_REQUEST)
 
         lease = Lease.objects.select_related(
@@ -788,6 +889,9 @@ def send_lease_invite(request):
         tenant_email = t.user.email if t and t.user else None
 
         if not tenant_email:
+            logger.warning(
+                "LEASE_INVITE_FAILED | user_id=%d | lease_id=%d | reason=TENANT_EMAIL_NOT_FOUND",
+                request.user.id, lease.id )
             return prepare_response(message="Tenant email not found", status=status.HTTP_400_BAD_REQUEST)
 
         from utilities.config import FRONTEND_URL
@@ -820,8 +924,16 @@ def send_lease_invite(request):
         )
 
         ok = send_ses_email(tenant_email, f"Your Lease is in Progress – {lease.code}", body_text, body_html)
+        if ok:
+            logger.info(
+                "LEASE_INVITE_SENT | user_id=%d | lease_id=%d ",
+                request.user.id, lease.id)
+            audit_logs(request, f"Sent invite email for lease '{lease.code}' to {tenant_email}", constants.CREATED)
 
-        audit_logs(request, f"Sent invite email for lease '{lease.code}' to {tenant_email}", constants.CREATED)
+        else:
+            logger.warning(
+                    "LEASE_INVITE_FAILED | user_id=%d | lease_id=%d | reason=EMAIL_SEND_FAILED",
+                    request.user.id, lease.id )
 
         return prepare_response(
             message="Invite email sent successfully",
@@ -830,8 +942,14 @@ def send_lease_invite(request):
         )
 
     except Lease.DoesNotExist:
+        logger.warning(
+            "LEASE_INVITE_FAILED | user_id=%d | lease_id=%s | reason=LEASE_NOT_FOUND",
+            request.user.id, lease_id if 'lease_id' in locals() else None )
         return prepare_response(message=constants.INVALID_LAESE_ID, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
+        logger.exception(
+            "LEASE_INVITE_ERROR | user_id=%d | lease_id=%s | error=%s",
+            request.user.id, lease_id if 'lease_id' in locals() else None, str(e) )
         return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -845,6 +963,8 @@ def send_negotiation(request):
         body     = json.loads(request.body)
         lease_id = body.get("lease_id")
         if not lease_id:
+            logger.warning(
+                "LEASE_NEGOTIATION_FAILED | user_id=%d | reason=LEASE_ID_MISSING",request.user.id)
             return prepare_response(message="lease_id is required", status=status.HTTP_400_BAD_REQUEST)
 
         lease = Lease.objects.select_related(
@@ -878,6 +998,9 @@ def send_negotiation(request):
         recipients.extend(owner_emails)
 
         if not recipients:
+            logger.warning(
+                "LEASE_NEGOTIATION_FAILED | user_id=%d | lease_id=%d | reason=NO_RECIPIENTS_FOUND",
+                request.user.id, lease.id)
             return prepare_response(message="No recipient emails found for this lease", status=status.HTTP_400_BAD_REQUEST)
 
         ctx = {
@@ -914,13 +1037,18 @@ def send_negotiation(request):
             (sent if ok else failed).append(r["email"])
 
         if not sent:
+            logger.warning(
+                "LEASE_NEGOTIATION_FAILED | user_id=%d | lease_id=%d | reason=EMAIL_SEND_FAILED",
+                request.user.id, lease.id )
             return prepare_response(
                 message=f"Failed to send negotiation emails to: {', '.join(failed)}. Check server logs for SES error details.",
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
         audit_logs(request, f"Sent negotiation email for lease '{lease.code}' to {sent}", constants.CREATED)
-
+        logger.info(
+            "LEASE_NEGOTIATION_SENT | user_id=%d | lease_id=%d | sent_count=%d | failed_count=%d",
+            request.user.id, lease.id, len(sent), len(failed) )
         return prepare_response(
             message="Negotiation email sent successfully",
             content={"sent": sent, "failed": failed},
@@ -928,8 +1056,14 @@ def send_negotiation(request):
         )
 
     except Lease.DoesNotExist:
+        logger.warning(
+            "LEASE_NEGOTIATION_FAILED | user_id=%d | lease_id=%s | reason=LEASE_NOT_FOUND",
+            request.user.id, lease_id if 'lease_id' in locals() else None )
         return prepare_response(message=constants.INVALID_LAESE_ID, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
+        logger.exception(
+            "LEASE_NEGOTIATION_ERROR | user_id=%d | lease_id=%s | error=%s",
+            request.user.id, lease_id if 'lease_id' in locals() else None, str(e))
         return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @lease_approval_otp_post
@@ -947,6 +1081,9 @@ def lease_approval_otp(request):
         role     = body.get("role")        # "owner" or "tenant"
         email    = body.get("email", "").strip().lower()
         if not lease_id or not role or not email:
+            logger.warning(
+                "LEASE_APPROVAL_OTP_FAILED | lease_id=%s | role=%s | reason=REQUIRED_FIELDS_MISSING",
+                lease_id, role)
             return prepare_response(message="lease_id, role and email are required", status=status.HTTP_400_BAD_REQUEST)
         lease = Lease.objects.select_related(
             "tenant__user",
@@ -959,6 +1096,9 @@ def lease_approval_otp(request):
         if role == "tenant":
             expected = lease.tenant.user.email.strip().lower() if lease.tenant and lease.tenant.user else None
             if not expected or expected != email:
+                logger.warning(
+                    "LEASE_APPROVAL_OTP_FAILED | lease_id=%d | role=tenant | reason=EMAIL_MISMATCH",
+                    lease.id)
                 return prepare_response(message="Email does not match the tenant for this lease.", status=status.HTTP_403_FORBIDDEN)
         elif role == "owner":
             owner_emails = set()
@@ -967,8 +1107,14 @@ def lease_approval_otp(request):
                     if uo.owner and uo.owner.user:
                         owner_emails.add(uo.owner.user.email.strip().lower())
             if email not in owner_emails:
+                logger.warning(
+                    "LEASE_APPROVAL_OTP_FAILED | lease_id=%d | role=owner | reason=EMAIL_MISMATCH",
+                    lease.id)
                 return prepare_response(message="Email does not match any owner for this lease.", status=status.HTTP_403_FORBIDDEN)
         else:
+            logger.warning(
+                "LEASE_APPROVAL_OTP_FAILED | lease_id=%d | role=%s | reason=INVALID_ROLE",
+                 lease.id, role)
             return prepare_response(message="Invalid role.", status=status.HTTP_400_BAD_REQUEST)
 
         otp = request_otp_sent()
@@ -987,10 +1133,19 @@ def lease_approval_otp(request):
         body_text = f"Your OTP for lease approval ({lease.code}) is: {otp}\nThis OTP expires in 10 minutes."
         body_html = render_to_string("email_templates/lease_approval_otp.html", ctx)
         send_ses_email(email, subject, body_text, body_html)
+        logger.info(
+            "LEASE_APPROVAL_OTP_SENT | lease_id=%d | role=%s ",
+            lease.id, role)
         return prepare_response(message="OTP sent successfully", status=status.HTTP_200_OK)
     except Lease.DoesNotExist:
+        logger.warning(
+            "LEASE_APPROVAL_OTP_FAILED | lease_id=%s | reason=LEASE_NOT_FOUND",
+            lease_id if 'lease_id' in locals() else None)
         return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
+        logger.exception(
+            "LEASE_APPROVAL_OTP_ERROR | lease_id=%s | error=%s",
+            lease_id if 'lease_id' in locals() else None, str(e))
         return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @lease_approval_verify_otp_post
@@ -1008,10 +1163,15 @@ def lease_approval_verify_otp(request):
         email    = body.get("email", "").strip().lower()
         otp      = body.get("otp")
         if not lease_id or not role or not email or not otp:
+            logger.warning(
+                "LEASE_OTP_VERIFY_FAILED | lease_id=%s | reason=REQUIRED_FIELDS_MISSING", lease_id)
             return prepare_response(message="lease_id, role, email and otp are required", status=status.HTTP_400_BAD_REQUEST)
         cache_key = f"otp_lease_approval_{lease_id}_{role}_{email}"
         stored    = cache.get(cache_key)
         if not stored or str(stored) != str(otp):
+            logger.warning(
+                "LEASE_OTP_VERIFY_FAILED | lease_id=%s | role=%s | reason=INVALID_OTP",
+                lease_id, role)
             return prepare_response(message="Invalid or expired OTP", status=status.HTTP_400_BAD_REQUEST)
         # OTP verified — store a verified flag (don't delete yet, needed for approve step)
         verified_key = f"otp_lease_approval_verified_{lease_id}_{role}_{email}"
@@ -1024,6 +1184,9 @@ def lease_approval_verify_otp(request):
         pb   = unit.property_block_tower if unit else None
         prop = pb.property if pb else None
         pdf_url = fetch_s3_presigned_url(lease.pdf_path, file_name="agreement.pdf") if lease.pdf_path else ""
+        logger.info(
+            "LEASE_OTP_VERIFIED | lease_id=%d | role=%s ",
+            lease.id, role )
         return prepare_response(
             message="OTP verified",
             content={
@@ -1036,8 +1199,14 @@ def lease_approval_verify_otp(request):
             status=status.HTTP_200_OK,
         )
     except Lease.DoesNotExist:
+        logger.warning(
+            "LEASE_OTP_VERIFY_FAILED | lease_id=%s | reason=LEASE_NOT_FOUND",
+            lease_id if 'lease_id' in locals() else None)
         return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
+        logger.exception(
+            "LEASE_OTP_VERIFY_ERROR | lease_id=%s | error=%s",
+            lease_id if 'lease_id' in locals() else None, str(e) )
         return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -1055,9 +1224,14 @@ def approve_lease_view(request):
         role     = body.get("role")
         email    = body.get("email", "").strip().lower()
         if not lease_id or not role or not email:
+            logger.warning(
+                "LEASE_APPROVAL_FAILED | lease_id=%s | reason=REQUIRED_FIELDS_MISSING", lease_id)
             return prepare_response(message="lease_id, role and email are required", status=status.HTTP_400_BAD_REQUEST)
         verified_key = f"otp_lease_approval_verified_{lease_id}_{role}_{email}"
         if not cache.get(verified_key):
+            logger.warning(
+                "LEASE_APPROVAL_FAILED | lease_id=%s | role=%s | reason=OTP_NOT_VERIFIED",
+                lease_id, role)
             return prepare_response(message="OTP not verified. Please verify OTP first.", status=status.HTTP_400_BAD_REQUEST)
         lease = Lease.objects.get(id=lease_id)
         current = lease.lease_stage
@@ -1072,8 +1246,14 @@ def approve_lease_view(request):
             else:
                 lease.lease_stage = constants.OWNER_APPROVED
         else:
+            logger.warning(
+                "LEASE_APPROVAL_FAILED | lease_id=%d | role=%s | reason=INVALID_ROLE",
+                lease.id, role)
             return prepare_response(message="Invalid role", status=status.HTTP_400_BAD_REQUEST)
         lease.save(update_fields=["lease_stage"])
+        logger.info(
+            "LEASE_APPROVED | lease_id=%d | role=%s | lease_stage=%s",
+            lease.id, role, lease.lease_stage)
         cache.delete(verified_key)
         return prepare_response(
             message="Lease approved successfully",
@@ -1081,8 +1261,14 @@ def approve_lease_view(request):
             status=status.HTTP_200_OK,
         )
     except Lease.DoesNotExist:
+        logger.warning(
+            "LEASE_APPROVAL_FAILED | lease_id=%s | reason=LEASE_NOT_FOUND",
+            lease_id if 'lease_id' in locals() else None)
         return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
+        logger.exception(
+            "LEASE_APPROVAL_ERROR | lease_id=%s | error=%s",
+            lease_id if 'lease_id' in locals() else None, str(e))
         return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @send_for_signature_post
@@ -1097,6 +1283,8 @@ def send_for_signature(request):
         body     = json.loads(request.body)
         lease_id = body.get("lease_id")
         if not lease_id:
+            logger.warning(
+                "SIGNATURE_REQUEST_FAILED | user_id=%d | reason=LEASE_ID_MISSING", request.user.id)
             return prepare_response(message="lease_id is required", status=status.HTTP_400_BAD_REQUEST)
 
         lease = Lease.objects.select_related(
@@ -1130,6 +1318,9 @@ def send_for_signature(request):
         recipients.extend(owner_recipients)
 
         if not recipients:
+            logger.warning(
+                "SIGNATURE_REQUEST_FAILED | user_id=%d | lease_id=%d | reason=NO_RECIPIENTS_FOUND",
+                request.user.id, lease.id)
             return prepare_response(message="No recipient emails found for this lease", status=status.HTTP_400_BAD_REQUEST)
 
         from utilities.config import FRONTEND_URL
@@ -1165,13 +1356,18 @@ def send_for_signature(request):
             (sent if ok else failed).append(r["email"])
 
         if not sent:
+            logger.warning(
+                "SIGNATURE_REQUEST_FAILED | user_id=%d | lease_id=%d | reason=EMAIL_SEND_FAILED",
+                request.user.id, lease.id)
             return prepare_response(
                 message=f"Failed to send signature emails to: {', '.join(failed)}. Check server logs for SES error details.",
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
         audit_logs(request, f"Sent signature request emails for lease '{lease.code}' to {sent}", constants.CREATED)
-
+        logger.info(
+            "SIGNATURE_REQUEST_SENT | user_id=%d | lease_id=%d | sent_count=%d | failed_count=%d",
+            request.user.id, lease.id, len(sent), len(failed))
         return prepare_response(
             message="Signature request emails sent successfully",
             content={"sent": sent, "failed": failed},
@@ -1179,8 +1375,14 @@ def send_for_signature(request):
         )
 
     except Lease.DoesNotExist:
+        logger.warning(
+            "SIGNATURE_REQUEST_FAILED | user_id=%d | lease_id=%s | reason=LEASE_NOT_FOUND",
+            request.user.id, lease_id if 'lease_id' in locals() else None )
         return prepare_response(message=constants.INVALID_LAESE_ID, status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
+        logger.exception(
+            "SIGNATURE_REQUEST_ERROR | user_id=%d | lease_id=%s | error=%s",
+            request.user.id, lease_id if 'lease_id' in locals() else None, str(e) )
         return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @lease_signature_otp_post
@@ -1198,6 +1400,9 @@ def lease_signature_otp(request):
         role     = body.get("role")
         email    = body.get("email", "").strip().lower()
         if not lease_id or not role or not email:
+            logger.warning(
+                "LEASE_SIGNATURE_OTP_FAILED | lease_id=%s | role=%s | reason=REQUIRED_FIELDS_MISSING",
+                lease_id, role)
             return prepare_response(message="lease_id, role and email are required", status=status.HTTP_400_BAD_REQUEST)
 
         lease = Lease.objects.select_related(
@@ -1211,6 +1416,9 @@ def lease_signature_otp(request):
         if role == "tenant":
             expected = lease.tenant.user.email.strip().lower() if lease.tenant and lease.tenant.user else None
             if not expected or expected != email:
+                logger.warning(
+                        "LEASE_SIGNATURE_OTP_FAILED | lease_id=%d | role=tenant | reason=EMAIL_MISMATCH",
+                        lease.id)
                 return prepare_response(message="Email does not match the tenant for this lease.", status=status.HTTP_403_FORBIDDEN)
         elif role == "owner":
             owner_emails = set()
@@ -1219,8 +1427,14 @@ def lease_signature_otp(request):
                     if uo.owner and uo.owner.user:
                         owner_emails.add(uo.owner.user.email.strip().lower())
             if email not in owner_emails:
+                logger.warning(
+                            "LEASE_SIGNATURE_OTP_FAILED | lease_id=%d | role=owner | reason=EMAIL_MISMATCH",
+                            lease.id)
                 return prepare_response(message="Email does not match any owner for this lease.", status=status.HTTP_403_FORBIDDEN)
         else:
+            logger.warning(
+                        "LEASE_SIGNATURE_OTP_FAILED | lease_id=%d | role=%s | reason=INVALID_ROLE",
+                        lease.id, role)
             return prepare_response(message="Invalid role.", status=status.HTTP_400_BAD_REQUEST)
 
         otp = request_otp_sent()
@@ -1239,10 +1453,19 @@ def lease_signature_otp(request):
         body_text = f"Your OTP for lease signature ({lease.code}) is: {otp}\nThis OTP expires in 10 minutes."
         body_html = render_to_string("email_templates/lease_approval_otp.html", ctx)
         send_ses_email(email, subject, body_text, body_html)
+        logger.info(
+                "LEASE_SIGNATURE_OTP_SENT | lease_id=%d | role=%s ",
+                lease.id, role)
         return prepare_response(message="OTP sent successfully", status=status.HTTP_200_OK)
     except Lease.DoesNotExist:
+        logger.warning(
+                    "LEASE_SIGNATURE_OTP_FAILED | lease_id=%s | reason=LEASE_NOT_FOUND",
+                    lease_id if 'lease_id' in locals() else None)
         return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
+        logger.exception(
+                    "LEASE_SIGNATURE_OTP_ERROR | lease_id=%s | error=%s",
+                    lease_id if 'lease_id' in locals() else None, str(e))
         return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @lease_signature_verify_otp_post
@@ -1260,11 +1483,16 @@ def lease_signature_verify_otp(request):
         email    = body.get("email", "").strip().lower()
         otp      = body.get("otp")
         if not lease_id or not role or not email or not otp:
+            logger.warning(
+                    "LEASE_SIGNATURE_VERIFY_FAILED | lease_id=%s | reason=REQUIRED_FIELDS_MISSING",lease_id)
             return prepare_response(message="lease_id, role, email and otp are required", status=status.HTTP_400_BAD_REQUEST)
 
         cache_key = f"otp_lease_signature_{lease_id}_{role}_{email}"
         stored    = cache.get(cache_key)
         if not stored or str(stored) != str(otp):
+            logger.warning(
+                        "LEASE_SIGNATURE_VERIFY_FAILED | lease_id=%s | role=%s | reason=INVALID_OTP",
+                        lease_id, role)
             return prepare_response(message="Invalid or expired OTP", status=status.HTTP_400_BAD_REQUEST)
 
         # Store verified flag for submit step
@@ -1279,6 +1507,9 @@ def lease_signature_verify_otp(request):
         pb   = unit.property_block_tower if unit else None
         prop = pb.property if pb else None
         pdf_url = fetch_s3_presigned_url(lease.pdf_path, file_name="agreement.pdf") if lease.pdf_path else ""
+        logger.info(
+                "LEASE_SIGNATURE_VERIFIED | lease_id=%d | role=%s ",
+                lease.id, role)
         return prepare_response(
             message="OTP verified",
             content={
@@ -1291,8 +1522,14 @@ def lease_signature_verify_otp(request):
             status=status.HTTP_200_OK,
         )
     except Lease.DoesNotExist:
+        logger.warning(
+                    "LEASE_SIGNATURE_VERIFY_FAILED | lease_id=%s | reason=LEASE_NOT_FOUND",
+                    lease_id if 'lease_id' in locals() else None)
         return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
+        logger.exception(
+                    "LEASE_SIGNATURE_VERIFY_ERROR | lease_id=%s | error=%s",
+                    lease_id if 'lease_id' in locals() else None, str(e))
         return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @submit_lease_signature_post
@@ -1317,20 +1554,30 @@ def submit_lease_signature(request):
         signature_data = body.get("signature_data", "")
 
         if not lease_id or not role or not email or not signature_data:
+            logger.warning(
+                        "LEASE_SIGNATURE_SUBMIT_FAILED | lease_id=%s | role=%s | reason=REQUIRED_FIELDS_MISSING",
+                        lease_id, role)
             return prepare_response(message="lease_id, role, email and signature_data are required", status=status.HTTP_400_BAD_REQUEST)
 
         # Check that OTP was verified
         verified_key = f"otp_lease_signature_verified_{lease_id}_{role}_{email}"
         if not cache.get(verified_key):
+            logger.warning(
+                    "LEASE_SIGNATURE_SUBMIT_FAILED | lease_id=%s | role=%s | reason=OTP_NOT_VERIFIED",
+                    lease_id, role)
             return prepare_response(message="OTP not verified. Please verify OTP first.", status=status.HTTP_400_BAD_REQUEST)
 
         lease = Lease.objects.get(id=lease_id)
         if not lease.pdf_path:
+            logger.warning(
+                    "LEASE_SIGNATURE_SUBMIT_FAILED | lease_id=%d | reason=PDF_NOT_FOUND", lease.id)
             return prepare_response(message="No PDF available for this lease.", status=status.HTTP_400_BAD_REQUEST)
 
         # Download original PDF bytes
         pdf_b64 = fetch_s3_file_as_base64(lease.pdf_path)
         if not pdf_b64:
+            logger.warning(
+                    "LEASE_SIGNATURE_SUBMIT_FAILED | lease_id=%d | reason=PDF_FETCH_FAILED", lease.id)
             return prepare_response(message="Failed to fetch lease PDF from storage.", status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         original_pdf_bytes = _b64.b64decode(pdf_b64)
 
@@ -1401,6 +1648,9 @@ def submit_lease_signature(request):
         lease.pdf_path    = signed_url
         lease.lease_stage = constants.AGREEMENT_SIGNED
         lease.save(update_fields=["pdf_path", "lease_stage"])
+        logger.info(
+                "LEASE_SIGNATURE_SUBMITTED | lease_id=%d | role=%s | lease_stage=%s",
+                lease.id, role, lease.lease_stage)
 
         # Invalidate verified flag
         cache.delete(verified_key)
@@ -1411,8 +1661,15 @@ def submit_lease_signature(request):
             status=status.HTTP_200_OK,
         )
     except Lease.DoesNotExist:
+        logger.warning(
+                    "LEASE_SIGNATURE_SUBMIT_FAILED | lease_id=%s | reason=LEASE_NOT_FOUND",
+                    lease_id if 'lease_id' in locals() else None)
         return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
+        logger.exception(
+                    "LEASE_SIGNATURE_SUBMIT_ERROR | lease_id=%s | role=%s | error=%s",
+                    lease_id if 'lease_id' in locals() else None, 
+                    role if 'role' in locals() else None, str(e))
         return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -1446,6 +1703,8 @@ def lease_cheque_view(request):
             company = own_company
 
         if not company:
+            logger.warning(
+                "LEASE_CHEQUE_FETCH_FAILED | user_id=%d | reason=COMPANY_NOT_FOUND", request.user.id)
             return prepare_response(
                 message=constants.COMPANY_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
@@ -1467,8 +1726,13 @@ def lease_cheque_view(request):
                 )
 
             except LeaseTransaction.DoesNotExist:
+                logger.warning(
+                    "LEASE_CHEQUE_FETCH_FAILED | user_id=%d | cheque_id=%s | reason=CHEQUE_NOT_FOUND",
+                    request.user.id, cheque_id )
                 return prepare_response(message="Cheque not found",status=status.HTTP_404_NOT_FOUND)
-
+            logger.info(
+                "LEASE_CHEQUE_FETCHED | user_id=%d | cheque_id=%d",
+                request.user.id, cheque.id )
             return prepare_response(
                 content=serialize_lease_cheque(cheque),
                 status=status.HTTP_200_OK
@@ -1478,6 +1742,9 @@ def lease_cheque_view(request):
         lease_id = request.GET.get("lease_id")
 
         if not lease_id:
+            logger.warning(
+                "LEASE_CHEQUE_FETCH_FAILED | user_id=%d | reason=LEASE_ID_MISSING",
+                request.user.id)
             return prepare_response(
                 message="lease_id or cheque_id is required",
                 status=status.HTTP_400_BAD_REQUEST
@@ -1491,6 +1758,9 @@ def lease_cheque_view(request):
             "selltlement_bank",
             "document_type"
         )
+        logger.info(
+            "LEASE_CHEQUE_LIST_FETCHED | user_id=%d | lease_id=%s | count=%d",
+            request.user.id, lease_id, cheques.count() )
 
         return prepare_response(content=group_lease_cheques(cheques),status=status.HTTP_200_OK)
     # ── POST create ───────────────────────────────────────────────────────────
@@ -1498,14 +1768,21 @@ def lease_cheque_view(request):
         try:
             data = json.loads(request.body)
         except (json.JSONDecodeError, TypeError):
+            logger.warning(
+                "LEASE_CHEQUE_CREATE_FAILED | user_id=%d | reason=INVALID_JSON",request.user.id )
             return prepare_response(message=constants.INVALID_JSON_BODY, status=status.HTTP_400_BAD_REQUEST)
 
         lease_id = data.get("lease_id")
         if not lease_id:
+            logger.warning(
+                        "LEASE_CHEQUE_CREATE_FAILED | user_id=%d | reason=LEASE_ID_MISSING", request.user.id )
             return prepare_response(message="lease_id is required", status=status.HTTP_400_BAD_REQUEST)
         try:
             lease = Lease.objects.get(id=lease_id)
         except Lease.DoesNotExist:
+            logger.warning(
+                "LEASE_CHEQUE_CREATE_FAILED | user_id=%d | lease_id=%s | reason=LEASE_NOT_FOUND",
+                request.user.id, lease_id)
             return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
 
         from user_service.models import DocumentType
@@ -1513,6 +1790,9 @@ def lease_cheque_view(request):
         try:
             doc_type = DocumentType.objects.get(id=document_type_id) if document_type_id else DocumentType.objects.first()
         except DocumentType.DoesNotExist:
+            logger.warning(
+                "LEASE_CHEQUE_CREATE_FAILED | user_id=%d | lease_id=%s | reason=DOCUMENT_TYPE_NOT_FOUND",
+                request.user.id, lease_id)
             return prepare_response(message="Document type not found", status=status.HTTP_404_NOT_FOUND)
 
         from payment.models import Bank
@@ -1522,6 +1802,9 @@ def lease_cheque_view(request):
             origin_bank     = Bank.objects.get(id=origin_bank_id)     if origin_bank_id     else None
             settlement_bank = Bank.objects.get(id=settlement_bank_id) if settlement_bank_id else None
         except Bank.DoesNotExist:
+            logger.warning(
+                "LEASE_CHEQUE_CREATE_FAILED | user_id=%d | lease_id=%s | reason=BANK_NOT_FOUND",
+                request.user.id, lease_id )
             return prepare_response(message="Bank not found", status=status.HTTP_404_NOT_FOUND)
 
         file_path = ""
@@ -1552,6 +1835,9 @@ def lease_cheque_view(request):
             amount=data.get("amount") or 0,
             created_by=request.user.user,
         )
+        logger.info(
+            "LEASE_CHEQUE_CREATED | user_id=%d | lease_id=%d | cheque_id=%d",
+            request.user.id, lease.id, cheque.id )
         return prepare_response(
             message="Cheque created successfully",
             content={"id": cheque.id},
@@ -1563,14 +1849,22 @@ def lease_cheque_view(request):
         try:
             data = json.loads(request.body)
         except (json.JSONDecodeError, TypeError):
+            logger.warning(
+                        "LEASE_CHEQUE_UPDATE_FAILED | user_id=%d | reason=INVALID_JSON", request.user.id)
             return prepare_response(message=constants.INVALID_JSON_BODY, status=status.HTTP_400_BAD_REQUEST)
 
         cheque_id = data.get("cheque_id")
         if not cheque_id:
+            logger.warning(
+                        "LEASE_CHEQUE_UPDATE_FAILED | user_id=%d | reason=CHEQUE_ID_MISSING",
+                        request.user.id)
             return prepare_response(message="cheque_id is required", status=status.HTTP_400_BAD_REQUEST)
         try:
             cheque = LeaseTransaction.objects.get(id=cheque_id)
         except LeaseTransaction.DoesNotExist:
+            logger.warning(
+                "LEASE_CHEQUE_UPDATE_FAILED | user_id=%d | cheque_id=%s | reason=CHEQUE_NOT_FOUND",
+                request.user.id, cheque_id)
             return prepare_response(message="Cheque not found", status=status.HTTP_404_NOT_FOUND)
 
         from payment.models import Bank
@@ -1600,6 +1894,9 @@ def lease_cheque_view(request):
             cheque.file_name = data["file_name"]
 
         cheque.save()
+        logger.info(
+            "LEASE_CHEQUE_UPDATED | user_id=%d | cheque_id=%d | status=%s",
+            request.user.id, cheque.id, cheque.status)
         from notification.utils import (
             notify_cheque_bounced,
             notify_cheque_realized,
@@ -1610,9 +1907,13 @@ def lease_cheque_view(request):
         print("Tenant user:", tenant_user_profile)
 
         if cheque.status == "BOUNCED":
+            logger.info(
+                "LEASE_CHEQUE_BOUNCED_NOTIFICATION | cheque_id=%d", cheque.id)
             notify_cheque_bounced(tenant_user_profile, cheque)
 
         elif cheque.status == "REALIZED":
+            logger.info(
+                    "LEASE_CHEQUE_REALIZED_NOTIFICATION | cheque_id=%d", cheque.id )
             notify_cheque_realized(tenant_user_profile, cheque)
         return prepare_response(message="Cheque updated successfully", status=status.HTTP_200_OK)
 
@@ -1620,10 +1921,19 @@ def lease_cheque_view(request):
     elif request.method == "DELETE":
         cheque_id = request.GET.get("cheque_id")
         if not cheque_id:
+            logger.warning(
+                        "LEASE_CHEQUE_DELETE_FAILED | user_id=%d | reason=CHEQUE_ID_MISSING",
+                        request.user.id)
             return prepare_response(message="cheque_id is required", status=status.HTTP_400_BAD_REQUEST)
         try:
             LeaseTransaction.objects.get(id=cheque_id).delete()
+            logger.info(
+                "LEASE_CHEQUE_DELETED | user_id=%d | cheque_id=%s", 
+                request.user.id, cheque_id )
         except LeaseTransaction.DoesNotExist:
+            logger.warning(
+                        "LEASE_CHEQUE_DELETE_FAILED | user_id=%d | cheque_id=%s | reason=CHEQUE_NOT_FOUND",
+                        request.user.id, cheque_id)
             return prepare_response(message="Cheque not found", status=status.HTTP_404_NOT_FOUND)
         return prepare_response(message="Cheque deleted successfully", status=status.HTTP_200_OK)
 
@@ -1687,6 +1997,9 @@ def cheque_summary_view(request):
         "bounce":   _stats(constants.CHEQUE_STATUS_BOUNCED),
         "balance":  _stats(constants.CHEQUE_STATUS_BALANCE),
     }
+    logger.info(
+            "CHEQUE_SUMMARY_SUCCESS | user_id=%s | total_count=%s | total_amount=%s",
+            request.user.id, total_count, total_amount )
     return prepare_response(content=summary, status=status.HTTP_200_OK)
 
 @all_cheques_get
@@ -1698,7 +2011,9 @@ def all_cheques_view(request):
 
     if request.method != "GET":
         return prepare_response(message=constants.INVALID_REQUEST_METHOD,status=status.HTTP_405_METHOD_NOT_ALLOWED)
-
+    logger.info(
+            "ALL_CHEQUES_REQUEST | user_id=%s | page=%s | page_size=%s",
+            request.user.id, request.GET.get("page", 1), request.GET.get("page_size", 10))
     user_profile = request.user
 
     # ── Get logged-in user's company ─────────────────────
@@ -1715,6 +2030,8 @@ def all_cheques_view(request):
         ).first()
 
     if not company:
+        logger.warning(
+                "ALL_CHEQUES_COMPANY_NOT_FOUND | user_id=%s", request.user.id )
         return prepare_response(
             message=constants.COMPANY_NOT_FOUND,
             status=status.HTTP_404_NOT_FOUND
@@ -1756,6 +2073,9 @@ def all_cheques_view(request):
             Q(lease__tenant__user__last_name__icontains=search) |
             Q(lease__unit__property_block_tower__property__property_name__icontains=search)
         )
+        logger.info(
+            "ALL_CHEQUES_SEARCH | user_id=%s | search=%s | records=%s",
+            request.user.id, search, qs.count() )
 
     from django.core.paginator import Paginator
     paginator = Paginator(qs, page_size)
@@ -1763,6 +2083,9 @@ def all_cheques_view(request):
 
     rows = [serialize_cheque_list_row(c) for c in page_obj]
 
+    logger.info(
+            "ALL_CHEQUES_SUCCESS | user_id=%s | records_returned=%s",
+            request.user.id, len(rows))
     return prepare_response(
         content=rows,
         pagination={
@@ -1805,6 +2128,8 @@ def cheque_monthly_view(request):
         company = own_company
 
     if not company:
+        logger.warning(
+                    "CHEQUE_MONTHLY_FAILED | user_id=%s | reason=COMPANY_NOT_FOUND", request.user.id )
         return prepare_response(
             message=constants.COMPANY_NOT_FOUND,
             status=status.HTTP_404_NOT_FOUND
@@ -1841,7 +2166,9 @@ def cheque_monthly_view(request):
         result[row["month"]] = float(row["total"] or 0)
 
     data = [{"month": month_names[m - 1], "amount": result[m]}for m in range(1, 13)]
-
+    logger.info(
+        "CHEQUE_MONTHLY_SUCCESS | user_id=%s | year=%s",
+        request.user.id, year )
     return prepare_response(content=data, status=status.HTTP_200_OK)
 
 @rent_analytics_get
@@ -1918,7 +2245,9 @@ def rent_analytics_view(request):
         }
         for m in range(1, 13)
     ]
-
+    logger.info(
+        "RENT_ANALYTICS_SUCCESS | user_id=%s | year=%s | total_amount=%s",
+        request.user.id, year, total_amount )
     return prepare_response(content={
         "summary": {
             "total_amount":    total_amount,
@@ -2029,7 +2358,9 @@ def property_analytics_view(request):
         level = "property"
 
     total_revenue = sum(item["revenue"] for item in chart)
-
+    logger.info(
+        "PROPERTY_ANALYTICS_SUCCESS | user_id=%s | year=%s | level=%s | total_revenue=%s",
+        request.user.id, year, level, total_revenue )
     return prepare_response(content={
         "total_revenue": total_revenue,
         "chart":         chart,
@@ -2049,11 +2380,15 @@ def property_comparison_view(request):
 
     property_id = request.GET.get("property_id", "").strip()
     if not property_id:
+        logger.warning(
+                    "PROPERTY_COMPARISON_FAILED | user_id=%s | reason=PROPERTY_ID_MISSING",request.user.id)
         return prepare_response(message="property_id is required", status=status.HTTP_400_BAD_REQUEST)
 
     try:
         prop = Property.objects.get(id=property_id)
     except Property.DoesNotExist:
+        logger.warning(
+                    "PROPERTY_COMPARISON_FAILED | user_id=%s | property_id=%s | reason=PROPERTY_NOT_FOUND", property_id, request.user.id)
         return prepare_response(message="Property not found", status=status.HTTP_404_NOT_FOUND)
 
     # Revenue: sum all LeaseTransaction amounts for this property
@@ -2090,7 +2425,9 @@ def property_comparison_view(request):
         .filter(property_block_tower__property_id=property_id)
         .aggregate(t=Sum("unit_size"))["t"] or 0
     )
-
+    logger.info(
+            "PROPERTY_COMPARISON_SUCCESS | property_id=%s | revenue=%s | rank=%s",
+            property_id, revenue, rank )
     return prepare_response(content={
         "id":              prop.id,
         "property_name":   prop.property_name,
@@ -2121,6 +2458,8 @@ def lease_details_view(request):
         if request.method == "GET":
             lease_id = request.GET.get("lease_id")
             if not lease_id:
+                logger.warning(
+                    "LEASE_DETAILS_FETCH_FAILED | user_id=%s | reason=LEASE_ID_MISSING",request.user.id)
                 return prepare_response(
                     message=constants.LEASE_ID_REQUIRED,
                     status=status.HTTP_400_BAD_REQUEST
@@ -2128,12 +2467,17 @@ def lease_details_view(request):
 
             lease = Lease.objects.filter(id=lease_id).first()
             if not lease:
+                logger.warning(
+                    "LEASE_DETAILS_FETCH_FAILED | user_id=%s | lease_id=%s | reason=LEASE_NOT_FOUND", 
+                    lease_id,request.user.id )
                 return prepare_response(
                     message=constants.LEASE_NOT_FOUND,
                     status=status.HTTP_404_NOT_FOUND
                 )
 
-
+            logger.info(
+                "LEASE_DETAILS_FETCHED | user_id=%s | lease_id=%s",
+                request.user.id, lease.id )
             return prepare_response(
                 content=serialize_lease(lease),
                 message=constants.LEASE_FETCHED,
@@ -2148,6 +2492,9 @@ def lease_details_view(request):
             property_id = body.get("property_id")
             tenant_id = body.get("tenant_id")
             if not property_id or not tenant_id:
+                logger.warning(
+                    "LEASE_CREATE_FAILED | user_id=%s | reason=PROPERTY_OR_TENANT_MISSING",
+                    request.user.id )
                 return prepare_response(
                     message=constants.PROPERTY_AND_TENANT_REQUIRED,
                     status=status.HTTP_400_BAD_REQUEST
@@ -2156,10 +2503,16 @@ def lease_details_view(request):
             property_obj = Unit.objects.filter(id=property_id).first()
             tenant_obj = UserProfile.objects.filter(id=tenant_id, user_role=constants.TENANT).first()
             if not property_obj or not tenant_obj:
+                logger.warning(
+                    "LEASE_CREATE_FAILED | user_id=%s | property_id=%s | tenant_id=%s | reason=INVALID_DATA",
+                    request.user.id, property_id, tenant_id)
                 return prepare_response(message=constants.PROPERTY_TENANT_INVALID, status=status.HTTP_400_BAD_REQUEST)
 
             owner_obj = property_obj.owner
             if not owner_obj:
+                logger.warning(
+                            "LEASE_CREATE_FAILED | user_id=%s | property_id=%s | reason=OWNER_NOT_FOUND",
+                            request.user.id, property_id )
                 return prepare_response(message=constants.THIS_OWNER_HAS_NO_PROPERTY, status=status.HTTP_400_BAD_REQUEST)
 
             # Convert datetime fields
@@ -2199,7 +2552,9 @@ def lease_details_view(request):
                 shell=body.get("shell", False),
                 core=body.get("core", False),
             )
-
+            logger.info(
+                "LEASE_CREATED | user_id=%s | lease_id=%s | tenant_id=%s",
+                request.user.id, lease.id, tenant_id )
             audit_logs(
                 request,
                 f"Added lease agreement for {property_obj.property.property_name} – Unit {property_obj.unit_name}",
@@ -2217,22 +2572,32 @@ def lease_details_view(request):
             body = json.loads(request.body)
             lease_id = body.get("lease_id")
             if not lease_id:
+                logger.warning(
+                    "LEASE_UPDATE_FAILED | reason=LEASE_ID_MISSING" )
                 return prepare_response(message=constants.LEASE_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
 
             lease = Lease.objects.filter(id=lease_id).first()
             if not lease:
+                logger.warning(
+                    "LEASE_UPDATE_FAILED | lease_id=%s | reason=LEASE_NOT_FOUND", lease_id )
                 return prepare_response(message=constants.LEASE_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
 
             # Update ForeignKeys
             if "tenant_id" in body:
                 tenant_obj = UserProfile.objects.filter(id=body["tenant_id"], user_role=constants.TENANT).first()
                 if not tenant_obj:
+                    logger.warning(
+                        "LEASE_UPDATE_FAILED | lease_id=%s | tenant_id=%s | reason=INVALID_TENANT",
+                        lease_id, body["tenant_id"] )
                     return prepare_response(message=constants.INVALID_TENANT, status=status.HTTP_400_BAD_REQUEST)
                 lease.tenant = tenant_obj
 
             if "property_id" in body:
                 property_obj = Unit.objects.filter(id=body["property_id"]).first()
                 if not property_obj:
+                    logger.warning(
+                        "LEASE_UPDATE_FAILED | lease_id=%s | property_id=%s | reason=INVALID_PROPERTY",
+                        lease_id, body["property_id"] )
                     return prepare_response(message=constants.INVALID_PROPERTY, status=status.HTTP_400_BAD_REQUEST)
                 lease.lease_property = property_obj
                 lease.owner = property_obj.owner
@@ -2257,6 +2622,8 @@ def lease_details_view(request):
                     setattr(lease, field, body[field])
 
             lease.save()
+            logger.info(
+                "LEASE_UPDATED | user_id=%s | lease_id=%s",request.user.id, lease.id )
 
             audit_logs(
                 request,
@@ -2274,6 +2641,9 @@ def lease_details_view(request):
             return prepare_response(message=constants.INVALID_REQUEST, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     except Exception as e:
+        logger.exception(
+                    "LEASE_DETAILS_ERROR | user_id=%s | error=%s",
+                    request.user.id if request.user else None, str(e) )
         return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -2283,6 +2653,8 @@ def lease_documents(request):
         if request.method == "GET":
             lease_id = request.GET.get("lease_id")
             if not lease_id:
+                logger.warning(
+                    "LEASE_DOCUMENTS_FETCH_FAILED | user_id=%s | reason=LEASE_ID_MISSING", request.user.id)
                 return prepare_response(
                     message=constants.LEASE_ID_REQUIRED,
                     status=status.HTTP_400_BAD_REQUEST
@@ -2291,6 +2663,9 @@ def lease_documents(request):
             try:
                 lease_obj = Lease.objects.get(id=lease_id)
             except Lease.DoesNotExist:
+                logger.warning(
+                    "LEASE_DOCUMENTS_FETCH_FAILED | user_id=%s | lease_id=%s | reason=LEASE_NOT_FOUND",
+                    request.user.id, lease_id )
                 return prepare_response(
                     message=constants.INVALID_LEASE_ID,
                     status=status.HTTP_404_NOT_FOUND
@@ -2311,7 +2686,9 @@ def lease_documents(request):
                     "data": base64_data,
                     "type": mapping.document_choice
                 })
-
+            logger.info(
+                    "LEASE_DOCUMENTS_FETCHED | user_id=%s | lease_id=%s | document_count=%s",
+                    request.user.id, lease_id, len(final_docs))
             return prepare_response(
                 message=constants.DATA_FETCHED_SUCCESSFULLY,
                 content={
@@ -2329,12 +2706,18 @@ def lease_documents(request):
             documents = body.get("documents", [])
 
             if not lease_id:
+                logger.warning(
+                    "LEASE_DOCUMENT_UPLOAD_FAILED | user_id=%s | reason=LEASE_ID_MISSING",
+                    request.user.id )
                 return prepare_response(
                     message=constants.LEASE_ID_REQUIRED,
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
             if not isinstance(documents, list) or not documents:
+                logger.warning(
+                    "LEASE_DOCUMENT_UPLOAD_FAILED | user_id=%s | lease_id=%s | reason=INVALID_DOCUMENT_LIST",
+                    request.user.id, lease_id )
                 return prepare_response(
                     message=constants.DOCUMENTS_MUST_BE_LIST,
                     status=status.HTTP_400_BAD_REQUEST
@@ -2343,6 +2726,8 @@ def lease_documents(request):
             try:
                 lease_obj = Lease.objects.get(id=lease_id)
             except Lease.DoesNotExist:
+                logger.warning(
+                    "LEASE_DOCUMENT_UPLOAD_FAILED | lease_id=%s | reason=LEASE_NOT_FOUND", lease_id )
                 return prepare_response(
                     message=constants.INVALID_LEASE_ID,
                     status=status.HTTP_404_NOT_FOUND
@@ -2356,6 +2741,8 @@ def lease_documents(request):
                 doc_type = doc.get("type", constants.EJARI_CERTIFICATE).upper()
 
                 if not file_name or not base64_data:
+                    logger.warning(
+                        "LEASE_DOCUMENT_UPLOAD_FAILED | lease_id=%s | reason=MISSING_FILE_OR_DATA", lease_id )
                     return prepare_response(
                         message=constants.MISSING_FILE_OR_DATA,
                         status=status.HTTP_400_BAD_REQUEST
@@ -2385,7 +2772,9 @@ def lease_documents(request):
 
             lease_obj.lease_stage = constants.EJARI_DOCUMENT_UPLOAD
             lease_obj.save()
-
+            logger.info(
+                "LEASE_DOCUMENTS_UPLOADED | user_id=%s | lease_id=%s | files_uploaded=%s",
+                request.user.id, lease_id, len(uploaded_files))
             audit_logs(
                 request,
                 f"Uploaded lease documents for unit '{lease_obj.lease_property.unit_name}'",
@@ -2405,6 +2794,8 @@ def lease_documents(request):
             documents = body.get("documents", [])
 
             if not lease_id:
+                logger.warning(
+                    "LEASE_DOCUMENT_UPDATE_FAILED | reason=LEASE_ID_MISSING")
                 return prepare_response(
                     message=constants.LEASE_ID_REQUIRED,
                     status=status.HTTP_400_BAD_REQUEST
@@ -2419,6 +2810,8 @@ def lease_documents(request):
             try:
                 lease_obj = Lease.objects.get(id=lease_id)
             except Lease.DoesNotExist:
+                logger.warning(
+                    "LEASE_DOCUMENT_UPDATE_FAILED | lease_id=%s | reason=LEASE_NOT_FOUND", lease_id )
                 return prepare_response(
                     message=constants.INVALID_LEASE_ID,
                     status=status.HTTP_404_NOT_FOUND
@@ -2432,6 +2825,8 @@ def lease_documents(request):
                 doc_type = doc.get("type", constants.EJARI_CERTIFICATE).upper()
 
                 if not file_name or not base64_data:
+                    logger.warning(
+                        "LEASE_DOCUMENT_UPDATE_FAILED | lease_id=%s | reason=MISSING_FILE_OR_DATA", lease_id )
                     return prepare_response(
                         message=constants.MISSING_FILE_OR_DATA,
                         status=status.HTTP_400_BAD_REQUEST
@@ -2473,7 +2868,9 @@ def lease_documents(request):
                     "type": doc_type,
                     "status": status_text
                 })
-
+            logger.info(
+                "LEASE_DOCUMENTS_UPDATED | user_id=%s | lease_id=%s | files_updated=%s",
+                request.user.id, lease_id, len(updated_files) )
             audit_logs(
                 request,
                 f"Updated lease documents for unit '{lease_obj.lease_property.unit_name}'",
@@ -2492,6 +2889,9 @@ def lease_documents(request):
         )
 
     except Exception as e:
+        logger.exception(
+                    "LEASE_DOCUMENTS_ERROR | user_id=%s | error=%s",
+                    request.user.id if request.user else None, str(e) )
         return prepare_response(
             message=str(e),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -2527,6 +2927,8 @@ def lease_tenancy(request):
             ).distinct()
 
         else:
+            logger.warning(
+                "LEASE_TENANCY_FETCH_FAILED | user_id=%s | reason=UNAUTHORIZED_ROLE", request.user.id)
             return prepare_response(
                 message=constants.UNAUTHORIZED_ROLE,
                 status=status.HTTP_403_FORBIDDEN
@@ -2580,7 +2982,9 @@ def lease_tenancy(request):
                 "agreement_start_date": datetime_to_epoch_millis(lease.lease_start_date),
                 "agreement_end_date": datetime_to_epoch_millis(lease.lease_end_date),
             })
-
+        logger.info(
+            "LEASE_TENANCY_FETCHED | user_id=%s | records=%s | page=%s",
+            request.user.id, len(table_data), page )
         return prepare_response(
             message=constants.DATA_FETCHED_SUCCESSFULLY,
             content=table_data,
@@ -2595,6 +2999,9 @@ def lease_tenancy(request):
         )
 
     except Exception as e:
+        logger.exception(
+            "LEASE_TENANCY_ERROR | user_id=%s | error=%s",
+            request.user.id if request.user else None, str(e) )
         return prepare_response(
             message=str(e),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -2627,6 +3034,8 @@ def export_lease_tenancy_csv(request):
                 lease_property__company__company_user=current_user
             ).distinct()
         else:
+            logger.warning(
+                        "LEASE_TENANCY_EXPORT_FAILED | user_id=%s | reason=UNAUTHORIZED_ROLE", request.user.id )
             return prepare_response(
                 message=constants.UNAUTHORIZED_ROLE,
                 status=status.HTTP_403_FORBIDDEN
@@ -2657,7 +3066,9 @@ def export_lease_tenancy_csv(request):
                 "Agreement End Date": lease.lease_end_date.strftime("%Y-%m-%d") if lease.lease_end_date else "",
                 "Lease Status": lease.lease_status
             })
-
+        logger.info(
+            "LEASE_TENANCY_EXPORTED | user_id=%s | total_records=%s",
+            request.user.id, len(data_list) )
         return export_to_csv(
             filename="lease_tenancy_export",
             field_names=field_names,
@@ -2665,6 +3076,9 @@ def export_lease_tenancy_csv(request):
         )
 
     except Exception as e:
+        logger.exception(
+            "LEASE_TENANCY_EXPORT_ERROR | user_id=%s | error=%s",
+            request.user.id if request.user else None, str(e) )
         return prepare_response(
             message=f"Error exporting lease CSV: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -2683,6 +3097,8 @@ def lease_pdf_view(request):
         purpose = request.GET.get("purpose")
 
         if not lease_id:
+            logger.warning(
+                "LEASE_PDF_FETCH_FAILED | reason=LEASE_ID_MISSING" )
             return prepare_response(
                 message=constants.LEASE_ID_REQUIRED,
                 status=status.HTTP_400_BAD_REQUEST
@@ -2690,12 +3106,16 @@ def lease_pdf_view(request):
 
         lease = Lease.objects.filter(id=lease_id).first()
         if not lease:
+            logger.warning(
+                        "LEASE_PDF_FETCH_FAILED | lease_id=%s | reason=LEASE_NOT_FOUND", lease_id )
             return prepare_response(
                 message=constants.LEASE_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
             )
 
         if not lease.pdf_path:
+            logger.warning(
+                        "LEASE_PDF_FETCH_FAILED | lease_id=%s | reason=PDF_NOT_AVAILABLE", lease_id )
             return prepare_response(
                 message=constants.LEASE_PDF_NOT_AVAILABLE,
                 status=status.HTTP_404_NOT_FOUND
@@ -2717,11 +3137,16 @@ def lease_pdf_view(request):
             )
 
         if not presigned_url:
+            logger.error(
+                "LEASE_PDF_FETCH_FAILED | lease_id=%s | reason=PRESIGNED_URL_GENERATION_FAILED",
+                lease_id)
             return prepare_response(
                 message=constants.PDF_URL_GENERATION_FAILED,
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-
+        logger.info(
+                "LEASE_PDF_FETCHED | lease_id=%s | purpose=%s",
+                lease.id, purpose or "preview" )
         return prepare_response(
             content={
                 "lease_id": lease.id,
@@ -2734,18 +3159,23 @@ def lease_pdf_view(request):
         )
 
     except Exception as e:
+        logger.exception(
+                    "LEASE_PDF_ERROR | lease_id=%s | error=%s",
+                    lease_id if 'lease_id' in locals() else None, str(e) )
         return prepare_response(
             message={"error": str(e)},
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
-
+@is_request_authenticated
 def lease_term_and_condition(request):
     try:
         if request.method == "GET":
             lease_id = request.GET.get("lease_id")
 
             if not lease_id:
+                logger.warning(
+                    "LEASE_TERMS_FETCH_FAILED | user_id=%s | reason=LEASE_ID_MISSING",request.user.id)
                 return prepare_response(
                     message=constants.LEASE_ID_REQUIRED,
                     status=status.HTTP_400_BAD_REQUEST
@@ -2754,6 +3184,9 @@ def lease_term_and_condition(request):
             try:
                 lease_obj = Lease.objects.get(id=lease_id)
             except Lease.DoesNotExist:
+                logger.warning(
+                        "LEASE_TERMS_FETCH_FAILED | user_id=%s | lease_id=%s | reason=LEASE_NOT_FOUND", 
+                        request.user.id, lease_id, )
                 return prepare_response(
                     message=constants.INVALID_LEASE_ID,
                     status=status.HTTP_404_NOT_FOUND
@@ -2791,7 +3224,9 @@ def lease_term_and_condition(request):
                      "description_ar": translate_to_arabic(term.description),
                     "term_type": term.term_type
                         })
-
+            logger.info(
+                    "LEASE_TERMS_FETCHED | user_id=%s | lease_id=%s | predefined_terms=%s | user_terms=%s",
+                    request.user.id, lease_id, len(response_data["Predefined"]), len(response_data["User defined"]) )
             return prepare_response(
                 message=constants.DATA_FETCHED_SUCCESS,
                 content=response_data,
@@ -2804,12 +3239,17 @@ def lease_term_and_condition(request):
             descriptions = body.get("descriptions", [])
 
             if not lease_id:
+                logger.warning(
+                            "LEASE_TERMS_CREATE_FAILED | user_id=%s | reason=LEASE_ID_MISSING", request.user.id )
                 return prepare_response(
                     message=constants.LEASE_ID_REQUIRED,
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
             if not isinstance(descriptions, list) or not descriptions:
+                logger.warning(
+                        "LEASE_TERMS_CREATE_FAILED | user_id=%s | lease_id=%s | reason=INVALID_DESCRIPTION_LIST",
+                        request.user.id, lease_id )
                 return prepare_response(
                     message=constants.TERMS_MUST_BE_LIST,
                     status=status.HTTP_400_BAD_REQUEST
@@ -2818,6 +3258,8 @@ def lease_term_and_condition(request):
             try:
                 lease_obj = Lease.objects.get(id=lease_id)
             except Lease.DoesNotExist:
+                logger.warning(
+                    "LEASE_TERMS_CREATE_FAILED | user_id=%s | lease_id=%s | reason=LEASE_NOT_FOUND", lease_id, request.user.id)
                 return prepare_response(
                     message=constants.INVALID_LEASE_ID,
                     status=status.HTTP_404_NOT_FOUND
@@ -2847,7 +3289,9 @@ def lease_term_and_condition(request):
                     "description": term_obj.description,
                     "term_type": term_obj.term_type
                 })
-
+            logger.info(
+                "LEASE_TERMS_CREATED | user_id=%s | lease_id=%s | terms_created=%s",
+                request.user.id, lease_id, len(created_terms) )
             return prepare_response(
                 message=constants.TERMS_CREATED_SUCCESS,
                 content={"created_terms": created_terms},
@@ -2861,12 +3305,14 @@ def lease_term_and_condition(request):
         )
 
     except Exception as e:
+        logger.exception(
+                    "LEASE_TERMS_ERROR | error=%s", str(e) )
         return prepare_response(
             message=str(e),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
-
+@is_request_authenticated
 def property_owner_compny_lease(request):
     try:
         if request.method == "GET":
@@ -2878,11 +3324,17 @@ def property_owner_compny_lease(request):
 
                 tenant_data = get_tenant_detail_by_id(tenant_id)
                 if not tenant_data:
+                    logger.warning(
+                        "TENANT_DETAILS_FETCH_FAILED | tenant_id=%s | reason=TENANT_NOT_FOUND", tenant_id)
                     return prepare_response(message="Invalid tenant_id",status=status.HTTP_404_NOT_FOUND)
-
+                logger.info(
+                    "TENANT_DETAILS_FETCHED | user_id=%s | tenant_id=%s",
+                    request.user.id, tenant_id )
                 return prepare_response(message="tenant details fetched successfully", content=tenant_data,status=status.HTTP_200_OK)
 
             if not property_unit_id:
+                logger.warning(
+                    "PROPERTY_UNIT_FETCH_FAILED | reason=PROPERTY_UNIT_ID_MISSING" )
                 return prepare_response(
                     message="Property unit id is required",
                     status=status.HTTP_400_BAD_REQUEST
@@ -2893,6 +3345,9 @@ def property_owner_compny_lease(request):
                     "property_block_tower__property"
                 ).get(id=property_unit_id)
             except Unit.DoesNotExist:
+                logger.warning(
+                    "PROPERTY_UNIT_FETCH_FAILED | property_unit_id=%s | reason=UNIT_NOT_FOUND",
+                    property_unit_id )
                 return prepare_response(
                     message="Invalid property unit id",
                     status=status.HTTP_404_NOT_FOUND
@@ -2963,7 +3418,9 @@ def property_owner_compny_lease(request):
                 "parent_property": property_data,
                 "owners": owner_data,
             }
-
+            logger.info(
+                    "PROPERTY_UNIT_FETCHED | user_id=%s | property_unit_id=%s",
+                    request.user.id, property_unit_id )
             return prepare_response(
                 message="Property unit details fetched successfully",
                 content=response_data,
@@ -2976,6 +3433,9 @@ def property_owner_compny_lease(request):
         )
 
     except Exception as e:
+        logger.exception(
+                    "PROPERTY_UNIT_ERROR | user_id=%s | error=%s",
+                    request.user.id if request.user else None, str(e) )
         return prepare_response(
             message=str(e),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -2995,6 +3455,9 @@ def property_lease_payment(request):
             elif payment_id:
                 transactions = LeaseTransaction.objects.filter(id=payment_id)
             else:
+                logger.warning(
+                            "LEASE_PAYMENT_FETCH_FAILED | user_id=%s | reason=LEASE_ID_OR_PAYMENT_ID_MISSING",
+                            request.user.id )
                 return prepare_response(
                     message="lease_id or payment_id is required",
                     status=status.HTTP_400_BAD_REQUEST
@@ -3019,7 +3482,9 @@ def property_lease_payment(request):
                         "ifsc_code": t.origin_bank.ifsc_code
                     } if t.origin_bank else None
                 })
-
+            logger.info(
+                "LEASE_PAYMENT_FETCHED | user_id=%s | lease_id=%s | payment_id=%s | records=%s",
+                request.user.id, lease_id, payment_id, len(data) )
             return prepare_response(
                 content=data if lease_id else (data[0] if data else {}),
                 message="Payment data fetched",
@@ -3031,6 +3496,9 @@ def property_lease_payment(request):
 
             lease_id = body.get("lease_id")
             if not lease_id:
+                logger.warning(
+                            "LEASE_PAYMENT_CREATE_FAILED | user_id=%s | reason=LEASE_ID_MISSING",
+                            request.user.id ) 
                 return prepare_response(
                     message="lease_id is required",
                     status=status.HTTP_400_BAD_REQUEST
@@ -3038,6 +3506,9 @@ def property_lease_payment(request):
 
             lease = Lease.objects.filter(id=lease_id).first()
             if not lease:
+                logger.warning(
+                    "LEASE_PAYMENT_CREATE_FAILED | user_id=%s | lease_id=%s | reason=INVALID_LEASE",
+                    request.user.id, lease_id )
                 return prepare_response(
                     message="Invalid lease_id",
                     status=status.HTTP_400_BAD_REQUEST
@@ -3067,7 +3538,9 @@ def property_lease_payment(request):
                 start_date=safe_epoch_to_datetime(body.get("start_date")) if body.get("start_date") else None,
                 end_date=safe_epoch_to_datetime(body.get("end_date")) if body.get("end_date") else None,
             )
-
+            logger.info(
+                "LEASE_PAYMENT_CREATED | user_id=%s | lease_id=%s | payment_id=%s | amount=%s",
+                request.user.id, lease.id, transaction.id, transaction.amount )
             audit_logs(
                 request,
                 f"Created transaction of {transaction.amount} for Lease {lease.id}",
@@ -3083,6 +3556,9 @@ def property_lease_payment(request):
             body = json.loads(request.body)
             payment_id = body.get("payment_id")
             if not payment_id:
+                logger.warning(
+                            "LEASE_PAYMENT_UPDATE_FAILED | user_id=%s | reason=PAYMENT_ID_MISSING",
+                            request.user.id )
                 return prepare_response(
                     message="payment_id is mandatory for update",
                     status=status.HTTP_400_BAD_REQUEST
@@ -3090,6 +3566,9 @@ def property_lease_payment(request):
 
             transaction = LeaseTransaction.objects.filter(id=payment_id).first()
             if not transaction:
+                logger.warning(
+                    "LEASE_PAYMENT_UPDATE_FAILED | user_id=%s | payment_id=%s | reason=PAYMENT_NOT_FOUND",
+                    request.user.id, payment_id )
                 return prepare_response(
                     message="Payment not found",
                     status=status.HTTP_404_NOT_FOUND
@@ -3098,6 +3577,9 @@ def property_lease_payment(request):
             if body.get("origin_bank_id"):
                 bank = Bank.objects.filter(id=body.get("origin_bank_id")).first()
                 if not bank:
+                    logger.warning(
+                        "LEASE_PAYMENT_UPDATE_FAILED | user_id=%s | payment_id=%s | origin_bank_id=%s | reason=INVALID_BANK",
+                        request.user.id, payment_id, body.get("origin_bank_id") )
                     return prepare_response(
                         message="Invalid origin_bank_id",
                         status=status.HTTP_400_BAD_REQUEST
@@ -3116,7 +3598,9 @@ def property_lease_payment(request):
                 transaction.cheque_date = safe_epoch_to_datetime(body.get("cheque_date"))
 
             transaction.save()
-
+            logger.info(
+                "LEASE_PAYMENT_UPDATED | user_id=%s | payment_id=%s | amount=%s",
+                request.user.id, transaction.id, transaction.amount )
             audit_logs(
                 request,
                 f"Updated payment {transaction.id}",
@@ -3136,6 +3620,9 @@ def property_lease_payment(request):
             )
 
     except Exception as e:
+        logger.exception(
+                    "LEASE_PAYMENT_ERROR | user_id=%s | error=%s",
+                    request.user.id if hasattr(request, "user") else None, str(e) )
         return prepare_response(
             message=str(e),
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -3156,6 +3643,9 @@ def invoice_view(request):
 
     lease_id = request.GET.get("lease_id")
     if not lease_id:
+        logger.warning(
+            "INVOICE_FETCH_FAILED | user_id=%s | reason=LEASE_ID_MISSING",
+            request.user.id )
         return prepare_response(message=constants.LEASE_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
 
     lease = (
@@ -3165,6 +3655,9 @@ def invoice_view(request):
         .first()
     )
     if not lease:
+        logger.warning(
+            "INVOICE_FETCH_FAILED | user_id=%s | lease_id=%s | reason=LEASE_NOT_FOUND",
+            request.user.id, lease_id )
         return prepare_response(message=constants.LEASE_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
 
     t    = lease.tenant
@@ -3223,7 +3716,9 @@ def invoice_view(request):
     subtotal    = sum((t["amount"] or 0) for t in transactions)
     vat_total   = sum(t["vat"]           for t in transactions)
     grand_total = round(sum(t["total"]   for t in transactions), 2)
-
+    logger.info(
+            "INVOICE_FETCHED | user_id=%s | lease_id=%s | transaction_count=%s",
+            request.user.id, lease_id, len(transactions) )
     return prepare_response(content={
         "tenant":       tenant_info,
         "property":     property_info,
@@ -3247,6 +3742,9 @@ def invoice_pdf_view(request):
 
     lease_id = request.GET.get("lease_id")
     if not lease_id:
+        logger.warning(
+            "INVOICE_PDF_GENERATION_FAILED | user_id=%s | reason=LEASE_ID_MISSING",
+            request.user.id )
         return prepare_response(message=constants.LEASE_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
 
     lease = (
@@ -3256,6 +3754,9 @@ def invoice_pdf_view(request):
         .first()
     )
     if not lease:
+        logger.warning(
+            "INVOICE_PDF_GENERATION_FAILED | user_id=%s | lease_id=%s | reason=LEASE_NOT_FOUND",
+            request.user.id, lease_id )
         return prepare_response(message=constants.LEASE_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
 
     t    = lease.tenant
@@ -3320,15 +3821,24 @@ def invoice_pdf_view(request):
     try:
         pdf_bytes = WeasyprintHTML(string=html_content).write_pdf()
     except Exception as e:
+        logger.exception(
+                    "INVOICE_PDF_GENERATION_FAILED | user_id=%s | lease_id=%s | error=%s",
+                    request.user.id, lease_id, str(e) )
         return prepare_response(message=f"PDF generation failed: {str(e)}", status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     timestamp    = datetime.now().strftime("%Y%m%d%H%M%S")
     pdf_filename = f"invoice_{lease.code}_{timestamp}.pdf"
     pdf_s3_url   = upload_file_to_s3_base64(pdf_bytes, f"invoices/{pdf_filename}")
     if not pdf_s3_url:
+        logger.error(
+                "INVOICE_PDF_UPLOAD_FAILED | user_id=%s | lease_id=%s",
+                request.user.id, lease_id )
         return prepare_response(message="Failed to upload invoice PDF", status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     download_url = fetch_s3_presigned_url_for_download(pdf_s3_url, file_name=pdf_filename)
+    logger.info(
+        "INVOICE_PDF_GENERATED | user_id=%s | lease_id=%s | file_name=%s",
+        request.user.id, lease_id, pdf_filename )
     return prepare_response(
         content={"pdf_url": download_url, "file_name": pdf_filename},
         status=status.HTTP_200_OK,
@@ -3528,10 +4038,16 @@ def manager_approval_view(request):
     data = json.loads(request.body)
     lease_id = data.get("lease_id")
     if not lease_id:
+        logger.warning(
+            "MANAGER_APPROVAL_CREATE_FAILED | user_id=%s | reason=LEASE_ID_MISSING",
+            request.user.id )
         return prepare_response(message="lease_id is required", status=status.HTTP_400_BAD_REQUEST)
 
     lease = Lease.objects.select_related("tenant", "unit").filter(id=lease_id).first()
     if not lease:
+        logger.warning(
+            "MANAGER_APPROVAL_CREATE_FAILED | user_id=%s | lease_id=%s | reason=LEASE_NOT_FOUND",
+            request.user.id, lease_id )
         return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
 
     requested_rent = data.get("requested_rent") or (float(lease.annual_amount) if lease.annual_amount else 0)
@@ -3543,6 +4059,9 @@ def manager_approval_view(request):
     if existing:
         lease.lease_stage = constants.MANAGER_APPROVAL_REQUIRED
         lease.save(update_fields=["lease_stage"])
+        logger.info(
+            "MANAGER_APPROVAL_ALREADY_PENDING | user_id=%s | lease_id=%s | approval_id=%s",
+            request.user.id, lease_id, existing.id )
         return prepare_response(
             message="Approval request already pending",
             content={"approval_id": existing.id},
@@ -3559,7 +4078,9 @@ def manager_approval_view(request):
 
     lease.lease_stage = constants.MANAGER_APPROVAL_REQUIRED
     lease.save(update_fields=["lease_stage"])
-
+    logger.info(
+        "MANAGER_APPROVAL_CREATED | user_id=%s | lease_id=%s | approval_id=%s",
+        request.user.id, lease_id, approval.id )
     return prepare_response(
         message="Manager approval request created",
         content={"approval_id": approval.id},
@@ -3578,13 +4099,22 @@ def verify_cheque_view(request):
         body     = json.loads(request.body)
         lease_id = body.get("lease_id")
         if not lease_id:
+            logger.warning(
+                "CHEQUE_VERIFICATION_FAILED | user_id=%s | reason=LEASE_ID_MISSING",
+                request.user.id )
             return prepare_response(message="lease_id is required", status=status.HTTP_400_BAD_REQUEST)
 
         lease = Lease.objects.filter(id=lease_id, is_active=True).first()
         if not lease:
+            logger.warning(
+                "CHEQUE_VERIFICATION_FAILED | user_id=%s | lease_id=%s | reason=LEASE_NOT_FOUND",
+                request.user.id, lease_id )
             return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
 
         if lease.lease_stage != constants.CHEQUE_COLLECTED:
+            logger.warning(
+                "CHEQUE_VERIFICATION_FAILED | lease_id=%s | current_stage=%s",
+                lease_id, lease.lease_stage )
             return prepare_response(
                 message=f"Cannot verify cheque: lease is in '{lease.lease_stage}' stage, expected CHEQUE_COLLECTED.",
                 status=status.HTTP_400_BAD_REQUEST,
@@ -3592,7 +4122,9 @@ def verify_cheque_view(request):
 
         lease.lease_stage = constants.CHEQUE_VERIFIED
         lease.save(update_fields=["lease_stage"])
-
+        logger.info(
+            "CHEQUE_VERIFIED | user_id=%s | lease_id=%s",
+            request.user.id, lease_id )
         audit_logs(request, f"Cheque documents verified for lease '{lease.code}'", constants.UPDATED)
 
         return prepare_response(
@@ -3600,6 +4132,9 @@ def verify_cheque_view(request):
             status=status.HTTP_200_OK,
         )
     except Exception as e:
+        logger.exception(
+            "CHEQUE_VERIFICATION_ERROR | user_id=%s | error=%s",
+            request.user.id, str(e) )
         return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -3614,15 +4149,24 @@ def send_ejari_for_signature(request):
         body     = json.loads(request.body)
         lease_id = body.get("lease_id")
         if not lease_id:
+            logger.warning(
+                "EJARI_SIGNATURE_REQUEST_FAILED | user_id=%s | reason=LEASE_ID_MISSING",
+                request.user.id )
             return prepare_response(message="lease_id is required", status=status.HTTP_400_BAD_REQUEST)
 
         lease = Lease.objects.select_related(
             "tenant__user", "unit__property_block_tower__property"
         ).filter(id=lease_id, is_active=True).first()
         if not lease:
+            logger.warning(
+                "EJARI_SIGNATURE_REQUEST_FAILED | lease_id=%s | reason=LEASE_NOT_FOUND",
+                lease_id )
             return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
 
         if lease.lease_stage not in (constants.EJARI_DOCUMENT_UPLOAD, constants.EJARI):
+            logger.warning(
+                "EJARI_SIGNATURE_REQUEST_FAILED | lease_id=%s | current_stage=%s | reason=INVALID_STAGE",
+                lease_id, lease.lease_stage )
             return prepare_response(
                 message=f"Cannot send Ejari for signature: lease is in '{lease.lease_stage}' stage.",
                 status=status.HTTP_400_BAD_REQUEST,
@@ -3630,6 +4174,9 @@ def send_ejari_for_signature(request):
 
         tenant_email = lease.tenant.user.email if lease.tenant and lease.tenant.user else None
         if not tenant_email:
+            logger.warning(
+                        "EJARI_SIGNATURE_REQUEST_FAILED | lease_id=%s | reason=TENANT_EMAIL_MISSING",
+                        lease_id )
             return prepare_response(message="Tenant email not found", status=status.HTTP_400_BAD_REQUEST)
 
         from utilities.config import FRONTEND_URL
@@ -3650,11 +4197,16 @@ def send_ejari_for_signature(request):
 
         lease.lease_stage = constants.EJARI_SIGNING
         lease.save(update_fields=["lease_stage"])
-
+        logger.info(
+                "EJARI_SENT_FOR_SIGNATURE | user_id=%s | lease_id=%s ",
+                request.user.id, lease_id )
         audit_logs(request, f"Ejari sent for signature for lease '{lease.code}'", constants.UPDATED)
 
         return prepare_response(message="Ejari sent for signature successfully.", status=status.HTTP_200_OK)
     except Exception as e:
+        logger.exception(
+            "EJARI_SIGNATURE_REQUEST_ERROR | user_id=%s | error=%s",
+            request.user.id, str(e) )
         return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -3671,12 +4223,17 @@ def ejari_signature_otp(request):
         lease_id = body.get("lease_id")
         email    = (body.get("email") or "").strip().lower()
         if not lease_id or not email:
+            logger.warning(
+                "EJARI_OTP_SEND_FAILED | reason=MISSING_REQUIRED_FIELDS" )
             return prepare_response(message="lease_id and email are required", status=status.HTTP_400_BAD_REQUEST)
 
         lease = Lease.objects.select_related("tenant__user").get(id=lease_id)
 
         expected = lease.tenant.user.email.strip().lower() if lease.tenant and lease.tenant.user else None
         if not expected or expected != email:
+            logger.warning(
+                        "EJARI_OTP_SEND_FAILED | lease_id=%s | email=%s | reason=EMAIL_MISMATCH",
+                        lease_id, email )
             return prepare_response(message="Email does not match the tenant for this lease.", status=status.HTTP_403_FORBIDDEN)
 
         otp       = request_otp_sent()
@@ -3690,11 +4247,19 @@ def ejari_signature_otp(request):
             "recipient_name": email, "role_label": "Tenant", "role_label_ar": "المستأجر",
         })
         send_ses_email(email, subject, body_text, body_html)
-
+        logger.info(
+            "EJARI_OTP_SENT | lease_id=%s ",
+            lease_id )
         return prepare_response(message="OTP sent successfully", status=status.HTTP_200_OK)
     except Lease.DoesNotExist:
+        logger.warning(
+            "EJARI_OTP_SEND_FAILED | lease_id=%s | reason=LEASE_NOT_FOUND",
+            lease_id )
         return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
+        logger.exception(
+            "EJARI_OTP_SEND_ERROR | lease_id=%s | error=%s",
+            lease_id if 'lease_id' in locals() else None, str(e) )
         return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -3711,11 +4276,16 @@ def ejari_signature_verify_otp(request):
         email    = (body.get("email") or "").strip().lower()
         otp      = body.get("otp")
         if not lease_id or not email or not otp:
+            logger.warning(
+                "EJARI_OTP_VERIFY_FAILED | reason=MISSING_REQUIRED_FIELDS" )
             return prepare_response(message="lease_id, email and otp are required", status=status.HTTP_400_BAD_REQUEST)
 
         cache_key = f"otp_ejari_signature_{lease_id}_{email}"
         stored    = cache.get(cache_key)
         if not stored or str(stored) != str(otp):
+            logger.warning(
+                "EJARI_OTP_VERIFY_FAILED | lease_id=%s | reason=INVALID_OTP",
+                lease_id)
             return prepare_response(message="Invalid or expired OTP", status=status.HTTP_400_BAD_REQUEST)
 
         verified_key = f"otp_ejari_signature_verified_{lease_id}_{email}"
@@ -3734,7 +4304,9 @@ def ejari_signature_verify_otp(request):
             fetch_s3_presigned_url(ejari_docs.first().document.file_path, file_name=ejari_docs.first().document.file_name)
             if ejari_docs.exists() else ""
         )
-
+        logger.info(
+            "EJARI_OTP_VERIFIED | lease_id=%s ",
+            lease_id )
         return prepare_response(
             message="OTP verified",
             content={
@@ -3747,8 +4319,14 @@ def ejari_signature_verify_otp(request):
             status=status.HTTP_200_OK,
         )
     except Lease.DoesNotExist:
+        logger.warning(
+                "EJARI_OTP_VERIFY_FAILED | lease_id=%s | reason=LEASE_NOT_FOUND",
+                lease_id if 'lease_id' in locals() else None )
         return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
+        logger.exception(
+            "EJARI_OTP_VERIFY_ERROR | lease_id=%s | error=%s",
+            lease_id if 'lease_id' in locals() else None, str(e) )
         return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -3766,10 +4344,15 @@ def submit_ejari_signature(request):
         signature_data = body.get("signature_data", "")
 
         if not lease_id or not email or not signature_data:
+            logger.warning(
+                "EJARI_SIGNATURE_SUBMIT_FAILED | reason=MISSING_REQUIRED_FIELDS" )
             return prepare_response(message="lease_id, email and signature_data are required", status=status.HTTP_400_BAD_REQUEST)
 
         verified_key = f"otp_ejari_signature_verified_{lease_id}_{email}"
         if not cache.get(verified_key):
+            logger.warning(
+                        "EJARI_SIGNATURE_SUBMIT_FAILED | lease_id=%s | reason=OTP_NOT_VERIFIED",
+                        lease_id)
             return prepare_response(message="OTP not verified. Please verify OTP first.", status=status.HTTP_400_BAD_REQUEST)
 
         lease = Lease.objects.get(id=lease_id)
@@ -3795,15 +4378,22 @@ def submit_ejari_signature(request):
         lease.lease_stage  = constants.ACTIVATED
         lease.lease_status = "ACTIVE"
         lease.save(update_fields=["lease_stage", "lease_status"])
-
+        logger.info(
+            "EJARI_SIGNATURE_SUBMITTED | lease_id=%s | lease_status=%s",
+            lease.id, lease.lease_status )
         return prepare_response(
             message="Ejari signed successfully. Lease is now active.",
             content={"lease_id": lease.id, "lease_stage": lease.lease_stage},
             status=status.HTTP_200_OK,
         )
     except Lease.DoesNotExist:
+        logger.warning(
+            "EJARI_SIGNATURE_SUBMIT_FAILED | lease_id=%s | reason=LEASE_NOT_FOUND", lease_id )
         return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
+        logger.exception(
+            "EJARI_SIGNATURE_SUBMIT_ERROR | lease_id=%s | error=%s",
+            lease_id if 'lease_id' in locals() else None, str(e) )
         return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -3819,16 +4409,24 @@ def activate_lease_view(request):
         body     = json.loads(request.body)
         lease_id = body.get("lease_id")
         if not lease_id:
+            logger.warning(
+                "LEASE_ACTIVATION_FAILED | user_id=%s | reason=LEASE_ID_MISSING",
+                request.user.id )
             return prepare_response(message="lease_id is required", status=status.HTTP_400_BAD_REQUEST)
 
         lease = Lease.objects.filter(id=lease_id, is_active=True).first()
         if not lease:
+            logger.warning(
+                "LEASE_ACTIVATION_FAILED | user_id=%s | lease_id=%s | reason=LEASE_NOT_FOUND",
+                request.user.id, lease_id )
             return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
 
         lease.lease_stage  = constants.ACTIVATED
         lease.lease_status = "ACTIVE"
         lease.save(update_fields=["lease_stage", "lease_status"])
-
+        logger.info(
+            "LEASE_ACTIVATED | user_id=%s | lease_id=%s",
+            request.user.id, lease_id )
         audit_logs(request, f"Lease '{lease.code}' manually activated", constants.UPDATED)
 
         return prepare_response(
@@ -3837,4 +4435,7 @@ def activate_lease_view(request):
             status=status.HTTP_200_OK,
         )
     except Exception as e:
+        logger.exception(
+            "LEASE_ACTIVATION_ERROR | user_id=%s | error=%s",
+            request.user.id, str(e) )
         return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)

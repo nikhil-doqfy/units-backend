@@ -25,6 +25,9 @@ contact_list_get,owner_get,owner_post,owner_put,owner_delete,tenant_get,tenant_p
 approval_put,owner_pmc_get,export_owner_pmc_csv_get,export_company_owners_csv_get,export_tenant_csv_get,export_staff_csv_get,export_users_csv_get,
 company_tenants_get,company_tenants_put,agreement_get,agreement_post,agreement_detail_get,agreement_detail_put,agreement_detail_delete,
 renew_agreement_patch,upload_agreement_document_post,share_profile_post,reset_user_password_post,)
+from plugins.logger_plugin import get_logger
+
+logger = get_logger(__name__)
 
 EMIRATES_VISA_DOC_SPECS = [
     ("emirates_id_doc", "emirates_id", "emirates_id_doc_type"),
@@ -49,10 +52,17 @@ def user_sign_up(request):
     user_role = data.get("user_role")
 
     if not all([email, password, data.get("confirm_password"), user_role]):
+        logger.warning(
+            "SIGNUP_FAILED | reason=REQUIRED_FIELDS_MISSING")
         return prepare_response(message=constants.FIELD_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
     if password != data.get("confirm_password"):
+        logger.warning(
+            "SIGNUP_FAILED | reason=PASSWORD_MISMATCH")
         return prepare_response(message=constants.PASSWORD_MISMATCH, status=status.HTTP_400_BAD_REQUEST)
     if User.objects.filter(username=email).exists():
+        logger.warning(
+            "SIGNUP_FAILED | email=%s | reason=EMAIL_ALREADY_EXISTS",
+            email)
         return prepare_response(message=constants.EMAIL_ALREADY_REGISTERED, status=status.HTTP_400_BAD_REQUEST)
 
     with transaction.atomic():
@@ -82,12 +92,17 @@ def user_sign_up(request):
         elif user_role == constants.COMPANY_USER:
             company_id = data.get("company_id")
             if not company_id:
+                logger.warning(
+                    "SIGNUP_FAILED | reason=COMPANY_ID_MISSING")
                 return prepare_response(message=constants.FIELD_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
             profile = PropertyManager.objects.create(
                 **common_profile_kwargs,
                 company_id=company_id
             )
         else:
+            logger.warning(
+                "SIGNUP_FAILED | role=%s | reason=INVALID_ROLE",
+                user_role )
             return prepare_response(message=constants.INVALID_USER_ROLE, status=status.HTTP_400_BAD_REQUEST)
 
         folder_name = f"{user_role.lower()}_documents/{profile.id}"
@@ -104,7 +119,9 @@ def user_sign_up(request):
                 doc = upload_document(data.get(data_key), prefix, data.get(type_key), Documents, {}, folder_name, user)
                 if doc:
                     PropertyManagerDocuments.objects.create(company_user=profile, document=doc, created_by=user)
-
+    logger.info(
+        "USER_SIGNUP_SUCCESS | user_id=%s | profile_id=%s | role=%s",
+        user.id, profile.id, user_role )
     return prepare_response(
         message=constants.SIGNUP_SUCCESS,
         content={"user_id": user.id, "profile_id": profile.id, "email": email, "role": user_role},
@@ -179,7 +196,9 @@ def userprofile_view(request):
                 "time_zone": user_profile.timezone,
                 "permissions": permissions,
             }
-
+            logger.info(
+                    "USER_PROFILE_FETCHED | user_id=%s | role=%s",
+                    request.user.id, user_role )
             return prepare_response(
                 content=data,
                 message=constants.USER_PROFILE_FETCHED,
@@ -187,6 +206,9 @@ def userprofile_view(request):
             )
 
         except Exception as e:
+            logger.exception(
+                "USER_PROFILE_FETCH_ERROR | user_id=%s | error=%s",
+                request.user.id, str(e) )
             return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     elif request.method == "PUT":
@@ -227,15 +249,23 @@ def userprofile_view(request):
                     setattr(user_profile, model_field, body[body_key])
             user_profile.save()
                
-                    
+            logger.info(
+                "USER_PROFILE_UPDATED | user_id=%s",
+                request.user.id )
             return prepare_response(
                 message=constants.USER_PROFILE_UPDATED,
                 status=status.HTTP_200_OK
             )
 
         except Exception as e:
+            logger.exception(
+                "USER_PROFILE_UPDATE_ERROR | user_id=%s | error=%s",
+                request.user.id, str(e))
             return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     else:
+        logger.warning(
+            "USER_PROFILE_FAILED | user_id=%s | method=%s | reason=METHOD_NOT_ALLOWED",
+            request.user.id, request.method )
         return prepare_response(
             message=constants.INVALID_REQUEST,
             status=status.HTTP_405_METHOD_NOT_ALLOWED
@@ -262,18 +292,27 @@ def user_management(request):
             role       = body.get("role")
 
             if not all([first_name, last_name, email, password, role]):
+                logger.warning(
+                    "USER_CREATE_FAILED | user_id=%s | reason=REQUIRED_FIELDS_MISSING",
+                    request.user.id)
                 return prepare_response(
                     message=constants.ALL_FIELD_REQUIRED,
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
             if role not in [constants.OWNER, constants.TENANT, constants.COMPANY_USER]:
+                logger.warning(
+                    "USER_CREATE_FAILED | user_id=%s | role=%s | reason=INVALID_ROLE",
+                    request.user.id, role )
                 return prepare_response(
                     message=constants.UNAUTHORIZED_USER_ROLE,
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
             if User.objects.filter(email=email).exists():
+                logger.warning(
+                    "USER_CREATE_FAILED | user_id=%s | reason=EMAIL_ALREADY_EXISTS",
+                    request.user.id )
                 return prepare_response(
                     message=constants.EMAIL_ALREADY_REGISTERED,
                     status=status.HTTP_400_BAD_REQUEST
@@ -306,6 +345,9 @@ def user_management(request):
                         pm_self = PropertyManager.objects.filter(pk=user.pk).select_related("company").first()
                         company = pm_self.company if pm_self else None
                     if not company:
+                        logger.warning(
+                            "USER_CREATE_FAILED | user_id=%s | reason=COMPANY_NOT_FOUND",
+                            request.user.id )
                         return prepare_response(
                             message=constants.COMPANY_NOT_FOUND,
                             status=status.HTTP_404_NOT_FOUND
@@ -313,7 +355,9 @@ def user_management(request):
                     profile = PropertyManager.objects.create(
                         user=django_user, company=company, **common_kwargs
                     )
-
+            logger.info(
+                "USER_CREATED | user_id=%s | created_user_id=%s | role=%s",
+                request.user.id, profile.id, role )
             return prepare_response(
                 message=constants.USER_CREATED,
                 content={"user_id": profile.id, "email": django_user.email, "role": role},
@@ -333,6 +377,9 @@ def user_management(request):
                 pm_check = PropertyManager.objects.filter(pk=user.pk).select_related("company").first()
                 company = pm_check.company if pm_check else None
             if not company:
+                logger.warning(
+                    "USER_LIST_FETCH_FAILED | user_id=%s | reason=COMPANY_NOT_FOUND",
+                    request.user.id )
                 return prepare_response(
                     message=constants.COMPANY_NOT_FOUND,
                     status=status.HTTP_404_NOT_FOUND
@@ -419,7 +466,9 @@ def user_management(request):
                 "total_records": paginator.count,
                 "total_pages": paginator.num_pages
             }
-
+            logger.info(
+                "USER_LIST_FETCHED | user_id=%s | total_records=%s",
+                request.user.id, paginator.count )
             return prepare_response(
                 message=constants.USER_FETCHED_SUCCESS,
                 content=data,
@@ -430,10 +479,16 @@ def user_management(request):
             body = json.loads(request.body)
             user_id = body.get("user_id")
             if not user_id:
+                logger.warning(
+                    "USER_UPDATE_FAILED | user_id=%s | reason=USER_ID_MISSING",
+                    request.user.id)
                 return prepare_response(message=constants.USER_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
 
             profile = UserProfile.objects.select_related("user").filter(id=user_id).first()
             if not profile:
+                logger.warning(
+                    "USER_UPDATE_FAILED | user_id=%s | target_user_id=%s | reason=USER_NOT_FOUND",
+                    request.user.id, user_id )
                 return prepare_response(message=constants.USER_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
 
             django_user = profile.user
@@ -452,7 +507,9 @@ def user_management(request):
                 update_fields.append("profile_image")
             if update_fields:
                 profile.save(update_fields=update_fields)
-
+            logger.info(
+                "USER_UPDATED | user_id=%s | target_user_id=%s",
+                request.user.id, profile.id )
             return prepare_response(
                 message=constants.USER_UPDATED_SUCCESS if hasattr(constants, 'USER_UPDATED_SUCCESS') else "User updated successfully.",
                 content={"user_id": profile.id},
@@ -461,32 +518,51 @@ def user_management(request):
         elif request.method == "DELETE":
             user_id = request.GET.get("user_id")
             if not user_id:
+                logger.warning(
+                    "USER_DELETE_FAILED | user_id=%s | reason=USER_ID_MISSING",
+                    request.user.id )
                 return prepare_response(message=constants.USER_ID_REQUIRED,status=status.HTTP_400_BAD_REQUEST)
             
             profile = UserProfile.objects.select_related("user").filter(
                           id=user_id,
                           created_by=user.user).first()
             if not profile:
+                logger.warning(
+                    "USER_DELETE_FAILED | user_id=%s | target_user_id=%s | reason=USER_NOT_FOUND",
+                    request.user.id, user_id )
                 return prepare_response( message=constants.USER_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
             if profile.is_active: 
                 profile.is_active = False
                 profile.save(update_fields=["is_active"])
+                logger.info(
+                    "USER_DEACTIVATED | user_id=%s | target_user_id=%s",
+                    request.user.id, profile.id )
                 return prepare_response(message="User deactivated successfully",content={"user_id": profile.id,"is_active": profile.is_active},status=status.HTTP_200_OK)
             django_user = profile.user
+            target_user_id = profile.id
             profile.delete()
             django_user.delete()
+            logger.info(
+                "USER_PERMANENTLY_DELETED | user_id=%s | target_user_id=%s",
+                request.user.id, target_user_id)
             return prepare_response(
                 message=constants.USER_PERMANENTLY_DELETED,
                  status=status.HTTP_200_OK
             )
 
         else:
+            logger.warning(
+                "USER_MANAGEMENT_FAILED | user_id=%s | method=%s | reason=METHOD_NOT_ALLOWED",
+                request.user.id, request.method )
             return prepare_response(
                 message=constants.INVALID_METHOD,
                 status=status.HTTP_405_METHOD_NOT_ALLOWED
             )
 
     except Exception as e:
+        logger.exception(
+            "USER_MANAGEMENT_ERROR | user_id=%s | error=%s",
+            request.user.id, str(e) )
         return prepare_response(
             message=f"Error: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -514,7 +590,9 @@ def _save_role_permissions(role, permissions_data, created_by):
         new_perms.append(p)
     if new_perms:
         role.permissions.set(new_perms)
-
+    logger.info(
+            "ROLE_PERMISSIONS_UPDATED | role_id=%s | permission_count=%s",
+            role.id, len(new_perms) )
 
 @create_role_post
 @api_view(["POST"])
@@ -529,6 +607,9 @@ def create_role(request):
         body = json.loads(request.body)
         role_name = body.get("name")
         if not role_name:
+            logger.warning(
+                "ROLE_CREATE_FAILED | user_id=%s | reason=ROLE_NAME_REQUIRED",
+                request.user.id )
             return prepare_response(
                 message=constants.ROLE_IS_REQUIRED,
                 status=status.HTTP_400_BAD_REQUEST
@@ -540,11 +621,17 @@ def create_role(request):
             pm_check = PropertyManager.objects.filter(pk=user_profile.pk).select_related("company").first()
             company = pm_check.company if pm_check else None
         if not company:
+            logger.warning(
+                "ROLE_CREATE_FAILED | user_id=%s | reason=COMPANY_NOT_FOUND",
+                request.user.id )
             return prepare_response(
                 message=constants.COMPANY_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
             )
         if Role.objects.filter(name__iexact=role_name, company=company, is_active=True).exists():
+            logger.warning(
+                "ROLE_CREATE_FAILED | user_id=%s | role_name=%s | reason=ROLE_ALREADY_EXISTS",
+                request.user.id, role_name )
             return prepare_response(
                 message=constants.ROLE_ALREADY_EXISTS_IN_COMPANY,
                 status=status.HTTP_400_BAD_REQUEST
@@ -553,12 +640,18 @@ def create_role(request):
         permissions_data = body.get("permissions", [])
         if permissions_data:
             _save_role_permissions(role, permissions_data, django_user)
+        logger.info(
+            "ROLE_CREATED | user_id=%s | role_id=%s | role_name=%s",
+            request.user.id, role.id, role.name )
         return prepare_response(
             content={"id": role.id, "name": role.name},
             message=constants.ROLE_CREATED_SUCCESS,
             status=status.HTTP_201_CREATED
         )
     except Exception as e:
+        logger.exception(
+            "ROLE_CREATE_ERROR | user_id=%s | error=%s",
+            request.user.id, str(e) )
         print("Create Role Error:", e)
         return prepare_response(
             message=constants.SOMETHING_WENT_WRONG,
@@ -579,6 +672,9 @@ def role_table_view(request):
             pm_check = PropertyManager.objects.filter(pk=user.pk).select_related("company").first()
             company = pm_check.company if pm_check else None
         if not company:
+            logger.warning(
+                "ROLE_FETCH_FAILED | user_id=%s | reason=COMPANY_NOT_FOUND",
+                request.user.id )
             return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
 
         if request.method == "GET":
@@ -628,6 +724,9 @@ def role_table_view(request):
                 "total_records": paginator.count,
                 "total_pages": paginator.num_pages,
             }
+            logger.info(
+                "ROLE_LIST_FETCHED | user_id=%s | total_records=%s",
+                request.user.id, paginator.count )
             return prepare_response(
                 message=constants.ROLES_FETCH_SUCCESS,
                 content=data,
@@ -640,26 +739,43 @@ def role_table_view(request):
             role_id = body.get("role_id")
             role_name = body.get("name", "").strip()
             if not role_id or not role_name:
+                logger.warning(
+                    "ROLE_UPDATE_FAILED | user_id=%s | reason=ROLE_ID_OR_NAME_MISSING",
+                    request.user.id )
                 return prepare_response(message=constants.ROLE_IS_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
             role = Role.objects.filter(pk=role_id, company=company, is_active=True).first()
             if not role:
+                logger.warning(
+                    "ROLE_UPDATE_FAILED | user_id=%s | role_id=%s | reason=ROLE_NOT_FOUND",
+                    request.user.id, role_id )
                 return prepare_response(message=constants.ROLE_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
             if Role.objects.filter(name__iexact=role_name, company=company, is_active=True).exclude(pk=role_id).exists():
+                logger.warning(
+                    "ROLE_UPDATE_FAILED | user_id=%s | role_name=%s | reason=ROLE_ALREADY_EXISTS",
+                    request.user.id, role_name )
                 return prepare_response(message=constants.ROLE_ALREADY_EXISTS_IN_COMPANY, status=status.HTTP_400_BAD_REQUEST)
             role.name = role_name
             role.save()
             permissions_data = body.get("permissions", [])
             if permissions_data is not None:
                 _save_role_permissions(role, permissions_data, django_user)
+            logger.info(
+                "ROLE_UPDATED | user_id=%s | role_id=%s | role_name=%s",
+                request.user.id, role.id, role.name )
             return prepare_response(
                 content={"role_id": role.id, "role_name": role.name},
                 message=constants.ROLE_UPDATED_SUCCESS,
                 status=status.HTTP_200_OK,
             )
-
+        logger.warning(
+            "ROLE_API_FAILED | user_id=%s | method=%s | reason=METHOD_NOT_ALLOWED",
+            request.user.id, request.method )
         return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     except Exception as e:
+        logger.exception(
+            "ROLE_API_ERROR | user_id=%s | error=%s",
+            request.user.id, str(e) )
         print("Role View Error:", e)
         return prepare_response(message=constants.SOMETHING_WENT_WRONG, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -727,7 +843,9 @@ def export_users_csv(request):
                 ),
                 "Status": "Active" if profile.is_active else "Inactive"
             })
-
+        logger.info(
+            "USERS_EXPORTED | user_id=%s | total_records=%s",
+            request.user.id, len(data_list) )
         return export_to_csv(
             filename="users_export",
             field_names=field_names,
@@ -735,6 +853,9 @@ def export_users_csv(request):
         )
 
     except Exception as e:
+        logger.exception(
+            "USER_EXPORT_ERROR | user_id=%s | error=%s",
+            getattr(request.user, "id", None), str(e) )
         return prepare_response(
             message=f"Error exporting users CSV: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -757,6 +878,9 @@ def staff_view(request):
             pm_check = PropertyManager.objects.filter(pk=user.pk).select_related("company").first()
             company = pm_check.company if pm_check else None
         if not company:
+            logger.warning(
+                "STAFF_ACCESS_FAILED | user_id=%s | reason=COMPANY_NOT_FOUND",
+                request.user.id )
             return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
 
         if request.method == "GET":
@@ -771,6 +895,9 @@ def staff_view(request):
             if staff_id:
                 pm = qs.filter(pk=staff_id).first()
                 if not pm:
+                    logger.warning(
+                        "STAFF_FETCH_FAILED | user_id=%s | staff_id=%s | reason=STAFF_NOT_FOUND",
+                        request.user.id, staff_id )
                     return prepare_response(message=constants.STAFF_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
                 pm_roles = list(pm.roles.all())
                 first_role = {"key": pm_roles[0].id, "value": pm_roles[0].name} if pm_roles else None
@@ -825,6 +952,9 @@ def staff_view(request):
                     "assigned_properties": assigned_properties,
                     "assigned_unit_ids": assigned_unit_ids,
                 }
+                logger.info(
+                    "STAFF_FETCHED | user_id=%s | staff_id=%s",
+                    request.user.id, pm.pk )
                 return prepare_response(content=data, message=constants.USER_FETCHED_SUCCESS, status=status.HTTP_200_OK)
 
             role_filter = request.GET.get("role")
@@ -903,6 +1033,9 @@ def staff_view(request):
                 "total_records": paginator.count,
                 "total_pages": paginator.num_pages,
             }
+            logger.info(
+                "STAFF_LIST_FETCHED | user_id=%s | total_records=%s",
+                request.user.id, paginator.count )
             return prepare_response(content=data, pagination=pagination_meta, message=constants.USER_FETCHED_SUCCESS, status=status.HTTP_200_OK)
 
         elif request.method == "POST":
@@ -915,8 +1048,14 @@ def staff_view(request):
             role_id = body.get("role")
 
             if not all([first_name, email, password]):
+                logger.warning(
+                    "STAFF_CREATE_FAILED | user_id=%s | reason=REQUIRED_FIELDS_MISSING",
+                    request.user.id )
                 return prepare_response(message=constants.ALL_FIELD_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
             if User.objects.filter(email=email).exists():
+                logger.warning(
+                    "STAFF_CREATE_FAILED | user_id=%s | reason=EMAIL_ALREADY_EXISTS",
+                    request.user.id )
                 return prepare_response(message=constants.EMAIL_ALREADY_REGISTERED, status=status.HTTP_400_BAD_REQUEST)
 
             with transaction.atomic():
@@ -948,7 +1087,9 @@ def staff_view(request):
                                 unit=unit, property_manager=pm,
                                 defaults={"created_by": user.user},
                             )
-
+            logger.info(
+                "STAFF_CREATED | user_id=%s | staff_id=%s ",
+                request.user.id, pm.pk )
             return prepare_response(
                 message=constants.USER_CREATED,
                 content={"staff_id": pm.pk},
@@ -959,10 +1100,16 @@ def staff_view(request):
             body = json.loads(request.body)
             staff_id = body.get("staff_id")
             if not staff_id:
+                logger.warning(
+                    "STAFF_UPDATE_FAILED | user_id=%s | reason=STAFF_ID_MISSING",
+                    request.user.id )
                 return prepare_response(message=constants.USER_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
 
             pm = PropertyManager.objects.select_related("user").filter(pk=staff_id, company=company).first()
             if not pm:
+                logger.warning(
+                    "STAFF_UPDATE_FAILED | user_id=%s | staff_id=%s | reason=STAFF_NOT_FOUND",
+                    request.user.id, staff_id )
                 return prepare_response(message=constants.STAFF_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
 
             django_user = pm.user
@@ -1001,13 +1148,18 @@ def staff_view(request):
                     unit = UnitModel.objects.filter(pk=unit_id).first()
                     if unit:
                         PropertyManagerAssignedUnits.objects.create(unit=unit, property_manager=pm, created_by=user.user)
-
+            logger.info(
+                "STAFF_UPDATED | user_id=%s | staff_id=%s",
+                request.user.id, pm.pk )
             return prepare_response(message="Staff updated successfully.", status=status.HTTP_200_OK)
 
         else:
             return prepare_response(message=constants.INVALID_REQUEST, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
     except Exception as e:
+        logger.exception(
+            "STAFF_API_ERROR | user_id=%s | error=%s",
+            getattr(request.user, "id", None), str(e) )
         return prepare_response(message=f"Error: {str(e)}", status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -1032,6 +1184,9 @@ def export_staff_csv(request):
             pm_check = PropertyManager.objects.filter(pk=user.pk).select_related("company").first()
             company = pm_check.company if pm_check else None
         if not company:
+            logger.warning(
+                "STAFF_EXPORT_FAILED | user_id=%s | reason=COMPANY_NOT_FOUND",
+                request.user.id )
             return prepare_response(
                 message=constants.COMPANY_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
@@ -1041,6 +1196,9 @@ def export_staff_csv(request):
         if staff_id:
             pm = PropertyManager.objects.filter(pk=staff_id, company=company).select_related("user").first()
             if not pm:
+                logger.warning(
+                    "STAFF_EXPORT_FAILED | user_id=%s | staff_id=%s | reason=STAFF_NOT_FOUND",
+                    request.user.id, staff_id )
                 return prepare_response(message=constants.STAFF_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
 
             props_qs = company.pmc_properties.filter(
@@ -1081,6 +1239,9 @@ def export_staff_csv(request):
                     "Assigned Staff": pm.user.get_full_name(),
                     "Owner Name": owner_name or "N/A",
                 })
+            logger.info(
+                "STAFF_EXPORTED | user_id=%s | export_type=%s",
+                request.user.id, "ASSIGNED_PROPERTIES" if staff_id else "STAFF_LIST" )
             return export_to_csv(filename="assigned_properties", field_names=field_names, data_list=data_list)
 
         # No staff_id → export staff list
@@ -1116,7 +1277,9 @@ def export_staff_csv(request):
                 "Contact Number": pm.contact_number or "",
                 "Staff Role": ", ".join([r.name for r in pm.roles.all()])
             })
-
+        logger.info(
+            "STAFF_EXPORTED | user_id=%s | export_type=STAFF_LIST | total_records=%s", 
+            request.user.id, len(data_list) )
         return export_to_csv(
             filename="staff_list",
             field_names=field_names,
@@ -1124,6 +1287,9 @@ def export_staff_csv(request):
         )
 
     except Exception as e:
+        logger.exception(
+            "STAFF_EXPORT_ERROR | user_id=%s | error=%s",
+            getattr(request.user, "id", None), str(e) )
         return prepare_response(
             message=f"Error exporting staff CSV: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -1156,6 +1322,9 @@ def contact_list_view(request):
             company = pm_check.company if pm_check else None
 
         if not company:
+            logger.warning(
+                "CONTACT_LIST_FETCH_FAILED | user_id=%s | reason=COMPANY_NOT_FOUND",
+                request.user.id )
             return prepare_response(
                 message=constants.COMPANY_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
@@ -1215,13 +1384,17 @@ def contact_list_view(request):
         results = []
         for model_cls, label in targets:
             results += build_qs(model_cls, label)
-
+        logger.info(
+            "CONTACT_LIST_FETCHED | user_id=%s | role=%s | total_contacts=%s",
+            request.user.id, role or "ALL", len(results) )
         return prepare_response(
             content=results,
             message=constants.CONTACTS_FETCH_SUCCESS,
             status=status.HTTP_200_OK
         )
-
+    logger.warning(
+        "CONTACT_LIST_FAILED | user_id=%s | method=%s | reason=METHOD_NOT_ALLOWED",
+        request.user.id, request.method )
     return prepare_response(
         message=constants.METHOD_NOT_ALLOWED,
         status=status.HTTP_405_METHOD_NOT_ALLOWED
@@ -1272,6 +1445,9 @@ def owner_crud(request):
         if owner_id:
             owner = Owner.objects.select_related("user").filter(id=owner_id, user__is_active=True).first()
             if not owner:
+                logger.warning(
+                    "OWNER_FETCH_FAILED | user_id=%s | owner_id=%s | reason=OWNER_NOT_FOUND",
+                    request.user.id, owner_id )
                 return prepare_response(message="Owner not found", status=status.HTTP_404_NOT_FOUND)
             # If units table is requested (detail page), return owner detail + units
             tenancy_status = request.GET.get("tenancy_status")
@@ -1291,6 +1467,9 @@ def owner_crud(request):
                     if tenancy_status == "VACANT" and is_occupied:
                         continue
                 table_data.append(serialize_owner_unit(unit, owner))
+            logger.info(
+                "OWNER_DETAILS_FETCHED | user_id=%s | owner_id=%s | unit_count=%s",
+                request.user.id, owner.id, len(table_data) )
             return prepare_response(
                 content={
                     "owner_details": serialize_owner_detail(owner),
@@ -1336,6 +1515,9 @@ def owner_crud(request):
             fields = ["code", "name", "owner_number", "email", "contact_number", "emirates_id",
                       "trade_license_number", "license_number", "license_expiry_date",
                       "license_issuer", "fax_number", "po_box_number"]
+            logger.info(
+                "OWNER_CSV_EXPORTED | user_id=%s | total_records=%s",
+                request.user.id, owners.count() )
             return export_to_csv("owners", fields, rows)
 
         paginator = Paginator(owners, page_size)
@@ -1343,7 +1525,9 @@ def owner_crud(request):
             page_obj = paginator.page(page)
         except EmptyPage:
             page_obj = paginator.page(paginator.num_pages)
-
+        logger.info(
+            "OWNER_LIST_FETCHED | user_id=%s | total_records=%s",
+            request.user.id, paginator.count )
         return prepare_response(
             content=[_serialize_owner(o) for o in page_obj.object_list],
             message="Owners fetched",
@@ -1364,8 +1548,14 @@ def owner_crud(request):
         email = data.get("email", "").strip()
 
         if not email:
+            logger.warning(
+                "OWNER_CREATE_FAILED | user_id=%s | reason=EMAIL_REQUIRED",
+                request.user.id )
             return prepare_response(message="Email is required", status=status.HTTP_400_BAD_REQUEST)
         if User.objects.filter(username=email).exists():
+            logger.warning(
+                "OWNER_CREATE_FAILED | user_id=%s | reason=EMAIL_ALREADY_EXISTS",
+                request.user.id )
             return prepare_response(message="Email already registered", status=status.HTTP_400_BAD_REQUEST)
 
         expiry_raw = data.get("license_expiry_date")
@@ -1412,7 +1602,9 @@ def owner_crud(request):
                 fax_number=data.get("fax_number", ""),
                 po_box_number=data.get("po_box_number", ""),
             )
-
+        logger.info(
+            "OWNER_CREATED | user_id=%s | owner_id=%s",
+            request.user.id, owner.id )
         return prepare_response(content=_serialize_owner(owner), message="Owner created", status=status.HTTP_201_CREATED)
 
     elif request.method == "PUT":
@@ -1420,10 +1612,16 @@ def owner_crud(request):
         data = json.loads(request.body)
         owner_id = data.get("owner_id")
         if not owner_id:
+            logger.warning(
+                "OWNER_UPDATE_FAILED | user_id=%s | reason=OWNER_ID_MISSING",
+                request.user.id )
             return prepare_response(message="owner_id is required", status=status.HTTP_400_BAD_REQUEST)
 
         owner = Owner.objects.select_related("user").filter(id=owner_id).first()
         if not owner:
+            logger.warning(
+                "OWNER_UPDATE_FAILED | user_id=%s | owner_id=%s | reason=OWNER_NOT_FOUND",
+                request.user.id, owner_id )
             return prepare_response(message="Owner not found", status=status.HTTP_404_NOT_FOUND)
 
         user = owner.user
@@ -1469,19 +1667,31 @@ def owner_crud(request):
             owner.visa_expiry_datetime = _parse_dt(data["visa_expiry_date"])
 
         owner.save()
+        logger.info(
+            "OWNER_UPDATED | user_id=%s | owner_id=%s",
+            request.user.id, owner.id )
         return prepare_response(content=_serialize_owner(owner), message="Owner updated", status=status.HTTP_200_OK)
 
     elif request.method == "DELETE":
         owner_id = request.GET.get("owner_id", "").strip()
         if not owner_id:
+            logger.warning(
+                "OWNER_DELETE_FAILED | user_id=%s | reason=OWNER_ID_MISSING",
+                request.user.id )
             return prepare_response(message="owner_id is required", status=status.HTTP_400_BAD_REQUEST)
 
         owner = Owner.objects.select_related("user").filter(id=owner_id).first()
         if not owner:
+            logger.warning(
+                "OWNER_DELETE_FAILED | user_id=%s | owner_id=%s | reason=OWNER_NOT_FOUND",
+                request.user.id, owner_id )
             return prepare_response(message="Owner not found", status=status.HTTP_404_NOT_FOUND)
 
         owner.user.is_active = False
         owner.user.save()
+        logger.info(
+            "OWNER_DELETED | user_id=%s | owner_id=%s",
+            request.user.id, owner.id )
         return prepare_response(message="Owner deleted", status=status.HTTP_200_OK)
 
     return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
@@ -1589,7 +1799,13 @@ def tenant_crud(request):
         if tenant_id:
             tenant = Tenant.objects.select_related("user").filter(id=tenant_id, user__is_active=True).first()
             if not tenant:
+                logger.warning(
+                    "TENANT_FETCH_FAILED | user_id=%s | tenant_id=%s | reason=TENANT_NOT_FOUND", 
+                    request.user.id, tenant_id )
                 return prepare_response(message="Tenant not found", status=status.HTTP_404_NOT_FOUND)
+            logger.info(
+                "TENANT_DETAILS_FETCHED | user_id=%s | tenant_id=%s",
+                request.user.id, tenant.id )
             return prepare_response(content=_serialize_tenant(tenant))
 
         if email:
@@ -1598,7 +1814,13 @@ def tenant_crud(request):
                 user__is_active=True,
             ).first()
             if not tenant:
+                logger.warning(
+                    "TENANT_FETCH_FAILED | user_id=%s | reason=TENANT_NOT_FOUND",
+                    request.user.id )
                 return prepare_response(message="Tenant not found", status=status.HTTP_404_NOT_FOUND)
+            logger.info(
+                "TENANT_DETAILS_FETCHED | user_id=%s | tenant_id=%s",
+                request.user.id, tenant.id )
             return prepare_response(content=_serialize_tenant(tenant))
 
         # ── List mode: paginated tenant-lease table with tab filtering ───────
@@ -1723,7 +1945,9 @@ def tenant_crud(request):
 
         paginator = Paginator(qs, page_size)
         page_obj  = paginator.get_page(page)
-
+        logger.info(
+            "TENANT_LIST_FETCHED | user_id=%s | total_records=%s | tab=%s",
+            request.user.id, paginator.count, tab )
         return prepare_response(
             content=[serialize_tenant_lease(l) for l in page_obj],
             pagination={
@@ -1740,6 +1964,9 @@ def tenant_crud(request):
         email = (data.get("email") or "").strip()
 
         if not email:
+            logger.warning(
+                "TENANT_CREATE_FAILED | user_id=%s | reason=EMAIL_REQUIRED",
+                request.user.id )
             return prepare_response(message="email is required", status=status.HTTP_400_BAD_REQUEST)
 
         # Check if tenant with this email already exists
@@ -1750,6 +1977,9 @@ def tenant_crud(request):
 
         if existing:
             _apply_tenant_fields(existing, data)
+            logger.info(
+                "TENANT_UPDATED_BY_EMAIL | user_id=%s | tenant_id=%s",
+                request.user.id, existing.id )
             return prepare_response(content=_serialize_tenant(existing), message="Tenant updated")
 
         # Create new tenant
@@ -1778,7 +2008,9 @@ def tenant_crud(request):
                 visa_number=data.get("visa_number", ""),
                 visa_expiry_datetime=_parse_dt(data.get("visa_expiry_date")),
             )
-
+        logger.info(
+            "TENANT_CREATED | user_id=%s | tenant_id=%s",
+            request.user.id, tenant.id )
         return prepare_response(content=_serialize_tenant(tenant), message="Tenant created", status=status.HTTP_201_CREATED)
 
     # ── PUT ───────────────────────────────────────────────────────────────────
@@ -1786,13 +2018,22 @@ def tenant_crud(request):
         data = json.loads(request.body)
         tenant_id = data.get("tenant_id")
         if not tenant_id:
+            logger.warning(
+                "TENANT_UPDATE_FAILED | user_id=%s | reason=TENANT_ID_MISSING",
+                request.user.id )
             return prepare_response(message="tenant_id is required", status=status.HTTP_400_BAD_REQUEST)
 
         tenant = Tenant.objects.select_related("user").filter(id=tenant_id, user__is_active=True).first()
         if not tenant:
+            logger.warning(
+                "TENANT_UPDATE_FAILED | user_id=%s | tenant_id=%s | reason=TENANT_NOT_FOUND",
+                request.user.id, tenant_id )
             return prepare_response(message="Tenant not found", status=status.HTTP_404_NOT_FOUND)
 
         _apply_tenant_fields(tenant, data)
+        logger.info(
+            "TENANT_UPDATED | user_id=%s | tenant_id=%s",
+            request.user.id, tenant.id )
         return prepare_response(content=_serialize_tenant(tenant), message="Tenant updated")
 
     return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
@@ -1816,11 +2057,17 @@ def approval_view(request):
         if lease_id_param:
             lease = Lease.objects.select_related("tenant", "unit").filter(id=lease_id_param,unit__property_block_tower__property__pmc=company).first()
             if not lease:
+                logger.warning(
+                    "APPROVAL_FETCH_FAILED | user_id=%s | lease_id=%s | reason=LEASE_NOT_FOUND",
+                    request.user.id, lease_id_param )
                 return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
             approval = Approval.objects.select_related(
                 "tenant__user", "unit", "unit__property_block_tower__property", "created_by"
             ).filter(tenant=lease.tenant, unit=lease.unit,unit__property_block_tower__property__pmc=company).order_by("-id").first()
             if not approval:
+                logger.warning(
+                    "APPROVAL_FETCH_FAILED | user_id=%s | lease_id=%s | reason=APPROVAL_NOT_FOUND_FOR_THIS_LEASE",
+                    request.user.id, lease_id_param)
                 return prepare_response(message="No approval found for this lease", status=status.HTTP_404_NOT_FOUND)
             content = {
                 "id": approval.id,
@@ -1838,6 +2085,9 @@ def approval_view(request):
                 "approved": approval.approved,
                 "status": "APPROVED" if approval.approved else ("REJECTED" if approval.approved_by_id else "PENDING"),
             }
+            logger.info(
+                "APPROVAL_FETCHED | user_id=%s | approval_id=%s",
+                request.user.id, approval.id )
             return prepare_response(content=content, status=status.HTTP_200_OK)
 
         approval_id = request.GET.get("approval_id")
@@ -1872,7 +2122,9 @@ def approval_view(request):
                 "approved_by": str(approval.approved_by) if approval.approved_by else None,
                 "approved_at": approval.approved_at
             }
-
+            logger.info(
+                "APPROVAL_FETCHED | user_id=%s | approval_id=%s",
+                request.user.id, approval.id )
             return prepare_response(content=content, status=status.HTTP_200_OK)
 
         approval_status = request.GET.get("status")
@@ -1928,7 +2180,9 @@ def approval_view(request):
             }
             for a in page_obj
         ]
-
+        logger.info(
+            "APPROVAL_LIST_FETCHED | user_id=%s | status=%s | page=%s",
+            request.user.id, approval_status, page )
         return prepare_response(
             content=content,
             pagination={
@@ -1957,18 +2211,27 @@ def approval_view(request):
         requested_tenure = data.get("requested_tenure")
 
         if not tenant_id:
+            logger.warning(
+                        "APPROVAL_CREATE_FAILED | user_id=%s | reason=TENANT_ID_MISSING",
+                        request.user.id )
             return prepare_response(
                 message="tenant_id is required",
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         if not unit_id:
+            logger.warning(
+                "APPROVAL_CREATE_FAILED | user_id=%s | reason=UNIT_ID_MISSING", 
+                request.user.id )
             return prepare_response(
                 message="unit_id is required",
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         if not requested_rent:
+            logger.warning(
+                "APPROVAL_CREATE_FAILED | user_id=%s | reason=REQUESTED_RENT_MISSING",
+                request.user.id )
             return prepare_response(
                 message="requested_rent is required",
                 status=status.HTTP_400_BAD_REQUEST
@@ -1977,6 +2240,9 @@ def approval_view(request):
         tenant = Tenant.objects.filter(id=tenant_id).first()
 
         if not tenant:
+            logger.warning(
+                "APPROVAL_CREATE_FAILED | user_id=%s | tenant_id=%s | reason=TENANT_NOT_FOUND",
+                request.user.id, tenant_id )
             return prepare_response(
                 message="Tenant not found",
                 status=status.HTTP_404_NOT_FOUND
@@ -1985,6 +2251,9 @@ def approval_view(request):
         unit = Unit.objects.filter(id=unit_id).first()
 
         if not unit:
+            logger.warning(
+                "APPROVAL_CREATE_FAILED | user_id=%s | unit_id=%s | reason=UNIT_NOT_FOUND",
+                request.user.id, unit_id )
             return prepare_response(
                 message="Unit not found",
                 status=status.HTTP_404_NOT_FOUND
@@ -1997,7 +2266,9 @@ def approval_view(request):
             requested_rent=requested_rent,
             requested_tenure=requested_tenure
         )
-
+        logger.info(
+            "RENT_APPROVAL_CREATED | user_id=%s | approval_id=%s",
+            request.user.id, approval.id )
         return prepare_response(
             message="Rent approval request created",
             content={"id": approval.id},
@@ -2021,6 +2292,9 @@ def approval_view(request):
         action = data.get("action")
 
         if not approval_id:
+            logger.warning(
+                "APPROVAL_UPDATE_FAILED | user_id=%s | reason=APPROVAL_ID_MISSING",
+                request.user.id )
             return prepare_response(
                 message="approval_id is required",
                 status=status.HTTP_400_BAD_REQUEST
@@ -2035,11 +2309,16 @@ def approval_view(request):
         )
 
         if not approval:
+            logger.warning(
+                "APPROVAL_UPDATE_FAILED | user_id=%s | approval_id=%s | reason=NOT_FOUND",
+                request.user.id, approval_id )
             return prepare_response(
                 message=message,
                 status=status.HTTP_404_NOT_FOUND
             )
-
+        logger.info(
+            "APPROVAL_UPDATED | user_id=%s | approval_id=%s | action=%s",
+            request.user.id, approval_id, action )
         return prepare_response(
             message=message,
             status=status.HTTP_200_OK
@@ -2118,7 +2397,9 @@ def owner_pmc_view(request):
                     "total_records": paginator.count,
                     "total_pages": paginator.num_pages
                 }
-
+                logger.info(
+                    "OWNER_PMC_FETCHED | user_id=%s | total_records=%s",
+                    request.user.id, len(data) )
                 return prepare_response(
                     content=data,
                     message=constants.PROPERTY_MANAGER_COMPANY_DETAILS_SUCCESS,
@@ -2131,6 +2412,9 @@ def owner_pmc_view(request):
                     return prepare_response(message="Only owner can access this data",status=status.HTTP_403_FORBIDDEN)
                 company = PropertyManagmentCompany.objects.select_related("company_user__user").filter(id=company_id).first()
                 if not company:
+                    logger.warning(
+                        "OWNER_PMC_FETCH_FAILED | user_id=%s | company_id=%s | reason=COMPANY_NOT_FOUND",
+                        request.user.id, company_id )
                     return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
                 properties_qs = Unit.objects.filter(owner=user,company=company ).select_related("property" ).prefetch_related( "lease_details__tenant__user")
 
@@ -2180,6 +2464,9 @@ def owner_pmc_view(request):
                     "total_records": paginator.count,
                      "total_pages": paginator.num_pages
                             }
+                logger.info(
+                    "OWNER_PMC_COMPANY_DETAILS_FETCHED | user_id=%s | company_id=%s | property_count=%s",
+                    request.user.id, company_id, len(properties_data) )
                 return prepare_response(
                     content={"company_profile": pmc_profile, "properties": properties_data},
                     message=constants.PMC_PROFILE_PROPERTY_SUCCESS,
@@ -2190,6 +2477,9 @@ def owner_pmc_view(request):
                 return prepare_response(message=constants.UNAUTHORIZED_OR_MISSING_PARAMETERS, status=status.HTTP_403_FORBIDDEN)
 
         except Exception as e:
+            logger.exception(
+                "OWNER_PMC_FETCH_ERROR | user_id=%s | error=%s",
+                request.user.id, str(e) )
             return prepare_response(
                 message=f"Error fetching data: {str(e)}",
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -2269,7 +2559,10 @@ def export_owner_pmc_csv(request):
                         "Property Handling Count": total_props,
                         "Tenancy Ratio": tenancy_ratio,
                     })
-
+            logger.info(
+                "PMC_CSV_EXPORTED | user_id=%s",
+                request.user.id
+            )
             return export_to_csv(
                 filename="pmc_company_table",
                 field_names=field_names,
@@ -2283,6 +2576,9 @@ def export_owner_pmc_csv(request):
 
             company = PropertyManagmentCompany.objects.filter(id=company_id).first()
             if not company:
+                logger.warning(
+                    "PMC_CSV_EXPORT_FAILED | user_id=%s | company_id=%s | reason=COMPANY_NOT_FOUND",
+                    request.user.id, company_id )
                 return prepare_response(
                     message=constants.COMPANY_NOT_FOUND,
                     status=status.HTTP_404_NOT_FOUND
@@ -2331,7 +2627,9 @@ def export_owner_pmc_csv(request):
                     "Tenancy Status": tenancy_status,
                     "Dimension / Bedroom": prop.dimension,
                 })
-
+            logger.info(
+                "PMC_CSV_EXPORTED | user_id=%s",
+                request.user.id )
             return export_to_csv(
                 filename="pmc_property_table",
                 field_names=field_names,
@@ -2345,6 +2643,9 @@ def export_owner_pmc_csv(request):
             )
 
     except Exception as e:
+        logger.exception(
+            "PMC_CSV_EXPORT_ERROR | user_id=%s | error=%s",
+            request.user.id, str(e) )
         return prepare_response(
             message=f"Error exporting CSV: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -2369,6 +2670,9 @@ def export_company_owners_csv(request):
 
         company = PropertyManagmentCompany.objects.filter(company_user=user).first()
         if not company:
+            logger.warning(
+                "COMPANY_OWNER_CSV_EXPORT_FAILED | user_id=%s | reason=COMPANY_NOT_FOUND",
+                request.user.id )
             return prepare_response(
                 message=constants.COMPANY_NOT_FOUND,
                 status=status.HTTP_400_BAD_REQUEST
@@ -2422,6 +2726,9 @@ def export_company_owners_csv(request):
         ).first()
 
         if not owner:
+            logger.warning(
+                "COMPANY_OWNER_CSV_EXPORT_FAILED | user_id=%s | owner_id=%s | reason=OWNER_NOT_FOUND",
+                request.user.id, owner_id )
             return prepare_response(
                 message=constants.OWNER_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
@@ -2463,7 +2770,9 @@ def export_company_owners_csv(request):
                 "Tenancy Status": "Occupied" if is_occupied else "Vacant",
                 "Agreement": lease.id if lease else ""
             })
-
+        logger.info(
+            "COMPANY_OWNER_CSV_EXPORTED | user_id=%s | owner_id=%s | export_type=PROPERTY_LIST",
+            request.user.id, owner_id )
         return export_to_csv(
             filename="owner_properties",
             field_names=field_names,
@@ -2471,6 +2780,9 @@ def export_company_owners_csv(request):
         )
 
     except Exception as e:
+        logger.exception(
+            "COMPANY_OWNER_CSV_EXPORT_ERROR | user_id=%s | error=%s",
+            request.user.id if hasattr(request, "user") else None,str(e) )
         return prepare_response(
             message=f"Error exporting owner CSV: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -2506,6 +2818,9 @@ def export_tenant_csv(request):
         elif user.user_role == constants.COMPANY_USER:
             company = PropertyManagmentCompany.objects.filter(company_user=user).first()
             if not company:
+                logger.warning(
+                    "TENANT_CSV_EXPORT_FAILED | user_id=%s | reason=COMPANY_NOT_FOUND",
+                    request.user.id )
                 return prepare_response(
                     message=constants.COMPANY_NOT_FOUND,
                     status=status.HTTP_400_BAD_REQUEST
@@ -2544,6 +2859,9 @@ def export_tenant_csv(request):
                 "Contact Number": tenant.contact_number if tenant else "",
                 "Property Assigned": prop.unit_name if prop else "",
             })
+        logger.info(
+            "TENANT_CSV_EXPORTED | user_id=%s | total_records=%s",
+            request.user.id, len(export_data) )
         return export_to_csv(
             filename="tenant_simple_export",
             field_names=field_names,
@@ -2551,6 +2869,9 @@ def export_tenant_csv(request):
         )
 
     except Exception as e:
+        logger.exception(
+            "TENANT_CSV_EXPORT_ERROR | user_id=%s | error=%s",
+            request.user.id, str(e) )
         return prepare_response(
             message=f"Error exporting tenant CSV: {str(e)}",
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -2579,11 +2900,17 @@ def company_tenants(request):
 
             company = PropertyManagmentCompany.objects.filter(company_user=user).first()
             if not company:
+                logger.warning(
+                    "COMPANY_TENANT_FETCH_FAILED | user_id=%s | reason=COMPANY_NOT_FOUND",
+                    request.user.id )
                 return prepare_response(
                     message=constants.COMPANY_NOT_FOUND,
                     status=status.HTTP_404_NOT_FOUND
                 )
             if tenant_id:
+                logger.info(
+                    "COMPANY_TENANT_DETAILS_FETCHED | user_id=%s | tenant_id=%s",
+                    request.user.id, tenant_id )
                 data = get_full_user_data(tenant_id)
                 return prepare_response(
                     content=data,
@@ -2633,7 +2960,9 @@ def company_tenants(request):
                 }
                 for t in tenants
             ]
-
+            logger.info(
+                "COMPANY_TENANTS_FETCHED | user_id=%s | total_records=%s",
+                request.user.id, len(tenant_list) )
             return prepare_response(
                 message=constants.TENANT_DETAILS_FETCHED_SUCCESS,
                 content={"tenants": tenant_list},
@@ -2661,6 +2990,9 @@ def company_tenants(request):
             ).first()
 
             if not tenant:
+                logger.warning(
+                    "COMPANY_TENANT_UPDATE_FAILED | user_id=%s | tenant_id=%s | reason=TENANT_NOT_FOUND",
+                    request.user.id, tenant_id )
                 return prepare_response(
                     message=constants.TENANT_DETAILS_NOT_FOUND,
                     status=status.HTTP_404_NOT_FOUND
@@ -2668,7 +3000,9 @@ def company_tenants(request):
 
             tenant.tenant_status = tenant_status
             tenant.save(update_fields=["tenant_status", "modified"])
-
+            logger.info(
+                "COMPANY_TENANT_STATUS_UPDATED | user_id=%s | tenant_id=%s | status=%s",
+                request.user.id, tenant.id, tenant_status )
             return prepare_response(
                 message=constants.TENANT_DETAILS_UPDATED_SUCCESSFULLY,
                 content={
@@ -2685,6 +3019,9 @@ def company_tenants(request):
             )
 
     except Exception as e:
+        logger.exception(
+            "COMPANY_TENANT_ERROR | user_id=%s | error=%s",
+            request.user.id, str(e) )
         print("PropertyManagmentCompany Tenants API Error:", e)
         return prepare_response(
             message=constants.INTERNAL_SERVER_ERROR,
@@ -2742,6 +3079,9 @@ def agreement_api(request):
         # Convert UserProfile to PropertyManager instance
         property_manager = PropertyManager.objects.filter(pk=request.user.pk).first()
         if not property_manager:
+            logger.warning(
+                "AGREEMENT_LIST_FETCH_FAILED | user_id=%s | reason=PROPERTY_MANAGER_NOT_FOUND",
+                request.user.id )
             return prepare_response(
                 message=constants.ONLY_PM_ALLOWED,
                 status=status.HTTP_403_FORBIDDEN
@@ -2776,7 +3116,10 @@ def agreement_api(request):
         start = (page - 1) * page_size
         end = start + page_size
         paginated = agreements[start:end]
-
+         
+        logger.info(
+            "AGREEMENTS_FETCHED | user_id=%s | total=%s | page=%s",
+            request.user.id, total, page )
         return prepare_response(
             content={
                 "results": [serialize_agreement(a) for a in paginated],
@@ -2794,6 +3137,9 @@ def agreement_api(request):
 
         agreement_name = body.get("agreement_name")
         if not agreement_name:
+            logger.warning(
+                "AGREEMENT_CREATE_FAILED | user_id=%s | reason=AGREEMENT_NAME_MISSING",
+                request.user.id )
             return prepare_response(
                 message=constants.AGREEMENT_NAME_REQUIRED,
                 status=status.HTTP_400_BAD_REQUEST
@@ -2802,6 +3148,9 @@ def agreement_api(request):
         document_type_id = body.get("document_type_id")
         document_type = DocumentType.objects.filter(id=document_type_id).first()
         if not document_type:
+            logger.warning(
+                "AGREEMENT_CREATE_FAILED | user_id=%s | reason=DOCUMENT_TYPE_INVALID",
+                request.user.id )
             return prepare_response(
                 message=constants.DOCUMENT_TYPE_REQUIRED,
                 status=status.HTTP_400_BAD_REQUEST
@@ -2812,6 +3161,9 @@ def agreement_api(request):
         end_date = body.get("end_date")
 
         if not does_not_expire and not end_date:
+            logger.warning(
+                "AGREEMENT_CREATE_FAILED | user_id=%s | reason=END_DATE_REQUIRED",
+                request.user.id )
             return prepare_response(
                 message=constants.END_DATE_REQUIRED,
                 status=status.HTTP_400_BAD_REQUEST
@@ -2820,6 +3172,9 @@ def agreement_api(request):
         # Convert UserProfile to PropertyManager instance
         property_manager = PropertyManager.objects.filter(pk=request.user.pk).first()
         if not property_manager:
+            logger.warning(
+                "AGREEMENT_CREATE_FAILED | user_id=%s | reason=PROPERTY_MANAGER_NOT_FOUND",
+                request.user.id )
             return prepare_response(
                 message=constants.ONLY_PM_CREATE,
                 status=status.HTTP_403_FORBIDDEN
@@ -2841,7 +3196,9 @@ def agreement_api(request):
             end_date=timezone.datetime.fromtimestamp(end_date, tz=timezone.utc) if end_date and not does_not_expire else None,
             created_by=request.user.user
         )
-
+        logger.info(
+            "AGREEMENT_CREATED | user_id=%s | agreement_id=%s | agreement_code=%s",
+            request.user.id, agreement.id, agreement.code )
         return prepare_response(
             content={"id": agreement.id, "code": agreement.code},
             message=constants.AGREEMENT_CREATED,
@@ -2868,6 +3225,9 @@ def agreement_detail_api(request, pk):
     # Convert UserProfile to PropertyManager instance
     property_manager = PropertyManager.objects.filter(pk=request.user.pk).first()
     if not property_manager:
+        logger.warning(
+                    "AGREEMENT_ACCESS_FAILED | user_id=%s | reason=PROPERTY_MANAGER_NOT_FOUND",
+                    request.user.id )
         return prepare_response(
             message="Only Property Managers can access agreements.",
             status=status.HTTP_403_FORBIDDEN
@@ -2880,12 +3240,18 @@ def agreement_detail_api(request, pk):
     ).select_related('document_type', 'user__user').first()
 
     if not agreement:
+        logger.warning(
+            "AGREEMENT_ACCESS_FAILED | user_id=%s | agreement_id=%s | reason=NOT_FOUND",
+            request.user.id, pk )
         return prepare_response(
             message="Agreement not found.",
             status=status.HTTP_404_NOT_FOUND
         )
 
     if request.method == "GET":
+        logger.info(
+            "AGREEMENT_FETCHED | user_id=%s | agreement_id=%s",
+            request.user.id, agreement.id )
         return prepare_response(
             content=serialize_agreement(agreement),
             message=constants.AGREEMENT_FETCHED,
@@ -2918,7 +3284,9 @@ def agreement_detail_api(request, pk):
 
         agreement.save()
         agreement.update_status()
-
+        logger.info(
+            "AGREEMENT_UPDATED | user_id=%s | agreement_id=%s",
+            request.user.id, agreement.id )
         return prepare_response(
             message=constants.AGREEMENT_UPDATED,
             status=status.HTTP_200_OK
@@ -2927,7 +3295,9 @@ def agreement_detail_api(request, pk):
     elif request.method == "DELETE":
         agreement.is_active = False
         agreement.save()
-
+        logger.info(
+                "AGREEMENT_DELETED | user_id=%s | agreement_id=%s",
+                request.user.id, agreement.id )
         return prepare_response(
             message=constants.AGREEMENT_DELETED,
             status=status.HTTP_200_OK
@@ -2954,6 +3324,9 @@ def renew_agreement(request, pk):
 
         property_manager = PropertyManager.objects.filter(pk=request.user.pk).first()
         if not property_manager:
+            logger.warning(
+                        "AGREEMENT_RENEW_FAILED | user_id=%s | reason=PROPERTY_MANAGER_NOT_FOUND",
+                        request.user.id )
             return prepare_response(
                 message=constants.ONLY_PM_RENEW,
                 status=status.HTTP_403_FORBIDDEN
@@ -2966,6 +3339,9 @@ def renew_agreement(request, pk):
         ).first()
 
         if not agreement:
+            logger.warning(
+                    "AGREEMENT_RENEW_FAILED | user_id=%s | agreement_id=%s | reason=AGREEMENT_NOT_FOUND",
+                    request.user.id, pk )
             return prepare_response(
                 message="Agreement not found.",
                 status=status.HTTP_404_NOT_FOUND
@@ -2975,6 +3351,9 @@ def renew_agreement(request, pk):
         new_end_date_epoch = body.get("new_end_date")
 
         if not new_end_date_epoch:
+            logger.warning(
+                "AGREEMENT_RENEW_FAILED | user_id=%s | agreement_id=%s | reason=NEW_END_DATE_MISSING",
+                request.user.id, pk )
             return prepare_response(
                 message=constants.NEW_END_DATE_REQUIRED,
                 status=status.HTTP_400_BAD_REQUEST
@@ -2996,7 +3375,9 @@ def renew_agreement(request, pk):
 
         # ✅ 3. SEND EMAIL ASYNC (BEST PRACTICE)
         send_renewal_email.delay(agreement.id, property_manager.id)
-
+        logger.info(
+            "AGREEMENT_RENEWED | user_id=%s | agreement_id=%s | agreement_code=%s",
+            request.user.id, agreement.id, agreement.code )
         return prepare_response(
             content={
                 "code": agreement.code,
@@ -3025,6 +3406,9 @@ def upload_agreement_document(request, pk):
         # Convert UserProfile to PropertyManager instance
         property_manager = PropertyManager.objects.filter(pk=request.user.pk).first()
         if not property_manager:
+            logger.warning(
+                "AGREEMENT_DOCUMENT_UPLOAD_FAILED | user_id=%s | reason=PROPERTY_MANAGER_NOT_FOUND",
+                request.user.id )
             return prepare_response(
                 message=constants.ONLY_PM_UPLOAD,
                 status=status.HTTP_403_FORBIDDEN
@@ -3039,6 +3423,9 @@ def upload_agreement_document(request, pk):
         ).first()
 
         if not agreement:
+            logger.warning(
+                "AGREEMENT_DOCUMENT_UPLOAD_FAILED | user_id=%s | agreement_id=%s | reason=NOT_FOUND",
+                request.user.id, pk )
             return prepare_response(
                 message=constants.AGREEMENT_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
@@ -3048,6 +3435,9 @@ def upload_agreement_document(request, pk):
         file_data = body.get("file_data")
 
         if not file_name or not file_data:
+            logger.warning(
+                "AGREEMENT_DOCUMENT_UPLOAD_FAILED | user_id=%s | agreement_id=%s | reason=FILE_MISSING",
+                request.user.id, pk )
             return prepare_response(
                 message=constants.FILE_REQUIRED,
                 status=status.HTTP_400_BAD_REQUEST
@@ -3062,7 +3452,9 @@ def upload_agreement_document(request, pk):
         agreement.file_path = file_url
         agreement.file_name = file_name
         agreement.save()
-
+        logger.info(
+            "AGREEMENT_DOCUMENT_UPLOADED | user_id=%s | agreement_id=%s | file_name=%s",
+            request.user.id, agreement.id, file_name )
         return prepare_response(
             content={
                 "file_name": file_name,
@@ -3090,6 +3482,9 @@ def share_profile(request):
         recipient_email = data.get("recipient_email", "").strip()
 
         if not all([profile_id, recipient_email]):
+            logger.warning(
+                "PROFILE_SHARE_FAILED | user_id=%s | reason=MISSING_REQUIRED_FIELDS",
+                request.user.id )
             return prepare_response(message=constants.FIELD_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
 
         profile = UserProfile.objects.select_related("user", "city").get(pk=profile_id)
@@ -3147,10 +3542,20 @@ def share_profile(request):
         )
 
         send_ses_email(recipient_email, f"Profile: {name}", body_text, body_html)
+        logger.info(
+            "PROFILE_SHARED | user_id=%s | profile_id=%s | recipient_email=%s",
+            request.user.id, profile_id, recipient_email )
         return prepare_response(message="Profile shared successfully.", status=status.HTTP_200_OK)
     except UserProfile.DoesNotExist:
+        logger.warning(
+            "PROFILE_SHARE_FAILED | user_id=%s | profile_id=%s | reason=USER_NOT_FOUND",
+            request.user.id, profile_id if 'profile_id' in locals() else None )
         return prepare_response(message="User not found.", status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
+        logger.exception(
+            "PROFILE_SHARE_ERROR | user_id=%s | profile_id=%s | error=%s",
+            request.user.id if hasattr(request, "user") else None,
+            profile_id if 'profile_id' in locals() else None, str(e) )
         print("share_profile error:", e)
         return prepare_response(message=constants.INTERNAL_SERVER_ERROR, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
@@ -3168,19 +3573,38 @@ def reset_user_password(request):
         confirm_password = data.get("confirm_password")
 
         if not all([user_id, new_password, confirm_password]):
+            logger.warning(
+                "PASSWORD_RESET_FAILED | user_id=%s | reason=MISSING_REQUIRED_FIELDS",
+                request.user.id )
             return prepare_response(message=constants.FIELD_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
         if new_password != confirm_password:
+            logger.warning(
+                "PASSWORD_RESET_FAILED | user_id=%s | target_user_id=%s | reason=PASSWORD_MISMATCH",
+                request.user.id, user_id )
             return prepare_response(message=constants.PASSWORD_MISMATCH, status=status.HTTP_400_BAD_REQUEST)
         if len(new_password) < 6:
+            logger.warning(
+                "PASSWORD_RESET_FAILED | user_id=%s | target_user_id=%s | reason=PASSWORD_TOO_SHORT",
+                request.user.id, user_id )
             return prepare_response(message="Password must be at least 6 characters.", status=status.HTTP_400_BAD_REQUEST)
 
         profile = UserProfile.objects.select_related("user").get(pk=user_id)
         profile.user.set_password(new_password)
         profile.user.save()
+        logger.info(
+            "PASSWORD_RESET_SUCCESS | user_id=%s | target_user_id=%s", 
+            request.user.id, user_id )
         return prepare_response(message="Password reset successfully.", status=status.HTTP_200_OK)
     except UserProfile.DoesNotExist:
+        logger.warning(
+            "PASSWORD_RESET_FAILED | user_id=%s | target_user_id=%s | reason=USER_NOT_FOUND",
+            request.user.id, user_id if 'user_id' in locals() else None )
         return prepare_response(message="User not found.", status=status.HTTP_404_NOT_FOUND)
     except Exception as e:
+        logger.exception(
+            "PASSWORD_RESET_ERROR | user_id=%s | target_user_id=%s | error=%s",
+            request.user.id if hasattr(request, "user") else None,
+            user_id if 'user_id' in locals() else None, str(e))
         print("reset_user_password error:", e)
         return prepare_response(message=constants.INTERNAL_SERVER_ERROR, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
