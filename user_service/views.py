@@ -1838,17 +1838,32 @@ def tenant_crud(request):
         export    = request.GET.get("export", "")
         today     = _date.today()
 
+      # ── Role detection: PMC → Owner ───────────────────────────────────────
         pm_profile = PropertyManager.objects.select_related("company").filter(pk=request.user.pk).first()
-        if not pm_profile:
-            return prepare_response(message="Company not found for this user", status=status.HTTP_400_BAD_REQUEST)
-        company = pm_profile.company
+        owner_profile = Owner.objects.filter(pk=request.user.pk).first()
+        if pm_profile and pm_profile.company:
+            lease_filter = {
+                "is_active": True,
+                "unit__property_block_tower__property__pmc": pm_profile.company
+            }
+            qs_filter = {
+                "unit__property_block_tower__property__pmc": pm_profile.company
+            }
 
+        elif owner_profile:
+            lease_filter = {
+                "is_active": True,
+                "unit__unit_owners__owner": owner_profile
+            }
+            qs_filter = {
+                "unit__unit_owners__owner": owner_profile
+            }
+ 
+        else:
+            return prepare_response(message="Unauthorized access",status=status.HTTP_403_FORBIDDEN)
         latest_ids = (
             Lease.objects
-            .filter(
-                is_active=True,
-                unit__property_block_tower__property__pmc=company
-            )
+            .filter(**lease_filter)
             .values("tenant")
             .annotate(latest_id=Max("id"))
             .values_list("latest_id", flat=True)
@@ -1860,7 +1875,7 @@ def tenant_crud(request):
             .prefetch_related("unit__property_block_tower__property__property_images")
             .filter(
                 id__in=latest_ids,
-                unit__property_block_tower__property__pmc=company  # ← company filter
+                **qs_filter
             )
         )
 
@@ -2342,30 +2357,39 @@ def approval_view(request):
 @is_request_authenticated
 def owner_pmc_view(request):
     if request.method == "GET":
-        user = request.user
+        user_profile = request.user
+        owner_profile = Owner.objects.filter(pk=user_profile.pk).first()
         company_id = request.GET.get("company_id")
         search = request.GET.get("search", "").strip()
         page = int(request.GET.get("page", 1))
         limit = int(request.GET.get("limit", 10))
         try:
-            if user.user_role == "OWNER" and not company_id:
-
-                properties = Unit.objects.filter(owner=user)
-                pmc_ids = properties.values_list('company__company_user', flat=True).distinct()
-                pmc_qs = UserProfile.objects.filter(
-                      id__in=pmc_ids,
-                     user_role="COMPANY_USER"
-                     ).prefetch_related(
-                 'company_user'
-                        )
-
+            if owner_profile and not company_id:
+                user = owner_profile
+ 
+                owner_units = Unit.objects.filter(
+                    unit_owners__owner=user,
+                    is_active=True
+                ).select_related("property_block_tower__property__pmc")
+ 
+                company_ids = owner_units.values_list(
+                    "property_block_tower__property__pmc_id", flat=True
+                ).distinct()
+ 
+                pmc_qs = PropertyManagmentCompany.objects.filter(
+                    id__in=company_ids,
+                    is_active=True
+                )
+ 
                 if search:
                     pmc_qs = pmc_qs.filter(
-                        Q(user__first_name__icontains=search) |
-                        Q(user__last_name__icontains=search) |
-                        Q(user__email__icontains=search)
-                    )
-
+                        Q(name__icontains=search) |
+                        Q(code__icontains=search) |
+                        Q(company_staff__user__first_name__icontains=search) |
+                        Q(company_staff__user__last_name__icontains=search) |
+                        Q(company_staff__user__email__icontains=search)
+                    ).distinct()
+ 
                 paginator = Paginator(pmc_qs, limit)
                 try:
                     pmc_page = paginator.page(page)
@@ -2373,24 +2397,36 @@ def owner_pmc_view(request):
                     pmc_page = paginator.page(paginator.num_pages)
 
                 data = []
-                for pmc in pmc_page:
-                    companies = pmc.company_user.all()
-                    for comp in companies:
-                        owner_props = Unit.objects.filter(owner=user, company=comp)
-                        leased_count = Lease.objects.filter(
-                            lease_property__in=owner_props
-                        ).count()
-                        total_count = owner_props.count()
-                        tenancy_ratio = f"{leased_count}:{total_count}" if total_count else "0:0"
-                        data.append({
-                            "company_id": comp.id,
-                            "company_name": comp.company_name,
-                            "company_address": comp.company_address,
-                            "property_handling": f"{total_count} property",
-                            "tenancy_ratio": tenancy_ratio,
-                            "compnay_code":comp.company_code,
-                        })
-
+                for company in pmc_page:
+                    owner_company_units = owner_units.filter(
+                        property_block_tower__property__pmc=company
+                    )
+                    total_count = owner_company_units.count()
+                    leased_count = Lease.objects.filter(
+                        unit__in=owner_company_units,
+                        is_active=True
+                    ).count()
+                    tenancy_ratio = f"{leased_count}:{total_count}" if total_count else "0:0"
+ 
+                    pmc_user = PropertyManager.objects.filter(
+                        company=company
+                    ).select_related("user").first()
+ 
+                    data.append({
+                        "company_id": company.id,
+                        "company_name": (
+                            f"{pmc_user.user.first_name} {pmc_user.user.last_name}".strip()
+                            if pmc_user and pmc_user.user else None
+                        ),
+                        "company_address": (
+                            f"{pmc_user.address_line_1 or ''} {pmc_user.address_line_2 or ''}".strip()
+                            if pmc_user else None
+                        ),
+                        "property_handling": company.name,
+                        "tenancy_ratio": tenancy_ratio,
+                        "company_code": pmc_user.code if pmc_user else None,
+                    })
+ 
                 pagination_meta = {
                     "current_page": pmc_page.number,
                     "limit": limit,
@@ -2408,18 +2444,33 @@ def owner_pmc_view(request):
                 )
 
             elif company_id:
-                if user.user_role != constants.OWNER:
-                    return prepare_response(message="Only owner can access this data",status=status.HTTP_403_FORBIDDEN)
-                company = PropertyManagmentCompany.objects.select_related("company_user__user").filter(id=company_id).first()
+                if not owner_profile:
+                    return prepare_response(message="Only owner can access this data", status=status.HTTP_403_FORBIDDEN)
+                user = owner_profile
+ 
+                company = PropertyManagmentCompany.objects.filter(id=company_id, is_active=True).first()
                 if not company:
                     logger.warning(
                         "OWNER_PMC_FETCH_FAILED | user_id=%s | company_id=%s | reason=COMPANY_NOT_FOUND",
                         request.user.id, company_id )
                     return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
-                properties_qs = Unit.objects.filter(owner=user,company=company ).select_related("property" ).prefetch_related( "lease_details__tenant__user")
-
+ 
+                properties_qs = Unit.objects.filter(
+                    unit_owners__owner=user,
+                    property_block_tower__property__pmc=company,
+                    is_active=True
+                ).select_related(
+                    "property_block_tower__property"
+                ).prefetch_related(
+                    "leases__tenant__user"
+                )
+ 
                 if search:
-                    properties_qs = properties_qs.filter(Q(unit_name__icontains=search) | Q(property__property_name__icontains=search))
+                    properties_qs = properties_qs.filter(
+                        Q(unit_name__icontains=search) |
+                        Q(property_block_tower__property__property_name__icontains=search)
+                    )
+
                 paginator = Paginator(properties_qs, limit)
                 try:
                     property_page = paginator.page(page)
@@ -2427,7 +2478,7 @@ def owner_pmc_view(request):
                     property_page = paginator.page(paginator.num_pages)
                 properties_data = []
                 for prop in property_page:
-                    lease = prop.lease_details.first()
+                    lease = prop.leases.filter(is_active=True).first()
                     tenant_name = None
                     lease_id = None
                     tenancy_status = "Vacant"
@@ -2436,34 +2487,44 @@ def owner_pmc_view(request):
                         tenant_name = f"{tenant_user.first_name} {tenant_user.last_name}".strip()
                         lease_id = lease.id
                         tenancy_status = "Occupied"
-                    properties_data.append({"property_unit_id": prop.id,"property_name": prop.unit_name or (
-                                  prop.property.property_name if prop.property else None
-                                   ),"tenant_name": tenant_name,
-                                   "tenancy_status": tenancy_status,
-                                    "dimension": prop.dimension,
-                                    "lease_id": lease_id,
-                                          })
-                pmc_user = company.company_user
+ 
+                    property_obj = prop.property_block_tower.property if prop.property_block_tower else None
+                    properties_data.append({
+                        "property_unit_id": prop.id,
+                        "property_name": prop.unit_name or (property_obj.property_name if property_obj else None),
+                        "tenant_name": tenant_name,
+                        "tenancy_status": tenancy_status,
+                        "dimension": str(prop.unit_size) if prop.unit_size is not None else prop.area,
+                        "lease_id": lease_id,
+                    })
+ 
+                pmc_user = PropertyManager.objects.filter(company=company).select_related("user").first()
+ 
                 pmc_profile = {
-                          "company_id": company.id,
-                           "company_code": company.company_code,
-                         "company_name": company.company_name,
-                        "email": pmc_user.user.email,
-                       "first_name": pmc_user.user.first_name,
-                       "last_name": pmc_user.user.last_name,
-                        "postal_code": pmc_user.pin_code,
-                        "profile_image": pmc_user.profile_image,
-                          "total_properties_handled": Unit.objects.filter(
-                          owner=user,
-                          company=company
-                             ).count()
-                                    }
+                    "company_id": company.id,
+                    "company_code": pmc_user.code if pmc_user else None,
+                    "company_name": (
+                        f"{pmc_user.user.first_name} {pmc_user.user.last_name}".strip()
+                        if pmc_user and pmc_user.user else None
+                    ),
+                    "email": pmc_user.user.email if pmc_user and pmc_user.user else None,
+                    "first_name": pmc_user.user.first_name if pmc_user and pmc_user.user else None,
+                    "last_name": pmc_user.user.last_name if pmc_user and pmc_user.user else None,
+                    "postal_code": pmc_user.pin_code if pmc_user else None,
+                    "profile_image": pmc_user.profile_image if pmc_user else None,
+                    "total_properties_handled": Unit.objects.filter(
+                        unit_owners__owner=user,
+                        property_block_tower__property__pmc=company,
+                        is_active=True
+                    ).count()
+                }
+ 
                 pagination_meta = {
                     "current_page": property_page.number,
                     "limit": limit,
                     "total_records": paginator.count,
-                     "total_pages": paginator.num_pages
-                            }
+                    "total_pages": paginator.num_pages
+                }
                 logger.info(
                     "OWNER_PMC_COMPANY_DETAILS_FETCHED | user_id=%s | company_id=%s | property_count=%s",
                     request.user.id, company_id, len(properties_data) )
@@ -2805,66 +2866,58 @@ def export_tenant_csv(request):
         )
 
     try:
-        user = request.user
+        user_profile = request.user
         search = request.GET.get("search", "").strip()
         lease_qs = Lease.objects.select_related(
-            "tenant",
             "tenant__user",
-            "lease_property",
+            "unit"
         )
-        if user.user_role == constants.OWNER:
-            lease_qs = lease_qs.filter(owner=user)
-
-        elif user.user_role == constants.COMPANY_USER:
-            company = PropertyManagmentCompany.objects.filter(company_user=user).first()
-            if not company:
-                logger.warning(
-                    "TENANT_CSV_EXPORT_FAILED | user_id=%s | reason=COMPANY_NOT_FOUND",
-                    request.user.id )
-                return prepare_response(
-                    message=constants.COMPANY_NOT_FOUND,
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            lease_qs = lease_qs.filter(lease_property__company=company)
-
-        else:
-            return prepare_response(
-                message=constants.UNAUTHORIZED_ROLE,
-                status=status.HTTP_403_FORBIDDEN
+        owner = Owner.objects.filter(pk=user_profile.pk).first()
+        if owner:
+            lease_qs = lease_qs.filter(
+                unit__unit_owners__owner=owner
             )
+        else:
+            pmc_user = PropertyManager.objects.filter(
+                pk=user_profile.pk
+            ).select_related("company").first()
+ 
+            if pmc_user and pmc_user.company:
+                lease_qs = lease_qs.filter(
+                    unit__property_block_tower__property__pmc=pmc_user.company
+                )
+            else:
+                return prepare_response(
+                    message=constants.UNAUTHORIZED_ROLE,
+                    status=status.HTTP_403_FORBIDDEN
+                )
+ 
         if search:
             lease_qs = lease_qs.filter(
-                Q(tenant__user__email__icontains=search) |
+                Q(tenant__user__first_name__icontains=search) |
+                Q(tenant__user__last_name__icontains=search) |
                 Q(tenant__contact_number__icontains=search) |
-                Q(lease_property__unit_name__icontains=search)
+                Q(unit__unit_name__icontains=search)
             )
-
-        lease_qs = lease_qs.order_by("-id")
-        field_names = [
-            "Tenant Name",
-            "User Code",
-            "Contact Number",
-            "Property Assigned",
-        ]
-
         export_data = []
-
-        for lease in lease_qs:
+        for lease in lease_qs.order_by("-id"):
             tenant = lease.tenant
-            prop = lease.lease_property
-
+            unit = lease.unit
             export_data.append({
-                "Tenant Name": f"{tenant.user.first_name} {tenant.user.last_name}" if tenant and tenant.user else "",
-                "User Code": tenant.user_code if tenant else "",
+                "Tenant Name": f"{tenant.user.first_name} {tenant.user.last_name}".strip() if tenant and tenant.user else "",
+                "User Code": tenant.code if tenant else "",
                 "Contact Number": tenant.contact_number if tenant else "",
-                "Property Assigned": prop.unit_name if prop else "",
+                "Property Assigned": unit.unit_name if unit else ""
             })
-        logger.info(
-            "TENANT_CSV_EXPORTED | user_id=%s | total_records=%s",
-            request.user.id, len(export_data) )
+
         return export_to_csv(
-            filename="tenant_simple_export",
-            field_names=field_names,
+            filename="tenant_export",
+            field_names=[
+                "Tenant Name",
+                "User Code",
+                "Contact Number",
+                "Property Assigned"
+            ],
             data_list=export_data
         )
 

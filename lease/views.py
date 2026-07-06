@@ -25,7 +25,7 @@ from utilities.helper_functions import (
 )
 from utilities import status, constants
 from property.models import Unit, PropertyManagmentCompany
-from user_service.models import Tenant, TenantDocuments, DocumentType, UserProfile, Documents, Approval, PropertyManager
+from user_service.models import Tenant, TenantDocuments, DocumentType, UserProfile, Documents, Approval, PropertyManager, Owner
 from property_management import settings
 from property_management.utils import audit_logs, get_tenant_detail_by_id
 from property_management.models import TermAndCondition
@@ -2191,14 +2191,22 @@ def rent_analytics_view(request):
 
     user_profile = request.user
     pm_profile = PropertyManager.objects.select_related("company").filter(pk=user_profile.pk).first()
-    if not pm_profile:
-        return prepare_response(message="Company not found for this user", status=status.HTTP_400_BAD_REQUEST)
-    company = pm_profile.company
+    owner_profile = Owner.objects.filter(pk=user_profile.pk).first()
 
-    qs = LeaseTransaction.objects.filter(
-        cheque_date__year=year,
-        lease__unit__property_block_tower__property__pmc=company  # ← company filter
-    )
+    if pm_profile and pm_profile.company:
+        qs = LeaseTransaction.objects.filter(
+            cheque_date__year=year,
+            lease__unit__property_block_tower__property__pmc=pm_profile.company
+        )
+
+    elif owner_profile:
+        qs = LeaseTransaction.objects.filter(
+            cheque_date__year=year,
+            lease__unit__unit_owners__owner=owner_profile
+        ).distinct()
+ 
+    else:
+        return prepare_response(message=constants.UNAUTHORIZED_ROLE,status=status.HTTP_403_FORBIDDEN)
     if lease_id:
         qs = qs.filter(lease_id=lease_id)
     if property_id:
@@ -2246,7 +2254,7 @@ def rent_analytics_view(request):
         for m in range(1, 13)
     ]
     logger.info(
-        "RENT_ANALYTICS_SUCCESS | user_id=%s | year=%s | total_amount=%s",
+        "RENT_ANALYTICS_FETCH_SUCCESS | user_id=%s | year=%s | total_amount=%s",
         request.user.id, year, total_amount )
     return prepare_response(content={
         "summary": {
@@ -2267,14 +2275,18 @@ def property_analytics_view(request):
     if request.method != "GET":
         return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
-    from django.db.models import Sum, Q, Value
+    from django.db.models import Sum, Q, Value, FloatField
     from django.db.models.functions import Coalesce
     from property.models import Property, PropertyBlocks
 
     year        = request.GET.get("year", "").strip() or str(datetime.now().year)
     property_id = request.GET.get("property_id", "").strip()
     block_id    = request.GET.get("block_id", "").strip()
-
+ 
+    user_profile = request.user
+    pm_profile = PropertyManager.objects.select_related("company").filter(pk=user_profile.pk).first()
+    owner_profile = Owner.objects.filter(pk=user_profile.pk).first()
+ 
     if block_id:
         # All units in this block, each annotated with their total revenue
         # Unit -> Lease (related_name="leases") -> LeaseTransaction (related_name="lease_cheques")
@@ -2287,7 +2299,7 @@ def property_analytics_view(request):
                         "leases__lease_cheques__amount",
                         filter=Q(leases__lease_cheques__cheque_date__year=year),
                     ),
-                    Value(0),
+                    Value(0, output_field=FloatField())
                 )
             )
             .order_by("unit_name")
@@ -2314,7 +2326,7 @@ def property_analytics_view(request):
                         "block_towers__leases__lease_cheques__amount",
                         filter=Q(block_towers__leases__lease_cheques__cheque_date__year=year),
                     ),
-                    Value(0),
+                    Value(0, output_field=FloatField())
                 )
             )
             .order_by("block_name")
@@ -2331,9 +2343,24 @@ def property_analytics_view(request):
 
     else:
         # All properties, each annotated with their total revenue
-        # Property -> PropertyBlocks (related_name="property_blocks") -> Unit (related_name="block_towers") -> Lease -> LeaseTransaction
+        properties = Property.objects.filter(is_active=True)
+        if pm_profile and pm_profile.company:
+            properties = properties.filter(
+                pmc=pm_profile.company
+            )
+ 
+        elif owner_profile:
+            properties = properties.filter(
+                property_blocks__block_towers__unit_owners__owner=owner_profile
+            ).distinct()
+
+        else:
+            return prepare_response(
+                message=constants.UNAUTHORIZED_ROLE,
+                status=status.HTTP_403_FORBIDDEN
+            )
         properties = (
-            Property.objects
+            properties
             .annotate(
                 revenue=Coalesce(
                     Sum(
@@ -2342,7 +2369,7 @@ def property_analytics_view(request):
                             property_blocks__block_towers__leases__lease_cheques__cheque_date__year=year
                         ),
                     ),
-                    Value(0),
+                    Value(0, output_field=FloatField()),
                 )
             )
             .order_by("property_name")
@@ -2911,19 +2938,22 @@ def lease_tenancy(request):
         lease_status_param = request.GET.get("lease_status")
 
         leases_qs = Lease.objects.select_related(
-            "lease_property",
-            "lease_property__company",
+            "unit",
+            "unit__property_block_tower__property__pmc",
             "tenant",
             "tenant__user"
         )
 
-        # ================= ROLE BASED FILTER (UNCHANGED) =================
-        if current_user.user_role == constants.OWNER:
-            leases_qs = leases_qs.filter(owner=current_user)
+        # ================= ROLE BASED FILTER =================
+        owner_profile = Owner.objects.filter(pk=current_user.pk).first()
+        pm_profile = PropertyManager.objects.filter(pk=current_user.pk).select_related("company").first()
+ 
+        if owner_profile:
+            leases_qs = leases_qs.filter(unit__unit_owners__owner=owner_profile).distinct()
 
-        elif current_user.user_role == constants.COMPANY_USER:
+        elif pm_profile and pm_profile.company:
             leases_qs = leases_qs.filter(
-                lease_property__company__company_user=current_user
+                unit__property_block_tower__property__pmc=pm_profile.company
             ).distinct()
 
         else:
@@ -2944,7 +2974,7 @@ def lease_tenancy(request):
         if search:
             leases_qs = leases_qs.filter(
                 Q(id__icontains=search) |
-                Q(lease_property__property_code__icontains=search) |
+                Q(unit__code__icontains=search) |
                 Q(tenant__user__first_name__icontains=search) |
                 Q(tenant__user__last_name__icontains=search) |
                 Q(tenant__contact_number__icontains=search)
@@ -2966,11 +2996,11 @@ def lease_tenancy(request):
         # ================= LOOP (UNCHANGED LOGIC) =================
         for lease in leases_page:
             tenant_profile = lease.tenant
-            property_unit = lease.lease_property
+            property_unit = lease.unit
 
             table_data.append({
                 "lease_id": lease.id,
-                "property_code": property_unit.property_code if property_unit else None,
+                "property_code": property_unit.code if property_unit else None,
                 "tenant_name": (
                     tenant_profile.user.get_full_name()
                     if tenant_profile and tenant_profile.user
@@ -2979,8 +3009,8 @@ def lease_tenancy(request):
                 "tenant_profile_image": tenant_profile.profile_image if tenant_profile else None,
                 "tenant_contact_number": tenant_profile.contact_number if tenant_profile else None,
                 "lease_status": lease.lease_status,
-                "agreement_start_date": datetime_to_epoch_millis(lease.lease_start_date),
-                "agreement_end_date": datetime_to_epoch_millis(lease.lease_end_date),
+                "agreement_start_date": datetime_to_epoch_millis(lease.start_date),
+                "agreement_end_date": datetime_to_epoch_millis(lease.end_date),
             })
         logger.info(
             "LEASE_TENANCY_FETCHED | user_id=%s | records=%s | page=%s",

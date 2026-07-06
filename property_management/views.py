@@ -1516,7 +1516,7 @@ def dashboard_property_owned(request):
         # OWNER
         elif owner_instance:
             properties = properties.filter(
-                property_block_towers__units__unit_owners__owner=owner_instance
+                property_blocks__block_towers__unit_owners__owner=owner_instance
             ).distinct()
 
         # NO ACCESS
