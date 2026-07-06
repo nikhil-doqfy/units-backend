@@ -111,7 +111,7 @@ def options(request):
         elif option_type == "PARENT_PROPERTY":
             properties = Property.objects.none()
             if is_owner:
-                property_ids = Unit.objects.filter(owner=user).values_list('property_id', flat=True).distinct()
+                property_ids = Unit.objects.filter(unit_owners__owner=user).values_list("property_block_tower__property_id", flat=True).distinct()
                 properties = Property.objects.filter(id__in=property_ids)
             elif is_pm and pm_profile.company:
                 properties = Property.objects.filter(pmc=pm_profile.company)

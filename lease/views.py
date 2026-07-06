@@ -2115,35 +2115,33 @@ def cheque_monthly_view(request):
 
     user_profile = request.user
 
-    # ── Get logged-in user's company ─────────────────────
+    # ── Role detection: PMC → Owner ───────────────────────
     pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).select_related("company").first()
-
-    company = pm_profile.company if pm_profile else None
-
-    if not company:
-        own_company = PropertyManagmentCompany.objects.filter(
-            created_by=user_profile.user,
-            is_active=True
-        ).first()
-        company = own_company
-
-    if not company:
-        logger.warning(
-                    "CHEQUE_MONTHLY_FAILED | user_id=%s | reason=COMPANY_NOT_FOUND", request.user.id )
-        return prepare_response(
-            message=constants.COMPANY_NOT_FOUND,
-            status=status.HTTP_404_NOT_FOUND
-        )
+    owner_profile = Owner.objects.filter(pk=user_profile.pk).first()
 
     year = request.GET.get("year", "").strip() or str(datetime.now().year)
     property_id = request.GET.get("property_id", "").strip()
     block_id = request.GET.get("block_id", "").strip()
     unit_id = request.GET.get("unit_id", "").strip()
 
-    qs = LeaseTransaction.objects.filter(
-        lease__unit__property_block_tower__property__pmc=company,
-        cheque_date__year=year
-    )
+    if pm_profile and pm_profile.company:
+        qs = LeaseTransaction.objects.filter(
+            lease__unit__property_block_tower__property__pmc=pm_profile.company,
+            cheque_date__year=year
+        )
+
+    elif owner_profile:
+        qs = LeaseTransaction.objects.filter(
+            lease__unit__unit_owners__owner=owner_profile,
+            cheque_date__year=year
+        ).distinct()
+    else:
+        logger.warning(
+                    "CHEQUE_MONTHLY_FAILED | user_id=%s | reason=UNAUTHORIZED", request.user.id )
+        return prepare_response(
+            message=constants.UNAUTHORIZED_ROLE,
+            status=status.HTTP_403_FORBIDDEN
+        )
 
     if property_id:
         qs = qs.filter(lease__unit__property_block_tower__property_id=property_id)
