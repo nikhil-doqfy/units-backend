@@ -2565,61 +2565,69 @@ def export_owner_pmc_csv(request):
         )
 
     try:
-        user = request.user
+        user_profile = request.user
+        owner_profile = Owner.objects.filter(pk=user_profile.pk).first()
         company_id = request.GET.get("company_id")
         search = request.GET.get("search", "").strip()
 
+        if owner_profile and not company_id:
+            user = owner_profile
 
-        if user.user_role == constants.OWNER and not company_id:
+            owner_units = Unit.objects.filter(unit_owners__owner=user,is_active=True).select_related("property_block_tower__property__pmc")
 
-            properties = Unit.objects.filter(owner=user)
-            pmc_ids = properties.values_list(
-                'company__company_user', flat=True
+            company_ids = owner_units.values_list(
+                "property_block_tower__property__pmc_id", flat=True
             ).distinct()
 
-            pmc_qs = UserProfile.objects.filter(
-                id__in=pmc_ids,
-                user_role=constants.COMPANY_USER
-            ).prefetch_related("company_user")
+            pmc_qs = PropertyManagmentCompany.objects.filter(id__in=company_ids,is_active=True)
 
             if search:
                 pmc_qs = pmc_qs.filter(
-                    Q(user__first_name__icontains=search) |
-                    Q(user__last_name__icontains=search) |
-                    Q(user__email__icontains=search)
-                )
+                    Q(name__icontains=search) |
+                    Q(code__icontains=search) |
+                    Q(company_staff__user__first_name__icontains=search) |
+                    Q(company_staff__user__last_name__icontains=search) |
+                    Q(company_staff__user__email__icontains=search)
+                ).distinct()
 
             field_names = [
                 "PropertyManagmentCompany Code",
+                "Property Handling ",
                 "PropertyManagmentCompany Name",
-                "PropertyManagmentCompany Address",
-                "Property Handling Count",
                 "Tenancy Ratio",
+                "PropertyManagmentCompany Address",
             ]
 
             data_list = []
 
-            for pmc in pmc_qs:
-                for comp in pmc.company_user.all():
-                    owner_props = Unit.objects.filter(
-                        owner=user,
-                        company=comp
-                    )
+            for company in pmc_qs:
+                owner_company_units = owner_units.filter(
+                    property_block_tower__property__pmc=company
+                )
+                total_props = owner_company_units.count()
+                leased_props = Lease.objects.filter(
+                    unit__in=owner_company_units,
+                    is_active=True
+                ).count()
+                tenancy_ratio = f"{leased_props}:{total_props}" if total_props else "0:0"
 
-                    total_props = owner_props.count()
-                    leased_props = Lease.objects.filter(
-                        lease_property__in=owner_props
-                    ).count()
+                pmc_user = PropertyManager.objects.filter(
+                    company=company
+                ).select_related("user").first()
 
-                    tenancy_ratio = f"{leased_props}:{total_props}" if total_props else "0:0"
-
-                    data_list.append({
-                        "PropertyManagmentCompany Code": comp.company_code,
-                        "PropertyManagmentCompany Name": comp.company_name,
-                        "PropertyManagmentCompany Address": comp.company_address,
-                        "Property Handling Count": total_props,
-                        "Tenancy Ratio": tenancy_ratio,
-                    })
+                data_list.append({
+                    "PropertyManagmentCompany Code": pmc_user.code if pmc_user else None,
+                    "Property Handling ": company.name,
+                    "PropertyManagmentCompany Name": (
+                        f"{pmc_user.user.first_name} {pmc_user.user.last_name}".strip()
+                        if pmc_user and pmc_user.user else None
+                    ),
+                    "PropertyManagmentCompany Address": (
+                        f"{pmc_user.address_line_1 or ''} {pmc_user.address_line_2 or ''}".strip()
+                        if pmc_user else None
+                    ),
+                    "Tenancy Ratio": tenancy_ratio,
+                })
             logger.info(
                 "PMC_CSV_EXPORTED | user_id=%s",
                 request.user.id
@@ -2633,9 +2641,10 @@ def export_owner_pmc_csv(request):
         # -------------------------------
         # CASE 2: PROPERTY LIST (company_id present)
         # -------------------------------
-        elif user.user_role == constants.OWNER and company_id:
+        elif owner_profile and company_id:
+            user = owner_profile
 
-            company = PropertyManagmentCompany.objects.filter(id=company_id).first()
+            company = PropertyManagmentCompany.objects.filter(id=company_id, is_active=True).first()
             if not company:
                 logger.warning(
                     "PMC_CSV_EXPORT_FAILED | user_id=%s | company_id=%s | reason=COMPANY_NOT_FOUND",
@@ -2646,16 +2655,19 @@ def export_owner_pmc_csv(request):
                 )
 
             properties_qs = Unit.objects.filter(
-                owner=user,
-                company=company
-            ).select_related("property").prefetch_related(
-                "lease_details__tenant__user"
+                unit_owners__owner=user,
+                property_block_tower__property__pmc=company,
+                is_active=True
+            ).select_related(
+                "property_block_tower__property"
+            ).prefetch_related(
+                "leases__tenant__user"
             )
 
             if search:
                 properties_qs = properties_qs.filter(
                     Q(unit_name__icontains=search) |
-                    Q(property__property_name__icontains=search)
+                    Q(property_block_tower__property__property_name__icontains=search)
                 )
 
             field_names = [
@@ -2669,7 +2681,7 @@ def export_owner_pmc_csv(request):
             data_list = []
 
             for prop in properties_qs:
-                lease = prop.lease_details.first()
+                lease = prop.leases.filter(is_active=True).first()
 
                 tenant_name = ""
                 tenancy_status = "Vacant"
@@ -2679,14 +2691,16 @@ def export_owner_pmc_csv(request):
                     tenant_name = f"{tenant_user.first_name} {tenant_user.last_name}".strip()
                     tenancy_status = "Occupied"
 
+                property_obj = prop.property_block_tower.property if prop.property_block_tower else None
+
                 data_list.append({
-                    "Property Code": prop.property_code,
+                    "Property Code": prop.code,
                     "Property Name": prop.unit_name or (
-                        prop.property.property_name if prop.property else ""
+                        property_obj.property_name if property_obj else ""
                     ),
                     "Tenant Name": tenant_name,
                     "Tenancy Status": tenancy_status,
-                    "Dimension / Bedroom": prop.dimension,
+                    "Dimension / Bedroom": str(prop.unit_size) if prop.unit_size is not None else prop.area,
                 })
             logger.info(
                 "PMC_CSV_EXPORTED | user_id=%s",
