@@ -1,6 +1,9 @@
 import csv
 import json
 import uuid
+import openpyxl
+import base64
+import io
 from datetime import timedelta
 from django.contrib.auth.models import User
 from django.core.paginator import Paginator, EmptyPage
@@ -691,7 +694,8 @@ def unit(request):
         unit_id = request.GET.get("unit_id")
         if unit_id:
             u = Unit.objects.filter(id=unit_id).select_related(
-                "property_block_tower__property"
+                # "property_block_tower__property"
+                "property_block_tower__property", "parent_property"
             ).prefetch_related("unit_owners").first()
             if not u:
                 logger.warning(
@@ -731,16 +735,22 @@ def unit(request):
             )
 
         # ── Only units under this company's properties ─────────
+        # units = Unit.objects.filter(
+        #     property_block_tower__property__pmc=company
+        # ).select_related(
+        #     "property_block_tower__property"
+        # ).prefetch_related("unit_owners").order_by("-id")
         units = Unit.objects.filter(
-            property_block_tower__property__pmc=company
+            Q(property_block_tower__property__pmc=company) | Q(parent_property__pmc=company)
         ).select_related(
-            "property_block_tower__property"
+            "property_block_tower__property", "parent_property"
         ).prefetch_related("unit_owners").order_by("-id")
 
         if search:
             units = units.filter(unit_name__icontains=search)
         if property_id:
-            units = units.filter(property_block_tower__property_id=property_id)
+            # units = units.filter(property_block_tower__property_id=property_id)
+            units = units.filter(Q(property_block_tower__property_id=property_id) | Q(parent_property_id=property_id))
         if block_id:
             units = units.filter(property_block_tower_id=block_id)
         if no_of_bedrooms:
@@ -748,8 +758,12 @@ def unit(request):
         if floor_no:
             units = units.filter(floor_no=floor_no)
         if land_area_unit:
+            # units = units.filter(
+            #     property_block_tower__property__land_area_unit=land_area_unit.upper())
             units = units.filter(
-                property_block_tower__property__land_area_unit=land_area_unit.upper())
+                Q(property_block_tower__property__land_area_unit=land_area_unit.upper())
+                | Q(parent_property__land_area_unit=land_area_unit.upper())
+            )
 
         if export == "csv":
             response = HttpResponse(content_type="text/csv")
@@ -776,13 +790,16 @@ def unit(request):
     elif request.method == "POST":
         data = json.loads(request.body)
         block_id = data.get("block_id")
+        parent_property_id = data.get("parent_property_id") or data.get("property_id")
         unit_name = data.get("unit_name")
 
-        if not block_id:
+        # if not block_id:
+        if not block_id and not parent_property_id:
             logger.warning(
-                "UNIT_CREATE_FAILED | user_id=%d | reason=BLOCK_ID_REQUIRED", request.user.id,)
+                "UNIT_CREATE_FAILED | user_id=%d | reason=PROPERTY_OR_BLOCK_REQUIRED", request.user.id,)
             return prepare_response(
-                message="block_id is required",
+                # message="block_id is required",
+                message="block_id or parent_property_id is required",
                 status=status.HTTP_400_BAD_REQUEST
             )
         if not unit_name:
@@ -793,8 +810,10 @@ def unit(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        block = PropertyBlocks.objects.filter(id=block_id).first()
-        if not block:
+        # block = PropertyBlocks.objects.filter(id=block_id).first()
+        block = PropertyBlocks.objects.filter(id=block_id).first() if block_id else None
+        # if not block:
+        if block_id and not block:
             logger.warning(
                 "UNIT_CREATE_FAILED | user_id=%d | block_id=%s | reason=BLOCK_NOT_FOUND",
                 request.user.id, block_id, )
@@ -802,9 +821,21 @@ def unit(request):
                 message="Block not found",
                 status=status.HTTP_404_NOT_FOUND
             )
+        # parent_property = block.property
+        parent_property = block.property if block else Property.objects.filter(id=parent_property_id).first()
+        if not parent_property:
+            logger.warning(
+                "UNIT_CREATE_FAILED | user_id=%d | parent_property_id=%s | reason=PROPERTY_NOT_FOUND",
+                request.user.id, parent_property_id, )
+            return prepare_response(
+                message=constants.PROPERTY_NOT_FOUND,
+                status=status.HTTP_404_NOT_FOUND
+            )
 
         u = Unit.objects.create(
             created_by=user_profile.user,
+            # parent_property=block.property,
+            parent_property=parent_property,
             property_block_tower=block,
             unit_name=unit_name,
             unit_size=data.get("unit_size"),
@@ -882,6 +913,14 @@ def unit(request):
             block = PropertyBlocks.objects.filter(id=data["block_id"]).first()
             if block:
                 u.property_block_tower = block
+                u.parent_property= block.property
+        # elif data.get("parent_property_id") or data.get("property_id"):
+        elif "parent_property_id" in data or "property_id" in data:
+            parent_property_id = data.get("parent_property_id") or data.get("property_id")
+            parent_property = Property.objects.filter(id=parent_property_id).first()
+            if parent_property:
+                u.property_block_tower = None
+                u.parent_property = parent_property
 
         u.save()
         logger.info(
@@ -956,7 +995,8 @@ def unit_images(request):
             )
 
         u = Unit.objects.filter(id=unit_id).select_related(
-            "property_block_tower__property"
+            # "property_block_tower__property"
+            "property_block_tower__property", "parent_property"
         ).first()
         if not u:
             logger.warning(
@@ -967,7 +1007,8 @@ def unit_images(request):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        property_id = u.property_block_tower.property_id
+        # property_id = u.property_block_tower.property_id
+        property_id = u.property_block_tower.property_id if u.property_block_tower_id else u.parent_property_id
         created = []
         for img_data in images_data:
             base64_data = img_data.get("data")
@@ -1079,7 +1120,8 @@ def unit_documents(request):
             )
 
         u = Unit.objects.filter(id=unit_id).select_related(
-            "property_block_tower__property"
+            # "property_block_tower__property"
+            "property_block_tower__property", "parent_property"
         ).first()
         if not u:
             logger.warning(
@@ -1090,7 +1132,8 @@ def unit_documents(request):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        property_id = u.property_block_tower.property_id
+        # property_id = u.property_block_tower.property_id
+        property_id = u.property_block_tower.property_id if u.property_block_tower_id else u.parent_property_id
         created = []
         for doc_data in documents_data:
             base64_data = doc_data.get("data")
@@ -1603,3 +1646,330 @@ def company_list(request):
     logger.info(
         "COMPANY_LIST_FETCHED | total_records=%d",companies.count(),)
     return prepare_response(content=content, status=status.HTTP_200_OK)
+
+
+# HELPER: Parse sheet — row 1 = description (skip), row 2 = headers
+def _parse_sheet(sheet):
+    rows = list(sheet.iter_rows(values_only=True))
+    if len(rows) < 2:
+        return []
+    headers = [str(h).strip().lower().replace(" ", "_") if h else "" for h in rows[1]]
+    result = []
+    for row in rows[2:]:
+        if all(v is None for v in row):
+            continue
+        result.append({headers[i]: row[i] for i in range(len(headers))})
+    return result
+
+
+# HELPER: Safe value getter
+def _val(data, key, default=None):
+    v = data.get(key)
+    if v is None:
+        return default
+    if isinstance(v, str):
+        v = v.strip()
+        return v if v else default
+    return v
+
+# MAIN VIEW: Bulk upload Property + Block + Unit from Excel (base64)
+@is_request_authenticated
+def bulk_upload_property_excel(request):
+    if request.method == "POST":
+        user_profile = request.user
+
+        # PMC check
+        pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).select_related("company").first()
+        pmc = pm_profile.company if pm_profile else None
+        if not pmc:
+            logger.warning(
+                "BULK_UPLOAD_DENIED | user_id=%s | reason=NOT_VERIFIED_PROPERTY_MANAGER",request.user.id)
+            return prepare_response(message=constants.NOT_VERIFIED_PROPERTY_MANAGER, status=status.HTTP_403_FORBIDDEN)
+
+        # Base64 file decode
+        try:
+            body = json.loads(request.body)
+        except Exception:
+            return prepare_response(message="Invalid JSON body",status=status.HTTP_400_BAD_REQUEST)
+
+        file_base64 = body.get("file")
+        if not file_base64:
+            return prepare_response(message="Excel file is required (base64 encoded)",status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            if "," in file_base64:
+                file_base64 = file_base64.split(",", 1)[1]
+
+            file_bytes = base64.b64decode(file_base64)
+            file_stream = io.BytesIO(file_bytes)
+            wb = openpyxl.load_workbook(file_stream, data_only=True)
+        except Exception as e:
+            return prepare_response(
+                message=f"Invalid Excel file: {str(e)}",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Sheet check 
+        sheet_names = wb.sheetnames
+        data_sheets = [s for s in sheet_names if s.lower() != "choices"]
+        if len(data_sheets) < 3:
+            return prepare_response(
+                message=f"Excel must have Property, Block, Unit sheets. Found: {data_sheets}",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        property_rows = _parse_sheet(wb[data_sheets[0]])
+        block_rows    = _parse_sheet(wb[data_sheets[1]])
+        unit_rows     = _parse_sheet(wb[data_sheets[2]])
+        errors = []
+        summary = {
+            "properties_created": 0,
+            "blocks_created": 0,
+            "units_created": 0,
+        }
+
+        # ── STEP 1: Create Properties ─────────────────────────────
+        property_map = {}
+        for i, row in enumerate(property_rows, start=3):
+            property_name = _val(row, "property_name_*") or _val(row, "property_name")
+            if not property_name:
+                errors.append({"sheet": "Property", "row": i, "error": "property_name is required"})
+                continue
+            if property_name.lower() in property_map:
+                errors.append({
+                    "sheet": "Property", "row": i,
+                    "error": f"Duplicate property_name '{property_name}' in Excel"
+                })
+                continue
+
+            existing = Property.objects.filter(property_name__iexact=property_name, pmc=pmc).first()
+            if existing:
+                property_map[property_name.lower()] = existing
+                errors.append({
+                    "sheet": "Property", "row": i,
+                    "error": f"Property '{property_name}' already exists — skipped, using existing"
+                })
+                continue
+
+            try:
+                prop = Property.objects.create(
+                    created_by=user_profile.user,
+                    property_name=property_name,
+                    property_type=_val(row, "property_type_*") or _val(row, "property_type") or constants.APARTMENT,
+                    status=_val(row, "status") or "DRAFT",
+                    no_of_blocks=_val(row, "no_of_blocks_*") or _val(row, "no_of_blocks") or 0,
+                    no_of_units=_val(row, "no_of_units_*") or _val(row, "no_of_units") or 0,
+                    land_area=_val(row, "land_area"),
+                    land_area_unit=_val(row, "land_area_unit") or constants.SQ_FT,
+                    land_dm_no=_val(row, "land_dm_no"),
+                    plot_no=_val(row, "plot_no"),
+                    dewa_no=_val(row, "dewa_no"),
+                    address_line_1=_val(row, "address_line_1_*") or _val(row, "address_line_1") or "",
+                    address_line_2=_val(row, "address_line_2") or "",
+                    landmark=_val(row, "landmark") or "",
+                    pincode=_val(row, "pincode") or "",
+                    latitude=_val(row, "latitude"),
+                    longitude=_val(row, "longitude"),
+                    map_address=_val(row, "map_address"),
+                    approx_rent=_val(row, "approx_rent"),
+                    pmc=pmc,
+                )
+                property_map[property_name.lower()] = prop
+                summary["properties_created"] += 1
+                logger.info(
+                    "BULK_PROPERTY_CREATED | user_id=%s | property_id=%s | name=%s",
+                    request.user.id, prop.id, prop.property_name
+                )
+            except Exception as e:
+                errors.append({"sheet": "Property", "row": i, "error": str(e)})
+
+        # ── STEP 2: Create Blocks ─────────────────────────────────
+        # if not block_name skip — unit directly link to property 
+        block_map = {}
+
+        for i, row in enumerate(block_rows, start=3):
+            property_name = _val(row, "property_name_*") or _val(row, "property_name")
+            block_name    = _val(row, "block_name_*") or _val(row, "block_name")
+
+            if not property_name:
+                errors.append({"sheet": "Block", "row": i, "error": "property_name is required"})
+                continue
+
+            if not block_name:
+                continue
+
+            prop = property_map.get(property_name.lower())
+            if not prop:
+                prop = Property.objects.filter(property_name__iexact=property_name, pmc=pmc).first()
+
+            if not prop:
+                errors.append({
+                    "sheet": "Block", "row": i,
+                    "error": f"Property '{property_name}' not found"
+                })
+                continue
+            block_key = f"{property_name.lower()}|{block_name.lower()}"
+
+            if block_key in block_map:
+                errors.append({
+                    "sheet": "Block", "row": i,
+                    "error": f"Duplicate block_name '{block_name}' for property '{property_name}'"
+                })
+                continue
+
+            existing_block = PropertyBlocks.objects.filter(block_name__iexact=block_name,property=prop).first()
+            if existing_block:
+                block_map[block_key] = existing_block
+                errors.append({
+                    "sheet": "Block", "row": i,
+                    "error": f"Block '{block_name}' already exists for '{property_name}' — skipped, using existing"
+                })
+                continue
+
+            try:
+                b = PropertyBlocks.objects.create(
+                    created_by=user_profile.user,
+                    property=prop,
+                    block_name=block_name,
+                    makani_no=_val(row, "makani_no") or "",
+                    no_of_floors=_val(row, "no_of_floors_*") or _val(row, "no_of_floors") or 0,
+                    no_of_parking=_val(row, "no_of_parking_*") or _val(row, "no_of_parking") or 0,
+                    no_of_units=_val(row, "no_of_units_*") or _val(row, "no_of_units") or 0,
+                )
+                block_map[block_key] = b
+                summary["blocks_created"] += 1
+                logger.info(
+                    "BULK_BLOCK_CREATED | user_id=%s | block_id=%s | name=%s | property=%s",
+                    request.user.id, b.id, b.block_name, property_name
+                )
+            except Exception as e:
+                errors.append({"sheet": "Block", "row": i, "error": str(e)})
+
+        # ── STEP 3: Create Units ──────────────────────────────────
+        # block_name  → property_block_tower=block, property=None
+        # block_name not → property_block_tower=None, property=prop
+        for i, row in enumerate(unit_rows, start=3):
+            property_name = _val(row, "property_name_*") or _val(row, "property_name")
+            block_name    = _val(row, "block_name_*") or _val(row, "block_name")
+            unit_name     = _val(row, "unit_name_*") or _val(row, "unit_name")
+
+            if not property_name:
+                errors.append({"sheet": "Unit", "row": i, "error": "property_name is required"})
+                continue
+            if not unit_name:
+                errors.append({"sheet": "Unit", "row": i, "error": "unit_name is required"})
+                continue
+
+            if block_name:
+                # block_name — link to block 
+                block_key = f"{property_name.lower()}|{block_name.lower()}"
+                block = block_map.get(block_key)
+
+                if not block:
+                    block = PropertyBlocks.objects.filter(
+                        block_name__iexact=block_name,
+                        property__property_name__iexact=property_name,
+                        property__pmc=pmc
+                    ).first()
+
+                if not block:
+                    errors.append({
+                        "sheet": "Unit", "row": i,
+                        "error": f"Block '{block_name}' under property '{property_name}' not found"
+                    })
+                    continue
+
+                # Unit duplicate check — same block has same unit_name
+                existing_unit = Unit.objects.filter(
+                    unit_name__iexact=str(unit_name),
+                    property_block_tower=block
+                ).first()
+                if existing_unit:
+                    errors.append({
+                        "sheet": "Unit", "row": i,
+                        "error": f"Unit '{unit_name}' already exists in block '{block_name}' — skipped"
+                    })
+                    continue
+
+                link_kwargs = {"property_block_tower": block, "parent_property": block.property, }
+
+            else:
+                # block_name not — directly property link 
+                prop = property_map.get(property_name.lower())
+                if not prop:
+                    prop = Property.objects.filter(property_name__iexact=property_name,pmc=pmc).first()
+
+                if not prop:
+                    errors.append({
+                        "sheet": "Unit", "row": i,
+                        "error": f"Property '{property_name}' not found"
+                    })
+                    continue
+
+                # Unit duplicate check — same property in same unit_name (no block)
+                existing_unit = Unit.objects.filter(unit_name__iexact=str(unit_name),parent_property=prop,property_block_tower=None).first()
+                if existing_unit:
+                    errors.append({
+                        "sheet": "Unit", "row": i,
+                        "error": f"Unit '{unit_name}' already exists in property '{property_name}' — skipped"
+                    })
+                    continue
+                link_kwargs = {
+                    "property_block_tower": None,
+                    "parent_property": prop,
+                }
+
+            try:
+                u = Unit.objects.create(
+                    created_by=user_profile.user,
+                    unit_name=str(unit_name),
+                    unit_size=_val(row, "unit_size"),
+                    area=_val(row, "area"),
+                    dm_no=_val(row, "dm_no"),
+                    no_of_bedrooms=_val(row, "no_of_bedrooms"),
+                    floor_no=_val(row, "floor_no"),
+                    parking_no=str(_val(row, "parking_no")) if _val(row, "parking_no") else None,
+                    no_of_balcony=_val(row, "no_of_balcony"),
+                    land_no=_val(row, "land_no"),
+                    unit_usage=_val(row, "unit_usage"),
+                    unit_type=_val(row, "unit_type"),
+                    sub_type=_val(row, "sub_type"),
+                    makani_no=str(_val(row, "makani_no")) if _val(row, "makani_no") else None,
+                    dewa_no=_val(row, "dewa_no"),
+                    rent=_val(row, "rent"),
+                    security_deposit=_val(row, "security_deposit"),
+                    booking_amount=_val(row, "booking_amount"),
+                    maintenance_charges=_val(row, "maintenance_charges"),
+                    cycle=_val(row, "cycle"),
+                    notice_period=str(_val(row, "notice_period")) if _val(row, "notice_period") else None,
+                    commission_percent=_val(row, "commission_percent"),
+                    **link_kwargs,
+                )
+                summary["units_created"] += 1
+                logger.info(
+                    "BULK_UNIT_CREATED | user_id=%s | unit_id=%s | name=%s | block=%s | property=%s",
+                    request.user.id, u.id, u.unit_name,
+                    block_name or "None",
+                    property_name
+                )
+            except Exception as e:
+                errors.append({"sheet": "Unit", "row": i, "error": str(e)})
+
+        # ── Response ──────────────────────────────────────────────
+        audit_logs(request, f"Bulk upload: {summary}", constants.CREATED)
+
+        if errors and summary["properties_created"] == 0 and summary["blocks_created"] == 0 and summary["units_created"] == 0:
+            return prepare_response(
+                message="Bulk upload failed",
+                content={"errors": errors},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        return prepare_response(
+            message="Bulk upload completed",
+            content={
+                "summary": summary,
+                "errors": errors
+            },
+            status=status.HTTP_201_CREATED
+        )

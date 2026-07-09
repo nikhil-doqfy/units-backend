@@ -96,7 +96,10 @@ class Property(Base):
             "property_name": self.property_name,
             "property_type": self.property_type,
             "no_of_blocks": PropertyBlocks.objects.filter(property=self).count(),
-            "no_of_units": Unit.objects.filter(property_block_tower__property=self).count(),
+            # "no_of_units": Unit.objects.filter(property_block_tower__property=self).count(),
+            "no_of_units": Unit.objects.filter(
+                models.Q(property_block_tower__property=self) | models.Q(parent_property=self)
+            ).distinct().count(),
             "land_area": self.land_area,
             "land_area_unit": self.land_area_unit,
             "land_dm_no": self.land_dm_no,
@@ -161,10 +164,13 @@ class PropertyDocuments(Documents):
 
 class Unit(Base):
     code = models.CharField(max_length=255, blank=True)
+    parent_property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name="units", null=True, blank=True)
     property_block_tower = models.ForeignKey(
         PropertyBlocks,
         on_delete=models.CASCADE,
-        related_name="block_towers"
+        related_name="block_towers",
+        null=True,   
+        blank=True
     )
     unit_name = models.CharField(max_length=255)
     unit_size = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
@@ -209,18 +215,25 @@ class Unit(Base):
         return fetch_s3_presigned_url(img.image_path, img.file_name)
 
     def _serialize_unit(self):
+        block = self.property_block_tower
+        prop = block.property if block else self.parent_property
         return {
             "id": self.id,
             "code": self.code,
             "unit_name": self.unit_name,
             "thumbnail": self._get_unit_thumbnail(),
-            "block_id": self.property_block_tower_id,
-            "block_name": self.property_block_tower.block_name,
-            "property_id": self.property_block_tower.property_id,
-            "property_name": self.property_block_tower.property.property_name,
-            "property_address_line_1": self.property_block_tower.property.address_line_1,
-            "property_address_line_2": self.property_block_tower.property.address_line_2,
-            "property_landmark": self.property_block_tower.property.landmark,
+            "block_id": block.id if block else None,
+            "block_name": block.block_name if block else None,
+            # "property_id": self.property_block_tower.property_id,
+            "property_id": prop.id if prop else None,
+            # "property_name": self.property_block_tower.property.property_name,
+            "property_name": prop.property_name if prop else None,
+            # "property_address_line_1": self.property_block_tower.property.address_line_1,
+            "property_address_line_1": prop.address_line_1 if prop else None,
+            # "property_address_line_2": self.property_block_tower.property.address_line_2,
+            "property_address_line_2": prop.address_line_2 if prop else None,
+            # "property_landmark": self.property_block_tower.property.landmark,
+            "property_landmark": prop.landmark if prop else None,
             "unit_size": str(self.unit_size) if self.unit_size is not None else None,
             "area": self.area,
             "dm_no": self.dm_no,
