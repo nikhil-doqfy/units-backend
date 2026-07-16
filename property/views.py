@@ -4,6 +4,7 @@ import uuid
 import openpyxl
 import base64
 import io
+import re
 from datetime import timedelta
 from django.contrib.auth.models import User
 from django.core.paginator import Paginator, EmptyPage
@@ -18,6 +19,7 @@ from utilities.helper_functions import prepare_response, generate_property_code,
 from utilities import status, constants
 from property_management.utils import audit_logs, get_full_property_data, get_property_images, get_lease_status
 from lease.models import Lease
+from property.models import PropertyType
 from rest_framework.decorators import api_view
 from .swagger import (
     property_get, property_post, property_put,
@@ -177,7 +179,7 @@ def property(request):
         if search:
             properties = properties.filter(property_name__icontains=search)
         if property_type:
-            properties = properties.filter(property_type=property_type)
+            properties = properties.filter(property_type__code__in=property_type.split(",")).distinct()
         if prop_status:
             properties = properties.filter(status=prop_status)
 
@@ -188,7 +190,8 @@ def property(request):
             writer.writerow(["Property ID", "Property Name", "Type", "Status", "Address", "Blocks", "Units", "Plot No", "Dewa No"])
             for p in properties:
                 s = p._serialize_property()
-                writer.writerow([s.get("code"), s.get("property_name"), s.get("property_type"), s.get("status"), s.get("address_line_1"), s.get("no_of_blocks"), s.get("no_of_units"), s.get("plot_no"), s.get("dewa_no")])
+                property_types = ", ".join(item["value"] for item in s.get("property_type", []))
+                writer.writerow([s.get("code"), s.get("property_name"), property_types, s.get("status"), s.get("address_line_1"), s.get("no_of_blocks"), s.get("no_of_units"), s.get("plot_no"), s.get("dewa_no")])
             return response
 
         total = properties.count()
@@ -230,7 +233,7 @@ def property(request):
         prop = Property.objects.create(
             created_by=user_profile.user,
             property_name=property_name,
-            property_type=data.get("property_type") or constants.APARTMENT,
+            #property_type=data.get("property_type") or constants.APARTMENT,
             no_of_blocks=data.get("no_of_blocks") or 0,
             no_of_units=data.get("no_of_units") or 0,
             land_area=data.get("land_area"),
@@ -248,6 +251,21 @@ def property(request):
             approx_rent=data.get("approx_rent"),
             pmc=pmc,
         )
+        property_types = data.get("property_type")
+        if not property_types:
+            property_types = [
+                    {
+                        "key": constants.APARTMENT,
+                        "value": "Apartment"
+                    }
+            ]
+        codes = [
+            item.get("key")
+            for item in property_types
+            if item.get("key")
+        ]
+        property_type_objs = PropertyType.objects.filter(code__in=codes)
+        prop.property_type.set(property_type_objs)
         logger.info(
             "PROPERTY_CREATED | user_id=%d | property_id=%d | property_name=%s | status=SUCCESS",
             request.user.id, prop.id, prop.property_name,)
@@ -281,7 +299,7 @@ def property(request):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        for field in ["property_name", "property_type", "no_of_blocks", "no_of_units",
+        for field in ["property_name", "no_of_blocks", "no_of_units",
                       "land_area", "land_area_unit", "land_dm_no", "plot_no",
                       "dewa_no", "address_line_1", "address_line_2", "landmark", "pincode",
                       "latitude", "longitude", "map_address", "approx_rent"]:
@@ -293,6 +311,15 @@ def property(request):
             prop.pmc = pm_profile.company
 
         prop.save()
+        property_types = data.get("property_type")
+        if property_types is not None:
+            codes = [
+                item.get("key")
+                for item in property_types
+                if item.get("key")
+            ]
+            types = PropertyType.objects.filter(code__in=codes)
+            prop.property_type.set(types)
         logger.info(
             "PROPERTY_UPDATED | user_id=%d | property_id=%d | property_name=%s | status=SUCCESS",
             request.user.id, prop.id, prop.property_name,)
@@ -312,6 +339,21 @@ def property(request):
             status=status.HTTP_405_METHOD_NOT_ALLOWED
         )
 
+@is_request_authenticated
+def property_type_list(request):
+    if request.method == "GET":
+        data = [
+            {
+                "key": pt.code,
+                "value": pt.name
+            }
+            for pt in PropertyType.objects.filter(is_active=True).order_by("name")
+        ]
+
+        return prepare_response(
+            content=data,
+            status=status.HTTP_200_OK
+        )
 
 @property_blocks_get
 @property_blocks_post
@@ -1755,7 +1797,7 @@ def bulk_upload_property_excel(request):
                 prop = Property.objects.create(
                     created_by=user_profile.user,
                     property_name=property_name,
-                    property_type=_val(row, "property_type_*") or _val(row, "property_type") or constants.APARTMENT,
+                    #property_type=_val(row, "property_type_*") or _val(row, "property_type") or constants.APARTMENT,
                     status=_val(row, "status") or "DRAFT",
                     no_of_blocks=_val(row, "no_of_blocks_*") or _val(row, "no_of_blocks") or 0,
                     no_of_units=_val(row, "no_of_units_*") or _val(row, "no_of_units") or 0,
@@ -1774,6 +1816,11 @@ def bulk_upload_property_excel(request):
                     approx_rent=_val(row, "approx_rent"),
                     pmc=pmc,
                 )
+                property_types = (_val(row, "property_type_*")or _val(row, "property_type")or constants.APARTMENT)
+                if property_types:
+                    codes = [x.strip() for x in re.split(r"[,/]", str(property_types)) if x.strip()]
+                    types = PropertyType.objects.filter(code__in=codes)
+                    prop.property_type.set(types)
                 property_map[property_name.lower()] = prop
                 summary["properties_created"] += 1
                 logger.info(
