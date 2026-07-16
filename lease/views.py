@@ -177,7 +177,10 @@ def lease_view(request):
             search = request.GET.get("search", "").strip()
 
             if property_id:
-                qs = qs.filter(unit__property_block_tower__property_id=property_id)
+                qs = qs.filter(
+                    Q(unit__parent_property_id=property_id) |
+                    Q(unit__property_block_tower__property_id=property_id)
+                )
             if unit_id:
                 qs = qs.filter(unit_id=unit_id)
             if tenant_id:
@@ -220,7 +223,7 @@ def lease_view(request):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            unit_obj = Unit.objects.select_related("property_block_tower__property").filter(id=unit_id).first()
+            unit_obj = Unit.objects.select_related("property_block_tower__property","parent_property").filter(id=unit_id).first()
             if not unit_obj:
                 logger.warning(
                     "LEASE_CREATE_FAILED | user_id=%d | unit_id=%s | reason=UNIT_NOT_FOUND",
@@ -1721,8 +1724,9 @@ def lease_cheque_view(request):
                     "document_type",
                     "lease__unit__property_block_tower__property"
                 ).get(
+                    Q(lease__unit__parent_property__pmc=company) |
+                    Q(lease__unit__property_block_tower__property__pmc=company),
                     id=cheque_id,
-                    lease__unit__property_block_tower__property__pmc=company
                 )
 
             except LeaseTransaction.DoesNotExist:
@@ -1752,11 +1756,15 @@ def lease_cheque_view(request):
 
         cheques = LeaseTransaction.objects.filter(
             lease_id=lease_id,
-            lease__unit__property_block_tower__property__pmc=company
+        ).filter(
+            Q(lease__unit__parent_property__pmc=company) |
+            Q(lease__unit__property_block_tower__property__pmc=company)
         ).select_related(
             "origin_bank",
             "selltlement_bank",
-            "document_type"
+            "document_type",
+            "lease__unit__property_block_tower__property",
+            "lease__unit__parent_property",
         )
         logger.info(
             "LEASE_CHEQUE_LIST_FETCHED | user_id=%d | lease_id=%s | count=%d",
@@ -1975,7 +1983,10 @@ def cheque_summary_view(request):
     year        = request.GET.get("year", "").strip()
 
     if property_id:
-        qs = qs.filter(lease__unit__property_block_tower__property_id=property_id)
+        qs = qs.filter(
+            Q(lease__unit__parent_property_id=property_id) |
+            Q(lease__unit__property_block_tower__property_id=property_id)
+        )
     if block_id:
         qs = qs.filter(lease__unit__property_block_tower_id=block_id)
     if unit_id:
@@ -2047,16 +2058,22 @@ def all_cheques_view(request):
     year        = request.GET.get("year", "").strip()
 
     qs = LeaseTransaction.objects.select_related(
+        "lease__unit__parent_property",
         "lease__unit__property_block_tower__property",
         "lease__tenant__user",
         "selltlement_bank",
-    ).filter(lease__unit__property_block_tower__property__pmc=company
+    ).filter(    
+        Q(lease__unit__parent_property__pmc=company) |
+        Q(lease__unit__property_block_tower__property__pmc=company)
     ).order_by("-id")
 
     if cheque_status_filter:
         qs = qs.filter(status=cheque_status_filter)
     if property_id:
-        qs = qs.filter(lease__unit__property_block_tower__property_id=property_id)
+        qs = qs.filter(
+                Q(lease__unit__parent_property_id=property_id) |
+                Q(lease__unit__property_block_tower__property_id=property_id)
+            )
     if block_id:
         qs = qs.filter(lease__unit__property_block_tower_id=block_id)
     if unit_id:
@@ -2071,7 +2088,7 @@ def all_cheques_view(request):
             Q(lease__unit__code__icontains=search) |
             Q(lease__tenant__user__first_name__icontains=search) |
             Q(lease__tenant__user__last_name__icontains=search) |
-            Q(lease__unit__property_block_tower__property__property_name__icontains=search)
+            Q(lease__unit__parent_property__property_name__icontains=search) | Q(lease__unit__property_block_tower__property__property_name__icontains=search)
         )
         logger.info(
             "ALL_CHEQUES_SEARCH | user_id=%s | search=%s | records=%s",
@@ -2141,12 +2158,18 @@ def cheque_monthly_view(request):
     unit_id = request.GET.get("unit_id", "").strip()
 
     qs = LeaseTransaction.objects.filter(
-        lease__unit__property_block_tower__property__pmc=company,
+        # lease__unit__property_block_tower__property__pmc=company,
         cheque_date__year=year
+    ).filter(
+        Q(lease__unit__parent_property__pmc=company) |
+        Q(lease__unit__property_block_tower__property__pmc=company)
     )
 
     if property_id:
-        qs = qs.filter(lease__unit__property_block_tower__property_id=property_id)
+        qs = qs.filter(
+            Q(lease__unit__parent_property_id=property_id) |
+            Q(lease__unit__property_block_tower__property_id=property_id)
+        )
     if block_id:
         qs = qs.filter(lease__unit__property_block_tower_id=block_id)
     if unit_id:

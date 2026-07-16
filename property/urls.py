@@ -11,6 +11,8 @@ urlpatterns = [
     path('property/unit/images', views.unit_images, name='unit_images'),
     path('property/unit/document-types', views.unit_document_types, name='unit_document_types'),
     path('property/unit/documents', views.unit_documents, name='unit_documents'),
+    path("bulk_upload_property",views.bulk_upload_property_excel, name="bulk_upload_property_excel"),
+    path("property_types", views.property_type_list),
     # Moved from property_management
     path('property/details', views.property_table_view, name='property_table_view'),
     path('parent/property', views.parent_property_view, name='parent_property_view'),
