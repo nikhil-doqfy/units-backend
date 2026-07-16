@@ -18,7 +18,9 @@ def _get_property_thumbnail(unit):
         return None
     try:
         pb = unit.property_block_tower
-        return pb.property._get_thumbnail() if pb and pb.property else None
+        # return pb.property._get_thumbnail() if pb and pb.property else None
+        prop = pb.property if pb and pb.property else unit.parent_property
+        return prop._get_thumbnail() if prop else None
     except Exception:
         return None
 
@@ -29,7 +31,8 @@ def serialize_lease(lease):
     t    = lease.tenant
     unit = lease.unit
     pb   = unit.property_block_tower if unit else None
-    prop = pb.property if pb else None
+    # prop = pb.property if pb else None
+    prop = pb.property if pb else unit.parent_property if unit else None
 
     unit_owners = []
     if unit:
@@ -204,7 +207,8 @@ def serialize_cheque_list_row(cheque):
     lease  = cheque.lease
     unit   = lease.unit   if lease else None
     pb     = unit.property_block_tower if unit else None
-    prop   = pb.property  if pb   else None
+    # prop   = pb.property  if pb   else None
+    prop   = pb.property if pb else unit.parent_property if unit else None
     tenant = lease.tenant if lease else None
 
     return {
@@ -250,7 +254,8 @@ def serialize_tenant_lease(lease):
     t    = lease.tenant
     unit = lease.unit
     pb   = unit.property_block_tower if unit else None
-    prop = pb.property if pb else None
+    # prop = pb.property if pb else None
+    prop = pb.property if pb else unit.parent_property if unit else None
 
     return {
         "id":           lease.id,

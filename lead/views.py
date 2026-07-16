@@ -8,13 +8,21 @@ from django.http import HttpResponse
 from .models import Lead, ActivityLog
 from property.models import Unit
 from user_service.models import PropertyManager, Tenant
+from plugins.logger_plugin import get_logger
 
+logger = get_logger(__name__)
 def _get_pmc(user_profile):
     pm = PropertyManager.objects.filter(pk=user_profile.pk).select_related("company").first()
     return pm.company if pm else None
 from utilities.decorator import is_request_authenticated
 from utilities.helper_functions import prepare_response
 from utilities import status, constants
+from lead.swagger import (
+    lead_get, lead_post, lead_put, lead_delete,
+    activity_get, activity_post, activity_put, activity_delete,
+    lead_check_active_lease_get, lead_bulk_import_post
+)
+from rest_framework.decorators import api_view
 
 
 def _get_property_thumbnail(prop):
@@ -42,7 +50,8 @@ def _find_lead_lease(lead):
 def _serialize_lead(lead):
     unit = lead.unit
     block = unit.property_block_tower
-    prop = block.property
+    #prop = block.property
+    prop = block.property if block else unit.parent_property
     pmc = prop.pmc
 
     return {
@@ -66,11 +75,16 @@ def _serialize_lead(lead):
         "dewa_no": unit.dewa_no,
         "rent": str(unit.rent) if unit.rent else None,
         # Block / Property
-        "block_id": block.id,
-        "block_name": block.block_name,
-        "property_id": prop.id,
-        "property_name": prop.property_name,
-        "property_thumbnail": _get_property_thumbnail(prop),
+        # "block_id": block.id,
+        # "block_name": block.block_name,
+        "block_id": block.id if block else None,
+        "block_name": block.block_name if block else None,
+        # "property_id": prop.id,
+        # "property_name": prop.property_name,
+        # "property_thumbnail": _get_property_thumbnail(prop),
+        "property_id": prop.id if prop else None,
+        "property_name": prop.property_name if prop else None,
+        "property_thumbnail": _get_property_thumbnail(prop) if prop else None,
         # All unit owners
         "unit_owners": [
             {
@@ -102,7 +116,11 @@ def _serialize_lead_with_lease(lead):
     data["lease_stage"] = lease.lease_stage if lease else None
     return data
 
-
+@lead_get
+@lead_post
+@lead_put
+@lead_delete
+@api_view(['GET', 'POST', 'PUT', 'DELETE'])
 @is_request_authenticated
 def lead_view(request):
     user_profile = request.user
@@ -116,7 +134,13 @@ def lead_view(request):
         if lead_id:
             lead = Lead.objects.filter(id=lead_id, pmc=pmc).first()
             if not lead:
+                logger.warning(
+                    "LEAD_FETCH_FAILED | user_id=%d | lead_id=%s | reason=NOT_FOUND",
+                    request.user.id, lead_id )
                 return prepare_response(message="Lead not found", status=status.HTTP_404_NOT_FOUND)
+            logger.info(
+                "LEAD_FETCH_SINGLE | user_id=%d | lead_id=%s | pmc_id=%s",
+                request.user.id, lead_id, pmc.id)
             return prepare_response(content=_serialize_lead_with_lease(lead), status=status.HTTP_200_OK)
 
         search = request.GET.get("search", "").strip()
@@ -145,9 +169,13 @@ def lead_view(request):
             for l in leads:
                 s = _serialize_lead(l)
                 writer.writerow([s["code"], s["name"], s["email"], s["contact_number"], s["status"], s["platform"], s["lead_type"], s["unit_name"], s["property_name"], s["created_at"]])
+            logger.info(
+                "LEAD_CSV_EXPORTED | user_id=%d | total=%d", request.user.id, leads.count())
             return response
 
         total = leads.count()
+        logger.info(
+            "LEAD_LIST_FETCHED | user_id=%d | total=%d", request.user.id, total )
         start = (page - 1) * page_size
         leads = leads[start:start + page_size]
 
@@ -168,6 +196,8 @@ def lead_view(request):
         lead_type = data.get("lead_type")
 
         if not all([unit_id, name, email, contact_number, platform, lead_type]):
+            logger.warning(
+                "LEAD_CREATE_FAILED | user_id=%d | reason=REQUIRED_FIELDS_MISSING", request.user.id)
             return prepare_response(
                 message="unit_id, name, email, contact_number, platform, lead_type are required",
                 status=status.HTTP_400_BAD_REQUEST,
@@ -175,6 +205,9 @@ def lead_view(request):
 
         unit = Unit.objects.filter(id=unit_id).first()
         if not unit:
+            logger.warning(
+                "LEAD_CREATE_FAILED | user_id=%d | reason=UNIT_NOT_FOUND",
+                request.user.id)
             return prepare_response(message="Unit not found", status=status.HTTP_404_NOT_FOUND)
 
         lead = Lead.objects.create(
@@ -188,6 +221,8 @@ def lead_view(request):
             pmc=pmc,
             created_by=user_profile.user,
         )
+        logger.info(
+            "LEAD_CREATED | user_id=%d | lead_id=%d | unit_id=%d", request.user.id, lead.id, unit.id)
 
         ActivityLog.objects.create(
             lead=lead,
@@ -251,6 +286,9 @@ def lead_view(request):
                 lead.unit = unit
 
         lead.save()
+        logger.info(
+            "LEAD_UPDATED | user_id=%d | lead_id=%d | changes=%s",
+            request.user.id, lead.id, ",".join(changes) if changes else "no_changes")
 
         comment = (data.get("comment") or "").strip()
         title = " and ".join(changes) if changes else "updated this lead"
@@ -279,6 +317,8 @@ def lead_view(request):
             return prepare_response(message="Lead not found", status=status.HTTP_404_NOT_FOUND)
 
         lead.delete()
+        logger.info(
+            "LEAD_DELETED | user_id=%d | lead_id=%s", request.user.id, lead_id )
         return prepare_response(message="Lead deleted successfully", status=status.HTTP_200_OK)
 
     return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
@@ -310,7 +350,11 @@ def _serialize_activity(log):
         "created_by_name": f"{created_by.first_name} {created_by.last_name}".strip() if created_by else "System",
     }
 
-
+@activity_get
+@activity_post
+@activity_put
+@activity_delete
+@api_view(['GET', 'POST', 'PUT', 'DELETE'])
 @is_request_authenticated
 def activity_log_view(request):
     user_profile = request.user
@@ -328,6 +372,9 @@ def activity_log_view(request):
             return prepare_response(message="Lead not found", status=status.HTTP_404_NOT_FOUND)
 
         logs = ActivityLog.objects.filter(lead=lead).order_by("-created")
+        logger.info(
+            "ACTIVITY_LOG_FETCHED | user_id=%d | lead_id=%s | count=%d",
+            request.user.id, lead_id, logs.count())
         return prepare_response(content=[_serialize_activity(l) for l in logs], status=status.HTTP_200_OK)
 
     elif request.method == "POST":
@@ -353,6 +400,9 @@ def activity_log_view(request):
             scheduled_date=_parse_scheduled_date(scheduled_date),
             created_by=user_profile.user,
         )
+        logger.info(
+            "ACTIVITY_LOG_CREATED | user_id=%d | lead_id=%s | type=%s",
+            request.user.id, lead_id, activity_type)
         return prepare_response(content=_serialize_activity(log), status=status.HTTP_201_CREATED)
 
     elif request.method == "PUT":
@@ -371,6 +421,9 @@ def activity_log_view(request):
         if "scheduled_date" in data:
             log.scheduled_date = _parse_scheduled_date(data["scheduled_date"])
         log.save()
+        logger.info(
+            "ACTIVITY_LOG_UPDATED | user_id=%d | log_id=%s",
+            request.user.id, log_id)
         return prepare_response(content=_serialize_activity(log), status=status.HTTP_200_OK)
 
     elif request.method == "DELETE":
@@ -383,13 +436,17 @@ def activity_log_view(request):
             return prepare_response(message="Activity log not found", status=status.HTTP_404_NOT_FOUND)
 
         log.delete()
+        logger.info(
+            "ACTIVITY_LOG_DELETED | user_id=%d | log_id=%s", request.user.id, log_id)
         return prepare_response(message="Activity log deleted successfully", status=status.HTTP_200_OK)
 
     return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
-
+@lead_check_active_lease_get
+@api_view(['GET'])
 @is_request_authenticated
 def lead_check_active_lease(request):
+    user_profile = request.user
     if request.method != "GET":
         return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
@@ -403,10 +460,14 @@ def lead_check_active_lease(request):
 
     from lease.models import Lease
     has_active_lease = Lease.objects.filter(unit=lead.unit, lease_status="ACTIVE").exists()
+    logger.info(
+        "LEAD_LEASE_CHECK | user_id=%d | lead_id=%s | has_active_lease=%s",
+        request.user.id, lead_id, has_active_lease)
 
     return prepare_response(content={"has_active_lease": has_active_lease}, status=status.HTTP_200_OK)
 
-
+@lead_bulk_import_post
+@api_view(['POST'])
 @is_request_authenticated
 def lead_bulk_import(request):
     if request.method != "POST":
@@ -478,7 +539,9 @@ def lead_bulk_import(request):
             created_by=user_profile.user,
         )
         created += 1
-
+    logger.info(
+        "LEAD_BULK_IMPORT_DONE | user_id=%d | created=%d | skipped=%d",
+        request.user.id, created, skipped)
     return prepare_response(
         message=f"{created} lead(s) imported successfully. {skipped} skipped.",
         content={"created": created, "skipped": skipped, "errors": errors},

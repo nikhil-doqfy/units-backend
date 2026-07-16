@@ -13,6 +13,7 @@ import os
 from pathlib import Path
 from celery.schedules import crontab
 
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = 'django-insecure--w_9ca8o1wlh-l3foy8=g*x%9ay90j@2#3&pntlrv$wausuo8&'
@@ -40,7 +41,8 @@ INSTALLED_APPS = [
     'lease',
     'terms',
     "notification",
- 
+    'drf_yasg',
+    'rest_framework',
 
 ]
 
@@ -136,3 +138,27 @@ EMAIL_HOST_PASSWORD = ''
 EMAIL_PORT = 587
 # --------------------------------------------------------------------------------------------------------------------------------------------
 TEST_RUNNER = "utilities.test_runner.CustomHTMLAndExcelRunner"
+
+
+APPEND_SLASH = False
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [],
+    'DEFAULT_PERMISSION_CLASSES': [],
+}
+
+SWAGGER_SETTINGS = {
+    'SECURITY_DEFINITIONS': {
+        'Bearer': {
+            'type': 'apiKey',
+            'name': 'Authorization',
+            'in': 'header',
+            'description': 'Enter: **Bearer &lt;token&gt;**',
+        }
+    },
+    'USE_SESSION_AUTH': False,
+    'JSON_EDITOR': True,
+    'DEFAULT_AUTO_SCHEMA_CLASS': 'drf_yasg.inspectors.SwaggerAutoSchema',
+}
+LOGIN_REDIRECT_URL = "/swagger/"
+LOGOUT_REDIRECT_URL = "/accounts/login/"

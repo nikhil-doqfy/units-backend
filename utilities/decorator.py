@@ -8,6 +8,17 @@ from utilities import constants
 
 def is_request_authenticated(function):
     def wrap(request, *args, **kwargs):
+
+        # ── Allow OPTIONS for Swagger ──────────────────
+        if request.method == "OPTIONS":
+            from django.http import HttpResponse
+            response = HttpResponse()
+            response["Allow"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+            response["Access-Control-Allow-Origin"] = "*"
+            response["Access-Control-Allow-Headers"] = "Authorization, Content-Type"
+            response["Access-Control-Allow-Methods"] = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+            return response
+
         token = request.headers.get('Authorization')
         if token:
             token = get_jwt_token(token) 

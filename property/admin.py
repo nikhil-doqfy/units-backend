@@ -19,7 +19,7 @@ class PropertyManagmentCompanyAdmin(admin.ModelAdmin):
 
 @admin.register(Property)
 class PropertyAdmin(admin.ModelAdmin):
-    list_display = ["id", "code", "property_name", "property_type", "no_of_blocks", "no_of_units", "pincode", "status", "pmc"]
+    list_display = ["id", "code", "property_name", "no_of_blocks", "no_of_units", "pincode", "status", "pmc"]
     search_fields = ["property_name", "code"]
     list_filter = ["property_type", "status"]
 

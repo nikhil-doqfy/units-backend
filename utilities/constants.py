@@ -785,6 +785,7 @@ UNIT_TYPE_CHOICES = (
     (FLAT, 'Flat'),
     (APARTMENT, 'Apartment'),
     (VILLA, 'Villa'),
+    (STUDIO, 'Studio')
 )
 
 # ── No of Blocks ──────────────────────────────────────────────
