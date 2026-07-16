@@ -13,7 +13,7 @@ from django.db.models import Q, Prefetch
 from django.http import HttpResponse
 from django.utils import timezone
 from .models import Unit, UnitImages, UnitDocuments, UnitOwner, Property, PropertyBlocks, PropertyImages, PropertyDocuments, PropertyManagmentCompany, PropertyInterest
-from user_service.models import PropertyManager, DocumentType, Owner
+from user_service.models import PropertyManager, DocumentType, Owner, Tenant
 from utilities.decorator import is_request_authenticated
 from utilities.helper_functions import prepare_response, generate_property_code, upload_file_to_s3_base64, fetch_s3_presigned_url, get_extension_from_base64, export_to_csv
 from utilities import status, constants
@@ -160,22 +160,40 @@ def property(request):
         page_size = int(request.GET.get("page_size", 10))
         export = request.GET.get("export", "").strip()
 
-        # ── Scope to logged-in user's company only ─────────────
-        # Finds logged-in user's PropertyManager profile and its company.
+        properties = Property.objects.none()
+        # ── PMC login ─────────────────────────────────────────
         pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).select_related('company').first()
-
-        properties = []
-
         # If company exists, fetch that company’s active properties.
         if pm_profile and pm_profile.company:
             properties = Property.objects.filter(pmc=pm_profile.company,is_active=True).order_by("-id")
 
-        # Otherwise, find company created by logged-in user.
-        if not properties:
+        # Otherwise, find company created by logged-in user (PMC admin/owner of company).
+        if not properties.exists() and not pm_profile:
             own_company = PropertyManagmentCompany.objects.filter(created_by=user_profile.user,is_active=True).first()
 
             if own_company:
                 properties = Property.objects.filter(pmc=own_company,is_active=True).order_by("-id")
+ 
+        # ── Owner login ───────────────────────────────────────
+        if not properties.exists():
+            owner_profile = Owner.objects.filter(pk=user_profile.pk).first()
+ 
+            if owner_profile:
+                properties = Property.objects.filter(
+                    property_blocks__block_towers__unit_owners__owner=owner_profile,
+                    is_active=True
+                ).distinct().order_by("-id")
+ 
+        # ── Tenant login ──────────────────────────────────────
+        if not properties.exists():
+            tenant_profile = Tenant.objects.filter(pk=user_profile.pk).first()
+            if tenant_profile:
+                properties = Property.objects.filter(
+                    property_blocks__block_towers__leases__tenant=tenant_profile,
+                    property_blocks__block_towers__leases__is_active=True,
+                    is_active=True
+                ).distinct().order_by("-id")
+
         if search:
             properties = properties.filter(property_name__icontains=search)
         if property_type:
@@ -761,32 +779,56 @@ def unit(request):
         page_size = int(request.GET.get("page_size", 10))
         export = request.GET.get("export", "").strip()
 
-        # ── Get logged-in user's company ───────────────────────
-        pm = PropertyManager.objects.filter(id=user_profile.id).select_related("company").first()
-        company = pm.company if pm else None
+        # ── Role detection: PMC → Owner → Tenant ────────────────
+        pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).select_related("company").first()
+        if pm_profile and pm_profile.company:
+            company = pm_profile.company
 
-        if not company:
-            company = PropertyManagmentCompany.objects.filter(created_by=user_profile.user,is_active=True).first()
+            if not company:
+                company = PropertyManagmentCompany.objects.filter(
+                    created_by=user_profile.user, is_active=True
+                ).first()
 
-        if not company:
-            logger.warning(
+            if not company:
+                logger.warning(
                 "UNIT_FETCH_FAILED | user_id=%d | reason=COMPANY_NOT_FOUND",request.user.id,)
-            return prepare_response(
-                message=constants.COMPANY_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
+                return prepare_response(
+                    message=constants.COMPANY_NOT_FOUND,
+                    status=status.HTTP_404_NOT_FOUND
+                )
 
-        # ── Only units under this company's properties ─────────
-        # units = Unit.objects.filter(
-        #     property_block_tower__property__pmc=company
-        # ).select_related(
-        #     "property_block_tower__property"
-        # ).prefetch_related("unit_owners").order_by("-id")
-        units = Unit.objects.filter(
-            Q(property_block_tower__property__pmc=company) | Q(parent_property__pmc=company)
-        ).select_related(
-            "property_block_tower__property", "parent_property"
-        ).prefetch_related("unit_owners").order_by("-id")
+            units = Unit.objects.filter(
+                property_block_tower__property__pmc=company
+            ).select_related(
+                "property_block_tower__property"
+            ).prefetch_related("unit_owners").order_by("-id")
+
+        else:
+            owner_profile = Owner.objects.filter(pk=user_profile.pk).first()
+
+            if owner_profile:
+                units = Unit.objects.filter(
+                    unit_owners__owner=owner_profile,
+                    is_active=True
+                ).select_related(
+                    "property_block_tower__property"
+                ).prefetch_related("unit_owners").distinct().order_by("-id")
+ 
+            else:
+                tenant_profile = Tenant.objects.filter(pk=user_profile.pk).first() 
+                if tenant_profile:
+                    units = Unit.objects.filter(
+                        leases__tenant=tenant_profile,
+                        leases__is_active=True,
+                        is_active=True
+                    ).select_related(
+                        "property_block_tower__property"
+                    ).prefetch_related("unit_owners").distinct().order_by("-id") 
+                else:
+                    return prepare_response(
+                        message=constants.UNAUTHORIZED_ROLE,
+                        status=status.HTTP_403_FORBIDDEN
+                    )
 
         if search:
             units = units.filter(unit_name__icontains=search)

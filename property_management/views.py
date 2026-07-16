@@ -111,8 +111,12 @@ def options(request):
         elif option_type == "PARENT_PROPERTY":
             properties = Property.objects.none()
             if is_owner:
+<<<<<<< HEAD
                 #property_ids = Unit.objects.filter(owner=user).values_list('property_id', flat=True).distinct()
                 property_ids = Unit.objects.filter(owner=user).annotate(actual_property=Coalesce("parent_property_id", "property_block_tower__property_id")).values_list("actual_property", flat=True).distinct()
+=======
+                property_ids = Unit.objects.filter(unit_owners__owner=user).values_list("property_block_tower__property_id", flat=True).distinct()
+>>>>>>> 347cc7b0ef1463c832ebdd5686157e098eb3bbf2
                 properties = Property.objects.filter(id__in=property_ids)
             elif is_pm and pm_profile.company:
                 properties = Property.objects.filter(pmc=pm_profile.company)
@@ -1542,7 +1546,7 @@ def dashboard_property_owned(request):
         # OWNER
         elif owner_instance:
             properties = properties.filter(
-                property_block_towers__units__unit_owners__owner=owner_instance
+                property_blocks__block_towers__unit_owners__owner=owner_instance
             ).distinct()
 
         # NO ACCESS
