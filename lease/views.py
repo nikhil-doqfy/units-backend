@@ -63,7 +63,7 @@ from .swagger import (
     rent_analytics_get,
     activate_lease_post,
 )
-
+from django.db.models import Q, Sum, Count
 from plugins.logger_plugin import get_logger
 
 logger = get_logger(__name__)
