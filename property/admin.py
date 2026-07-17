@@ -1,7 +1,7 @@
 from django.contrib import admin
 from property.models import (
     PropertyManagmentCompany, Property, Unit, PropertyImages, PropertyInterest,
-    PropertyBlocks, UnitOwner, PropertyManagerDocuments,
+    PropertyBlocks, UnitOwner, PropertyManagerDocuments, PropertyType
 )
 
 
@@ -67,6 +67,10 @@ class UnitOwnerAdmin(admin.ModelAdmin):
     def get_emirates_id(self, obj):
         return obj.owner.emirate_id if obj.owner else "—"
 
+@admin.register(PropertyType)
+class PropertyTypeAdmin(admin.ModelAdmin):
+    list_display = ["id", "code", "name"]
+    search_fields = ["code", "name"]
 
 @admin.register(PropertyInterest)
 class PropertyInterestAdmin(admin.ModelAdmin):
