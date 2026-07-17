@@ -856,10 +856,14 @@ def dashboard_monthly_revenue(request):
         if pm_instance:
             company = pm_instance.company
             transactions = transactions.filter(
-                lease__unit__property_block_tower__property__pmc=company
+                # lease__unit__property_block_tower__property__pmc=company
+                Q(lease__unit__property_block_tower__property__pmc=company) |
+                Q(lease__unit__parent_property__pmc=company)
             )
             leases = leases.filter(
-                unit__property_block_tower__property__pmc=company
+                # unit__property_block_tower__property__pmc=company
+                Q(unit__property_block_tower__property__pmc=company) |
+                Q(unit__parent_property__pmc=company)
             )
         elif owner_instance:
             transactions = transactions.filter(
@@ -877,7 +881,9 @@ def dashboard_monthly_revenue(request):
         # =========================
         if city_id:
             transactions = transactions.filter(
-                lease__unit__property_block_tower__property__city_id=city_id
+                #lease__unit__property_block_tower__property__city_id=city_id
+                Q(lease__unit__property_block_tower__property__city_id=city_id) |
+                Q(lease__unit__parent_property__city_id=city_id)
             )
 
         if unit_id:
@@ -923,7 +929,9 @@ def dashboard_monthly_revenue(request):
         )
         if pm_instance:
             mrr_qs = mrr_qs.filter(
-                lease__unit__property_block_tower__property__pmc=company
+                #lease__unit__property_block_tower__property__pmc=company
+                Q(lease__unit__property_block_tower__property__pmc=company) |
+                Q(lease__unit__parent_property__pmc=company)
             )
         elif owner_instance:
             mrr_qs = mrr_qs.filter(
@@ -1014,7 +1022,9 @@ def dashboard_cheque_visibility(request):
         if pm_instance:
             company = pm_instance.company
             transactions = transactions.filter(
-                lease__unit__property_block_tower__property__pmc=company
+                #lease__unit__property_block_tower__property__pmc=company
+                Q(lease__unit__property_block_tower__property__pmc=company) |
+                Q(lease__unit__parent_property__pmc=company)
             )
         elif owner_instance:
             transactions = transactions.filter(
@@ -1028,11 +1038,15 @@ def dashboard_cheque_visibility(request):
         # =========================
         if city_id:
             transactions = transactions.filter(
-                lease__unit__property_block_tower__property__city_id=city_id
+                #lease__unit__property_block_tower__property__city_id=city_id
+                Q(lease__unit__property_block_tower__property__city_id=city_id) |
+                Q(lease__unit__parent_property__city_id=city_id)
             )
         if property_id:
             transactions = transactions.filter(
-                lease__unit__property_block_tower__property__id=property_id
+                #lease__unit__property_block_tower__property__id=property_id
+                Q(lease__unit__property_block_tower__property__id=property_id) |
+                Q(lease__unit__parent_property__id=property_id)
             )
         if unit_id:
             transactions = transactions.filter(lease__unit__id=unit_id)
@@ -1126,7 +1140,9 @@ def dashboard_cheque_aging(request):
         if pm_instance:
             company = pm_instance.company
             transactions = transactions.filter(
-                lease__unit__property_block_tower__property__pmc=company
+                #lease__unit__property_block_tower__property__pmc=company
+                Q(lease__unit__property_block_tower__property__pmc=company) |
+                Q(lease__unit__parent_property__pmc=company)
             )
         elif owner_instance:
             transactions = transactions.filter(
@@ -1137,7 +1153,9 @@ def dashboard_cheque_aging(request):
 
         if property_id:
             transactions = transactions.filter(
-                lease__unit__property_block_tower__property__id=property_id
+                #lease__unit__property_block_tower__property__id=property_id
+                Q(lease__unit__property_block_tower__property__id=property_id) |
+                Q(lease__unit__parent_property__id=property_id)
             )
 
         # ================= SUMMARY =================
@@ -1248,7 +1266,9 @@ def dashboard_other_type_payments(request):
         if pm_instance:
             company = pm_instance.company
             transactions = transactions.filter(
-                lease__unit__property_block_tower__property__pmc=company
+                #lease__unit__property_block_tower__property__pmc=company
+                Q(lease__unit__property_block_tower__property__pmc=company) |
+                Q(lease__unit__parent_property__pmc=company)
             )
         elif owner_instance:
             transactions = transactions.filter(
@@ -1541,7 +1561,9 @@ def dashboard_property_owned(request):
         # OWNER
         elif owner_instance:
             properties = properties.filter(
-                property_blocks__block_towers__unit_owners__owner=owner_instance
+                #property_blocks__block_towers__unit_owners__owner=owner_instance
+                Q(property_blocks__block_towers__unit_owners__owner=owner_instance) |
+                Q(units__unit_owners__owner=owner_instance)
             ).distinct()
 
         # NO ACCESS
@@ -1556,8 +1578,10 @@ def dashboard_property_owned(request):
         for prop in paginated_properties:
 
             property_units = Unit.objects.filter(
-                is_active=True,
-                property_block_tower__property=prop
+                is_active=True
+            ).filter(
+                Q(property_block_tower__property=prop) |
+                Q(parent_property=prop)          
             ).distinct()
 
             # OWNER FILTER
