@@ -798,9 +798,11 @@ def unit(request):
                 )
 
             units = Unit.objects.filter(
-                property_block_tower__property__pmc=company
+                Q(property_block_tower__property__pmc=company) |
+                Q(parent_property__pmc=company)
             ).select_related(
-                "property_block_tower__property"
+                "property_block_tower__property",
+                "parent_property"
             ).prefetch_related("unit_owners").order_by("-id")
 
         else:
