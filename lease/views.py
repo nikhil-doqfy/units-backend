@@ -2056,7 +2056,7 @@ def all_cheques_view(request):
     block_id    = request.GET.get("block_id", "").strip()
     unit_id     = request.GET.get("unit_id", "").strip()
     year        = request.GET.get("year", "").strip()
-
+    from django.db.models import Q
     qs = LeaseTransaction.objects.select_related(
         "lease__unit__parent_property",
         "lease__unit__property_block_tower__property",
