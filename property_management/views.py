@@ -113,8 +113,6 @@ def options(request):
             if is_owner:
                 property_ids = Unit.objects.filter(unit_owners__owner=user).values_list("property_block_tower__property_id", flat=True).distinct()
                 properties = Property.objects.filter(id__in=property_ids)
-            # elif is_pm and pm_profile.company:
-            #     properties = Property.objects.filter(pmc=pm_profile.company)
             elif is_pm:
                 pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile).values_list("pmc_id", flat=True))
                 if not pmc_ids and pm_profile.company_id:
@@ -556,18 +554,9 @@ def dashboard_overview(request):
         owner_instance = Owner.objects.filter(pk=user.pk).first()
 
         if pm_instance:
-            # company = pm_instance.company
-            # if not company:
-            #     logger.warning(
-            #         "DASHBOARD_OVERVIEW_FAILED | user_id=%s | reason=COMPANY_NOT_FOUND", user.id )
-            #     return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
-            pmc_ids = list(
-                PMCPMMapping.objects.filter(pm=pm_instance)
-                .values_list("pmc_id", flat=True)
-            )
+            pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_instance).values_list("pmc_id", flat=True))
             if not pmc_ids and pm_instance.company_id:
                 pmc_ids = [pm_instance.company_id]
-
             if not pmc_ids:
                 logger.warning(
                     "DASHBOARD_OVERVIEW_FAILED | user_id=%s | reason=COMPANY_NOT_FOUND", user.id )
@@ -603,10 +592,6 @@ def dashboard_overview(request):
                 pmc_id__in=pmc_ids
             ).count()
 
-            # active_complaints_count = Complaint.objects.filter(
-            #     company=company,
-            #     is_active=True
-            # ).count()
             active_complaints_count = Complaint.objects.filter(
                 company_id__in=pmc_ids,
                 is_active=True
@@ -710,7 +695,6 @@ def dashboard_occupancy(request):
             r["resolved_property_id"]: r["rented"]
             for r in (
                 Lease.objects.filter(
-                    # unit__property_block_tower__property__in=properties_qs,
                     Q(unit__parent_property__in=properties_qs) |
                     Q(unit__property_block_tower__property__in=properties_qs),
                     lease_status=constants.ACTIVE,
@@ -803,16 +787,7 @@ def dashboard_top_revenue_properties(request):
         owner_instance = Owner.objects.filter(pk=user.pk).first()
 
         if pm_instance:
-            # company = pm_instance.company
-            # if not company:
-            #     logger.warning(
-            #         "TOP_REVENUE_PROPERTIES_FAILED | user_id=%s | reason=COMPANY_NOT_FOUND",
-            #         user.id )
-            #     return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
-            pmc_ids = list(
-                PMCPMMapping.objects.filter(pm=pm_instance)
-                .values_list("pmc_id", flat=True)
-            )
+            pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_instance).values_list("pmc_id", flat=True))
             if not pmc_ids and pm_instance.company_id:
                 pmc_ids = [pm_instance.company_id]
             if not pmc_ids:
@@ -837,8 +812,6 @@ def dashboard_top_revenue_properties(request):
                 is_active=True,
             )
             .values(
-                # prop_id=F("lease__unit__property_block_tower__property_id"),
-                # prop_name=F("lease__unit__property_block_tower__property__property_name"),
                 prop_id=Coalesce(
                     F("lease__unit__parent_property_id"),
                     F("lease__unit__property_block_tower__property_id"),

@@ -165,8 +165,6 @@ def property(request):
         # ── PMC login ─────────────────────────────────────────
         pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).select_related('company').first()
         # If company exists, fetch that company’s active properties.
-        #if pm_profile and pm_profile.company:
-            #properties = Property.objects.filter(pmc=pm_profile.company,is_active=True).order_by("-id")
         if pm_profile:
             pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile).values_list("pmc_id", flat=True))            
             if not pmc_ids and pm_profile.company_id:
@@ -819,12 +817,6 @@ def unit(request):
             if not pmc_ids:
                 return prepare_response(message=constants.COMPANY_NOT_FOUND,status=status.HTTP_404_NOT_FOUND)
 
-
-            # if not company:
-            #     company = PropertyManagmentCompany.objects.filter(
-            #         created_by=user_profile.user, is_active=True
-            #     ).first()
-
             units = Unit.objects.filter(
                 Q(property_block_tower__property__pmc_id__in=pmc_ids) |
                 Q(parent_property__pmc_id__in=pmc_ids)
@@ -872,8 +864,6 @@ def unit(request):
         if floor_no:
             units = units.filter(floor_no=floor_no)
         if land_area_unit:
-            # units = units.filter(
-            #     property_block_tower__property__land_area_unit=land_area_unit.upper())
             units = units.filter(
                 Q(property_block_tower__property__land_area_unit=land_area_unit.upper())
                 | Q(parent_property__land_area_unit=land_area_unit.upper())
@@ -1234,7 +1224,6 @@ def unit_documents(request):
             )
 
         u = Unit.objects.filter(id=unit_id).select_related(
-            # "property_block_tower__property"
             "property_block_tower__property", "parent_property"
         ).first()
         if not u:
@@ -1246,7 +1235,6 @@ def unit_documents(request):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        # property_id = u.property_block_tower.property_id
         property_id = u.property_block_tower.property_id if u.property_block_tower_id else u.parent_property_id
         created = []
         for doc_data in documents_data:

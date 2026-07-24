@@ -133,8 +133,6 @@ def lead_view(request):
     user_profile = request.user
 
     # pmc = _get_pmc(user_profile)
-    # if not pmc:
-    #     return prepare_response(message="Company not found for this user", status=status.HTTP_400_BAD_REQUEST)
     pmc_ids = _get_pmc_ids(user_profile)
     if not pmc_ids:
         return prepare_response(message="Company not found for this user", status=status.HTTP_400_BAD_REQUEST )
