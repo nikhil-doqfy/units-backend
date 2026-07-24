@@ -8,9 +8,9 @@ from utilities import config
 logger = getLogger(__name__)
 client = boto3.client(
     'sesv2',
-    region_name=config.AWS_REGION,
-    aws_access_key_id=config.AWS_ACCESS_KEY,
-    aws_secret_access_key=config.AWS_SECRET_KEY
+    region_name=config.SES_AWS_REGION,
+    aws_access_key_id=config.SES_AWS_ACCESS_KEY,
+    aws_secret_access_key=config.SES_AWS_SECRET_KEY
 )
 
 def send(recipient, subject, body_text, body_html, cc=None, bcc=None):
