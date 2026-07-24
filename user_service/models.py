@@ -134,7 +134,8 @@ class UserVerification(models.Model):
     )
 
     def __str__(self):
-        return f"{self.email} - {self.purpose} - OTP: {self.otp}"
+        #return f"{self.email} - {self.purpose} - OTP: {self.otp}"
+        return f"{self.user_profile.user.email} - {self.purpose} - OTP: {self.otp}"
     
     def verify_otp(self, otp):
         if int(otp) != self.otp:

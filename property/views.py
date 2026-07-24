@@ -19,7 +19,7 @@ from utilities.helper_functions import prepare_response, generate_property_code,
 from utilities import status, constants
 from property_management.utils import audit_logs, get_full_property_data, get_property_images, get_lease_status
 from lease.models import Lease
-from property.models import PropertyType
+from property.models import PropertyType, PMCPMMapping
 from rest_framework.decorators import api_view
 from .swagger import (
     property_get, property_post, property_put,
@@ -141,6 +141,7 @@ def property(request):
 
     if request.method == "GET":
         property_id = request.GET.get("property_id")
+        pmc_id = request.GET.get("pmc_id")
         if property_id:
             prop = Property.objects.filter(id=property_id).first()
             if not prop:
@@ -164,8 +165,19 @@ def property(request):
         # ── PMC login ─────────────────────────────────────────
         pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).select_related('company').first()
         # If company exists, fetch that company’s active properties.
-        if pm_profile and pm_profile.company:
-            properties = Property.objects.filter(pmc=pm_profile.company,is_active=True).order_by("-id")
+        #if pm_profile and pm_profile.company:
+            #properties = Property.objects.filter(pmc=pm_profile.company,is_active=True).order_by("-id")
+        if pm_profile:
+            pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile).values_list("pmc_id", flat=True))            
+            if not pmc_ids and pm_profile.company_id:
+                pmc_ids = [pm_profile.company_id]                
+            if pmc_ids:
+                properties = Property.objects.filter(pmc_id__in=pmc_ids, is_active=True)#.order_by("-id")
+                if pmc_id:
+                    if int(pmc_id) not in pmc_ids:
+                        return prepare_response(message="You are not allowed to access this PMC", status=status.HTTP_403_FORBIDDEN)
+                    properties = properties.filter(pmc_id=pmc_id)
+                properties = properties.order_by("-id")
 
         # Otherwise, find company created by logged-in user (PMC admin/owner of company).
         if not properties.exists() and not pm_profile:
@@ -228,6 +240,9 @@ def property(request):
         data = json.loads(request.body)
 
         property_name = data.get("property_name")
+        pmc_id = data.get("pmc_id")
+        if not pmc_id:
+            return prepare_response(message="PMC id is required", status=status.HTTP_400_BAD_REQUEST)
         if not property_name:
             logger.warning(
                 "PROPERTY_CREATE_FAILED | user_id=%d | reason=PROPERTY_NAME_REQUIRED",
@@ -238,15 +253,22 @@ def property(request):
             )
 
         pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).select_related('company').first()
-        pmc = pm_profile.company if pm_profile else None
-        if not pmc:
+        if not pm_profile:
             logger.warning(
                 "PROPERTY_CREATE_DENIED | user_id=%d | reason=NOT_VERIFIED_PROPERTY_MANAGER",
                 request.user.id,)
+            return prepare_response(message=constants.NOT_VERIFIED_PROPERTY_MANAGER, status=status.HTTP_403_FORBIDDEN)
+        #pmc = pm_profile.company if pm_profile else None
+        allowed = PMCPMMapping.objects.filter(pm=pm_profile,pmc_id=pmc_id).exists()
+        if not allowed:
+            return prepare_response(message="You are not allowed to create property for this PMC", status=status.HTTP_403_FORBIDDEN)
+        pmc = PropertyManagmentCompany.objects.filter(id=pmc_id, is_active=True).first()
+        if not pmc:
+            logger.warning(
+                    "PROPERTY_CREATE_FAILED | user_id=%d | reason=PMC_NOT_FOUND",
+                request.user.id,)
             return prepare_response(
-                message=constants.NOT_VERIFIED_PROPERTY_MANAGER,
-                status=status.HTTP_403_FORBIDDEN
-            )
+                message=constants.PMC_NOT_FOUND, status=status.HTTP_404_NOT_FOUND )
 
         prop = Property.objects.create(
             created_by=user_profile.user,
@@ -271,18 +293,9 @@ def property(request):
         )
         property_types = data.get("property_type")
         if not property_types:
-            property_types = [
-                    {
-                        "key": constants.APARTMENT,
-                        "value": "Apartment"
-                    }
-            ]
-        codes = [
-            item.get("key")
-            for item in property_types
-            if item.get("key")
-        ]
-        property_type_objs = PropertyType.objects.filter(code__in=codes)
+            if not property_types:
+                property_types = [constants.APARTMENT]
+        property_type_objs = PropertyType.objects.filter(code__in=property_types)
         prop.property_type.set(property_type_objs)
         logger.info(
             "PROPERTY_CREATED | user_id=%d | property_id=%d | property_name=%s | status=SUCCESS",
@@ -331,12 +344,7 @@ def property(request):
         prop.save()
         property_types = data.get("property_type")
         if property_types is not None:
-            codes = [
-                item.get("key")
-                for item in property_types
-                if item.get("key")
-            ]
-            types = PropertyType.objects.filter(code__in=codes)
+            types = PropertyType.objects.filter(code__in=property_types)
             prop.property_type.set(types)
         logger.info(
             "PROPERTY_UPDATED | user_id=%d | property_id=%d | property_name=%s | status=SUCCESS",
@@ -391,6 +399,27 @@ def property_blocks(request):
                 message="property_id is required",
                 status=status.HTTP_400_BAD_REQUEST
             )
+        # PM access check
+        pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).select_related("company").first()
+        if pm_profile:
+            pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile).values_list("pmc_id", flat=True))
+
+            if not pmc_ids and pm_profile.company_id:
+                pmc_ids = [pm_profile.company_id]
+
+            property_exists = Property.objects.filter(
+                id=property_id,
+                pmc_id__in=pmc_ids,
+                is_active=True,
+            ).exists()
+
+            if not property_exists:
+                logger.warning(
+                    "BLOCK_FETCH_FAILED | user_id=%d | property_id=%s | reason=ACCESS_DENIED",
+                    request.user.id, property_id,
+                )
+                return prepare_response(message=constants.PROPERTY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND,)
+
         blocks = PropertyBlocks.objects.filter(property_id=property_id)
         content = [
             {
@@ -781,25 +810,24 @@ def unit(request):
 
         # ── Role detection: PMC → Owner → Tenant ────────────────
         pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).select_related("company").first()
-        if pm_profile and pm_profile.company:
-            company = pm_profile.company
+        if pm_profile:
+            pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile).values_list("pmc_id", flat=True))
 
-            if not company:
-                company = PropertyManagmentCompany.objects.filter(
-                    created_by=user_profile.user, is_active=True
-                ).first()
+            if not pmc_ids and pm_profile.company_id:
+                pmc_ids = [pm_profile.company_id]
 
-            if not company:
-                logger.warning(
-                "UNIT_FETCH_FAILED | user_id=%d | reason=COMPANY_NOT_FOUND",request.user.id,)
-                return prepare_response(
-                    message=constants.COMPANY_NOT_FOUND,
-                    status=status.HTTP_404_NOT_FOUND
-                )
+            if not pmc_ids:
+                return prepare_response(message=constants.COMPANY_NOT_FOUND,status=status.HTTP_404_NOT_FOUND)
+
+
+            # if not company:
+            #     company = PropertyManagmentCompany.objects.filter(
+            #         created_by=user_profile.user, is_active=True
+            #     ).first()
 
             units = Unit.objects.filter(
-                Q(property_block_tower__property__pmc=company) |
-                Q(parent_property__pmc=company)
+                Q(property_block_tower__property__pmc_id__in=pmc_ids) |
+                Q(parent_property__pmc_id__in=pmc_ids)
             ).select_related(
                 "property_block_tower__property",
                 "parent_property"

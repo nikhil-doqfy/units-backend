@@ -7,6 +7,7 @@ from auth_service import urls as auth_service_urls
 from payment import urls as payment_urls
 from . import views
 from charges import urls as charges_urls
+from terms import urls as terms_urls
 from property import urls as property_urls
 from lead import urls as lead_urls
 from lease import urls as lease_urls
@@ -61,6 +62,7 @@ urlpatterns = [
     path('', include(lease_urls)),
     path('', include(complaint_urls)),
     path('', include(notification_urls)),
+    path('terms/', include(terms_urls)),
 
     re_path(r"^media/(?P<path>.*)$", views.serve_media),
     path('options', views.options, name='options'),
