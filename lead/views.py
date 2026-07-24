@@ -6,7 +6,7 @@ from datetime import datetime
 from django.db.models import Q
 from django.http import HttpResponse
 from .models import Lead, ActivityLog
-from property.models import Unit
+from property.models import Unit, PMCPMMapping
 from user_service.models import PropertyManager, Tenant
 from plugins.logger_plugin import get_logger
 
@@ -23,7 +23,14 @@ from lead.swagger import (
     lead_check_active_lease_get, lead_bulk_import_post
 )
 from rest_framework.decorators import api_view
-
+def _get_pmc_ids(user_profile):
+    pm = PropertyManager.objects.filter(pk=user_profile.pk).first()
+    if not pm:
+        return []
+    pmc_ids = list(PMCPMMapping.objects.filter(pm=pm).values_list("pmc_id", flat=True))
+    if not pmc_ids and pm.company_id:
+        pmc_ids = [pm.company_id]
+    return pmc_ids
 
 def _get_property_thumbnail(prop):
     img = prop.property_images.filter(image_type="EXTERIOR").first()
@@ -125,22 +132,23 @@ def _serialize_lead_with_lease(lead):
 def lead_view(request):
     user_profile = request.user
 
-    pmc = _get_pmc(user_profile)
-    if not pmc:
-        return prepare_response(message="Company not found for this user", status=status.HTTP_400_BAD_REQUEST)
+    # pmc = _get_pmc(user_profile)
+    pmc_ids = _get_pmc_ids(user_profile)
+    if not pmc_ids:
+        return prepare_response(message="Company not found for this user", status=status.HTTP_400_BAD_REQUEST )
 
     if request.method == "GET":
         lead_id = request.GET.get("lead_id")
         if lead_id:
-            lead = Lead.objects.filter(id=lead_id, pmc=pmc).first()
+            lead = Lead.objects.filter(id=lead_id, pmc_id__in=pmc_ids).first()
             if not lead:
                 logger.warning(
                     "LEAD_FETCH_FAILED | user_id=%d | lead_id=%s | reason=NOT_FOUND",
                     request.user.id, lead_id )
                 return prepare_response(message="Lead not found", status=status.HTTP_404_NOT_FOUND)
             logger.info(
-                "LEAD_FETCH_SINGLE | user_id=%d | lead_id=%s | pmc_id=%s",
-                request.user.id, lead_id, pmc.id)
+                "LEAD_FETCH_SINGLE | user_id=%d | lead_id=%s | pmc_ids=%s",
+                request.user.id, lead_id, pmc_ids)
             return prepare_response(content=_serialize_lead_with_lease(lead), status=status.HTTP_200_OK)
 
         search = request.GET.get("search", "").strip()
@@ -150,7 +158,7 @@ def lead_view(request):
         page = int(request.GET.get("page", 1))
         page_size = int(request.GET.get("page_size", 10))
 
-        leads = Lead.objects.filter(pmc=pmc).order_by("-id")
+        leads = Lead.objects.filter(pmc_id__in=pmc_ids).order_by("-id")
         if search:
             leads = leads.filter(Q(name__icontains=search) | Q(email__icontains=search))
         if lead_status:
@@ -209,6 +217,21 @@ def lead_view(request):
                 "LEAD_CREATE_FAILED | user_id=%d | reason=UNIT_NOT_FOUND",
                 request.user.id)
             return prepare_response(message="Unit not found", status=status.HTTP_404_NOT_FOUND)
+
+        if unit.property_block_tower:
+            pmc = unit.property_block_tower.property.pmc
+        else:
+            pmc = unit.parent_property.pmc
+        if not pmc:
+            return prepare_response( message="PMC not found for selected unit", status=status.HTTP_400_BAD_REQUEST)
+        pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).first()
+        if not pm_profile:
+            return prepare_response( message=constants.NOT_VERIFIED_PROPERTY_MANAGER, status=status.HTTP_403_FORBIDDEN)
+        pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile).values_list("pmc_id", flat=True))
+        if not pmc_ids and pm_profile.company_id:
+            pmc_ids = [pm_profile.company_id]
+        if pmc.id not in pmc_ids:
+            return prepare_response( message="You are not allowed to create lead for this property", status=status.HTTP_403_FORBIDDEN)
 
         lead = Lead.objects.create(
             unit=unit,

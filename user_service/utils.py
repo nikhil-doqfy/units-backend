@@ -5,6 +5,7 @@ from user_service.models import DocumentType
 from user_service.models import Approval
 from django.utils import timezone
 from utilities import constants
+from django.db.models import Q
 
 def request_otp_sent():
     otp = random.randint(100000, 999999)
@@ -31,10 +32,17 @@ def upload_document(base64_data, file_prefix, document_type_id, document_model, 
         **extra_kwargs
     )
 
-def process_rent_approval(approval_id, user_profile, rent=None, tenure=None, action="approve"):
+def process_rent_approval(approval_id, user_profile, rent=None, tenure=None, action="approve", pmc_ids=None):
     from lease.models import Lease
 
-    approval = Approval.objects.select_related("unit", "tenant").filter(id=approval_id).first()
+    # approval = Approval.objects.select_related("unit", "tenant").filter(id=approval_id).first()
+    approval_qs = Approval.objects.select_related("unit", "tenant").filter(id=approval_id)
+    if pmc_ids is not None:
+        approval_qs = approval_qs.filter(
+            Q(unit__property_block_tower__property__pmc_id__in=pmc_ids) |
+            Q(unit__parent_property__pmc_id__in=pmc_ids)
+        )
+    approval = approval_qs.first()
 
     if not approval:
         return None, "Approval request not found"

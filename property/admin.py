@@ -1,7 +1,7 @@
 from django.contrib import admin
 from property.models import (
     PropertyManagmentCompany, Property, Unit, PropertyImages, PropertyInterest,
-    PropertyBlocks, UnitOwner, PropertyManagerDocuments, PropertyType
+    PropertyBlocks, UnitOwner, PropertyManagerDocuments, PropertyType, Organization, PMCPMMapping
 )
 
 
@@ -80,3 +80,17 @@ class PropertyInterestAdmin(admin.ModelAdmin):
 @admin.register(PropertyManagerDocuments)
 class PropertyManagerDocumentsAdmin(admin.ModelAdmin):
     list_display = ["id", "company_user", "file_name"]
+
+@admin.register(Organization)
+class OrganizationAdmin(admin.ModelAdmin):
+    list_display = ["code", "name", "email", "contact_number", "city", "expiry_date",]
+    search_fields = [ "name", "email", "contact_number",]
+    list_filter = ["city", "expiry_date",]
+    ordering = ("name",)
+
+@admin.register(PMCPMMapping)
+class PMCPMMappingAdmin(admin.ModelAdmin):
+    list_display = ["id", "pm", "pmc", "created_by", "created", "is_active",]
+    list_filter = ("pmc", "is_active", )
+    search_fields = ("pm__user__first_name", "pm__user__last_name", "pm__user__email", "pmc__name", )
+    autocomplete_fields = ( "pm", "pmc",)

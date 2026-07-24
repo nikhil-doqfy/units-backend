@@ -112,7 +112,8 @@ def terms_api(request):
             title=title,
             description=description,
             country=country_obj,
-            category=category_obj
+            category=category_obj,
+            created_by=request.user.user,
         )
 
         return prepare_response(
