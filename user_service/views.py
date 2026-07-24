@@ -14,6 +14,7 @@ from django.contrib.auth.models import User
 from django.utils.crypto import get_random_string
 from django.db import transaction
 from property_management.utils import get_staff_details, get_property_images, get_full_user_data
+from property.models import PMCPMMapping
 from user_service.utils import upload_document, process_rent_approval
 from lease.models import Lease, LeaseDocuments
 from user_service.serializers import serialize_owner_detail, serialize_owner_unit
@@ -98,6 +99,11 @@ def user_sign_up(request):
             profile = PropertyManager.objects.create(
                 **common_profile_kwargs,
                 company_id=company_id
+            )
+            PMCPMMapping.objects.get_or_create(pm=profile, pmc=profile.company,
+            defaults={
+                "created_by": user
+                }
             )
         else:
             logger.warning(
@@ -873,9 +879,16 @@ def export_users_csv(request):
 def staff_view(request):
     user = request.user
     try:
-        company = PropertyManagmentCompany.objects.filter(created_by=user.user, is_active=True).first()
+        #company = PropertyManagmentCompany.objects.filter(created_by=user.user, is_active=True).first()
+        login_pmc_ids = []
+        pm_check = None
+        company = PropertyManagmentCompany.objects.filter(created_by=user.user,is_active=True).first()
         if not company:
             pm_check = PropertyManager.objects.filter(pk=user.pk).select_related("company").first()
+            login_pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_check).values_list("pmc_id", flat=True))
+            # Fallback to default company
+            if not login_pmc_ids and pm_check and pm_check.company_id:
+                login_pmc_ids = [pm_check.company_id]
             company = pm_check.company if pm_check else None
         if not company:
             logger.warning(
@@ -889,7 +902,12 @@ def staff_view(request):
             page = int(request.GET.get("page_number", 1))
             limit = int(request.GET.get("limit", 10))
 
-            qs = PropertyManager.objects.filter(company=company).select_related("user", "city").prefetch_related("roles")
+            #qs = PropertyManager.objects.filter(company=company).select_related("user", "city").prefetch_related("roles")
+            pm_ids = PMCPMMapping.objects.filter(pmc_id__in=login_pmc_ids).values_list("pm_id", flat=True).distinct()
+            if pm_ids:
+                qs = PropertyManager.objects.filter(pk__in=pm_ids).select_related("user", "city").prefetch_related("roles")
+            else:
+                qs = PropertyManager.objects.filter(company=company).select_related("user", "city").prefetch_related("roles")
             company_prop_ids = company.pmc_properties.filter(is_active=True).values_list("id", flat=True)
 
             if staff_id:
@@ -918,7 +936,10 @@ def staff_view(request):
 
                 assigned_properties = []
                 for unit in units_qs:
-                    prop = unit.property_block_tower.property
+                    block = unit.property_block_tower
+                    prop = block.property if block else unit.parent_property
+                    if not prop:
+                        continue
                     active_lease = unit.leases.filter(lease_status="ACTIVE", is_active=True).first()
                     tenant_name = active_lease.tenant.user.get_full_name() if active_lease and active_lease.tenant and active_lease.tenant.user else None
                     unit_owner = unit.unit_owners.first()
@@ -930,6 +951,23 @@ def staff_view(request):
                         "tenant_name": tenant_name,
                         "owner_name": owner_name,
                     })
+                #selected_pmcs = list(PMCPMMapping.objects.filter(pm=pm).values_list("pmc_id", flat=True))
+                assigned_pmcs = PMCPMMapping.objects.filter(pm=pm).select_related("pmc")
+                if assigned_pmcs.exists():
+                    pmcs = [
+                        {
+                            "key": mapping.pmc.id,
+                            "value": mapping.pmc.name,
+                        }
+                        for mapping in assigned_pmcs
+                    ]
+                else:
+                    pmcs = [
+                        {
+                            "key": pm.company.id if pm.company else None,
+                            "value": pm.company.name if pm.company else None,
+                        }
+                        ] if pm.company else []
 
                 data = {
                     "staff_id": pm.pk,
@@ -951,6 +989,8 @@ def staff_view(request):
                     "profile_image": pm.profile_image,
                     "assigned_properties": assigned_properties,
                     "assigned_unit_ids": assigned_unit_ids,
+                    "pmcs": pmcs,
+                    #"selected_pmcs": selected_pmcs,
                 }
                 logger.info(
                     "STAFF_FETCHED | user_id=%s | staff_id=%s",
@@ -1016,6 +1056,22 @@ def staff_view(request):
                 unit_ids = pm_unit_map[pm.pk]
                 total = len(unit_ids)
                 occupied = len(unit_ids & occupied_unit_ids)
+                assigned_pmcs = PMCPMMapping.objects.filter(pm=pm).select_related("pmc")
+                if assigned_pmcs.exists():
+                    pmcs = [
+                        {
+                            "key": mapping.pmc.id,
+                            "value": mapping.pmc.name,
+                        }
+                        for mapping in assigned_pmcs
+                    ]
+                else:
+                    pmcs = [
+                        {
+                            "key": pm.company.id,
+                            "value": pm.company.name,
+                        }
+                    ] if pm.company else []
                 data.append({
                     "staff_id": pm.pk,
                     "staff_name": pm.user.get_full_name(),
@@ -1026,6 +1082,7 @@ def staff_view(request):
                     "property_count": total,
                     "property_images": property_thumbnails,
                     "tenancy_ratio": f"{total}:{occupied}",
+                    "pmcs": pmcs,
                 })
             pagination_meta = {
                 "current_page": page_obj.number,
@@ -1071,6 +1128,13 @@ def staff_view(request):
                     company=company,
                     contact_number=contact_number,
                     created_by=user.user,
+                )
+                PMCPMMapping.objects.get_or_create(
+                    pm=pm,
+                    pmc=pm.company,
+                    defaults={
+                        "created_by": user.user
+                        }
                 )
                 if role_id:
                     role_obj = Role.objects.filter(id=role_id, company=company).first()
@@ -1140,6 +1204,15 @@ def staff_view(request):
                 role_obj = Role.objects.filter(id=role_id, company=company).first()
                 if role_obj:
                     pm.roles.set([role_obj])
+
+            if "pmcs" in body:
+                PMCPMMapping.objects.filter(pm=pm).delete()
+                for pmc_id in body["pmcs"]:
+                    PMCPMMapping.objects.create(
+                    pm=pm,
+                    pmc_id=pmc_id,
+                    created_by=user.user,
+                )
 
             if "assigned_property" in body:
                 from property.models import PropertyManagerAssignedUnits, Unit as UnitModel
@@ -2064,21 +2137,32 @@ def approval_view(request):
 
 
     pm_profile = PropertyManager.objects.select_related("company").filter(pk=user_profile.pk).first()
-
-    company = pm_profile.company
+    if not pm_profile:
+        return prepare_response(message=constants.NOT_VERIFIED_PROPERTY_MANAGER, status=status.HTTP_403_FORBIDDEN)
+    # company = pm_profile.company
+    pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile).values_list("pmc_id", flat=True))
+    if not pmc_ids and pm_profile.company_id:
+        pmc_ids = [pm_profile.company_id]
     if request.method == "GET":
 
         lease_id_param = request.GET.get("lease_id")
         if lease_id_param:
-            lease = Lease.objects.select_related("tenant", "unit").filter(id=lease_id_param,unit__property_block_tower__property__pmc=company).first()
+            lease = Lease.objects.select_related("tenant", "unit").filter(id=lease_id_param
+            ).filter(
+                Q(unit__property_block_tower__property__pmc_id__in=pmc_ids) |
+                Q(unit__parent_property__pmc_id__in=pmc_ids)).first()
             if not lease:
                 logger.warning(
                     "APPROVAL_FETCH_FAILED | user_id=%s | lease_id=%s | reason=LEASE_NOT_FOUND",
                     request.user.id, lease_id_param )
                 return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
             approval = Approval.objects.select_related(
-                "tenant__user", "unit", "unit__property_block_tower__property", "created_by"
-            ).filter(tenant=lease.tenant, unit=lease.unit,unit__property_block_tower__property__pmc=company).order_by("-id").first()
+                "tenant__user", "unit", "unit__property_block_tower__property", "unit__parent_property", "created_by"
+            ).filter(tenant=lease.tenant, unit=lease.unit
+            #,unit__property_block_tower__property__pmc_id__in=pmc_ids).order_by("-id").first()
+            ).filter(
+                Q(unit__property_block_tower__property__pmc_id__in=pmc_ids) |
+                Q(unit__parent_property__pmc_id__in=pmc_ids)).order_by("-id").first()
             if not approval:
                 logger.warning(
                     "APPROVAL_FETCH_FAILED | user_id=%s | lease_id=%s | reason=APPROVAL_NOT_FOUND_FOR_THIS_LEASE",
@@ -2089,7 +2173,7 @@ def approval_view(request):
                 "requested_date": approval.created,
                 "tenant": f"{approval.tenant.user.first_name} {approval.tenant.user.last_name}".strip() if approval.tenant and approval.tenant.user else None,
                 "created_by": (approval.created_by.get_full_name() or approval.created_by.username) if approval.created_by else None,
-                "property": approval.unit.property_block_tower.property.property_name if approval.unit.property_block_tower and approval.unit.property_block_tower.property else None,
+                "property": (approval.unit.property_block_tower.property.property_name if approval.unit.property_block_tower and approval.unit.property_block_tower.property else( approval.unit.parent_property.property_name if approval.unit.parent_property else None)),
                 "property_image": approval.unit.property_block_tower.property._get_thumbnail() if approval.unit.property_block_tower and approval.unit.property_block_tower.property else None,
                 "block": approval.unit.property_block_tower.block_name if approval.unit.property_block_tower else None,
                 "unit": approval.unit.unit_name,
@@ -2112,9 +2196,13 @@ def approval_view(request):
             approval = Approval.objects.select_related(
                 "tenant",
                 "unit",
-                "unit__property_block_tower__property"
-            ).filter(id=approval_id).first()
-
+                "unit__property_block_tower__property",
+                "unit__parent_property"
+            ).filter(id=approval_id  #,unit__property_block_tower__property__pmc_id__in=pmc_ids).first()
+            ).filter(
+                Q(unit__property_block_tower__property__pmc_id__in=pmc_ids) |
+                Q(unit__parent_property__pmc_id__in=pmc_ids)
+            ).first()
             if not approval:
                 return prepare_response(
                     message="Approval request not found",
@@ -2125,8 +2213,9 @@ def approval_view(request):
                 "id": approval.id,
                 "requested_date": approval.created,
                 "tenant": str(approval.tenant),
-                "property": approval.unit.property_block_tower.property.property_name
-                if approval.unit.property_block_tower and approval.unit.property_block_tower.property else None,
+                "property": (approval.unit.property_block_tower.property.property_name
+                if approval.unit.property_block_tower and approval.unit.property_block_tower.property 
+                else (approval.unit.parent_property.property_name if approval.unit.parent_property else None)),
                 "block": approval.unit.property_block_tower.block_name if approval.unit.property_block_tower else None,
                 "unit": approval.unit.unit_name,
                 "requested_rent": approval.requested_rent,
@@ -2150,9 +2239,11 @@ def approval_view(request):
             "tenant__user",
             "unit",
             "unit__property_block_tower__property",
+            "unit__parent_property",
             "created_by",
         ).filter(
-            unit__property_block_tower__property__pmc=company
+            Q(unit__property_block_tower__property__pmc_id__in=pmc_ids) |
+            Q(unit__parent_property__pmc_id__in=pmc_ids)
         ).order_by("-id")
 
         if approval_status == "PENDING":
@@ -2180,8 +2271,9 @@ def approval_view(request):
                     f"{a.tenant.user.first_name} {a.tenant.user.last_name}".strip()
                     or a.tenant.user.username
                 ) if a.tenant and a.tenant.user else None,
-                "property": a.unit.property_block_tower.property.property_name
-                if a.unit.property_block_tower and a.unit.property_block_tower.property else None,
+                "property":(a.unit.property_block_tower.property.property_name
+                if a.unit.property_block_tower and a.unit.property_block_tower.property
+                else ( a.unit.parent_property.property_name if a.unit.parent_property else None)),
                 "property_image": a.unit.property_block_tower.property._get_thumbnail()
                 if a.unit.property_block_tower and a.unit.property_block_tower.property else None,
                 "block": a.unit.property_block_tower.block_name if a.unit.property_block_tower else None,
@@ -2263,7 +2355,11 @@ def approval_view(request):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        unit = Unit.objects.filter(id=unit_id).first()
+        # unit = Unit.objects.filter(id=unit_id).first()
+        unit = Unit.objects.filter(id=unit_id).filter(
+            Q(property_block_tower__property__pmc_id__in=pmc_ids) |
+            Q(parent_property__pmc_id__in=pmc_ids)
+        ).first()
 
         if not unit:
             logger.warning(
@@ -2320,7 +2416,8 @@ def approval_view(request):
             user_profile,
             rent,
             tenure,
-            action
+            action,
+            pmc_ids=pmc_ids,
         )
 
         if not approval:
@@ -2359,22 +2456,35 @@ def owner_pmc_view(request):
     if request.method == "GET":
         user_profile = request.user
         owner_profile = Owner.objects.filter(pk=user_profile.pk).first()
+        pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).select_related("company").first()
         company_id = request.GET.get("company_id")
         search = request.GET.get("search", "").strip()
         page = int(request.GET.get("page", 1))
         limit = int(request.GET.get("limit", 10))
         try:
-            if owner_profile and not company_id:
-                user = owner_profile
- 
-                owner_units = Unit.objects.filter(
-                    unit_owners__owner=user,
-                    is_active=True
-                ).select_related("property_block_tower__property__pmc")
+            if (owner_profile or pm_profile) and not company_id:
+                if owner_profile:
+                    owner_units = Unit.objects.filter(
+                        unit_owners__owner=owner_profile,
+                        is_active=True
+                    ).select_related("property_block_tower__property__pmc")
+                else:
+                    pmc_ids = list(
+                        PMCPMMapping.objects.filter(pm=pm_profile).values_list("pmc_id", flat=True))
+                    if not pmc_ids and pm_profile.company_id:
+                        pmc_ids = [pm_profile.company_id]
+                    owner_units = Unit.objects.filter(
+                        Q(property_block_tower__property__pmc_id__in=pmc_ids) |
+                        Q(parent_property__pmc_id__in=pmc_ids),
+                        is_active=True
+                    ).select_related(
+                        "property_block_tower__property__pmc",
+                        "parent_property__pmc",
+                    )
  
                 company_ids = owner_units.values_list(
                     "property_block_tower__property__pmc_id", flat=True
-                ).distinct()
+                ).union(owner_units.values_list("parent_property__pmc_id",flat=True))
  
                 pmc_qs = PropertyManagmentCompany.objects.filter(
                     id__in=company_ids,
@@ -2399,7 +2509,8 @@ def owner_pmc_view(request):
                 data = []
                 for company in pmc_page:
                     owner_company_units = owner_units.filter(
-                        property_block_tower__property__pmc=company
+                        Q(property_block_tower__property__pmc=company) |
+                        Q(parent_property__pmc=company)
                     )
                     total_count = owner_company_units.count()
                     leased_count = Lease.objects.filter(
@@ -2414,7 +2525,7 @@ def owner_pmc_view(request):
  
                     data.append({
                         "company_id": company.id,
-                        "company_name": (
+                        "property_handling": (
                             f"{pmc_user.user.first_name} {pmc_user.user.last_name}".strip()
                             if pmc_user and pmc_user.user else None
                         ),
@@ -2422,7 +2533,7 @@ def owner_pmc_view(request):
                             f"{pmc_user.address_line_1 or ''} {pmc_user.address_line_2 or ''}".strip()
                             if pmc_user else None
                         ),
-                        "property_handling": company.name,
+                        "company_name": company.name,
                         "tenancy_ratio": tenancy_ratio,
                         "company_code": pmc_user.code if pmc_user else None,
                     })
@@ -2444,9 +2555,8 @@ def owner_pmc_view(request):
                 )
 
             elif company_id:
-                if not owner_profile:
-                    return prepare_response(message="Only owner can access this data", status=status.HTTP_403_FORBIDDEN)
-                user = owner_profile
+                if not owner_profile and not pm_profile:
+                    return prepare_response( message="Unauthorized", status=status.HTTP_403_FORBIDDEN)
  
                 company = PropertyManagmentCompany.objects.filter(id=company_id, is_active=True).first()
                 if not company:
@@ -2455,20 +2565,42 @@ def owner_pmc_view(request):
                         request.user.id, company_id )
                     return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
  
-                properties_qs = Unit.objects.filter(
-                    unit_owners__owner=user,
-                    property_block_tower__property__pmc=company,
-                    is_active=True
-                ).select_related(
-                    "property_block_tower__property"
-                ).prefetch_related(
-                    "leases__tenant__user"
-                )
+                if owner_profile:
+                    properties_qs = Unit.objects.filter(
+                        unit_owners__owner=owner_profile,
+                        is_active=True
+                    ).filter(
+                        Q(property_block_tower__property__pmc=company) |
+                        Q(parent_property__pmc=company)
+                    ).select_related(
+                        "property_block_tower__property",
+                        "parent_property"
+                    ).prefetch_related(
+                        "leases__tenant__user"
+                    )
+                else:
+                    pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile).values_list("pmc_id", flat=True))
+                    if not pmc_ids and pm_profile.company_id:
+                        pmc_ids = [pm_profile.company_id]
+                    if company.id not in pmc_ids:
+                        return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+
+                    properties_qs = Unit.objects.filter(
+                        Q(property_block_tower__property__pmc=company) |
+                        Q(parent_property__pmc=company),
+                        is_active=True
+                    ).select_related(
+                        "property_block_tower__property",
+                        "parent_property"
+                    ).prefetch_related(
+                        "leases__tenant__user"
+                    )
  
                 if search:
                     properties_qs = properties_qs.filter(
                         Q(unit_name__icontains=search) |
-                        Q(property_block_tower__property__property_name__icontains=search)
+                        Q(property_block_tower__property__property_name__icontains=search)|
+                        Q(parent_property__property_name__icontains=search)
                     )
 
                 paginator = Paginator(properties_qs, limit)
@@ -2488,7 +2620,7 @@ def owner_pmc_view(request):
                         lease_id = lease.id
                         tenancy_status = "Occupied"
  
-                    property_obj = prop.property_block_tower.property if prop.property_block_tower else None
+                    property_obj = prop.property_block_tower.property if prop.property_block_tower else prop.parent_property
                     properties_data.append({
                         "property_unit_id": prop.id,
                         "property_name": prop.unit_name or (property_obj.property_name if property_obj else None),
@@ -2499,7 +2631,20 @@ def owner_pmc_view(request):
                     })
  
                 pmc_user = PropertyManager.objects.filter(company=company).select_related("user").first()
- 
+                if owner_profile:
+                    total_properties_handled = Unit.objects.filter(
+                        unit_owners__owner=owner_profile,
+                        is_active=True
+                    ).filter(
+                        Q(property_block_tower__property__pmc=company) |
+                        Q(parent_property__pmc=company)
+                    ).count()
+                else:
+                    total_properties_handled = Unit.objects.filter(
+                        Q(property_block_tower__property__pmc=company) |
+                        Q(parent_property__pmc=company),
+                        is_active=True
+                    ).count()
                 pmc_profile = {
                     "company_id": company.id,
                     "company_code": pmc_user.code if pmc_user else None,
@@ -2512,11 +2657,13 @@ def owner_pmc_view(request):
                     "last_name": pmc_user.user.last_name if pmc_user and pmc_user.user else None,
                     "postal_code": pmc_user.pin_code if pmc_user else None,
                     "profile_image": pmc_user.profile_image if pmc_user else None,
-                    "total_properties_handled": Unit.objects.filter(
-                        unit_owners__owner=user,
-                        property_block_tower__property__pmc=company,
-                        is_active=True
-                    ).count()
+                    "total_properties_handled": total_properties_handled,
+                    # "total_properties_handled": Unit.objects.filter(
+                    #     unit_owners__owner=user,
+                    #     property_block_tower__property__pmc=company,
+                    #     is_active=True
+                    # ).count()
+                    
                 }
  
                 pagination_meta = {
@@ -2656,8 +2803,10 @@ def export_owner_pmc_csv(request):
 
             properties_qs = Unit.objects.filter(
                 unit_owners__owner=user,
-                property_block_tower__property__pmc=company,
                 is_active=True
+            ).filter(
+                Q(property_block_tower__property__pmc=company) |
+                Q(parent_property__pmc=company)
             ).select_related(
                 "property_block_tower__property"
             ).prefetch_related(
@@ -2667,7 +2816,9 @@ def export_owner_pmc_csv(request):
             if search:
                 properties_qs = properties_qs.filter(
                     Q(unit_name__icontains=search) |
-                    Q(property_block_tower__property__property_name__icontains=search)
+                    Q(property_block_tower__property__property_name__icontains=search) |
+                    Q(parent_property__property_name__icontains=search)
+
                 )
 
             field_names = [
@@ -2691,7 +2842,7 @@ def export_owner_pmc_csv(request):
                     tenant_name = f"{tenant_user.first_name} {tenant_user.last_name}".strip()
                     tenancy_status = "Occupied"
 
-                property_obj = prop.property_block_tower.property if prop.property_block_tower else None
+                property_obj = prop.property_block_tower.property if prop.property_block_tower else prop.parent_property
 
                 data_list.append({
                     "Property Code": prop.code,

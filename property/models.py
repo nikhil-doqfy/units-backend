@@ -1,11 +1,41 @@
 from django.db import models
 from property_management.models import Base
 from utilities import constants
-from user_service.models import Documents
+from user_service.models import Documents, PropertyManager
+from property_management.models import City
 
+
+class Organization(Base):
+    code = models.CharField(max_length=255, blank=True)
+    name = models.CharField(max_length=255, unique=True)
+    address = models.TextField()
+    email = models.EmailField(blank=True, null=True)
+    contact_number = models.CharField(max_length=20, blank=True, null=True)
+    city = models.ForeignKey(
+        City,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="organization_location"
+    )
+    expiry_date = models.DateField(null=True, blank=True)
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if not self.code:
+            self.code = f"ORG{self.pk:04d}"
+            Organization.objects.filter(pk=self.pk).update(code=self.code)
+
+    def __str__(self):
+        return self.name
 
 class PropertyManagmentCompany(Base):
-    code = models.CharField(max_length=255, blank=True)
+    organization = models.ForeignKey(
+        Organization,
+        on_delete=models.CASCADE, 
+        related_name="companies",
+    )
+    code = models.CharField(max_length=255, blank=True) 
     name = models.CharField(max_length=255)
     address_line_1 = models.CharField(max_length=255)
     address_line_2 = models.CharField(max_length=255)
@@ -27,6 +57,28 @@ PROPERTY_STATUS_CHOICES = [
     ('DRAFT', 'Draft'),
     ('PUBLIC', 'Public'),
 ]
+
+
+class PMCPMMapping(Base):
+    pmc = models.ForeignKey(
+        PropertyManagmentCompany,
+        on_delete=models.CASCADE,
+        related_name="pm_mappings"
+    )
+
+    pm = models.ForeignKey(
+        PropertyManager,
+        on_delete=models.CASCADE,
+        related_name="pmc_mappings"
+    )
+
+    class Meta:
+        unique_together = ("pmc", "pm")
+        verbose_name = "PMC - Property Manager Mapping"
+        verbose_name_plural = "PMC - Property Manager Mappings"
+
+    def __str__(self):
+        return f"{self.pm} -> {self.pmc}"
 
 class PropertyType(Base):
     code = models.CharField(max_length=50, unique=True)
@@ -265,6 +317,7 @@ class Unit(Base):
             "cycle": self.cycle,
             "notice_period": self.notice_period,
             "commission_percent": str(self.commission_percent) if self.commission_percent is not None else None,
+            "pmc": prop.pmc.name if prop and prop.pmc else None,
             "unit_owners": [
                 {
                     "id": o.id,
