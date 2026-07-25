@@ -24,7 +24,7 @@ from utilities.helper_functions import (
     fetch_s3_presigned_url_for_download, translate_to_arabic,
 )
 from utilities import status, constants
-from property.models import Unit, PropertyManagmentCompany
+from property.models import Unit, PropertyManagmentCompany, PMCPMMapping
 from user_service.models import Tenant, TenantDocuments, DocumentType, UserProfile, Documents, Approval, PropertyManager, Owner
 from property_management import settings
 from property_management.utils import audit_logs, get_tenant_detail_by_id
@@ -67,6 +67,27 @@ from django.db.models import Q, Sum, Count
 from plugins.logger_plugin import get_logger
 
 logger = get_logger(__name__)
+
+
+def _get_pmc_ids_for_user(user_profile):
+    """Return the PMCs the logged-in property manager is allowed to access."""
+    pm_profile = PropertyManager.objects.filter(
+        pk=user_profile.pk
+    ).select_related("company").first()
+    if pm_profile:
+        pmc_ids = list(
+            PMCPMMapping.objects.filter(pm=pm_profile).values_list("pmc_id", flat=True)
+        )
+        if not pmc_ids and pm_profile.company_id:
+            pmc_ids = [pm_profile.company_id]
+        return pmc_ids
+
+    own_company = PropertyManagmentCompany.objects.filter(
+        created_by=user_profile.user,
+        is_active=True,
+    ).first()
+    return [own_company.id] if own_company else []
+
 def _parse_date(value):
     if not value:
         return None
@@ -1695,17 +1716,13 @@ def lease_cheque_view(request):
             pk=user_profile.pk
         ).select_related("company").first()
 
-        company = pm_profile.company if pm_profile else None
-
-        if not company:
-            own_company = PropertyManagmentCompany.objects.filter(
-                created_by=user_profile.user,
-                is_active=True
-            ).first()
-
-            company = own_company
-
-        if not company:
+        # company = pm_profile.company if pm_profile else None
+        # if not company:
+        #     company = PropertyManagmentCompany.objects.filter(
+        #         created_by=user_profile.user, is_active=True
+        #     ).first()
+        pmc_ids = _get_pmc_ids_for_user(user_profile)
+        if not pmc_ids:
             logger.warning(
                 "LEASE_CHEQUE_FETCH_FAILED | user_id=%d | reason=COMPANY_NOT_FOUND", request.user.id)
             return prepare_response(
@@ -1724,8 +1741,8 @@ def lease_cheque_view(request):
                     "document_type",
                     "lease__unit__property_block_tower__property"
                 ).get(
-                    Q(lease__unit__parent_property__pmc=company) |
-                    Q(lease__unit__property_block_tower__property__pmc=company),
+                    Q(lease__unit__parent_property__pmc_id__in=pmc_ids) |
+                    Q(lease__unit__property_block_tower__property__pmc_id__in=pmc_ids),
                     id=cheque_id,
                 )
 
@@ -1757,8 +1774,8 @@ def lease_cheque_view(request):
         cheques = LeaseTransaction.objects.filter(
             lease_id=lease_id,
         ).filter(
-            Q(lease__unit__parent_property__pmc=company) |
-            Q(lease__unit__property_block_tower__property__pmc=company)
+            Q(lease__unit__parent_property__pmc_id__in=pmc_ids) |
+            Q(lease__unit__property_block_tower__property__pmc_id__in=pmc_ids)
         ).select_related(
             "origin_bank",
             "selltlement_bank",
@@ -1786,7 +1803,19 @@ def lease_cheque_view(request):
                         "LEASE_CHEQUE_CREATE_FAILED | user_id=%d | reason=LEASE_ID_MISSING", request.user.id )
             return prepare_response(message="lease_id is required", status=status.HTTP_400_BAD_REQUEST)
         try:
-            lease = Lease.objects.get(id=lease_id)
+            # lease = Lease.objects.get(id=lease_id)
+            pmc_ids = _get_pmc_ids_for_user(request.user)
+            if not pmc_ids:
+                logger.warning(
+                    "LEASE_CHEQUE_CREATE_FAILED | user_id=%d | reason=COMPANY_NOT_FOUND",
+                    request.user.id)
+                return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+            lease = Lease.objects.filter(id=lease_id).filter(
+                Q(unit__parent_property__pmc_id__in=pmc_ids) |
+                Q(unit__property_block_tower__property__pmc_id__in=pmc_ids)
+            ).first()
+            if not lease:
+                raise Lease.DoesNotExist
         except Lease.DoesNotExist:
             logger.warning(
                 "LEASE_CHEQUE_CREATE_FAILED | user_id=%d | lease_id=%s | reason=LEASE_NOT_FOUND",
@@ -1868,7 +1897,19 @@ def lease_cheque_view(request):
                         request.user.id)
             return prepare_response(message="cheque_id is required", status=status.HTTP_400_BAD_REQUEST)
         try:
-            cheque = LeaseTransaction.objects.get(id=cheque_id)
+            pmc_ids = _get_pmc_ids_for_user(request.user)
+            if not pmc_ids:
+                logger.warning(
+                    "LEASE_CHEQUE_UPDATE_FAILED | user_id=%d | reason=COMPANY_NOT_FOUND", 
+                    request.user.id)
+                return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+            # cheque = LeaseTransaction.objects.get(id=cheque_id)
+            cheque = LeaseTransaction.objects.filter(id=cheque_id).filter(
+               Q(lease__unit__parent_property__pmc_id__in=pmc_ids) |
+               Q(lease__unit__property_block_tower__property__pmc_id__in=pmc_ids)
+            ).first()
+            if not cheque:
+                raise LeaseTransaction.DoesNotExist
         except LeaseTransaction.DoesNotExist:
             logger.warning(
                 "LEASE_CHEQUE_UPDATE_FAILED | user_id=%d | cheque_id=%s | reason=CHEQUE_NOT_FOUND",
@@ -1934,7 +1975,19 @@ def lease_cheque_view(request):
                         request.user.id)
             return prepare_response(message="cheque_id is required", status=status.HTTP_400_BAD_REQUEST)
         try:
-            LeaseTransaction.objects.get(id=cheque_id).delete()
+            # LeaseTransaction.objects.get(id=cheque_id).delete()
+            pmc_ids = _get_pmc_ids_for_user(request.user)
+            if not pmc_ids:
+                logger.warning(
+                    "LEASE_CHEQUE_DELETE_FAILED | user_id=%d | reason=COMPANY_NOT_FOUND",
+                    request.user.id)
+                return prepare_response( message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND )
+            deleted_count, _ = LeaseTransaction.objects.filter(id=cheque_id).filter(
+                Q(lease__unit__parent_property__pmc_id__in=pmc_ids) |
+                Q(lease__unit__property_block_tower__property__pmc_id__in=pmc_ids)
+            ).delete()
+            if not deleted_count:
+                raise LeaseTransaction.DoesNotExist
             logger.info(
                 "LEASE_CHEQUE_DELETED | user_id=%d | cheque_id=%s", 
                 request.user.id, cheque_id )
@@ -1959,7 +2012,12 @@ def _scope_transactions_to_user(qs, user):
     pm = PropertyManager.objects.filter(pk=user.pk).select_related("company").first()
     owner = Owner.objects.filter(pk=user.pk).first()
     if pm:
-        return qs.filter(lease__unit__property_block_tower__property__pmc=pm.company)
+        # return qs.filter(lease__unit__property_block_tower__property__pmc=pm.company)
+        pmc_ids = _get_pmc_ids_for_user(user)
+        return qs.filter(
+            Q(lease__unit__property_block_tower__property__pmc_id__in=pmc_ids) |
+            Q(lease__unit__parent_property__pmc_id__in=pmc_ids)
+        )
     elif owner:
         return qs.filter(lease__unit__unit_owners__owner=owner)
     return qs.none()
@@ -2032,15 +2090,13 @@ def all_cheques_view(request):
         pk=user_profile.pk
     ).select_related("company").first()
 
-    company = pm_profile.company if pm_profile else None
-
-    if not company:
-        company = PropertyManagmentCompany.objects.filter(
-            created_by=user_profile.user,
-            is_active=True
-        ).first()
-
-    if not company:
+    # company = pm_profile.company if pm_profile else None
+    # if not company:
+    #     company = PropertyManagmentCompany.objects.filter(
+    #         created_by=user_profile.user, is_active=True
+    #     ).first()
+    pmc_ids = _get_pmc_ids_for_user(user_profile)
+    if not pmc_ids:
         logger.warning(
                 "ALL_CHEQUES_COMPANY_NOT_FOUND | user_id=%s", request.user.id )
         return prepare_response(
@@ -2063,8 +2119,8 @@ def all_cheques_view(request):
         "lease__tenant__user",
         "selltlement_bank",
     ).filter(    
-        Q(lease__unit__parent_property__pmc=company) |
-        Q(lease__unit__property_block_tower__property__pmc=company)
+        Q(lease__unit__parent_property__pmc_id__in=pmc_ids) |
+        Q(lease__unit__property_block_tower__property__pmc_id__in=pmc_ids)
     ).order_by("-id")
 
     if cheque_status_filter:
@@ -2142,8 +2198,10 @@ def cheque_monthly_view(request):
     unit_id = request.GET.get("unit_id", "").strip()
 
     if pm_profile and pm_profile.company:
+        pmc_ids = _get_pmc_ids_for_user(user_profile)
         qs = LeaseTransaction.objects.filter(
-            lease__unit__property_block_tower__property__pmc=pm_profile.company,
+            Q(lease__unit__property_block_tower__property__pmc_id__in=pmc_ids) |
+            Q(lease__unit__parent_property__pmc_id__in=pmc_ids),
             cheque_date__year=year
         )
 
@@ -2210,11 +2268,13 @@ def rent_analytics_view(request):
     user_profile = request.user
     pm_profile = PropertyManager.objects.select_related("company").filter(pk=user_profile.pk).first()
     owner_profile = Owner.objects.filter(pk=user_profile.pk).first()
+    pmc_ids = _get_pmc_ids_for_user(user_profile) if pm_profile else []
 
     if pm_profile and pm_profile.company:
         qs = LeaseTransaction.objects.filter(
-            cheque_date__year=year,
-            lease__unit__property_block_tower__property__pmc=pm_profile.company
+            Q(lease__unit__property_block_tower__property__pmc_id__in=pmc_ids) |
+            Q(lease__unit__parent_property__pmc_id__in=pmc_ids),
+            cheque_date__year=year
         )
 
     elif owner_profile:
@@ -2228,7 +2288,10 @@ def rent_analytics_view(request):
     if lease_id:
         qs = qs.filter(lease_id=lease_id)
     if property_id:
-        qs = qs.filter(lease__unit__property_block_tower__property_id=property_id)
+        qs = qs.filter(
+            Q(lease__unit__property_block_tower__property_id=property_id) |
+            Q(lease__unit__parent_property_id=property_id)
+        )
     if block_id:
         qs = qs.filter(lease__unit__property_block_tower_id=block_id)
     if unit_id:
@@ -2304,13 +2367,23 @@ def property_analytics_view(request):
     user_profile = request.user
     pm_profile = PropertyManager.objects.select_related("company").filter(pk=user_profile.pk).first()
     owner_profile = Owner.objects.filter(pk=user_profile.pk).first()
+    pmc_ids = _get_pmc_ids_for_user(user_profile) if pm_profile else []
  
     if block_id:
         # All units in this block, each annotated with their total revenue
         # Unit -> Lease (related_name="leases") -> LeaseTransaction (related_name="lease_cheques")
+        # units_qs = Unit.objects.filter(property_block_tower_id=block_id)
+        units_qs = Unit.objects.filter(property_block_tower_id=block_id)
+        if pm_profile:
+            units_qs = units_qs.filter(
+                property_block_tower__property__pmc_id__in=pmc_ids,
+            )
+        if owner_profile:
+            units_qs = units_qs.filter(
+                unit_owners__owner=owner_profile
+            ).distinct()
         units = (
-            Unit.objects
-            .filter(property_block_tower_id=block_id)
+            units_qs
             .annotate(
                 revenue=Coalesce(
                     Sum(
@@ -2335,9 +2408,16 @@ def property_analytics_view(request):
     elif property_id:
         # All blocks in this property, each annotated with their total revenue
         # PropertyBlocks -> Unit (related_name="block_towers") -> Lease -> LeaseTransaction
+        # blocks_qs = PropertyBlocks.objects.filter(property_id=property_id)
+        blocks_qs = PropertyBlocks.objects.filter(property_id=property_id)
+        if pm_profile:
+            blocks_qs = blocks_qs.filter(property__pmc_id__in=pmc_ids)
+        if owner_profile:
+            blocks_qs = blocks_qs.filter(
+                block_towers__unit_owners__owner=owner_profile
+            ).distinct()
         blocks = (
-            PropertyBlocks.objects
-            .filter(property_id=property_id)
+            blocks_qs
             .annotate(
                 revenue=Coalesce(
                     Sum(
@@ -2357,15 +2437,27 @@ def property_analytics_view(request):
             }
             for b in blocks
         ]
+        direct_units = Unit.objects.filter(
+            parent_property_id=property_id,
+            property_block_tower__isnull=True,
+        )
+        if pm_profile:
+            direct_units = direct_units.filter(parent_property__pmc_id__in=pmc_ids)
+        chart.extend({
+            "key": f"unit-{unit.id}",
+            "name": unit.unit_name or unit.code or f"Unit {unit.id}",
+            "revenue": float(unit.revenue or 0),
+        } for unit in direct_units.annotate(revenue=Coalesce(
+            Sum("leases__lease_cheques__amount", filter=Q(leases__lease_cheques__cheque_date__year=year)),
+            Value(0, output_field=FloatField()),
+        )))
         level = "block"
 
     else:
         # All properties, each annotated with their total revenue
         properties = Property.objects.filter(is_active=True)
         if pm_profile and pm_profile.company:
-            properties = properties.filter(
-                pmc=pm_profile.company
-            )
+            properties = properties.filter(pmc_id__in=pmc_ids)
  
         elif owner_profile:
             properties = properties.filter(
@@ -2392,11 +2484,19 @@ def property_analytics_view(request):
             )
             .order_by("property_name")
         )
+        direct_revenue = {
+            row["lease__unit__parent_property_id"]: float(row["total"] or 0)
+            for row in LeaseTransaction.objects.filter(
+                lease__unit__parent_property__isnull=False,
+                lease__unit__property_block_tower__isnull=True,
+                cheque_date__year=year,
+            ).values("lease__unit__parent_property_id").annotate(total=Sum("amount"))
+        }
         chart = [
             {
                 "key":     str(p.id),
                 "name":    p.property_name or f"Property {p.id}",
-                "revenue": float(p.revenue),
+                "revenue": float(p.revenue or 0) + direct_revenue.get(p.id, 0),
             }
             for p in properties
         ]
@@ -2970,8 +3070,10 @@ def lease_tenancy(request):
             leases_qs = leases_qs.filter(unit__unit_owners__owner=owner_profile).distinct()
 
         elif pm_profile and pm_profile.company:
+            pmc_ids = _get_pmc_ids_for_user(current_user)
             leases_qs = leases_qs.filter(
-                unit__property_block_tower__property__pmc=pm_profile.company
+                Q(unit__property_block_tower__property__pmc_id__in=pmc_ids) |
+                Q(unit__parent_property__pmc_id__in=pmc_ids)
             ).distinct()
 
         else:

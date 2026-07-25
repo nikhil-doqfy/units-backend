@@ -317,18 +317,18 @@ def options(request):
                     if not pm_profile.company:
                         return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
                     #units = Unit.objects.filter(property_block_tower__property__pmc=pm_profile.company, leases__isnull=False).distinct()
-                    units = Unit.objects.filter(Q(parent_property__pmc=pm_profile.company) | Q(property_block_tower__property__pmc=pm_profile.company),lease__isnull=False).distinct()
+                    units = Unit.objects.filter(Q(parent_property__pmc=pm_profile.company) | Q(property_block_tower__property__pmc=pm_profile.company),leases__isnull=False).distinct()
                 else:
                     units = Unit.objects.none()
             else:
                 if is_owner:
                     #units = Unit.objects.filter(property_block_tower__property_id=parent_property_id, leases__isnull=False).distinct()
-                    units = Unit.objects.filter( Q(parent_property_id=parent_property_id) | Q(property_block_tower__property_id=parent_property_id), lease__isnull=False ).distinct()
+                    units = Unit.objects.filter( Q(parent_property_id=parent_property_id) | Q(property_block_tower__property_id=parent_property_id), leases__isnull=False ).distinct()
                 elif is_pm:
                     if not pm_profile.company:
                         return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
                     #units = Unit.objects.filter(property_block_tower__property_id=parent_property_id, property_block_tower__property__pmc=pm_profile.company, leases__isnull=False).distinct()
-                    units = Unit.objects.filter( Q(parent_property_id=parent_property_id, parent_property__pmc=pm_profile.company) | Q(property_block_tower__property_id=parent_property_id, property_block_tower__property__pmc=pm_profile.company), lease__isnull=False).distinct()
+                    units = Unit.objects.filter( Q(parent_property_id=parent_property_id, parent_property__pmc=pm_profile.company) | Q(property_block_tower__property_id=parent_property_id, property_block_tower__property__pmc=pm_profile.company), leases__isnull=False).distinct()
                 else:
                     units = Unit.objects.none()
             content["property_unit_with_lease"] = [{"key": u.id, "value": u.unit_name or "Unnamed Unit"} for u in units]
@@ -1659,12 +1659,10 @@ def dashboard_property_owned(request):
         properties = Property.objects.filter(is_active=True)
         # PMC
         if pm_instance:
-            # company = pm_instance.company
-            # properties = properties.filter(
-            #     pmc=company
-            # )
 
             pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_instance).values_list("pmc_id", flat=True))
+            if not pmc_ids and pm_instance.company_id:
+                pmc_ids = [pm_instance.company_id]
             if not pmc_ids:
                 logger.warning(
                     "PROPERTY_OWNED_FAILED | user_id=%s | reason=COMPANY_NOT_FOUND",
