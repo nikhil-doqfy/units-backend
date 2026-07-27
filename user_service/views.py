@@ -1914,13 +1914,17 @@ def tenant_crud(request):
       # ── Role detection: PMC → Owner ───────────────────────────────────────
         pm_profile = PropertyManager.objects.select_related("company").filter(pk=request.user.pk).first()
         owner_profile = Owner.objects.filter(pk=request.user.pk).first()
-        if pm_profile and pm_profile.company:
+        #if pm_profile and pm_profile.company:
+        if pm_profile:
+            pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile).values_list("pmc_id", flat=True))
+            if not pmc_ids:
+                return prepare_response( message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
             lease_filter = {
                 "is_active": True,
-                "unit__property_block_tower__property__pmc": pm_profile.company
+                "unit__property_block_tower__property__pmc_id__in": pmc_ids
             }
             qs_filter = {
-                "unit__property_block_tower__property__pmc": pm_profile.company
+                "unit__property_block_tower__property__pmc_id__in": pmc_ids
             }
 
         elif owner_profile:
@@ -1980,7 +1984,9 @@ def tenant_crud(request):
         unit_id     = request.GET.get("unit_id", "").strip()
 
         if property_id:
-            qs = qs.filter(unit__property_block_tower__property_id=property_id)
+            qs = qs.filter(
+                Q(unit__property_block_tower__property_id=property_id) |
+                Q(unit__parent_property_id=property_id))
         if block_id:
             qs = qs.filter(unit__property_block_tower_id=block_id)
         if unit_id:
@@ -2535,7 +2541,7 @@ def owner_pmc_view(request):
                         ),
                         "company_name": company.name,
                         "tenancy_ratio": tenancy_ratio,
-                        "company_code": pmc_user.code if pmc_user else None,
+                        "company_code": company.code,
                     })
  
                 pagination_meta = {
@@ -2647,7 +2653,7 @@ def owner_pmc_view(request):
                     ).count()
                 pmc_profile = {
                     "company_id": company.id,
-                    "company_code": pmc_user.code if pmc_user else None,
+                    "company_code": company.code,
                     "company_name": (
                         f"{pmc_user.user.first_name} {pmc_user.user.last_name}".strip()
                         if pmc_user and pmc_user.user else None
