@@ -381,16 +381,22 @@ def _serialize_activity(log):
 @is_request_authenticated
 def activity_log_view(request):
     user_profile = request.user
-    pmc = _get_pmc(user_profile)
-    if not pmc:
-        return prepare_response(message="Company not found for this user", status=status.HTTP_400_BAD_REQUEST)
+    pm = PropertyManager.objects.filter(pk=user_profile.pk).first()
+    if not pm:
+        return prepare_response( message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+    pmc_ids = list(PMCPMMapping.objects.filter(pm=pm).values_list("pmc_id", flat=True))
+    if not pmc_ids and pm.company_id:
+        pmc_ids = [pm.company_id]
+
+    if not pmc_ids:
+        return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
 
     if request.method == "GET":
         lead_id = request.GET.get("lead_id")
         if not lead_id:
             return prepare_response(message="lead_id is required", status=status.HTTP_400_BAD_REQUEST)
 
-        lead = Lead.objects.filter(id=lead_id, pmc=pmc).first()
+        lead = Lead.objects.filter(id=lead_id, pmc_id__in=pmc_ids).first()
         if not lead:
             return prepare_response(message="Lead not found", status=status.HTTP_404_NOT_FOUND)
 
@@ -411,7 +417,7 @@ def activity_log_view(request):
         if not lead_id:
             return prepare_response(message="lead_id is required", status=status.HTTP_400_BAD_REQUEST)
 
-        lead = Lead.objects.filter(id=lead_id, pmc=pmc).first()
+        lead = Lead.objects.filter(id=lead_id, pmc_id__in=pmc_ids).first()
         if not lead:
             return prepare_response(message="Lead not found", status=status.HTTP_404_NOT_FOUND)
 
@@ -434,7 +440,7 @@ def activity_log_view(request):
         if not log_id:
             return prepare_response(message="log_id is required", status=status.HTTP_400_BAD_REQUEST)
 
-        log = ActivityLog.objects.filter(id=log_id, lead__pmc=pmc).first()
+        log = ActivityLog.objects.filter(id=log_id, lead__pmc_id__in=pmc_ids).first()
         if not log:
             return prepare_response(message="Activity log not found", status=status.HTTP_404_NOT_FOUND)
 
@@ -454,7 +460,7 @@ def activity_log_view(request):
         if not log_id:
             return prepare_response(message="log_id is required", status=status.HTTP_400_BAD_REQUEST)
 
-        log = ActivityLog.objects.filter(id=log_id, lead__pmc=pmc).first()
+        log = ActivityLog.objects.filter(id=log_id, lead__pmc_id__in=pmc_ids).first()
         if not log:
             return prepare_response(message="Activity log not found", status=status.HTTP_404_NOT_FOUND)
 
@@ -470,6 +476,14 @@ def activity_log_view(request):
 @is_request_authenticated
 def lead_check_active_lease(request):
     user_profile = request.user
+    pm = PropertyManager.objects.filter(pk=user_profile.pk).first()
+    if not pm:
+        return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+    pmc_ids = list(PMCPMMapping.objects.filter(pm=pm).values_list("pmc_id", flat=True))
+    if not pmc_ids and pm.company_id:
+        pmc_ids = [pm.company_id]
+    if not pmc_ids:
+        return prepare_response( message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
     if request.method != "GET":
         return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
@@ -477,7 +491,7 @@ def lead_check_active_lease(request):
     if not lead_id:
         return prepare_response(message="lead_id is required", status=status.HTTP_400_BAD_REQUEST)
 
-    lead = Lead.objects.filter(id=lead_id).select_related("unit").first()
+    lead = Lead.objects.filter(id=lead_id,pmc_id__in=pmc_ids).select_related("unit").first()
     if not lead:
         return prepare_response(message="Lead not found", status=status.HTTP_404_NOT_FOUND)
 
