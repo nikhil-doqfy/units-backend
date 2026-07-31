@@ -2,6 +2,15 @@ from django.db import models
 from django.utils import timezone
 from property_management.models import Base
 from utilities import constants
+from utilities.org_scope import get_pmc_ids_for_user
+
+
+class ComplaintQuerySet(models.QuerySet):
+    def for_user(self, user_profile):
+        pmc_ids = get_pmc_ids_for_user(user_profile)
+        if not pmc_ids:
+            return self.none()
+        return self.filter(company_id__in=pmc_ids)
 
 class ServiceType(Base):
     name = models.CharField(
@@ -54,6 +63,7 @@ class ServiceProvider(Base):
         return f"{self.name}"
 
 class Complaint(Base):
+    objects = ComplaintQuerySet.as_manager()
 
     unit = models.ForeignKey(
         'property.Unit',

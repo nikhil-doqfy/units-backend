@@ -266,7 +266,7 @@ def lead_view(request):
         if not lead_id:
             return prepare_response(message="lead_id is required", status=status.HTTP_400_BAD_REQUEST)
 
-        lead = Lead.objects.filter(id=lead_id).first()
+        lead = Lead.objects.for_user(user_profile).filter(id=lead_id).first()
         if not lead:
             return prepare_response(message="Lead not found", status=status.HTTP_404_NOT_FOUND)
 
@@ -335,7 +335,7 @@ def lead_view(request):
         if not lead_id:
             return prepare_response(message="lead_id is required", status=status.HTTP_400_BAD_REQUEST)
 
-        lead = Lead.objects.filter(id=lead_id).first()
+        lead = Lead.objects.for_user(user_profile).filter(id=lead_id).first()
         if not lead:
             return prepare_response(message="Lead not found", status=status.HTTP_404_NOT_FOUND)
 
@@ -477,7 +477,7 @@ def lead_check_active_lease(request):
     if not lead_id:
         return prepare_response(message="lead_id is required", status=status.HTTP_400_BAD_REQUEST)
 
-    lead = Lead.objects.filter(id=lead_id).select_related("unit").first()
+    lead = Lead.objects.for_user(user_profile).filter(id=lead_id).select_related("unit").first()
     if not lead:
         return prepare_response(message="Lead not found", status=status.HTTP_404_NOT_FOUND)
 
