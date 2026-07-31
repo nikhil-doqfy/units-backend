@@ -1,7 +1,7 @@
 migrations
 db.sqlite3
 *.pyc
-environment_settings.py
+local_settings.py
 requirements.txt
 .vscode/
 media
