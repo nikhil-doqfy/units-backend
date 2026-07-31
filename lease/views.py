@@ -129,7 +129,7 @@ def _update_tenant_fields(tenant_obj, data):
     return tenant_obj
 
 
-def _create_tenant(email, data, created_by):
+def _create_tenant(email, data, created_by, pmc):
     name = data.get("tenant_name") or data.get("name") or ""
     first_name, _, last_name = name.partition(" ")
     with transaction.atomic():
@@ -152,6 +152,7 @@ def _create_tenant(email, data, created_by):
             visa_number=data.get("visa_number") or "",
             visa_expiry_datetime=_parse_date(data.get("visa_expiry_date")),
         )
+        tenant_obj.pmc.add(pmc)
     return tenant_obj
 
 @lease_get
@@ -253,7 +254,11 @@ def lease_view(request):
                     message="Unit not found",
                     status=status.HTTP_400_BAD_REQUEST,
                 )
-
+            pmc = (
+                unit_obj.property_block_tower.property.pmc
+                if unit_obj.property_block_tower
+                else unit_obj.parent_property.pmc
+            )
             # Resolve tenant: by ID → by email → create new
             tenant_obj = None
             if tenant_id:
@@ -268,8 +273,10 @@ def lease_view(request):
             if tenant_obj:
                 # Update fields from body if provided
                 _update_tenant_fields(tenant_obj, body)
+                tenant_obj.pmc.add(pmc)
+                tenant_obj.save()
             elif email:
-                tenant_obj = _create_tenant(email, body, user)
+                tenant_obj = _create_tenant(email, body, user, pmc)
             else:
                 logger.warning(
                     "LEASE_CREATE_FAILED | user_id=%d | reason=TENANT_ID_OR_EMAIL_REQUIRED",

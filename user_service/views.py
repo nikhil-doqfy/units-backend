@@ -296,6 +296,7 @@ def user_management(request):
             password   = body.get("password")
             phone      = body.get("contact_number") or body.get("phone")
             role       = body.get("role")
+            pmc_id     = body.get("pmc_id")
 
             if not all([first_name, last_name, email, password, role]):
                 logger.warning(
@@ -323,6 +324,14 @@ def user_management(request):
                     message=constants.EMAIL_ALREADY_REGISTERED,
                     status=status.HTTP_400_BAD_REQUEST
                 )
+            if not pmc_id:
+                return prepare_response(message="PMC is required.", status=status.HTTP_400_BAD_REQUEST)
+            company = PropertyManagmentCompany.objects.filter( id=pmc_id, is_active=True).first()
+            if not company:
+                logger.warning(
+                    "USER_CREATE_FAILED | user_id=%s | pmc_id=%s | reason=COMPANY_NOT_FOUND",
+                    request.user.id, pmc_id )
+                return prepare_response( message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND )
 
             common_kwargs = dict(
                 contact_number=phone,
@@ -341,26 +350,13 @@ def user_management(request):
 
                 if role == constants.OWNER:
                     profile = Owner.objects.create(user=django_user, **common_kwargs)
+                    profile.pmc.add(company)
                 elif role == constants.TENANT:
                     profile = Tenant.objects.create(user=django_user, **common_kwargs)
+                    profile.pmc.add(company)
                 elif role == constants.COMPANY_USER:
-                    company = PropertyManagmentCompany.objects.filter(
-                        created_by=user.user, is_active=True
-                    ).first()
-                    if not company:
-                        pm_self = PropertyManager.objects.filter(pk=user.pk).select_related("company").first()
-                        company = pm_self.company if pm_self else None
-                    if not company:
-                        logger.warning(
-                            "USER_CREATE_FAILED | user_id=%s | reason=COMPANY_NOT_FOUND",
-                            request.user.id )
-                        return prepare_response(
-                            message=constants.COMPANY_NOT_FOUND,
-                            status=status.HTTP_404_NOT_FOUND
-                        )
-                    profile = PropertyManager.objects.create(
-                        user=django_user, company=company, **common_kwargs
-                    )
+                    profile = PropertyManager.objects.create(user=django_user, **common_kwargs)
+                    PMCPMMapping.objects.create(pm=profile, pmc=company, created_by=user.user )
             logger.info(
                 "USER_CREATED | user_id=%s | created_user_id=%s | role=%s",
                 request.user.id, profile.id, role )
@@ -378,36 +374,42 @@ def user_management(request):
             user_id = request.GET.get("user_id")
 
             # Resolve the company for the logged-in user
-            company = PropertyManagmentCompany.objects.filter(created_by=user.user, is_active=True).first()
-            if not company:
-                pm_check = PropertyManager.objects.filter(pk=user.pk).select_related("company").first()
-                company = pm_check.company if pm_check else None
-            if not company:
+            owner = Owner.objects.filter(pk=user.pk).first()
+            tenant = Tenant.objects.filter(pk=user.pk).first()
+            pm = PropertyManager.objects.filter(pk=user.pk).first()
+            pmc_ids = []
+            if owner:
+                pmc_ids = list(owner.pmc.values_list("id", flat=True))
+            elif tenant:
+                pmc_ids = list(tenant.pmc.values_list("id", flat=True))
+            elif pm:
+                pmc_ids = list(PMCPMMapping.objects.filter(pm=pm, is_active=True).values_list("pmc_id", flat=True))
+            pmc_ids = [i for i in pmc_ids if i]
+            if not pmc_ids:
                 logger.warning(
                     "USER_LIST_FETCH_FAILED | user_id=%s | reason=COMPANY_NOT_FOUND",
                     request.user.id )
-                return prepare_response(
-                    message=constants.COMPANY_NOT_FOUND,
-                    status=status.HTTP_404_NOT_FOUND
-                )
+                return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND )
 
             # Collect UserProfile IDs from all three user types linked to this company:
             # 1. Property Managers (staff) — directly linked via company FK
-            pm_ids = set(PropertyManager.objects.filter(company=company).values_list("pk", flat=True))
+            pm_ids = set(PMCPMMapping.objects.filter( pmc_id__in=pmc_ids,is_active=True).values_list("pm_id", flat=True))
 
             # 2. Owners — via UnitOwner → Unit → PropertyBlocks → Property → pmc
             owner_ids = set(
-                UnitOwner.objects.filter(
-                    unit__property_block_tower__property__pmc=company,
-                    owner__isnull=False
-                ).values_list("owner_id", flat=True)
+                Owner.objects.filter(
+                    pmc__id__in=pmc_ids,
+                    is_active=True,
+                ).distinct().values_list("pk", flat=True)
             )
 
             # 3. Tenants — via Lease → Unit → PropertyBlocks → Property → pmc
             tenant_ids = set(
-                Lease.objects.filter(
-                    unit__property_block_tower__property__pmc=company
-                ).values_list("tenant_id", flat=True)
+                Tenant.objects.filter(
+                    # unit__property_block_tower__property__pmc=company
+                    pmc__id__in=pmc_ids,
+                    is_active=True,
+                ).distinct().values_list("pk", flat=True)
             )
 
             all_profile_ids = pm_ids | owner_ids | tenant_ids
@@ -1516,7 +1518,22 @@ def owner_crud(request):
         owner_id = request.GET.get("owner_id", "").strip()
 
         if owner_id:
-            owner = Owner.objects.select_related("user").filter(id=owner_id, user__is_active=True).first()
+            pm_profile = PropertyManager.objects.filter(pk=request.user.pk).first()
+            if pm_profile:
+                pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile,is_active=True).values_list("pmc_id", flat=True))
+                if not pmc_ids:
+                    return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND )
+                owner = Owner.objects.select_related("user").filter(
+                    id=owner_id,
+                    user__is_active=True,
+                    is_active=True,
+                    pmc__id__in=pmc_ids,
+                ).distinct().first()
+            else:
+                owner = Owner.objects.select_related("user").filter(
+                    id=owner_id,
+                    user__is_active=True,
+                ).first()
             if not owner:
                 logger.warning(
                     "OWNER_FETCH_FAILED | user_id=%s | owner_id=%s | reason=OWNER_NOT_FOUND",
@@ -1558,19 +1575,21 @@ def owner_crud(request):
         export = request.GET.get("export", "").strip()
 
         # Filter owners created by any staff member of the logged-in user's PMC
-        user_profile = request.user
-        pm = PropertyManager.objects.filter(id=user_profile.id).select_related("company").first()
-        company = pm.company if pm else None
-        if company:
-            pmc_staff_user_ids = PropertyManager.objects.filter(
-                company=company
-            ).values_list("user_id", flat=True)
+        pm_profile = PropertyManager.objects.filter(pk=request.user.pk).first()
+        if pm_profile:
+            pmc_ids = list(
+                PMCPMMapping.objects.filter(pm=pm_profile, is_active=True).values_list("pmc_id", flat=True))
+            if not pmc_ids:
+                return prepare_response(message=constants.COMPANY_NOT_FOUND,status=status.HTTP_404_NOT_FOUND)
             owners = Owner.objects.select_related("user").filter(
                 user__is_active=True,
-                created_by__in=pmc_staff_user_ids,
-            ).order_by("-id")
+                is_active=True,
+                pmc__id__in=pmc_ids,
+            ).distinct().order_by("-id")
         else:
-            owners = Owner.objects.select_related("user").filter(user__is_active=True).order_by("-id")
+            owners = Owner.objects.select_related("user").filter(
+                user__is_active=True
+            ).distinct().order_by("-id")
 
         if search:
             owners = owners.filter(
@@ -1690,7 +1709,20 @@ def owner_crud(request):
                 request.user.id )
             return prepare_response(message="owner_id is required", status=status.HTTP_400_BAD_REQUEST)
 
-        owner = Owner.objects.select_related("user").filter(id=owner_id).first()
+        # owner = Owner.objects.select_related("user").filter(id=owner_id).first()
+        pm_profile = PropertyManager.objects.filter(pk=request.user.pk).first()
+        if pm_profile:
+            pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile,is_active=True).values_list("pmc_id", flat=True))            
+            owner = Owner.objects.select_related("user").filter(
+                id=owner_id,
+                pmc__id__in=pmc_ids,
+                is_active=True,
+            ).distinct().first()
+        else:
+            owner = Owner.objects.select_related("user").filter(
+                id=owner_id,
+                is_active=True,
+            ).first()
         if not owner:
             logger.warning(
                 "OWNER_UPDATE_FAILED | user_id=%s | owner_id=%s | reason=OWNER_NOT_FOUND",
@@ -1753,7 +1785,19 @@ def owner_crud(request):
                 request.user.id )
             return prepare_response(message="owner_id is required", status=status.HTTP_400_BAD_REQUEST)
 
-        owner = Owner.objects.select_related("user").filter(id=owner_id).first()
+        # owner = Owner.objects.select_related("user").filter(id=owner_id).first()
+        pm_profile = PropertyManager.objects.filter(pk=request.user.pk).first()
+        if pm_profile:
+            pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile,is_active=True).values_list("pmc_id", flat=True))
+            if not pmc_ids and pm_profile.company_id:
+                pmc_ids = [pm_profile.company_id]
+            owner = Owner.objects.select_related("user").filter(
+                id=owner_id,
+                pmc__id__in=pmc_ids,
+                is_active=True,
+            ).distinct().first()
+        else:
+            owner = Owner.objects.select_related("user").filter( id=owner_id).first()
         if not owner:
             logger.warning(
                 "OWNER_DELETE_FAILED | user_id=%s | owner_id=%s | reason=OWNER_NOT_FOUND",
@@ -1919,42 +1963,56 @@ def tenant_crud(request):
             pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile).values_list("pmc_id", flat=True))
             if not pmc_ids:
                 return prepare_response( message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
-            lease_filter = {
-                "is_active": True,
-                "unit__property_block_tower__property__pmc_id__in": pmc_ids
-            }
-            qs_filter = {
-                "unit__property_block_tower__property__pmc_id__in": pmc_ids
-            }
 
         elif owner_profile:
-            lease_filter = {
-                "is_active": True,
-                "unit__unit_owners__owner": owner_profile
-            }
-            qs_filter = {
-                "unit__unit_owners__owner": owner_profile
-            }
- 
+            pass
         else:
             return prepare_response(message="Unauthorized access",status=status.HTTP_403_FORBIDDEN)
-        latest_ids = (
-            Lease.objects
-            .filter(**lease_filter)
-            .values("tenant")
-            .annotate(latest_id=Max("id"))
-            .values_list("latest_id", flat=True)
-        )
-
-        qs = (
-            Lease.objects
-            .select_related("tenant__user", "unit__property_block_tower__property")
-            .prefetch_related("unit__property_block_tower__property__property_images")
-            .filter(
-                id__in=latest_ids,
-                **qs_filter
+        if pm_profile:
+            latest_ids = (
+                Lease.objects
+                .filter(is_active=True)
+                .filter(
+                    Q(unit__property_block_tower__property__pmc_id__in=pmc_ids) |
+                    Q(unit__parent_property__pmc_id__in=pmc_ids)
+                )
+                .values("tenant")
+                .annotate(latest_id=Max("id"))
+                .values_list("latest_id", flat=True)
             )
-        )
+        else:
+            latest_ids = (
+                Lease.objects
+                .filter(
+                    is_active=True,
+                    unit__unit_owners__owner=owner_profile
+                )
+                .values("tenant")
+                .annotate(latest_id=Max("id"))
+                .values_list("latest_id", flat=True)
+            )
+
+        if pm_profile:
+            qs = (
+                Lease.objects
+                .select_related("tenant__user", "unit__property_block_tower__property")
+                .prefetch_related("unit__property_block_tower__property__property_images")
+                .filter(id__in=latest_ids)
+                .filter(
+                    Q(unit__property_block_tower__property__pmc_id__in=pmc_ids) |
+                    Q(unit__parent_property__pmc_id__in=pmc_ids)
+                )
+            )
+        else:
+            qs = (
+                Lease.objects
+                .select_related("tenant__user", "unit__property_block_tower__property", "unit__parent_property",)
+                .prefetch_related("unit__property_block_tower__property__property_images", "unit__parent_property__property_images",)
+                .filter(
+                    id__in=latest_ids,
+                    unit__unit_owners__owner=owner_profile
+                )
+            )
 
         if tab == "onboarding":
             qs = qs.filter(lease_status="DRAFT")
@@ -2477,8 +2535,6 @@ def owner_pmc_view(request):
                 else:
                     pmc_ids = list(
                         PMCPMMapping.objects.filter(pm=pm_profile).values_list("pmc_id", flat=True))
-                    if not pmc_ids and pm_profile.company_id:
-                        pmc_ids = [pm_profile.company_id]
                     owner_units = Unit.objects.filter(
                         Q(property_block_tower__property__pmc_id__in=pmc_ids) |
                         Q(parent_property__pmc_id__in=pmc_ids),
@@ -2500,10 +2556,7 @@ def owner_pmc_view(request):
                 if search:
                     pmc_qs = pmc_qs.filter(
                         Q(name__icontains=search) |
-                        Q(code__icontains=search) |
-                        Q(company_staff__user__first_name__icontains=search) |
-                        Q(company_staff__user__last_name__icontains=search) |
-                        Q(company_staff__user__email__icontains=search)
+                        Q(code__icontains=search) ,
                     ).distinct()
  
                 paginator = Paginator(pmc_qs, limit)
@@ -2525,19 +2578,31 @@ def owner_pmc_view(request):
                     ).count()
                     tenancy_ratio = f"{leased_count}:{total_count}" if total_count else "0:0"
  
-                    pmc_user = PropertyManager.objects.filter(
-                        company=company
-                    ).select_related("user").first()
+                    # pmc_user = PropertyManager.objects.filter(
+                    #     company=company
+                    # ).select_related("user").first()
+                    mappings = PMCPMMapping.objects.filter(
+                        pmc=company,
+                        is_active=True
+                    ).select_related("pm__user")
+                    first_mapping = mappings.first()
+                    pmc_user = first_mapping.pm if first_mapping else None
  
                     data.append({
                         "company_id": company.id,
-                        "property_handling": (
-                            f"{pmc_user.user.first_name} {pmc_user.user.last_name}".strip()
-                            if pmc_user and pmc_user.user else None
-                        ),
+                        # "property_handling":", ".join([
+                        #     f"{m.pm.user.first_name} {m.pm.user.last_name}".strip()
+                        #      for m in mappings
+                        # ]),
+                        "property_handling": [
+                            {
+                                "id": m.pm.id,
+                                "name": f"{m.pm.user.first_name} {m.pm.user.last_name}".strip()
+                            }
+                            for m in mappings
+                        ],
                         "company_address": (
-                            f"{pmc_user.address_line_1 or ''} {pmc_user.address_line_2 or ''}".strip()
-                            if pmc_user else None
+                            f"{company.address_line_1 or ''} {company.address_line_2 or ''}".strip()
                         ),
                         "company_name": company.name,
                         "tenancy_ratio": tenancy_ratio,
@@ -2586,8 +2651,6 @@ def owner_pmc_view(request):
                     )
                 else:
                     pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile).values_list("pmc_id", flat=True))
-                    if not pmc_ids and pm_profile.company_id:
-                        pmc_ids = [pm_profile.company_id]
                     if company.id not in pmc_ids:
                         return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
 
@@ -2636,7 +2699,9 @@ def owner_pmc_view(request):
                         "lease_id": lease_id,
                     })
  
-                pmc_user = PropertyManager.objects.filter(company=company).select_related("user").first()
+                pm_mappings = PMCPMMapping.objects.filter(pmc=company, is_active=True).select_related("pm__user")
+                first_mapping = pm_mappings.first()
+                pmc_user = first_mapping.pm if first_mapping else None
                 if owner_profile:
                     total_properties_handled = Unit.objects.filter(
                         unit_owners__owner=owner_profile,
