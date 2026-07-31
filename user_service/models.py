@@ -1,11 +1,34 @@
 from django.db import models
 from property_management.models import Base
 from utilities import constants
+from utilities.org_scope import get_pmc_ids_for_user
 from django.utils import timezone
 from django.contrib.auth.models import User
 from datetime import timedelta
 from utilities.config import OTP_VALID_TIME
-from django.db.models import F
+from django.db.models import F, Q
+
+
+class OwnerQuerySet(models.QuerySet):
+    def for_user(self, user_profile):
+        pmc_ids = get_pmc_ids_for_user(user_profile)
+        if not pmc_ids:
+            return self.none()
+        return self.filter(
+            Q(unit_owner_links__unit__parent_property__pmc_id__in=pmc_ids) |
+            Q(unit_owner_links__unit__property_block_tower__property__pmc_id__in=pmc_ids)
+        ).distinct()
+
+
+class TenantQuerySet(models.QuerySet):
+    def for_user(self, user_profile):
+        pmc_ids = get_pmc_ids_for_user(user_profile)
+        if not pmc_ids:
+            return self.none()
+        return self.filter(
+            Q(lease__unit__parent_property__pmc_id__in=pmc_ids) |
+            Q(lease__unit__property_block_tower__property__pmc_id__in=pmc_ids)
+        ).distinct()
 
 
 class UserProfile(Base):
@@ -51,6 +74,8 @@ class UserProfile(Base):
 
 
 class Owner(UserProfile):
+    objects = OwnerQuerySet.as_manager()
+
     trade_license_number = models.CharField(max_length=255, blank=True, default='')
     owner_number = models.CharField(max_length=20, null=True, blank=True)
     license_number = models.CharField(max_length=255, blank=True, default='')
@@ -78,6 +103,8 @@ class PropertyManager(UserProfile):
 
 
 class Tenant(UserProfile):
+    objects = TenantQuerySet.as_manager()
+
     is_onboarding = models.BooleanField(default=False)
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)

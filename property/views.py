@@ -143,7 +143,7 @@ def property(request):
         property_id = request.GET.get("property_id")
         pmc_id = request.GET.get("pmc_id")
         if property_id:
-            prop = Property.objects.filter(id=property_id).first()
+            prop = Property.objects.for_user(user_profile).filter(id=property_id).first()
             if not prop:
                 logger.warning(
                     "PROPERTY_NOT_FOUND | user_id=%d | property_id=%s",
@@ -318,7 +318,7 @@ def property(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        prop = Property.objects.filter(id=property_id).first()
+        prop = Property.objects.for_user(user_profile).filter(id=property_id).first()
         if not prop:
             logger.warning(
                 "PROPERTY_UPDATE_FAILED | user_id=%d | property_id=%s | reason=PROPERTY_NOT_FOUND",
@@ -449,7 +449,7 @@ def property_blocks(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        prop = Property.objects.filter(id=property_id).first()
+        prop = Property.objects.for_user(user_profile).filter(id=property_id).first()
         if not prop:
             logger.warning(
                 "BLOCK_CREATE_FAILED | user_id=%d | property_id=%s | reason=PROPERTY_NOT_FOUND",
@@ -495,7 +495,7 @@ def property_blocks(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        prop = Property.objects.filter(id=property_id).first()
+        prop = Property.objects.for_user(user_profile).filter(id=property_id).first()
         if not prop:
             logger.warning(
                 "BLOCK_UPDATE_FAILED | user_id=%d | property_id=%s | reason=PROPERTY_NOT_FOUND",
@@ -578,7 +578,7 @@ def property_images(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        prop = Property.objects.filter(id=property_id).first()
+        prop = Property.objects.for_user(user_profile).filter(id=property_id).first()
         if not prop:
             logger.warning(
                 "IMAGE_UPLOAD_FAILED | user_id=%d | property_id=%s | reason=PROPERTY_NOT_FOUND",
@@ -702,7 +702,7 @@ def property_documents(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        prop = Property.objects.filter(id=property_id).first()
+        prop = Property.objects.for_user(user_profile).filter(id=property_id).first()
         if not prop:
             logger.warning(
                 "DOCUMENT_UPLOAD_FAILED | user_id=%d | property_id=%s | reason=PROPERTY_NOT_FOUND",
@@ -780,7 +780,7 @@ def unit(request):
     if request.method == "GET":
         unit_id = request.GET.get("unit_id")
         if unit_id:
-            u = Unit.objects.filter(id=unit_id).select_related(
+            u = Unit.objects.for_user(user_profile).filter(id=unit_id).select_related(
                 # "property_block_tower__property"
                 "property_block_tower__property", "parent_property"
             ).prefetch_related("unit_owners").first()
@@ -994,7 +994,7 @@ def unit(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        u = Unit.objects.filter(id=unit_id).first()
+        u = Unit.objects.for_user(user_profile).filter(id=unit_id).first()
         if not u:
             logger.warning(
                 "UNIT_UPDATE_FAILED | user_id=%d | unit_id=%s | reason=UNIT_NOT_FOUND",
@@ -1098,7 +1098,7 @@ def unit_images(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        u = Unit.objects.filter(id=unit_id).select_related(
+        u = Unit.objects.for_user(user_profile).filter(id=unit_id).select_related(
             # "property_block_tower__property"
             "property_block_tower__property", "parent_property"
         ).first()
@@ -1223,7 +1223,7 @@ def unit_documents(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        u = Unit.objects.filter(id=unit_id).select_related(
+        u = Unit.objects.for_user(user_profile).filter(id=unit_id).select_related(
             "property_block_tower__property", "parent_property"
         ).first()
         if not u:
@@ -1460,7 +1460,7 @@ def parent_property_view(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        prop = Property.objects.filter(id=property_id).first()
+        prop = Property.objects.for_user(user_profile).filter(id=property_id).first()
 
         if not prop:
             logger.warning(

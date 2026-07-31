@@ -767,7 +767,7 @@ def accept_complaint(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        complaint = Complaint.objects.filter(
+        complaint = Complaint.objects.for_user(request.user).filter(
             code=code,
             is_active=True
         ).first()
@@ -935,7 +935,7 @@ def decline_complaint(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        complaint = Complaint.objects.filter(
+        complaint = Complaint.objects.for_user(request.user).filter(
             code=code,
             is_active=True
         ).first()
@@ -1157,7 +1157,7 @@ def start_work(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        complaint = Complaint.objects.filter(
+        complaint = Complaint.objects.for_user(request.user).filter(
             code=code,
             is_active=True
         ).first()
@@ -1244,7 +1244,7 @@ def complete_work(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        complaint = Complaint.objects.filter(
+        complaint = Complaint.objects.for_user(request.user).filter(
             code=code,
             is_active=True
         ).first()
@@ -1354,7 +1354,7 @@ def verify_complaint(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        complaint = Complaint.objects.filter(
+        complaint = Complaint.objects.for_user(request.user).filter(
             code=code,
             is_active=True
         ).first()
@@ -1470,7 +1470,7 @@ def upload_complaint_images(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        complaint = Complaint.objects.filter(
+        complaint = Complaint.objects.for_user(request.user).filter(
             code=code,
             is_active=True
         ).first()

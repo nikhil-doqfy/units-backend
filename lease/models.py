@@ -1,8 +1,21 @@
 from django.db import models
+from django.db.models import Q
 from property_management.models import Base
 from utilities import constants
+from utilities.org_scope import get_pmc_ids_for_user
 from user_service.models import Documents
 from charges.models import Charge
+
+
+class LeaseQuerySet(models.QuerySet):
+    def for_user(self, user_profile):
+        pmc_ids = get_pmc_ids_for_user(user_profile)
+        if not pmc_ids:
+            return self.none()
+        return self.filter(
+            Q(unit__parent_property__pmc_id__in=pmc_ids) |
+            Q(unit__property_block_tower__property__pmc_id__in=pmc_ids)
+        ).distinct()
 
 
 class Template(Base):
@@ -56,6 +69,8 @@ class TemplateValue(Base):
 
 
 class Lease(Base):
+    objects = LeaseQuerySet.as_manager()
+
     code = models.CharField(max_length=255, blank=True)
     unit = models.ForeignKey(
         "property.Unit",

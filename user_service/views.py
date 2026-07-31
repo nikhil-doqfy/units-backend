@@ -1516,7 +1516,7 @@ def owner_crud(request):
         owner_id = request.GET.get("owner_id", "").strip()
 
         if owner_id:
-            owner = Owner.objects.select_related("user").filter(id=owner_id, user__is_active=True).first()
+            owner = Owner.objects.for_user(user_profile).select_related("user").filter(id=owner_id, user__is_active=True).first()
             if not owner:
                 logger.warning(
                     "OWNER_FETCH_FAILED | user_id=%s | owner_id=%s | reason=OWNER_NOT_FOUND",
@@ -1570,7 +1570,7 @@ def owner_crud(request):
                 created_by__in=pmc_staff_user_ids,
             ).order_by("-id")
         else:
-            owners = Owner.objects.select_related("user").filter(user__is_active=True).order_by("-id")
+            owners = Owner.objects.for_user(user_profile).select_related("user").filter(user__is_active=True).order_by("-id")
 
         if search:
             owners = owners.filter(
@@ -1690,7 +1690,7 @@ def owner_crud(request):
                 request.user.id )
             return prepare_response(message="owner_id is required", status=status.HTTP_400_BAD_REQUEST)
 
-        owner = Owner.objects.select_related("user").filter(id=owner_id).first()
+        owner = Owner.objects.for_user(request.user).select_related("user").filter(id=owner_id).first()
         if not owner:
             logger.warning(
                 "OWNER_UPDATE_FAILED | user_id=%s | owner_id=%s | reason=OWNER_NOT_FOUND",
@@ -1753,7 +1753,7 @@ def owner_crud(request):
                 request.user.id )
             return prepare_response(message="owner_id is required", status=status.HTTP_400_BAD_REQUEST)
 
-        owner = Owner.objects.select_related("user").filter(id=owner_id).first()
+        owner = Owner.objects.for_user(request.user).select_related("user").filter(id=owner_id).first()
         if not owner:
             logger.warning(
                 "OWNER_DELETE_FAILED | user_id=%s | owner_id=%s | reason=OWNER_NOT_FOUND",
@@ -1870,7 +1870,7 @@ def tenant_crud(request):
         email = request.GET.get("email", "").strip()
 
         if tenant_id:
-            tenant = Tenant.objects.select_related("user").filter(id=tenant_id, user__is_active=True).first()
+            tenant = Tenant.objects.for_user(request.user).select_related("user").filter(id=tenant_id, user__is_active=True).first()
             if not tenant:
                 logger.warning(
                     "TENANT_FETCH_FAILED | user_id=%s | tenant_id=%s | reason=TENANT_NOT_FOUND", 
@@ -1882,7 +1882,7 @@ def tenant_crud(request):
             return prepare_response(content=_serialize_tenant(tenant))
 
         if email:
-            tenant = Tenant.objects.select_related("user").filter(
+            tenant = Tenant.objects.for_user(request.user).select_related("user").filter(
                 Q(email__iexact=email) | Q(user__email__iexact=email),
                 user__is_active=True,
             ).first()
@@ -2350,7 +2350,7 @@ def approval_view(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        tenant = Tenant.objects.filter(id=tenant_id).first()
+        tenant = Tenant.objects.for_user(request.user).filter(id=tenant_id).first()
 
         if not tenant:
             logger.warning(

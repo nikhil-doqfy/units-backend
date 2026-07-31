@@ -171,6 +171,7 @@ def lease_view(request):
             if lease_id:
                 lease = (
                     Lease.objects
+                    .for_user(user)
                     .select_related("unit__property_block_tower__property", "tenant__user")
                     .prefetch_related("unit__unit_owners__owner__user")
                     .filter(id=lease_id, is_active=True)
@@ -189,7 +190,7 @@ def lease_view(request):
                 return prepare_response(content=serialize_lease(lease))
 
             # List with optional filters + pagination
-            qs = Lease.objects.select_related("unit__property_block_tower__property", "tenant__user").filter(is_active=True)
+            qs = Lease.objects.for_user(user).select_related("unit__property_block_tower__property", "tenant__user").filter(is_active=True)
 
             property_id = request.GET.get("property_id")
             unit_id = request.GET.get("unit_id")
@@ -340,9 +341,9 @@ def lease_view(request):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            lease = Lease.objects.filter(id=lease_id, is_active=True).first()
+            lease = Lease.objects.for_user(user).filter(id=lease_id, is_active=True).first()
             if not lease:
-                logger.warning("LEASE_UPDATE_FAILED | user_id=%d | lease_id=%s | reason=NOT_FOUND",    
+                logger.warning("LEASE_UPDATE_FAILED | user_id=%d | lease_id=%s | reason=NOT_FOUND",
                 request.user.id, lease_id )
                 return prepare_response(
                     message="Lease not found",
@@ -438,7 +439,7 @@ def lease_view(request):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
 
-            lease = Lease.objects.filter(id=lease_id, is_active=True).first()
+            lease = Lease.objects.for_user(user).filter(id=lease_id, is_active=True).first()
             if not lease:
                 logger.warning(
                     "LEASE_DELETE_FAILED | user_id=%d | lease_id=%s | reason=LEASE_NOT_FOUND",
@@ -497,7 +498,7 @@ def lease_onboarding_documents_view(request):
                 "LEASE_DOCUMENT_FETCH_FAILED | user_id=%d | reason=LEASE_ID_MISSING", request.user.id)
             return prepare_response(message=constants.LEASE_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
 
-        lease = Lease.objects.filter(id=lease_id, is_active=True).select_related("tenant").first()
+        lease = Lease.objects.for_user(user).filter(id=lease_id, is_active=True).select_related("tenant").first()
         if not lease:
             logger.warning(
                 "LEASE_DOCUMENT_FETCH_FAILED | user_id=%d | lease_id=%s | reason=LEASE_NOT_FOUND",
@@ -549,7 +550,7 @@ def lease_onboarding_documents_view(request):
                 "LEASE_DOCUMENT_UPLOAD_FAILED | user_id=%d | reason=LEASE_ID_MISSING",request.user.id)
             return prepare_response(message=constants.LEASE_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
 
-        lease = Lease.objects.filter(id=lease_id, is_active=True).first()
+        lease = Lease.objects.for_user(user).filter(id=lease_id, is_active=True).first()
         if not lease:
             logger.warning(
                 "LEASE_DOCUMENT_UPLOAD_FAILED | user_id=%d | lease_id=%s | reason=LEASE_NOT_FOUND",
