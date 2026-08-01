@@ -3,7 +3,7 @@ from utilities import status, constants
 from utilities.helper_functions import prepare_response, datetime_to_epoch_millis, safe_epoch_to_datetime, get_extension_from_base64, export_to_csv, send_ses_email, fetch_s3_presigned_url, upload_file_to_s3_base64
 import uuid
 from django.template.loader import render_to_string
-from user_service.models import UserProfile, Documents, OwnerDocuments, TenantDocuments, Role, Owner, Tenant, PropertyManager ,Approval, DocumentType, Documentation
+from user_service.models import UserProfile, Documents, OwnerDocuments, TenantDocuments, Role, Owner, Tenant, PropertyManager ,Approval, DocumentType, Documentation, PrivacyPolicy
 from property.models import PropertyManagerDocuments, Unit, Property, PropertyManagmentCompany, UnitOwner
 from django.db import transaction
 from django.views.decorators.csrf import csrf_exempt
@@ -3889,3 +3889,186 @@ def reset_user_password(request):
         print("reset_user_password error:", e)
         return prepare_response(message=constants.INTERNAL_SERVER_ERROR, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+@api_view(["GET", "POST", "PUT", "DELETE"])
+@is_request_authenticated
+def privacy_policy_api(request):
+    user_profile = request.user
+    if request.method == "GET": 
+        policies = PrivacyPolicy.objects.filter(is_active=True).order_by("-id") 
+        return prepare_response(
+            content={
+                "results": [
+                    {
+                        "id": policy.id,
+                        "title": policy.title,
+                        "content": policy.content,
+                        "other_policy_content": policy.other_policy_content,
+                        "created": int(policy.created.timestamp()) if policy.created else None,
+                    }
+                    for policy in policies
+                ]
+            },
+            message="Privacy policies fetched successfully.",
+            status=status.HTTP_200_OK
+        )
+ 
+    # PM only below
+    pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).first() 
+    if not pm_profile:
+        return prepare_response(message="Only Property Manager is allowed.", status=status.HTTP_403_FORBIDDEN)
+    # POST
+    if request.method == "POST":
+        body = json.loads(request.body) 
+        title = body.get("title")
+        content = body.get("content") 
+        if not title:
+            return prepare_response(message="Title is required.", status=status.HTTP_400_BAD_REQUEST)
+        if not content:
+            return prepare_response(message="Content is required.", status=status.HTTP_400_BAD_REQUEST)
+ 
+        policy = PrivacyPolicy.objects.create(
+            title=title,
+            content=content,
+            other_policy_content=body.get("other_policy_content", ""),
+            created_by=user_profile.user
+        )
+        return prepare_response(
+            content={
+                "id": policy.id
+            },
+            message="Privacy policy created successfully.", status=status.HTTP_201_CREATED )
+ 
+    # PUT
+    elif request.method == "PUT":
+        body = json.loads(request.body)
+        policy_id = body.get("id")
+        if not policy_id:
+            return prepare_response(message="Policy id is required.", status=status.HTTP_400_BAD_REQUEST) 
+        policy = PrivacyPolicy.objects.filter(id=policy_id, is_active=True).first()
+        if not policy:
+            return prepare_response(message="Privacy policy not found.", status=status.HTTP_404_NOT_FOUND)
+
+        policy.title = body.get("title", policy.title)
+        policy.content = body.get("content", policy.content)
+        policy.other_policy_content = body.get(
+            "other_policy_content",
+            policy.other_policy_content
+        ) 
+        policy.save() 
+        return prepare_response(message="Privacy policy updated successfully.",status=status.HTTP_200_OK )
+ 
+     # DELETE
+    elif request.method == "DELETE":
+        body = json.loads(request.body)
+        policy_id = body.get("id")
+        if not policy_id:
+            return prepare_response(message="Policy id is required.", status=status.HTTP_400_BAD_REQUEST) 
+        policy = PrivacyPolicy.objects.filter(id=policy_id, is_active=True).first() 
+        if not policy:
+            return prepare_response(message="Privacy policy not found.", status=status.HTTP_404_NOT_FOUND)
+ 
+        policy.is_active = False
+        policy.save()
+        return prepare_response( message="Privacy policy deleted successfully.", status=status.HTTP_200_OK)
+    return prepare_response(message=constants.METHOD_NOT_ALLOWED, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+@is_request_authenticated
+def tenant_document_api(request):
+    user_profile = request.user
+    # ── GET ──────────────────────────────────────────────────────────────────
+    if request.method == "GET":
+        tenant_id = request.GET.get("tenant_id", "").strip()
+        tenant_profile = Tenant.objects.filter(pk=user_profile.pk).first()
+        pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).first()
+
+        if tenant_profile:
+            tenants = Tenant.objects.filter(pk=tenant_profile.pk)
+        elif pm_profile:
+            if tenant_id:
+                tenant = Tenant.objects.for_user(pm_profile).filter(id=tenant_id, user__is_active=True).first()
+                if not tenant:
+                    return prepare_response(message="Tenant not accessible for this PM", status=status.HTTP_403_FORBIDDEN)
+                tenants = Tenant.objects.filter(id=tenant.id)
+            else:
+                tenants = Tenant.objects.for_user(pm_profile)
+        else:
+            return prepare_response(message=constants.UNAUTHORIZED_ROLE, status=status.HTTP_403_FORBIDDEN)
+
+        docs = TenantDocuments.objects.filter(tenant__in=tenants, is_active=True).select_related("document_type", "tenant").order_by("-id")
+        doc_type_id = request.GET.get("document_type_id", "").strip()
+        if doc_type_id:
+            docs = docs.filter(document_type_id=doc_type_id)
+
+        content = [
+            {
+                "id": doc.id,
+                "file_name": doc.file_name,
+                "tenant_id": doc.tenant.id,
+                "tenant_code": doc.tenant.code,
+                "document_type_name": doc.document_type.name if doc.document_type else None,
+                "url": fetch_s3_presigned_url(doc.file_path, doc.file_name),
+            }
+            for doc in docs
+        ]
+        logger.info(
+            "TENANT_DOCUMENTS_FETCHED | user_id=%s | count=%s",
+            request.user.id, len(content)
+        )
+        return prepare_response(content=content, status=status.HTTP_200_OK)
+
+    # ── POST ─────────────────────────────────────────────────────────────────
+    elif request.method == "POST":
+        try:
+            body = json.loads(request.body)
+        except Exception:
+            return prepare_response(message="Invalid JSON body", status=status.HTTP_400_BAD_REQUEST)
+        tenant_profile = Tenant.objects.filter(pk=user_profile.pk).first()
+        pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).first()
+
+        if tenant_profile:
+            tenant = tenant_profile
+        elif pm_profile:
+            tenant_id = body.get("tenant_id")
+            if not tenant_id:
+                return prepare_response(message="tenant_id is required", status=status.HTTP_400_BAD_REQUEST)
+            tenant = Tenant.objects.filter(id=tenant_id, user__is_active=True).first()
+            if not tenant:
+                return prepare_response(message="Tenant not found", status=status.HTTP_404_NOT_FOUND)
+        else:
+            return prepare_response(message=constants.UNAUTHORIZED_ROLE, status=status.HTTP_403_FORBIDDEN)
+        documents_data = body.get("documents") or []
+        if not documents_data:
+            return prepare_response(message="documents list is required", status=status.HTTP_400_BAD_REQUEST)
+
+        created_ids = []
+        for doc_data in documents_data:
+            file_data = doc_data.get("file_data") or doc_data.get("data")
+            if not file_data:
+                continue
+
+            file_name = doc_data.get("file_name") or f"{uuid.uuid4()}.pdf"
+            doc_type = DocumentType.objects.filter(section=constants.TENANT).first()
+            if not doc_type:
+                return prepare_response(message="Tenant document type not configured", status=status.HTTP_400_BAD_REQUEST)
+
+            ext = get_extension_from_base64(file_data) or ".pdf"
+            unique_filename = f"{uuid.uuid4()}{ext}"
+            s3_key = f"tenant/{tenant.id}/documents/{doc_type.id}/{unique_filename}"
+            url = upload_file_to_s3_base64(file_data, s3_key)
+            doc = TenantDocuments.objects.create(
+                created_by=user_profile.user,
+                tenant=tenant,
+                document_type=doc_type,
+                file_name=file_name,
+                file_path=url,
+            )
+            created_ids.append(doc.id)
+        if not created_ids:
+            return prepare_response(message="No documents uploaded — check document_type_id and file_data", status=status.HTTP_400_BAD_REQUEST)
+        logger.info(
+            "TENANT_DOCUMENTS_UPLOADED | user_id=%s | tenant_id=%s | count=%s",
+            request.user.id, tenant.id, len(created_ids)
+        )
+        return prepare_response(message="Documents uploaded successfully", content={"ids": created_ids}, status=status.HTTP_201_CREATED)
+    else:
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
