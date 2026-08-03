@@ -1719,40 +1719,42 @@ def lease_cheque_view(request):
 
         user_profile = request.user
 
-        # ── Get logged-in user's company ───────────────────────
         pm_profile = PropertyManager.objects.filter(
             pk=user_profile.pk
         ).select_related("company").first()
-
-        # company = pm_profile.company if pm_profile else None
-        # if not company:
-        #     company = PropertyManagmentCompany.objects.filter(
-        #         created_by=user_profile.user, is_active=True
-        #     ).first()
-        pmc_ids = _get_pmc_ids_for_user(user_profile)
-        if not pmc_ids:
+        owner_profile = Owner.objects.filter(pk=user_profile.pk).first()
+        pmc_ids = _get_pmc_ids_for_user(user_profile) if pm_profile else []
+        if not pmc_ids and not owner_profile:
             logger.warning(
-                "LEASE_CHEQUE_FETCH_FAILED | user_id=%d | reason=COMPANY_NOT_FOUND", request.user.id)
-            return prepare_response(
-                message=constants.COMPANY_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
+                "LEASE_CHEQUE_FETCH_FAILED | user_id=%d | reason=UNAUTHORIZED_ROLE", request.user.id)
+            return prepare_response(message=constants.UNAUTHORIZED_ROLE,status=status.HTTP_403_FORBIDDEN)
 
         # ── Single cheque ──────────────────────────────────────
         cheque_id = request.GET.get("cheque_id")
 
         if cheque_id:
             try:
-                cheque = LeaseTransaction.objects.select_related(
-                    "origin_bank",
-                    "selltlement_bank",
-                    "document_type",
-                    "lease__unit__property_block_tower__property"
-                ).get(
-                    Q(lease__unit__parent_property__pmc_id__in=pmc_ids) |
-                    Q(lease__unit__property_block_tower__property__pmc_id__in=pmc_ids),
-                    id=cheque_id,
-                )
+                if pmc_ids:
+                    cheque = LeaseTransaction.objects.select_related(
+                        "origin_bank",
+                        "selltlement_bank",
+                        "document_type",
+                        "lease__unit__property_block_tower__property"
+                    ).get(
+                        Q(lease__unit__parent_property__pmc_id__in=pmc_ids) |
+                        Q(lease__unit__property_block_tower__property__pmc_id__in=pmc_ids),
+                        id=cheque_id,
+                    )
+                else:
+                    cheque = LeaseTransaction.objects.select_related(
+                        "origin_bank",
+                        "selltlement_bank",
+                        "document_type",
+                        "lease__unit__property_block_tower__property"
+                    ).get(
+                        lease__unit__unit_owners__owner=owner_profile,
+                        id=cheque_id,
+                    )
 
             except LeaseTransaction.DoesNotExist:
                 logger.warning(
@@ -1779,18 +1781,30 @@ def lease_cheque_view(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        cheques = LeaseTransaction.objects.filter(
-            lease_id=lease_id,
-        ).filter(
-            Q(lease__unit__parent_property__pmc_id__in=pmc_ids) |
-            Q(lease__unit__property_block_tower__property__pmc_id__in=pmc_ids)
-        ).select_related(
-            "origin_bank",
-            "selltlement_bank",
-            "document_type",
-            "lease__unit__property_block_tower__property",
-            "lease__unit__parent_property",
-        )
+        if pmc_ids:
+            cheques = LeaseTransaction.objects.filter(
+                lease_id=lease_id,
+            ).filter(
+                Q(lease__unit__parent_property__pmc_id__in=pmc_ids) |
+                Q(lease__unit__property_block_tower__property__pmc_id__in=pmc_ids)
+            ).select_related(
+                "origin_bank",
+                "selltlement_bank",
+                "document_type",
+                "lease__unit__property_block_tower__property",
+                "lease__unit__parent_property",
+            )
+        else:
+            cheques = LeaseTransaction.objects.filter(
+                lease_id=lease_id,
+                lease__unit__unit_owners__owner=owner_profile,
+            ).select_related(
+                "origin_bank",
+                "selltlement_bank",
+                "document_type",
+                "lease__unit__property_block_tower__property",
+                "lease__unit__parent_property",
+            ).distinct()
         logger.info(
             "LEASE_CHEQUE_LIST_FETCHED | user_id=%d | lease_id=%s | count=%d",
             request.user.id, lease_id, cheques.count() )
