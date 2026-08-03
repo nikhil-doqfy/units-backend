@@ -74,6 +74,11 @@ class UserProfile(Base):
 
 
 class Owner(UserProfile):
+    pmc = models.ManyToManyField(
+        "property.PropertyManagmentCompany",
+        blank=True,
+        related_name="owners"
+    )
     objects = OwnerQuerySet.as_manager()
 
     trade_license_number = models.CharField(max_length=255, blank=True, default='')
@@ -92,7 +97,7 @@ class Owner(UserProfile):
 
 
 class PropertyManager(UserProfile):
-    company = models.ForeignKey("property.PropertyManagmentCompany", on_delete=models.CASCADE, related_name="company_staff")
+    company = models.ForeignKey("property.PropertyManagmentCompany", on_delete=models.CASCADE, related_name="company_staff", null=True, blank=True)
     roles = models.ManyToManyField("Role", blank=True)
 
     def save(self, *args, **kwargs):
@@ -103,8 +108,12 @@ class PropertyManager(UserProfile):
 
 
 class Tenant(UserProfile):
+    pmc = models.ManyToManyField(
+    "property.PropertyManagmentCompany",
+    related_name="tenants",
+    blank=True,
+    )
     objects = TenantQuerySet.as_manager()
-
     is_onboarding = models.BooleanField(default=False)
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)

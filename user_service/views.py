@@ -3,7 +3,7 @@ from utilities import status, constants
 from utilities.helper_functions import prepare_response, datetime_to_epoch_millis, safe_epoch_to_datetime, get_extension_from_base64, export_to_csv, send_ses_email, fetch_s3_presigned_url, upload_file_to_s3_base64
 import uuid
 from django.template.loader import render_to_string
-from user_service.models import UserProfile, Documents, OwnerDocuments, TenantDocuments, Role, Owner, Tenant, PropertyManager ,Approval, DocumentType, Documentation
+from user_service.models import UserProfile, Documents, OwnerDocuments, TenantDocuments, Role, Owner, Tenant, PropertyManager ,Approval, DocumentType, Documentation, PrivacyPolicy
 from property.models import PropertyManagerDocuments, Unit, Property, PropertyManagmentCompany, UnitOwner
 from django.db import transaction
 from django.views.decorators.csrf import csrf_exempt
@@ -296,6 +296,7 @@ def user_management(request):
             password   = body.get("password")
             phone      = body.get("contact_number") or body.get("phone")
             role       = body.get("role")
+            pmc_id     = body.get("pmc_id")
 
             if not all([first_name, last_name, email, password, role]):
                 logger.warning(
@@ -323,6 +324,14 @@ def user_management(request):
                     message=constants.EMAIL_ALREADY_REGISTERED,
                     status=status.HTTP_400_BAD_REQUEST
                 )
+            if not pmc_id:
+                return prepare_response(message="PMC is required.", status=status.HTTP_400_BAD_REQUEST)
+            company = PropertyManagmentCompany.objects.filter( id=pmc_id, is_active=True).first()
+            if not company:
+                logger.warning(
+                    "USER_CREATE_FAILED | user_id=%s | pmc_id=%s | reason=COMPANY_NOT_FOUND",
+                    request.user.id, pmc_id )
+                return prepare_response( message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND )
 
             common_kwargs = dict(
                 contact_number=phone,
@@ -341,26 +350,13 @@ def user_management(request):
 
                 if role == constants.OWNER:
                     profile = Owner.objects.create(user=django_user, **common_kwargs)
+                    profile.pmc.add(company)
                 elif role == constants.TENANT:
                     profile = Tenant.objects.create(user=django_user, **common_kwargs)
+                    profile.pmc.add(company)
                 elif role == constants.COMPANY_USER:
-                    company = PropertyManagmentCompany.objects.filter(
-                        created_by=user.user, is_active=True
-                    ).first()
-                    if not company:
-                        pm_self = PropertyManager.objects.filter(pk=user.pk).select_related("company").first()
-                        company = pm_self.company if pm_self else None
-                    if not company:
-                        logger.warning(
-                            "USER_CREATE_FAILED | user_id=%s | reason=COMPANY_NOT_FOUND",
-                            request.user.id )
-                        return prepare_response(
-                            message=constants.COMPANY_NOT_FOUND,
-                            status=status.HTTP_404_NOT_FOUND
-                        )
-                    profile = PropertyManager.objects.create(
-                        user=django_user, company=company, **common_kwargs
-                    )
+                    profile = PropertyManager.objects.create(user=django_user, **common_kwargs)
+                    PMCPMMapping.objects.create(pm=profile, pmc=company, created_by=user.user )
             logger.info(
                 "USER_CREATED | user_id=%s | created_user_id=%s | role=%s",
                 request.user.id, profile.id, role )
@@ -378,36 +374,42 @@ def user_management(request):
             user_id = request.GET.get("user_id")
 
             # Resolve the company for the logged-in user
-            company = PropertyManagmentCompany.objects.filter(created_by=user.user, is_active=True).first()
-            if not company:
-                pm_check = PropertyManager.objects.filter(pk=user.pk).select_related("company").first()
-                company = pm_check.company if pm_check else None
-            if not company:
+            owner = Owner.objects.filter(pk=user.pk).first()
+            tenant = Tenant.objects.filter(pk=user.pk).first()
+            pm = PropertyManager.objects.filter(pk=user.pk).first()
+            pmc_ids = []
+            if owner:
+                pmc_ids = list(owner.pmc.values_list("id", flat=True))
+            elif tenant:
+                pmc_ids = list(tenant.pmc.values_list("id", flat=True))
+            elif pm:
+                pmc_ids = list(PMCPMMapping.objects.filter(pm=pm, is_active=True).values_list("pmc_id", flat=True))
+            pmc_ids = [i for i in pmc_ids if i]
+            if not pmc_ids:
                 logger.warning(
                     "USER_LIST_FETCH_FAILED | user_id=%s | reason=COMPANY_NOT_FOUND",
                     request.user.id )
-                return prepare_response(
-                    message=constants.COMPANY_NOT_FOUND,
-                    status=status.HTTP_404_NOT_FOUND
-                )
+                return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND )
 
             # Collect UserProfile IDs from all three user types linked to this company:
             # 1. Property Managers (staff) — directly linked via company FK
-            pm_ids = set(PropertyManager.objects.filter(company=company).values_list("pk", flat=True))
+            pm_ids = set(PMCPMMapping.objects.filter( pmc_id__in=pmc_ids,is_active=True).values_list("pm_id", flat=True))
 
             # 2. Owners — via UnitOwner → Unit → PropertyBlocks → Property → pmc
             owner_ids = set(
-                UnitOwner.objects.filter(
-                    unit__property_block_tower__property__pmc=company,
-                    owner__isnull=False
-                ).values_list("owner_id", flat=True)
+                Owner.objects.filter(
+                    pmc__id__in=pmc_ids,
+                    is_active=True,
+                ).distinct().values_list("pk", flat=True)
             )
 
             # 3. Tenants — via Lease → Unit → PropertyBlocks → Property → pmc
             tenant_ids = set(
-                Lease.objects.filter(
-                    unit__property_block_tower__property__pmc=company
-                ).values_list("tenant_id", flat=True)
+                Tenant.objects.filter(
+                    # unit__property_block_tower__property__pmc=company
+                    pmc__id__in=pmc_ids,
+                    is_active=True,
+                ).distinct().values_list("pk", flat=True)
             )
 
             all_profile_ids = pm_ids | owner_ids | tenant_ids
@@ -1516,7 +1518,19 @@ def owner_crud(request):
         owner_id = request.GET.get("owner_id", "").strip()
 
         if owner_id:
-            owner = Owner.objects.for_user(user_profile).select_related("user").filter(id=owner_id, user__is_active=True).first()
+            pm_profile = PropertyManager.objects.filter(pk=request.user.pk).first()
+            if pm_profile:
+                pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile,is_active=True).values_list("pmc_id", flat=True))
+                if not pmc_ids:
+                    return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND )
+                owner = Owner.objects.select_related("user").filter(
+                    id=owner_id,
+                    user__is_active=True,
+                    is_active=True,
+                    pmc__id__in=pmc_ids,
+                ).distinct().first()
+            else:
+                owner = Owner.objects.for_user(user_profile).select_related("user").filter(id=owner_id, user__is_active=True).first()
             if not owner:
                 logger.warning(
                     "OWNER_FETCH_FAILED | user_id=%s | owner_id=%s | reason=OWNER_NOT_FOUND",
@@ -1558,19 +1572,19 @@ def owner_crud(request):
         export = request.GET.get("export", "").strip()
 
         # Filter owners created by any staff member of the logged-in user's PMC
-        user_profile = request.user
-        pm = PropertyManager.objects.filter(id=user_profile.id).select_related("company").first()
-        company = pm.company if pm else None
-        if company:
-            pmc_staff_user_ids = PropertyManager.objects.filter(
-                company=company
-            ).values_list("user_id", flat=True)
+        pm_profile = PropertyManager.objects.filter(pk=request.user.pk).first()
+        if pm_profile:
+            pmc_ids = list(
+                PMCPMMapping.objects.filter(pm=pm_profile, is_active=True).values_list("pmc_id", flat=True))
+            if not pmc_ids:
+                return prepare_response(message=constants.COMPANY_NOT_FOUND,status=status.HTTP_404_NOT_FOUND)
             owners = Owner.objects.select_related("user").filter(
                 user__is_active=True,
-                created_by__in=pmc_staff_user_ids,
-            ).order_by("-id")
+                is_active=True,
+                pmc__id__in=pmc_ids,
+            ).distinct().order_by("-id")
         else:
-            owners = Owner.objects.for_user(user_profile).select_related("user").filter(user__is_active=True).order_by("-id")
+            owners = Owner.objects.for_user(user_profile).select_related("user").filter(user__is_active=True).distinct().order_by("-id")
 
         if search:
             owners = owners.filter(
@@ -1690,7 +1704,17 @@ def owner_crud(request):
                 request.user.id )
             return prepare_response(message="owner_id is required", status=status.HTTP_400_BAD_REQUEST)
 
-        owner = Owner.objects.for_user(request.user).select_related("user").filter(id=owner_id).first()
+        # owner = Owner.objects.select_related("user").filter(id=owner_id).first()
+        pm_profile = PropertyManager.objects.filter(pk=request.user.pk).first()
+        if pm_profile:
+            pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile,is_active=True).values_list("pmc_id", flat=True))            
+            owner = Owner.objects.select_related("user").filter(
+                id=owner_id,
+                pmc__id__in=pmc_ids,
+                is_active=True,
+            ).distinct().first()
+        else:
+            owner = Owner.objects.for_user(request.user).select_related("user").filter(id=owner_id).first()
         if not owner:
             logger.warning(
                 "OWNER_UPDATE_FAILED | user_id=%s | owner_id=%s | reason=OWNER_NOT_FOUND",
@@ -1753,7 +1777,19 @@ def owner_crud(request):
                 request.user.id )
             return prepare_response(message="owner_id is required", status=status.HTTP_400_BAD_REQUEST)
 
-        owner = Owner.objects.for_user(request.user).select_related("user").filter(id=owner_id).first()
+        # owner = Owner.objects.select_related("user").filter(id=owner_id).first()
+        pm_profile = PropertyManager.objects.filter(pk=request.user.pk).first()
+        if pm_profile:
+            pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile,is_active=True).values_list("pmc_id", flat=True))
+            if not pmc_ids and pm_profile.company_id:
+                pmc_ids = [pm_profile.company_id]
+            owner = Owner.objects.select_related("user").filter(
+                id=owner_id,
+                pmc__id__in=pmc_ids,
+                is_active=True,
+            ).distinct().first()
+        else:
+            owner = Owner.objects.for_user(request.user).select_related("user").filter(id=owner_id).first()
         if not owner:
             logger.warning(
                 "OWNER_DELETE_FAILED | user_id=%s | owner_id=%s | reason=OWNER_NOT_FOUND",
@@ -1919,42 +1955,56 @@ def tenant_crud(request):
             pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile).values_list("pmc_id", flat=True))
             if not pmc_ids:
                 return prepare_response( message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
-            lease_filter = {
-                "is_active": True,
-                "unit__property_block_tower__property__pmc_id__in": pmc_ids
-            }
-            qs_filter = {
-                "unit__property_block_tower__property__pmc_id__in": pmc_ids
-            }
 
         elif owner_profile:
-            lease_filter = {
-                "is_active": True,
-                "unit__unit_owners__owner": owner_profile
-            }
-            qs_filter = {
-                "unit__unit_owners__owner": owner_profile
-            }
- 
+            pass
         else:
             return prepare_response(message="Unauthorized access",status=status.HTTP_403_FORBIDDEN)
-        latest_ids = (
-            Lease.objects
-            .filter(**lease_filter)
-            .values("tenant")
-            .annotate(latest_id=Max("id"))
-            .values_list("latest_id", flat=True)
-        )
-
-        qs = (
-            Lease.objects
-            .select_related("tenant__user", "unit__property_block_tower__property")
-            .prefetch_related("unit__property_block_tower__property__property_images")
-            .filter(
-                id__in=latest_ids,
-                **qs_filter
+        if pm_profile:
+            latest_ids = (
+                Lease.objects
+                .filter(is_active=True)
+                .filter(
+                    Q(unit__property_block_tower__property__pmc_id__in=pmc_ids) |
+                    Q(unit__parent_property__pmc_id__in=pmc_ids)
+                )
+                .values("tenant")
+                .annotate(latest_id=Max("id"))
+                .values_list("latest_id", flat=True)
             )
-        )
+        else:
+            latest_ids = (
+                Lease.objects
+                .filter(
+                    is_active=True,
+                    unit__unit_owners__owner=owner_profile
+                )
+                .values("tenant")
+                .annotate(latest_id=Max("id"))
+                .values_list("latest_id", flat=True)
+            )
+
+        if pm_profile:
+            qs = (
+                Lease.objects
+                .select_related("tenant__user", "unit__property_block_tower__property")
+                .prefetch_related("unit__property_block_tower__property__property_images")
+                .filter(id__in=latest_ids)
+                .filter(
+                    Q(unit__property_block_tower__property__pmc_id__in=pmc_ids) |
+                    Q(unit__parent_property__pmc_id__in=pmc_ids)
+                )
+            )
+        else:
+            qs = (
+                Lease.objects
+                .select_related("tenant__user", "unit__property_block_tower__property", "unit__parent_property",)
+                .prefetch_related("unit__property_block_tower__property__property_images", "unit__parent_property__property_images",)
+                .filter(
+                    id__in=latest_ids,
+                    unit__unit_owners__owner=owner_profile
+                )
+            )
 
         if tab == "onboarding":
             qs = qs.filter(lease_status="DRAFT")
@@ -2477,8 +2527,6 @@ def owner_pmc_view(request):
                 else:
                     pmc_ids = list(
                         PMCPMMapping.objects.filter(pm=pm_profile).values_list("pmc_id", flat=True))
-                    if not pmc_ids and pm_profile.company_id:
-                        pmc_ids = [pm_profile.company_id]
                     owner_units = Unit.objects.filter(
                         Q(property_block_tower__property__pmc_id__in=pmc_ids) |
                         Q(parent_property__pmc_id__in=pmc_ids),
@@ -2500,10 +2548,7 @@ def owner_pmc_view(request):
                 if search:
                     pmc_qs = pmc_qs.filter(
                         Q(name__icontains=search) |
-                        Q(code__icontains=search) |
-                        Q(company_staff__user__first_name__icontains=search) |
-                        Q(company_staff__user__last_name__icontains=search) |
-                        Q(company_staff__user__email__icontains=search)
+                        Q(code__icontains=search) ,
                     ).distinct()
  
                 paginator = Paginator(pmc_qs, limit)
@@ -2525,19 +2570,31 @@ def owner_pmc_view(request):
                     ).count()
                     tenancy_ratio = f"{leased_count}:{total_count}" if total_count else "0:0"
  
-                    pmc_user = PropertyManager.objects.filter(
-                        company=company
-                    ).select_related("user").first()
+                    # pmc_user = PropertyManager.objects.filter(
+                    #     company=company
+                    # ).select_related("user").first()
+                    mappings = PMCPMMapping.objects.filter(
+                        pmc=company,
+                        is_active=True
+                    ).select_related("pm__user")
+                    first_mapping = mappings.first()
+                    pmc_user = first_mapping.pm if first_mapping else None
  
                     data.append({
                         "company_id": company.id,
-                        "property_handling": (
-                            f"{pmc_user.user.first_name} {pmc_user.user.last_name}".strip()
-                            if pmc_user and pmc_user.user else None
-                        ),
+                        # "property_handling":", ".join([
+                        #     f"{m.pm.user.first_name} {m.pm.user.last_name}".strip()
+                        #      for m in mappings
+                        # ]),
+                        "property_handling": [
+                            {
+                                "id": m.pm.id,
+                                "name": f"{m.pm.user.first_name} {m.pm.user.last_name}".strip()
+                            }
+                            for m in mappings
+                        ],
                         "company_address": (
-                            f"{pmc_user.address_line_1 or ''} {pmc_user.address_line_2 or ''}".strip()
-                            if pmc_user else None
+                            f"{company.address_line_1 or ''} {company.address_line_2 or ''}".strip()
                         ),
                         "company_name": company.name,
                         "tenancy_ratio": tenancy_ratio,
@@ -2586,8 +2643,6 @@ def owner_pmc_view(request):
                     )
                 else:
                     pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile).values_list("pmc_id", flat=True))
-                    if not pmc_ids and pm_profile.company_id:
-                        pmc_ids = [pm_profile.company_id]
                     if company.id not in pmc_ids:
                         return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
 
@@ -2636,7 +2691,9 @@ def owner_pmc_view(request):
                         "lease_id": lease_id,
                     })
  
-                pmc_user = PropertyManager.objects.filter(company=company).select_related("user").first()
+                pm_mappings = PMCPMMapping.objects.filter(pmc=company, is_active=True).select_related("pm__user")
+                first_mapping = pm_mappings.first()
+                pmc_user = first_mapping.pm if first_mapping else None
                 if owner_profile:
                     total_properties_handled = Unit.objects.filter(
                         unit_owners__owner=owner_profile,
@@ -3832,3 +3889,186 @@ def reset_user_password(request):
         print("reset_user_password error:", e)
         return prepare_response(message=constants.INTERNAL_SERVER_ERROR, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+@api_view(["GET", "POST", "PUT", "DELETE"])
+@is_request_authenticated
+def privacy_policy_api(request):
+    user_profile = request.user
+    if request.method == "GET": 
+        policies = PrivacyPolicy.objects.filter(is_active=True).order_by("-id") 
+        return prepare_response(
+            content={
+                "results": [
+                    {
+                        "id": policy.id,
+                        "title": policy.title,
+                        "content": policy.content,
+                        "other_policy_content": policy.other_policy_content,
+                        "created": int(policy.created.timestamp()) if policy.created else None,
+                    }
+                    for policy in policies
+                ]
+            },
+            message="Privacy policies fetched successfully.",
+            status=status.HTTP_200_OK
+        )
+ 
+    # PM only below
+    pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).first() 
+    if not pm_profile:
+        return prepare_response(message="Only Property Manager is allowed.", status=status.HTTP_403_FORBIDDEN)
+    # POST
+    if request.method == "POST":
+        body = json.loads(request.body) 
+        title = body.get("title")
+        content = body.get("content") 
+        if not title:
+            return prepare_response(message="Title is required.", status=status.HTTP_400_BAD_REQUEST)
+        if not content:
+            return prepare_response(message="Content is required.", status=status.HTTP_400_BAD_REQUEST)
+ 
+        policy = PrivacyPolicy.objects.create(
+            title=title,
+            content=content,
+            other_policy_content=body.get("other_policy_content", ""),
+            created_by=user_profile.user
+        )
+        return prepare_response(
+            content={
+                "id": policy.id
+            },
+            message="Privacy policy created successfully.", status=status.HTTP_201_CREATED )
+ 
+    # PUT
+    elif request.method == "PUT":
+        body = json.loads(request.body)
+        policy_id = body.get("id")
+        if not policy_id:
+            return prepare_response(message="Policy id is required.", status=status.HTTP_400_BAD_REQUEST) 
+        policy = PrivacyPolicy.objects.filter(id=policy_id, is_active=True).first()
+        if not policy:
+            return prepare_response(message="Privacy policy not found.", status=status.HTTP_404_NOT_FOUND)
+
+        policy.title = body.get("title", policy.title)
+        policy.content = body.get("content", policy.content)
+        policy.other_policy_content = body.get(
+            "other_policy_content",
+            policy.other_policy_content
+        ) 
+        policy.save() 
+        return prepare_response(message="Privacy policy updated successfully.",status=status.HTTP_200_OK )
+ 
+     # DELETE
+    elif request.method == "DELETE":
+        body = json.loads(request.body)
+        policy_id = body.get("id")
+        if not policy_id:
+            return prepare_response(message="Policy id is required.", status=status.HTTP_400_BAD_REQUEST) 
+        policy = PrivacyPolicy.objects.filter(id=policy_id, is_active=True).first() 
+        if not policy:
+            return prepare_response(message="Privacy policy not found.", status=status.HTTP_404_NOT_FOUND)
+ 
+        policy.is_active = False
+        policy.save()
+        return prepare_response( message="Privacy policy deleted successfully.", status=status.HTTP_200_OK)
+    return prepare_response(message=constants.METHOD_NOT_ALLOWED, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+@is_request_authenticated
+def tenant_document_api(request):
+    user_profile = request.user
+    # ── GET ──────────────────────────────────────────────────────────────────
+    if request.method == "GET":
+        tenant_id = request.GET.get("tenant_id", "").strip()
+        tenant_profile = Tenant.objects.filter(pk=user_profile.pk).first()
+        pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).first()
+
+        if tenant_profile:
+            tenants = Tenant.objects.filter(pk=tenant_profile.pk)
+        elif pm_profile:
+            if tenant_id:
+                tenant = Tenant.objects.for_user(pm_profile).filter(id=tenant_id, user__is_active=True).first()
+                if not tenant:
+                    return prepare_response(message="Tenant not accessible for this PM", status=status.HTTP_403_FORBIDDEN)
+                tenants = Tenant.objects.filter(id=tenant.id)
+            else:
+                tenants = Tenant.objects.for_user(pm_profile)
+        else:
+            return prepare_response(message=constants.UNAUTHORIZED_ROLE, status=status.HTTP_403_FORBIDDEN)
+
+        docs = TenantDocuments.objects.filter(tenant__in=tenants, is_active=True).select_related("document_type", "tenant").order_by("-id")
+        doc_type_id = request.GET.get("document_type_id", "").strip()
+        if doc_type_id:
+            docs = docs.filter(document_type_id=doc_type_id)
+
+        content = [
+            {
+                "id": doc.id,
+                "file_name": doc.file_name,
+                "tenant_id": doc.tenant.id,
+                "tenant_code": doc.tenant.code,
+                "document_type_name": doc.document_type.name if doc.document_type else None,
+                "url": fetch_s3_presigned_url(doc.file_path, doc.file_name),
+            }
+            for doc in docs
+        ]
+        logger.info(
+            "TENANT_DOCUMENTS_FETCHED | user_id=%s | count=%s",
+            request.user.id, len(content)
+        )
+        return prepare_response(content=content, status=status.HTTP_200_OK)
+
+    # ── POST ─────────────────────────────────────────────────────────────────
+    elif request.method == "POST":
+        try:
+            body = json.loads(request.body)
+        except Exception:
+            return prepare_response(message="Invalid JSON body", status=status.HTTP_400_BAD_REQUEST)
+        tenant_profile = Tenant.objects.filter(pk=user_profile.pk).first()
+        pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).first()
+
+        if tenant_profile:
+            tenant = tenant_profile
+        elif pm_profile:
+            tenant_id = body.get("tenant_id")
+            if not tenant_id:
+                return prepare_response(message="tenant_id is required", status=status.HTTP_400_BAD_REQUEST)
+            tenant = Tenant.objects.filter(id=tenant_id, user__is_active=True).first()
+            if not tenant:
+                return prepare_response(message="Tenant not found", status=status.HTTP_404_NOT_FOUND)
+        else:
+            return prepare_response(message=constants.UNAUTHORIZED_ROLE, status=status.HTTP_403_FORBIDDEN)
+        documents_data = body.get("documents") or []
+        if not documents_data:
+            return prepare_response(message="documents list is required", status=status.HTTP_400_BAD_REQUEST)
+
+        created_ids = []
+        for doc_data in documents_data:
+            file_data = doc_data.get("file_data") or doc_data.get("data")
+            if not file_data:
+                continue
+
+            file_name = doc_data.get("file_name") or f"{uuid.uuid4()}.pdf"
+            doc_type = DocumentType.objects.filter(section=constants.TENANT).first()
+            if not doc_type:
+                return prepare_response(message="Tenant document type not configured", status=status.HTTP_400_BAD_REQUEST)
+
+            ext = get_extension_from_base64(file_data) or ".pdf"
+            unique_filename = f"{uuid.uuid4()}{ext}"
+            s3_key = f"tenant/{tenant.id}/documents/{doc_type.id}/{unique_filename}"
+            url = upload_file_to_s3_base64(file_data, s3_key)
+            doc = TenantDocuments.objects.create(
+                created_by=user_profile.user,
+                tenant=tenant,
+                document_type=doc_type,
+                file_name=file_name,
+                file_path=url,
+            )
+            created_ids.append(doc.id)
+        if not created_ids:
+            return prepare_response(message="No documents uploaded — check document_type_id and file_data", status=status.HTTP_400_BAD_REQUEST)
+        logger.info(
+            "TENANT_DOCUMENTS_UPLOADED | user_id=%s | tenant_id=%s | count=%s",
+            request.user.id, tenant.id, len(created_ids)
+        )
+        return prepare_response(message="Documents uploaded successfully", content={"ids": created_ids}, status=status.HTTP_201_CREATED)
+    else:
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
