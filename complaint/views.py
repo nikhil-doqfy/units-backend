@@ -29,7 +29,7 @@ from complaint.email_services import (
     email_complaint_closed,
     email_slot_selected,
 )
-from property.models import PropertyManagmentCompany, Unit
+from property.models import PropertyManagmentCompany, Unit, Property, PMCPMMapping
 from notification.utils import (
     notify_complaint_created,
     notify_complaint_assigned,
@@ -63,21 +63,12 @@ def complaint_api(request):
 
     # ── GET ALL ───────────────────────────────────────────────────
     if request.method == "GET":
-        company = PropertyManagmentCompany.objects.filter(
-            company_staff=request.user,
-            is_active=True
-        ).first()
-        if not company:
-            logger.warning(
-                "COMPLAINT_LIST_FETCH_FAILED | user_id=%s | reason=COMPANY_NOT_FOUND",
-                request.user.id)
-            return prepare_response(
-                message=constants.COMPANY_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
+        pmc_ids = list(PMCPMMapping.objects.filter(pm=request.user, is_active=True).values_list("pmc_id", flat=True))
+        if not pmc_ids:
+            return prepare_response( message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND )
 
         complaints = Complaint.objects.filter(
-            company=company,
+            company_id__in=pmc_ids,
             is_active=True
         ).order_by('-id')
 
@@ -91,7 +82,8 @@ def complaint_api(request):
 
         if property_id:
             complaints = complaints.filter(
-                unit__property_block_tower__property_id=property_id
+                Q(unit__property_block_tower__property_id=property_id) |
+                Q(unit__parent_property_id=property_id)
             )
 
         if search:
@@ -100,6 +92,7 @@ def complaint_api(request):
                 Q(unit__unit_name__icontains=search) |
                 Q(unit__dm_no__icontains=search) |
                 Q(unit__property_block_tower__property__property_name__icontains=search) |
+                Q(unit__parent_property__property_name__icontains=search) |
                 Q(raised_by__user__first_name__icontains=search) |
                 Q(raised_by__user__last_name__icontains=search)
             ).distinct()
@@ -137,8 +130,11 @@ def complaint_api(request):
     elif request.method == "POST":
         body = json.loads(request.body)
 
+        pmc_id = body.get("pmc_id")
+        if not pmc_id:
+            return prepare_response(message="PMC is required.", status=status.HTTP_400_BAD_REQUEST)
         company = PropertyManagmentCompany.objects.filter(
-            company_staff=request.user,
+            id=pmc_id,
             is_active=True
         ).first()
         if not company:
@@ -149,9 +145,23 @@ def complaint_api(request):
                 message=constants.COMPANY_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
             )
-
+        property_id = body.get("property_id")
+        if not property_id:
+            return prepare_response(message="Property is required.", status=status.HTTP_400_BAD_REQUEST)
+        property_obj = Property.objects.filter(id=property_id, pmc=company).first()
+        if not property_obj:
+            logger.warning(
+                "COMPLAINT_CREATE_FAILED | user_id=%s | property_id=%s | reason=PROPERTY_NOT_FOUND",
+                request.user.id, property_id)
+            return prepare_response(message="Property not found.",status=status.HTTP_404_NOT_FOUND)
         unit_id = body.get("unit_id")
-        unit = Unit.objects.filter(id=unit_id).first()
+        if not unit_id:
+            return prepare_response(message="Unit is required.",status=status.HTTP_400_BAD_REQUEST)
+        unit = Unit.objects.filter(id=unit_id
+        ).filter(
+            Q(property_block_tower__property_id=property_id, property_block_tower__property__pmc_id=pmc_id) |
+            Q(parent_property_id=property_id, parent_property__pmc_id=pmc_id)
+        ).first()
         if not unit:
             logger.warning(
                 "COMPLAINT_CREATE_FAILED | user_id=%s | unit_id=%s | reason=UNIT_NOT_FOUND",
