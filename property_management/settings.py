@@ -162,3 +162,8 @@ SWAGGER_SETTINGS = {
 }
 LOGIN_REDIRECT_URL = "/swagger/"
 LOGOUT_REDIRECT_URL = "/accounts/login/"
+
+try:
+    from property_management.local_settings import *
+except ImportError:
+    pass

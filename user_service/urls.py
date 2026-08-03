@@ -27,4 +27,7 @@ urlpatterns = [
     path('agreement/<int:pk>/upload', views.upload_agreement_document),
     path('reset_password', views.reset_user_password, name='reset_user_password'),
     path('share_profile', views.share_profile, name='share_profile'),
+    path("privacy_policy", views.privacy_policy_api),
+    path('tenant_documents', views.tenant_document_api, name='tenant_document_api'),
+ 
 ]

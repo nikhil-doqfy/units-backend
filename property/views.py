@@ -86,7 +86,7 @@ def _apply_owner_fields(owner_obj, owner_data):
     return owner_obj
 
 
-def _get_or_create_owner(owner_data, created_by):
+def _get_or_create_owner(owner_data, created_by, pmc):
     owner_id = owner_data.get("owner_id")
     email = owner_data.get("email") or ""
 
@@ -94,12 +94,14 @@ def _get_or_create_owner(owner_data, created_by):
     if owner_id:
         owner_obj = Owner.objects.select_related("user").filter(id=owner_id).first()
         if owner_obj:
+            owner_obj.pmc.add(pmc)
             return _apply_owner_fields(owner_obj, owner_data)
 
     # 2. Look up by email
     if email:
         owner_obj = Owner.objects.select_related("user").filter(email=email).first()
         if owner_obj:
+            owner_obj.pmc.add(pmc)
             return _apply_owner_fields(owner_obj, owner_data)
 
     # 3. Create new owner
@@ -128,6 +130,7 @@ def _get_or_create_owner(owner_data, created_by):
         fax_number=owner_data.get("fax_number") or "",
         po_box_number=owner_data.get("po_box_number") or "",
     )
+    owner_obj.pmc.add(pmc)
     return owner_obj
 
 
@@ -143,7 +146,7 @@ def property(request):
         property_id = request.GET.get("property_id")
         pmc_id = request.GET.get("pmc_id")
         if property_id:
-            prop = Property.objects.filter(id=property_id).first()
+            prop = Property.objects.for_user(user_profile).filter(id=property_id).first()
             if not prop:
                 logger.warning(
                     "PROPERTY_NOT_FOUND | user_id=%d | property_id=%s",
@@ -166,7 +169,7 @@ def property(request):
         pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).select_related('company').first()
         # If company exists, fetch that company’s active properties.
         if pm_profile:
-            pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile).values_list("pmc_id", flat=True))            
+            pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile,is_active=True).values_list("pmc_id", flat=True))            
             if not pmc_ids and pm_profile.company_id:
                 pmc_ids = [pm_profile.company_id]                
             if pmc_ids:
@@ -190,8 +193,10 @@ def property(request):
  
             if owner_profile:
                 properties = Property.objects.filter(
-                    property_blocks__block_towers__unit_owners__owner=owner_profile,
-                    is_active=True
+                    Q(property_blocks__block_towers__unit_owners__owner=owner_profile) |
+                    Q(units__unit_owners__owner=owner_profile
+                    ),
+                    is_active=True,
                 ).distinct().order_by("-id")
  
         # ── Tenant login ──────────────────────────────────────
@@ -199,9 +204,12 @@ def property(request):
             tenant_profile = Tenant.objects.filter(pk=user_profile.pk).first()
             if tenant_profile:
                 properties = Property.objects.filter(
-                    property_blocks__block_towers__leases__tenant=tenant_profile,
-                    property_blocks__block_towers__leases__is_active=True,
-                    is_active=True
+                    (
+                        Q(property_blocks__block_towers__leases__tenant=tenant_profile, 
+                        property_blocks__block_towers__leases__is_active=True,) |
+                        Q(units__leases__tenant=tenant_profile, units__leases__is_active=True,)
+                    ),
+                    is_active=True,
                 ).distinct().order_by("-id")
 
         if search:
@@ -318,7 +326,7 @@ def property(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        prop = Property.objects.filter(id=property_id).first()
+        prop = Property.objects.for_user(user_profile).filter(id=property_id).first()
         if not prop:
             logger.warning(
                 "PROPERTY_UPDATE_FAILED | user_id=%d | property_id=%s | reason=PROPERTY_NOT_FOUND",
@@ -449,7 +457,7 @@ def property_blocks(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        prop = Property.objects.filter(id=property_id).first()
+        prop = Property.objects.for_user(user_profile).filter(id=property_id).first()
         if not prop:
             logger.warning(
                 "BLOCK_CREATE_FAILED | user_id=%d | property_id=%s | reason=PROPERTY_NOT_FOUND",
@@ -495,7 +503,7 @@ def property_blocks(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        prop = Property.objects.filter(id=property_id).first()
+        prop = Property.objects.for_user(user_profile).filter(id=property_id).first()
         if not prop:
             logger.warning(
                 "BLOCK_UPDATE_FAILED | user_id=%d | property_id=%s | reason=PROPERTY_NOT_FOUND",
@@ -578,7 +586,7 @@ def property_images(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        prop = Property.objects.filter(id=property_id).first()
+        prop = Property.objects.for_user(user_profile).filter(id=property_id).first()
         if not prop:
             logger.warning(
                 "IMAGE_UPLOAD_FAILED | user_id=%d | property_id=%s | reason=PROPERTY_NOT_FOUND",
@@ -702,7 +710,7 @@ def property_documents(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        prop = Property.objects.filter(id=property_id).first()
+        prop = Property.objects.for_user(user_profile).filter(id=property_id).first()
         if not prop:
             logger.warning(
                 "DOCUMENT_UPLOAD_FAILED | user_id=%d | property_id=%s | reason=PROPERTY_NOT_FOUND",
@@ -780,7 +788,7 @@ def unit(request):
     if request.method == "GET":
         unit_id = request.GET.get("unit_id")
         if unit_id:
-            u = Unit.objects.filter(id=unit_id).select_related(
+            u = Unit.objects.for_user(user_profile).filter(id=unit_id).select_related(
                 # "property_block_tower__property"
                 "property_block_tower__property", "parent_property"
             ).prefetch_related("unit_owners").first()
@@ -968,7 +976,7 @@ def unit(request):
             request.user.id, u.id, u.unit_name, )
 
         for owner in data.get("unit_owners", []):
-            owner_obj = _get_or_create_owner(owner, user_profile.user)
+            owner_obj = _get_or_create_owner(owner, user_profile.user, parent_property.pmc)
             if owner_obj:
                 UnitOwner.objects.create(
                     created_by=user_profile.user,
@@ -994,7 +1002,7 @@ def unit(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        u = Unit.objects.filter(id=unit_id).first()
+        u = Unit.objects.for_user(user_profile).filter(id=unit_id).first()
         if not u:
             logger.warning(
                 "UNIT_UPDATE_FAILED | user_id=%d | unit_id=%s | reason=UNIT_NOT_FOUND",
@@ -1098,7 +1106,7 @@ def unit_images(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        u = Unit.objects.filter(id=unit_id).select_related(
+        u = Unit.objects.for_user(user_profile).filter(id=unit_id).select_related(
             # "property_block_tower__property"
             "property_block_tower__property", "parent_property"
         ).first()
@@ -1223,7 +1231,7 @@ def unit_documents(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        u = Unit.objects.filter(id=unit_id).select_related(
+        u = Unit.objects.for_user(user_profile).filter(id=unit_id).select_related(
             "property_block_tower__property", "parent_property"
         ).first()
         if not u:
@@ -1460,7 +1468,7 @@ def parent_property_view(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        prop = Property.objects.filter(id=property_id).first()
+        prop = Property.objects.for_user(user_profile).filter(id=property_id).first()
 
         if not prop:
             logger.warning(

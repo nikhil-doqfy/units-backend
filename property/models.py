@@ -1,8 +1,29 @@
 from django.db import models
+from django.db.models import Q
 from property_management.models import Base
 from utilities import constants
+from utilities.org_scope import get_pmc_ids_for_user
 from user_service.models import Documents, PropertyManager
 from property_management.models import City
+
+
+class PropertyQuerySet(models.QuerySet):
+    def for_user(self, user_profile):
+        pmc_ids = get_pmc_ids_for_user(user_profile)
+        if not pmc_ids:
+            return self.none()
+        return self.filter(pmc_id__in=pmc_ids)
+
+
+class UnitQuerySet(models.QuerySet):
+    def for_user(self, user_profile):
+        pmc_ids = get_pmc_ids_for_user(user_profile)
+        if not pmc_ids:
+            return self.none()
+        return self.filter(
+            Q(parent_property__pmc_id__in=pmc_ids) |
+            Q(property_block_tower__property__pmc_id__in=pmc_ids)
+        ).distinct()
 
 
 class Organization(Base):
@@ -88,6 +109,8 @@ class PropertyType(Base):
         return self.name
 
 class Property(Base):
+    objects = PropertyQuerySet.as_manager()
+
     code = models.CharField(max_length=255, blank=True)
     property_name = models.CharField(max_length=255)
     status = models.CharField(
@@ -226,6 +249,8 @@ class PropertyDocuments(Documents):
 
 
 class Unit(Base):
+    objects = UnitQuerySet.as_manager()
+
     code = models.CharField(max_length=255, blank=True)
     parent_property = models.ForeignKey(Property, on_delete=models.CASCADE, related_name="units", null=True, blank=True)
     property_block_tower = models.ForeignKey(
