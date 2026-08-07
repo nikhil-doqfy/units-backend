@@ -137,7 +137,7 @@ class LeaseDocuments(Documents):
 
 
 class LeaseTransaction(Documents):
-    # code = models.CharField(max_length=255, blank=True)
+    code = models.CharField(max_length=255, blank=True)
     lease = models.ForeignKey(Lease, on_delete=models.CASCADE, related_name="lease_cheques")
     start_date = models.DateTimeField(null=True, blank=True)
     end_date = models.DateTimeField(null=True, blank=True)

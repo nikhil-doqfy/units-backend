@@ -210,7 +210,6 @@ class Documents(Base):
         on_delete=models.SET_NULL,
         related_name="versions"
     )
-    code = models.CharField(max_length=50, blank=True)
     issued_date = models.DateTimeField(auto_now_add=True)
     expiry_date = models.DateField(
         null=True,
@@ -263,6 +262,7 @@ class Documents(Base):
 
 class OwnerDocuments(Documents):
     owner = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name="owner_documents")
+    code = models.CharField(max_length=50, blank=True)
 
     def generate_code(self):
         return f"OD{self.pk:05d}"
@@ -276,12 +276,10 @@ class OwnerDocuments(Documents):
     def __str__(self):
         return f"{self.code} - {self.document_type.name if self.document_type else ''}"
 
-    # def __str__(self):
-    #     return f"{self.owner}"
-
 
 class TenantDocuments(Documents):
     tenant = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name="tenant_documents")
+    code = models.CharField(max_length=50, blank=True)
     
     def generate_code(self):
         return f"TD{self.pk:05d}"
