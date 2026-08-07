@@ -17,6 +17,10 @@ from property_management.utils import get_staff_details, get_property_images, ge
 from property.models import PMCPMMapping
 from user_service.utils import upload_document, process_rent_approval
 from lease.models import Lease, LeaseDocuments
+from datetime import date, datetime
+from django.utils.dateparse import parse_date
+from django.http import HttpResponse
+import csv
 from user_service.serializers import serialize_owner_detail, serialize_owner_unit
 from user_service.tasks import send_renewal_email
 from rest_framework.decorators import api_view
@@ -3926,3 +3930,635 @@ def reset_user_password(request):
         print("reset_user_password error:", e)
         return prepare_response(message=constants.INTERNAL_SERVER_ERROR, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
+@api_view(["GET", "POST", "PUT", "DELETE"])
+@is_request_authenticated
+def privacy_policy_api(request):
+    user_profile = request.user
+    if request.method == "GET":
+        policy_id = request.GET.get("id")
+        if policy_id:
+            policy = PrivacyPolicy.objects.filter(id=policy_id, is_active=True).first()
+            if not policy:
+                return prepare_response( message="Privacy policy not found.", status=status.HTTP_404_NOT_FOUND)
+            return prepare_response(
+                content={
+                    "id": policy.id,
+                    "title": policy.title,
+                    "other_policy_content": policy.other_policy_content,
+                    "created": int(policy.created.timestamp()) if policy.created else None,
+                },
+                message="Privacy policy fetched successfully.",
+                status=status.HTTP_200_OK
+            )
+ 
+        policies = PrivacyPolicy.objects.filter(is_active=True).order_by("id")
+        default_policy = policies.first()
+        return prepare_response(
+            content={
+                "default_policy": {
+                    "id": default_policy.id,
+                    "title": default_policy.title,
+                    "other_policy_content": default_policy.other_policy_content,
+                    "created": int(default_policy.created.timestamp()) if default_policy.created else None,
+                } if default_policy else None,
+ 
+                "policies": [
+                    {
+                        "id": policy.id,
+                        "title": policy.title,
+                    }
+                    for policy in policies
+                ]
+            },
+            message="Privacy policies fetched successfully.",
+            status=status.HTTP_200_OK
+        )
+    pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).first()
+    if not pm_profile:
+        return prepare_response(message="Only Property Manager is allowed.", status=status.HTTP_403_FORBIDDEN)
+ 
+    try:
+        body = json.loads(request.body)
+    except Exception:
+        return prepare_response(
+            message="Invalid JSON body.",
+            status=status.HTTP_400_BAD_REQUEST
+        )
+ 
+    if request.method == "POST":
+        title = body.get("title")
+        other_policy_content = body.get("other_policy_content")
+ 
+        if not title:
+            return prepare_response(message="Title is required.", status=status.HTTP_400_BAD_REQUEST)
+        if not other_policy_content:
+            return prepare_response(message="Other policy content is required.", status=status.HTTP_400_BAD_REQUEST)
+ 
+        policy = PrivacyPolicy.objects.create(
+            title=title,
+            other_policy_content=other_policy_content,
+            created_by=user_profile.user
+        )
+        return prepare_response(
+            content={"id": policy.id},
+            message="Privacy policy created successfully.",
+            status=status.HTTP_201_CREATED
+        )
+ 
+    elif request.method == "PUT":
+        policy_id = body.get("id")
+        if not policy_id:
+            return prepare_response(message="Policy id is required.", status=status.HTTP_400_BAD_REQUEST)
+        policy = PrivacyPolicy.objects.filter(id=policy_id, is_active=True).first()
+        if not policy:
+            return prepare_response(message="Privacy policy not found.", status=status.HTTP_404_NOT_FOUND)
+ 
+        policy.title = body.get("title", policy.title)
+        policy.other_policy_content = body.get("other_policy_content", policy.other_policy_content)
+        policy.save()
+        return prepare_response(message="Privacy policy updated successfully.", status=status.HTTP_200_OK)
+    elif request.method == "DELETE":
+        policy_id = body.get("id")
+        if not policy_id:
+            return prepare_response(message="Policy id is required.", status=status.HTTP_400_BAD_REQUEST)
+        policy = PrivacyPolicy.objects.filter(id=policy_id, is_active=True).first()
+        if not policy:
+            return prepare_response(message="Privacy policy not found.", status=status.HTTP_404_NOT_FOUND)
+ 
+        policy.is_active = False
+        policy.save()
+        return prepare_response( message="Privacy policy deleted successfully.", status=status.HTTP_200_OK)
+    return prepare_response(message=constants.METHOD_NOT_ALLOWED, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+ 
+ 
+DATE_INPUT_FORMATS = (
+    "%Y-%m-%d",   # 2026-08-13
+    "%d-%m-%Y",   # 13-08-2026
+    "%d/%m/%Y",   # 13/08/2026
+    "%m/%d/%Y",   # 08/13/2026
+    "%Y/%m/%d",   # 2026/08/13
+)
+ 
+def parse_expiry_date(value):
+    """
+    Returns (date_obj, error_message).
+    Tolerates '2026-8-13' which date.fromisoformat() rejects.
+    """
+    if value in (None, "", "null"):
+        return None, None
+ 
+    if isinstance(value, datetime):
+        return value.date(), None
+    if isinstance(value, date):
+        return value, None
+    value = str(value).strip()
+    parsed = parse_date(value)
+    if parsed:
+        return parsed, None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).date(), None
+    except ValueError:
+        pass
+    for fmt in DATE_INPUT_FORMATS:
+        try:
+            return datetime.strptime(value, fmt).date(), None
+        except ValueError:
+            continue
+    return None, f"Invalid date format: '{value}'. Use YYYY-MM-DD."
+ 
+ 
+def _serialize_document(doc,user_field):
+    doc_status, status_label = doc.get_document_status()
+    user = getattr(doc, user_field)
+    return {
+        "document_id":    doc.id,
+        "code":           doc.code,
+        "title":          doc.document_type.name if doc.document_type else None,
+        f"{user_field}_id": user.id if user else None,
+        f"{user_field}_code": getattr(user, "code", None) if user else None,
+        "document_type":  doc.document_type.name if doc.document_type else None,
+        "issued_date":    doc.issued_date,
+        "expiry_date":    doc.expiry_date,
+        "days_to_expiry": doc.days_to_expiry,
+        "status":         doc_status.replace("_", " ").title(),
+        "status_label":   status_label,
+        "url":            fetch_s3_presigned_url(doc.file_path, doc.file_name),
+    }
+ 
+ 
+@is_request_authenticated
+def tenant_document_api(request):
+    user_profile = request.user
+ 
+    tenant = Tenant.objects.filter(pk=user_profile.pk).first()
+    if not tenant:
+        return prepare_response(message=constants.UNAUTHORIZED_ROLE, status=status.HTTP_403_FORBIDDEN)
+ 
+    # ─────────────────────────────── GET ────────────────────────────
+    if request.method == "GET":
+        document_id = request.GET.get("document_id")
+        if document_id:
+            main_doc = TenantDocuments.objects.filter(
+                Q(id=document_id) | Q(main_document_id=document_id),
+                tenant=tenant,
+                is_active=True
+            ).order_by("id").first()
+            if not main_doc:
+                return prepare_response(message="Document not found", status=status.HTTP_404_NOT_FOUND)
+ 
+            root_id = main_doc.main_document_id or main_doc.id
+            docs = TenantDocuments.objects.filter(
+                Q(id=root_id) | Q(main_document_id=root_id),
+                tenant=tenant,
+                is_active=True
+            ).select_related("document_type", "tenant").order_by("-id")
+ 
+        else:
+            all_docs = TenantDocuments.objects.filter(tenant=tenant, is_active=True).select_related("document_type", "tenant").order_by("-id")
+            latest_docs = {}
+            for doc in all_docs:
+                key = doc.main_document_id or doc.id
+                if key not in latest_docs:
+                    latest_docs[key] = doc
+            docs = latest_docs.values()
+ 
+        docs = list(docs)
+ 
+        export = request.GET.get("export", "").strip().lower()
+        if export == "csv":
+            response = HttpResponse(content_type="text/csv")
+            response["Content-Disposition"] = 'attachment; filename="tenant_documents.csv"'
+ 
+            writer = csv.writer(response)
+            writer.writerow([
+                "Code",
+                "Document Type",
+                "Status",
+                "Expiry Date",
+                "Status Label",
+            ])
+ 
+            for doc in docs:
+                data = _serialize_document(doc,"tenant")
+                writer.writerow([
+                    data.get("code"),
+                    data.get("document_type"),
+                    data.get("status"),
+                    data.get("expiry_date"),
+                    data.get("status_label"),
+                ])
+ 
+            return response
+ 
+        content = [_serialize_document(doc,"tenant") for doc in docs]
+        logger.info(
+            "TENANT_DOCUMENTS_FETCHED | user_id=%s | tenant_id=%s | count=%s",
+            request.user.id, tenant.id, len(content)
+        )
+ 
+        return prepare_response(content=content, status=status.HTTP_200_OK)
+ 
+    # ─────────────────────────────── POST ───────────────────────────
+    elif request.method == "POST":
+        try:
+            body = json.loads(request.body)
+        except Exception:
+            return prepare_response(message="Invalid JSON body", status=status.HTTP_400_BAD_REQUEST)
+ 
+        documents = body.get("documents") or []
+        if not isinstance(documents, list) or not documents:
+            return prepare_response(message="documents list is required", status=status.HTTP_400_BAD_REQUEST)
+ 
+        cleaned = []
+        for index, item in enumerate(documents):
+            if not isinstance(item, dict):
+                return prepare_response(message=f"documents[{index}]: must be an object", status=status.HTTP_400_BAD_REQUEST)
+ 
+            document_type_id = item.get("document_type_id")
+            if not document_type_id:
+                return prepare_response(message=f"documents[{index}]: document_type_id is required", status=status.HTTP_400_BAD_REQUEST)
+ 
+            doc_type = DocumentType.objects.filter(id=document_type_id, section=constants.TENANT).first()
+            if not doc_type:
+                return prepare_response(message=f"documents[{index}]: Invalid tenant document type", status=status.HTTP_400_BAD_REQUEST)
+ 
+            file_data = item.get("file_data")
+            file_name = (item.get("file_name") or "").strip()
+ 
+            if not file_data:
+                return prepare_response(message=f"documents[{index}]: file_data is required", status=status.HTTP_400_BAD_REQUEST)
+ 
+            expiry_date, err = parse_expiry_date(item.get("expiry_date"))
+            if err:
+                return prepare_response(message=f"documents[{index}]: {err}", status=status.HTTP_400_BAD_REQUEST)
+ 
+            if not expiry_date:
+                return prepare_response(
+                    message=f"documents[{index}]: expiry_date is required",
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+ 
+            cleaned.append({
+                "file_data":   file_data,
+                "file_name":   file_name,
+                "expiry_date": expiry_date,
+                "doc_type":    doc_type,
+            })
+ 
+        created = []
+        for item in cleaned:
+            ext = get_extension_from_base64(item["file_data"]) or ".pdf"
+            unique_filename = f"{uuid.uuid4()}{ext}"
+            s3_key = f"tenant/{tenant.id}/documents/{item['doc_type'].id}/{unique_filename}"
+ 
+            file_url = upload_file_to_s3_base64(
+                file_data=item["file_data"],
+                object_name=s3_key,
+            )
+ 
+            doc = TenantDocuments.objects.create(
+                created_by=user_profile.user,
+                tenant=tenant,
+                document_type=item["doc_type"],
+                file_name=item["file_name"] or unique_filename,
+                file_path=file_url,
+                expiry_date=item["expiry_date"],
+            )
+            created.append(doc)
+        logger.info(
+            "TENANT_DOCUMENTS_UPLOADED | user_id=%s | tenant_id=%s | count=%s",
+            request.user.id, tenant.id, len(created)
+        )
+ 
+        return prepare_response(
+            message="Documents uploaded successfully",
+            content={
+                "ids":       [d.id for d in created],
+                "documents": [_serialize_document(d, "tenant") for d in created],
+            },
+            status=status.HTTP_201_CREATED,
+        )
+ 
+    # ─────────────────── PUT — renew ────────────────────────────────
+    elif request.method == "PUT":
+        try:
+            body = json.loads(request.body)
+        except Exception:
+            return prepare_response(message="Invalid JSON body", status=status.HTTP_400_BAD_REQUEST)
+ 
+        document_id = body.get("document_id")
+        if not document_id:
+            return prepare_response(message="document_id is required", status=status.HTTP_400_BAD_REQUEST)
+ 
+        documents = body.get("documents") or []
+        if not isinstance(documents, list) or not documents:
+            return prepare_response(
+                message="documents list is required",
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        item = documents[0]
+        doc = TenantDocuments.objects.filter(
+            id=document_id,
+            is_active=True,
+            tenant=tenant
+        ).select_related("document_type", "tenant").first()
+        if not doc:
+            return prepare_response(message="Document not found", status=status.HTTP_404_NOT_FOUND)
+ 
+        if not doc.is_expired:
+            return prepare_response(message="Only expired documents can be renewed", status=status.HTTP_400_BAD_REQUEST)
+ 
+        file_data = item.get("file_data")
+        file_name = (item.get("file_name") or "").strip()
+        expiry_date, err = parse_expiry_date(item.get("expiry_date"))
+        if err:
+            return prepare_response(message=err, status=status.HTTP_400_BAD_REQUEST)
+ 
+        if not expiry_date:
+            return prepare_response(
+                message="expiry_date is required to renew this document",
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+ 
+        if expiry_date <= timezone.localdate():
+            return prepare_response(
+                message="Renewal expiry_date must be a future date",
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if not file_data:
+            return prepare_response(message="file_data is required for renewal", status=status.HTTP_400_BAD_REQUEST)
+        ext = get_extension_from_base64(file_data) or ".pdf"
+        unique_filename = f"{uuid.uuid4()}{ext}"
+        s3_key = f"tenant/{tenant.id}/documents/{doc.document_type_id}/{unique_filename}"
+ 
+        file_url = upload_file_to_s3_base64(
+            file_data=file_data,
+            object_name=s3_key
+        )
+ 
+        main_document = doc.main_document or doc
+        new_doc = TenantDocuments.objects.create(
+            created_by=user_profile.user,
+            tenant=tenant,
+            document_type=doc.document_type,
+            file_name=file_name or unique_filename,
+            file_path=file_url,
+            expiry_date=expiry_date,
+            main_document=main_document,
+        )
+ 
+        logger.info(
+            "TENANT_DOCUMENT_RENEWED | user_id=%s | old_doc_id=%s | new_doc_id=%s | main_document_id=%s",
+            request.user.id, doc.id, new_doc.id, main_document.id,
+        )
+ 
+        return prepare_response(
+            message="Document renewed successfully",
+            content=_serialize_document(new_doc, "tenant"),
+            status=status.HTTP_201_CREATED
+        )
+ 
+    return prepare_response(
+        message=constants.INVALID_REQUEST_METHOD,
+        status=status.HTTP_405_METHOD_NOT_ALLOWED
+    )
+ 
+ 
+@is_request_authenticated
+def owner_document_api(request):
+    user_profile = request.user
+    owner = Owner.objects.filter(pk=user_profile.pk).first()
+    if not owner:
+        return prepare_response(message=constants.UNAUTHORIZED_ROLE, status=status.HTTP_403_FORBIDDEN)
+ 
+    # ─────────────────────────────── GET ────────────────────────────
+    if request.method == "GET":
+        document_id = request.GET.get("document_id")
+        if document_id:
+            main_doc = OwnerDocuments.objects.filter(
+                Q(id=document_id) | Q(main_document_id=document_id),
+                owner=owner,
+                is_active=True
+            ).order_by("id").first()
+            if not main_doc:
+                return prepare_response(message="Document not found", status=status.HTTP_404_NOT_FOUND)
+ 
+            root_id = main_doc.main_document_id or main_doc.id
+            docs = OwnerDocuments.objects.filter(
+                Q(id=root_id) | Q(main_document_id=root_id),
+                owner=owner,
+                is_active=True
+            ).select_related("document_type", "owner").order_by("-id")
+ 
+        else:
+            all_docs = OwnerDocuments.objects.filter(
+                owner=owner,
+                is_active=True
+            ).select_related("document_type", "owner").order_by("-id")
+ 
+            latest_docs = {}
+            for doc in all_docs:
+                key = doc.main_document_id or doc.id
+                if key not in latest_docs:
+                    latest_docs[key] = doc
+            docs = latest_docs.values()
+ 
+        docs = list(docs)
+ 
+        export = request.GET.get("export", "").strip().lower()
+        if export == "csv":
+            response = HttpResponse(content_type="text/csv")
+            response["Content-Disposition"] = 'attachment; filename="owner_documents.csv"'
+            writer = csv.writer(response)
+            writer.writerow([
+                "Code",
+                "Document Type",
+                "Expiry Date",
+                "Status",
+                "Status Label",
+            ])
+ 
+            for doc in docs:
+                data = _serialize_document(doc, "owner")
+                writer.writerow([
+                    data.get("code"),
+                    data.get("document_type"),
+                    data.get("expiry_date"),
+                    data.get("status"),
+                    data.get("status_label"),
+                ])
+ 
+            return response
+ 
+        content = [_serialize_document(doc, "owner") for doc in docs]
+        logger.info(
+            "OWNER_DOCUMENTS_FETCHED | user_id=%s | owner_id=%s | count=%s",
+            request.user.id, owner.id, len(content)
+        )
+ 
+        return prepare_response(content=content, status=status.HTTP_200_OK)
+ 
+    # ─────────────────────────────── POST ───────────────────────────
+    elif request.method == "POST":
+        try:
+            body = json.loads(request.body)
+        except Exception:
+            return prepare_response(message="Invalid JSON body", status=status.HTTP_400_BAD_REQUEST)
+ 
+        documents = body.get("documents") or []
+        if not isinstance(documents, list) or not documents:
+            return prepare_response(message="documents list is required", status=status.HTTP_400_BAD_REQUEST)
+ 
+        cleaned = []
+        for index, item in enumerate(documents):
+            if not isinstance(item, dict):
+                return prepare_response(message=f"documents[{index}]: must be an object", status=status.HTTP_400_BAD_REQUEST)
+ 
+            document_type_id = item.get("document_type_id")
+            if not document_type_id:
+                return prepare_response(message=f"documents[{index}]: document_type_id is required", status=status.HTTP_400_BAD_REQUEST)
+ 
+            doc_type = DocumentType.objects.filter(id=document_type_id, section=constants.OWNER).first()
+            if not doc_type:
+                return prepare_response(message=f"documents[{index}]: Invalid owner document type", status=status.HTTP_400_BAD_REQUEST)
+ 
+            file_data = item.get("file_data")
+            file_name = (item.get("file_name") or "").strip()
+            if not file_data:
+                return prepare_response(message=f"documents[{index}]: file_data is required", status=status.HTTP_400_BAD_REQUEST)
+ 
+            expiry_date, err = parse_expiry_date(item.get("expiry_date"))
+            if err:
+                return prepare_response(message=f"documents[{index}]: {err}", status=status.HTTP_400_BAD_REQUEST)
+ 
+            if not expiry_date:
+                return prepare_response(
+                    message=f"documents[{index}]: expiry_date is required",
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+ 
+            cleaned.append({
+                "file_data":   file_data,
+                "file_name":   file_name,
+                "expiry_date": expiry_date,
+                "doc_type":    doc_type,
+            })
+ 
+        created = []
+        for item in cleaned:
+            ext = get_extension_from_base64(item["file_data"]) or ".pdf"
+            unique_filename = f"{uuid.uuid4()}{ext}"
+            s3_key = f"owner/{owner.id}/documents/{item['doc_type'].id}/{unique_filename}"
+ 
+            file_url = upload_file_to_s3_base64(
+                file_data=item["file_data"],
+                object_name=s3_key,
+            )
+ 
+            doc = OwnerDocuments.objects.create(
+                created_by=user_profile.user,
+                owner=owner,
+                document_type=item["doc_type"],
+                file_name=item["file_name"] or unique_filename,
+                file_path=file_url,
+                expiry_date=item["expiry_date"],
+            )
+            created.append(doc)
+ 
+        logger.info(
+            "OWNER_DOCUMENTS_UPLOADED | user_id=%s | owner_id=%s | count=%s",
+            request.user.id, owner.id, len(created)
+        )
+ 
+        return prepare_response(
+            message="Documents uploaded successfully",
+            content={
+                "ids":       [d.id for d in created],
+                "documents": [_serialize_document(d, "owner") for d in created],
+            },
+            status=status.HTTP_201_CREATED,
+        )
+ 
+    # ─────────────────── PUT — renew ────────────────────────────────
+    elif request.method == "PUT":
+        try:
+            body = json.loads(request.body)
+        except Exception:
+            return prepare_response(message="Invalid JSON body", status=status.HTTP_400_BAD_REQUEST)
+ 
+        document_id = body.get("document_id")
+        if not document_id:
+            return prepare_response(message="document_id is required", status=status.HTTP_400_BAD_REQUEST)
+        documents = body.get("documents") or []
+        if not isinstance(documents, list) or not documents:
+            return prepare_response(
+                message="documents list is required",
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+ 
+        item = documents[0]
+        doc = OwnerDocuments.objects.filter(
+            id=document_id,
+            is_active=True,
+            owner=owner
+        ).select_related("document_type", "owner").first()
+        if not doc:
+            return prepare_response(message="Document not found", status=status.HTTP_404_NOT_FOUND)
+ 
+        if not doc.is_expired:
+            return prepare_response(message="Only expired documents can be renewed", status=status.HTTP_400_BAD_REQUEST)
+ 
+        file_data = item.get("file_data")
+        file_name = (item.get("file_name") or "").strip()
+        expiry_date, err = parse_expiry_date(item.get("expiry_date"))
+        if err:
+            return prepare_response(message=err, status=status.HTTP_400_BAD_REQUEST)
+        if not expiry_date:
+            return prepare_response(
+                message="expiry_date is required to renew this document",
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+ 
+        if expiry_date <= timezone.localdate():
+            return prepare_response(
+                message="Renewal expiry_date must be a future date",
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+ 
+        if not file_data:
+            return prepare_response(message="file_data is required for renewal", status=status.HTTP_400_BAD_REQUEST)
+ 
+        ext = get_extension_from_base64(file_data) or ".pdf"
+        unique_filename = f"{uuid.uuid4()}{ext}"
+        s3_key = f"owner/{owner.id}/documents/{doc.document_type_id}/{unique_filename}"
+ 
+        file_url = upload_file_to_s3_base64(
+            file_data=file_data,
+            object_name=s3_key
+        )
+ 
+        main_document = doc.main_document or doc
+        new_doc = OwnerDocuments.objects.create(
+            created_by=user_profile.user,
+            owner=owner,
+            document_type=doc.document_type,
+            file_name=file_name or unique_filename,
+            file_path=file_url,
+            expiry_date=expiry_date,
+            main_document=main_document,
+        )
+ 
+        logger.info(
+            "OWNER_DOCUMENT_RENEWED | user_id=%s | old_doc_id=%s | new_doc_id=%s | main_document_id=%s",
+            request.user.id, doc.id, new_doc.id, main_document.id,
+        )
+        return prepare_response(
+            message="Document renewed successfully",
+            content=_serialize_document(new_doc,"owner"),
+            status=status.HTTP_201_CREATED
+        )
+    return prepare_response(
+        message=constants.INVALID_REQUEST_METHOD,
+        status=status.HTTP_405_METHOD_NOT_ALLOWED
+    )
