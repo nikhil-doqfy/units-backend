@@ -3,6 +3,8 @@ import uuid
 from django.utils import timezone
 from plugins.logger_plugin import get_logger
 from property_management.utils import audit_logs
+from user_service.models import Tenant, Owner
+from lease.models import Lease
 from utilities.helper_functions import prepare_response, fetch_s3_presigned_url, upload_file_to_s3_base64
 from utilities.decorator import is_request_authenticated
 from utilities import constants, status
@@ -63,14 +65,27 @@ def complaint_api(request):
 
     # ── GET ALL ───────────────────────────────────────────────────
     if request.method == "GET":
-        pmc_ids = list(PMCPMMapping.objects.filter(pm=request.user, is_active=True).values_list("pmc_id", flat=True))
-        if not pmc_ids:
-            return prepare_response( message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND )
+        tenant_profile = Tenant.objects.filter(pk=request.user.pk).first()
+        owner_instance = Owner.objects.filter(pk=request.user.pk).first()
 
-        complaints = Complaint.objects.filter(
-            company_id__in=pmc_ids,
-            is_active=True
-        ).order_by('-id')
+        if tenant_profile:
+            lease = Lease.objects.filter(tenant=tenant_profile, is_active=True).select_related("unit").first()
+            if not lease:
+                return prepare_response( message="No active unit found.", status=status.HTTP_404_NOT_FOUND)
+
+            complaints = Complaint.objects.filter(unit=lease.unit, is_active=True).order_by("-id")
+        elif owner_instance:
+            complaints = Complaint.objects.filter(
+                unit__unit_owners__owner=owner_instance,
+                is_active=True
+            ).distinct().order_by("-id")
+            # Existing PM logic
+        else:
+            pmc_ids = list(PMCPMMapping.objects.filter( pm=request.user, is_active=True).values_list("pmc_id", flat=True))
+            if not pmc_ids:
+                return prepare_response( message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+
+            complaints = Complaint.objects.filter( company_id__in=pmc_ids, is_active=True).order_by('-id')
 
         # ── Filters ───────────────────────────────────────────────
         complaint_status = request.GET.get("status", "").strip().upper()
@@ -129,6 +144,8 @@ def complaint_api(request):
     # ── POST CREATE ───────────────────────────────────────────────
     elif request.method == "POST":
         body = json.loads(request.body)
+        tenant_profile = Tenant.objects.filter(pk=request.user.pk).first()
+        is_tenant = tenant_profile is not None
 
         pmc_id = body.get("pmc_id")
         if not pmc_id:
@@ -145,6 +162,22 @@ def complaint_api(request):
                 message=constants.COMPANY_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
             )
+        if is_tenant:
+            tenant_unit = Lease.objects.filter( tenant=tenant_profile, is_active=True).select_related(
+                "unit__property_block_tower__property__pmc",
+                "unit__parent_property__pmc"
+            ).first()
+            if not tenant_unit:
+                return prepare_response( message="No active unit found.", status=status.HTTP_404_NOT_FOUND)           
+            tenant_pmc = (
+                tenant_unit.unit.property_block_tower.property.pmc
+                if tenant_unit.unit.property_block_tower
+                else tenant_unit.unit.parent_property.pmc
+            )
+
+            if tenant_pmc.id != int(pmc_id):
+                return prepare_response( message="Invalid PMC.", status=status.HTTP_403_FORBIDDEN)
+
         property_id = body.get("property_id")
         if not property_id:
             return prepare_response(message="Property is required.", status=status.HTTP_400_BAD_REQUEST)
@@ -154,6 +187,13 @@ def complaint_api(request):
                 "COMPLAINT_CREATE_FAILED | user_id=%s | property_id=%s | reason=PROPERTY_NOT_FOUND",
                 request.user.id, property_id)
             return prepare_response(message="Property not found.",status=status.HTTP_404_NOT_FOUND)
+        if is_tenant:
+            if tenant_unit.unit.property_block_tower:
+                tenant_property = tenant_unit.unit.property_block_tower.property
+            else:
+                tenant_property = tenant_unit.unit.parent_property
+            if tenant_property.id != int(property_id):
+                return prepare_response(message="Tenant does not belong to this property.", status=status.HTTP_403_FORBIDDEN)
         unit_id = body.get("unit_id")
         if not unit_id:
             return prepare_response(message="Unit is required.",status=status.HTTP_400_BAD_REQUEST)
@@ -170,7 +210,8 @@ def complaint_api(request):
                 message=constants.UNIT_NOT_FOUND,
                 status=status.HTTP_404_NOT_FOUND
             )
-
+        if is_tenant and unit.id != tenant_unit.unit.id:
+            return prepare_response(message="Tenant cannot raise complaint for this unit.",status=status.HTTP_403_FORBIDDEN)
         description = body.get("description")
         if not description:
             logger.warning(

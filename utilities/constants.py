@@ -1089,3 +1089,13 @@ DASHBOARD_CHOICES = [
     (DASH_YEARLY_DUES, "Yearly Dues"),
     (DASH_PROPERTY_OWNED, "Property Owned"),
 ]
+
+ACTIVE = "ACTIVE"
+EXPIRING_SOON = "EXPIRING_SOON"
+EXPIRED = "EXPIRED"
+
+DOCUMENT_STATUS_CHOICES = (
+    (ACTIVE, "Active"),
+    (EXPIRING_SOON, "Expiring Soon"),
+    (EXPIRED, "Expired"),
+)

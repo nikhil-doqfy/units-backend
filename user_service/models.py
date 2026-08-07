@@ -203,6 +203,59 @@ class Documents(Base):
     document_type = models.ForeignKey(DocumentType, on_delete=models.CASCADE, related_name="documents")
     file_name = models.CharField(max_length=200)
     file_path = models.CharField(max_length=500)
+    main_document = models.ForeignKey(
+        "self",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="versions"
+    )
+    code = models.CharField(max_length=50, blank=True)
+    issued_date = models.DateTimeField(auto_now_add=True)
+    expiry_date = models.DateField(
+        null=True,
+        blank=True
+    )
+    is_expired = models.BooleanField(default=False)
+    doc_status = models.CharField(
+        max_length=20,
+        choices=constants.DOCUMENT_STATUS_CHOICES,
+        default=constants.ACTIVE
+    )
+    @property
+    def days_to_expiry(self):
+        if not self.expiry_date:
+            return None
+        return (
+            self.expiry_date - timezone.localdate()
+        ).days
+
+    def get_document_status(self):
+        today = timezone.localdate()
+
+        if not self.expiry_date:
+            return constants.ACTIVE, "Active"
+
+        days = (self.expiry_date - today).days
+        if days < 0:
+            return constants.EXPIRED, "Expired"
+        if days == 0:
+            return constants.EXPIRING_SOON, "Expires today"
+        if days <= 15:
+            return constants.EXPIRING_SOON, f"Expires in {days} days"
+
+        return constants.ACTIVE, "Active"
+
+    def save(self, *args, **kwargs):
+        status, label = self.get_document_status()
+        self.doc_status = status
+
+        if self.expiry_date and self.expiry_date < timezone.localdate():
+            self.is_expired = True
+        else:
+            self.is_expired = False
+
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.file_path} - {self.file_name}"
@@ -211,21 +264,41 @@ class Documents(Base):
 class OwnerDocuments(Documents):
     owner = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name="owner_documents")
 
+    def generate_code(self):
+        return f"OD{self.pk:05d}"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if not self.code:
+            self.code = self.generate_code()
+            OwnerDocuments.objects.filter(pk=self.pk).update(code=self.code)
+ 
     def __str__(self):
-        return f"{self.owner}"
+        return f"{self.code} - {self.document_type.name if self.document_type else ''}"
+
+    # def __str__(self):
+    #     return f"{self.owner}"
 
 
 class TenantDocuments(Documents):
     tenant = models.ForeignKey(UserProfile, on_delete=models.CASCADE, related_name="tenant_documents")
+    
+    def generate_code(self):
+        return f"TD{self.pk:05d}"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+
+        if not self.code:
+            self.code = self.generate_code()
+            super().save(update_fields=["code"])
 
     def __str__(self):
-        return f"{self.tenant}"
-
+        return f"{self.code} - {self.document_type.name if self.document_type else ''}" 
 
 class PrivacyPolicy(Base):
     title = models.CharField(max_length=255)
-    content = models.TextField()
-    other_policy_content = models.TextField()
+    other_policy_content = models.JSONField(default=list, blank=True)
 
     def __str__(self):
         return self.title
@@ -251,205 +324,204 @@ class Approval(Base):
         return f"{self.unit} - {self.tenant}"
 
 
-class Documentation(Documents):
+# class Documentation(Documents):
 
-    code = models.CharField(max_length=50, blank=True)
-    user = models.ForeignKey('user_service.PropertyManager',on_delete=models.CASCADE,related_name='agreements')
-    agreement_name = models.CharField(max_length=255)
-    agreement_type = models.CharField(max_length=50,)
-    status = models.CharField(max_length=20,choices=constants.AGREEMENT_STATUS_CHOICES,default='ACTIVE')
-    issued_by = models.CharField(max_length=255,null=True, blank=True,help_text="Name of person or authority who issued this document")
-    start_date = models.DateTimeField(null=True, blank=True)
-    end_date = models.DateTimeField(null=True, blank=True)
-    does_not_expire = models.BooleanField(default=False,help_text="If True, this document never expires")
-    is_expired = models.BooleanField(default=False)
-    expiry_reminder_sent_at = models.DateTimeField(null=True, blank=True)
-    last_email_sent_date = models.DateField(null=True, blank=True)
-    expiry_reminder_sent_count = models.IntegerField(default=0)
-    expiry_expired_sent_count = models.IntegerField(default=0)
-    is_renewed = models.BooleanField(default=False)
-    renewed_at = models.DateTimeField(null=True, blank=True)
-    renewed_by = models.ForeignKey(
-        'user_service.UserProfile',
-        on_delete=models.SET_NULL,
-        null=True, blank=True,
-        related_name='renewed_agreements'
-    )
-    cc_emails = models.TextField(null=True, blank=True)
-    notes = models.TextField(null=True, blank=True)
+#     user = models.ForeignKey('user_service.PropertyManager',on_delete=models.CASCADE,related_name='agreements')
+#     agreement_name = models.CharField(max_length=255)
+#     agreement_type = models.CharField(max_length=50,)
+#     status = models.CharField(max_length=20,choices=constants.AGREEMENT_STATUS_CHOICES,default='ACTIVE')
+#     issued_by = models.CharField(max_length=255,null=True, blank=True,help_text="Name of person or authority who issued this document")
+#     start_date = models.DateTimeField(null=True, blank=True)
+#     end_date = models.DateTimeField(null=True, blank=True)
+#     does_not_expire = models.BooleanField(default=False,help_text="If True, this document never expires")
+#     is_expired = models.BooleanField(default=False)
+#     expiry_reminder_sent_at = models.DateTimeField(null=True, blank=True)
+#     last_email_sent_date = models.DateField(null=True, blank=True)
+#     expiry_reminder_sent_count = models.IntegerField(default=0)
+#     expiry_expired_sent_count = models.IntegerField(default=0)
+#     is_renewed = models.BooleanField(default=False)
+#     renewed_at = models.DateTimeField(null=True, blank=True)
+#     renewed_by = models.ForeignKey(
+#         'user_service.UserProfile',
+#         on_delete=models.SET_NULL,
+#         null=True, blank=True,
+#         related_name='renewed_agreements'
+#     )
+#     cc_emails = models.TextField(null=True, blank=True)
+#     notes = models.TextField(null=True, blank=True)
 
-    # ── Helpers ───────────────────────────────────────────────
+#     # ── Helpers ───────────────────────────────────────────────
 
-    def get_cc_emails_list(self):
-        if not self.cc_emails:
-            return []
-        return [e.strip() for e in self.cc_emails.split(',') if e.strip()]
+#     def get_cc_emails_list(self):
+#         if not self.cc_emails:
+#             return []
+#         return [e.strip() for e in self.cc_emails.split(',') if e.strip()]
 
-    def generate_code(self):
-        agreement_type = (self.agreement_type or "").upper()
-        prefix = "LP" if agreement_type in ["LEASE_PURCHASE", "PROPERTY_MANAGEMENT"] else "VC"
-        return f"{prefix}{self.pk:04d}"
+#     def generate_code(self):
+#         agreement_type = (self.agreement_type or "").upper()
+#         prefix = "LP" if agreement_type in ["LEASE_PURCHASE", "PROPERTY_MANAGEMENT"] else "VC"
+#         return f"{prefix}{self.pk:04d}"
 
-    # ── STATUS LOGIC ───────────────────────────────────────────
+#     # ── STATUS LOGIC ───────────────────────────────────────────
 
-    def get_status(self):
-        if self.does_not_expire:
-            return 'ACTIVE'
+#     def get_status(self):
+#         if self.does_not_expire:
+#             return 'ACTIVE'
 
-        if self.is_expired:
-            return 'EXPIRED'
+#         if self.is_expired:
+#             return 'EXPIRED'
 
-        if not self.end_date:
-            return self.status
+#         if not self.end_date:
+#             return self.status
 
-        now = timezone.now()
+#         now = timezone.now()
 
-        if self.end_date < now:
-            return 'EXPIRED'
+#         if self.end_date < now:
+#             return 'EXPIRED'
 
-        if self.end_date <= now + timedelta(days=7):
-            return 'EXPIRING_SOON'
+#         if self.end_date <= now + timedelta(days=7):
+#             return 'EXPIRING_SOON'
 
-        return 'ACTIVE'
+#         return 'ACTIVE'
 
-    def get_status_display_label(self):
-        status = self.get_status()
+#     def get_status_display_label(self):
+#         status = self.get_status()
 
-        if status == 'EXPIRED':
-            return 'Expired'
+#         if status == 'EXPIRED':
+#             return 'Expired'
 
-        if status == 'EXPIRING_SOON' and self.end_date:
-            now = timezone.now()
-            diff = self.end_date - now
-            days = diff.days
+#         if status == 'EXPIRING_SOON' and self.end_date:
+#             now = timezone.now()
+#             diff = self.end_date - now
+#             days = diff.days
 
-            if days <= 0:
-                return "Expires today"
-            elif days == 1:
-                return "Expires in 1 day"
-            else:
-                return f"Expires in {days} days"
+#             if days <= 0:
+#                 return "Expires today"
+#             elif days == 1:
+#                 return "Expires in 1 day"
+#             else:
+#                 return f"Expires in {days} days"
 
-        if self.does_not_expire:
-            return 'Active (No Expiry)'
+#         if self.does_not_expire:
+#             return 'Active (No Expiry)'
 
-        return 'Active'
+#         return 'Active'
 
-    def update_status(self):
-        computed = self.get_status()
-        changed = False
+#     def update_status(self):
+#         computed = self.get_status()
+#         changed = False
 
-        if computed == 'EXPIRED' and not self.is_expired:
-            self.is_expired = True
-            changed = True
+#         if computed == 'EXPIRED' and not self.is_expired:
+#             self.is_expired = True
+#             changed = True
 
-        if self.status != computed:
-            self.status = computed
-            changed = True
+#         if self.status != computed:
+#             self.status = computed
+#             changed = True
 
-        if changed:
-            Documentation.objects.filter(pk=self.pk).update(
-                is_expired=self.is_expired,
-                status=self.status
-            )
+#         if changed:
+#             Documentation.objects.filter(pk=self.pk).update(
+#                 is_expired=self.is_expired,
+#                 status=self.status
+#             )
 
-    def should_send_reminder(self):
-        from django.utils import timezone
+#     def should_send_reminder(self):
+#         from django.utils import timezone
 
-        if not self.end_date:
-            return False
+#         if not self.end_date:
+#             return False
 
-        if self.is_expired:
-            return False
+#         if self.is_expired:
+#             return False
 
-        if self.is_renewed:
-            return False
+#         if self.is_renewed:
+#             return False
 
-        today = timezone.now().date()
-        end = self.end_date.date()
+#         today = timezone.now().date()
+#         end = self.end_date.date()
 
-        days_left = (end - today).days
+#         days_left = (end - today).days
 
-        # YOUR RULE (KEEP ONLY THIS LOGIC)
-        if days_left > 7:
-            return False
+#         # YOUR RULE (KEEP ONLY THIS LOGIC)
+#         if days_left > 7:
+#             return False
 
-        return True
+#         return True
 
-    def mark_reminder_sent(self):
-        Documentation.objects.filter(pk=self.pk).update(
-            expiry_reminder_sent_at=timezone.now(),
-            expiry_reminder_sent_count=F('expiry_reminder_sent_count') + 1
-        )
+#     def mark_reminder_sent(self):
+#         Documentation.objects.filter(pk=self.pk).update(
+#             expiry_reminder_sent_at=timezone.now(),
+#             expiry_reminder_sent_count=F('expiry_reminder_sent_count') + 1
+#         )
 
-    def mark_renewed(self, user, new_end_date):
+#     def mark_renewed(self, user, new_end_date):
 
-        self.is_renewed = True
-        self.is_expired = False
-        self.end_date = new_end_date
+#         self.is_renewed = True
+#         self.is_expired = False
+#         self.end_date = new_end_date
 
-        self.expiry_reminder_sent_at = None
-        self.expiry_reminder_sent_count = 0
-        self.expiry_expired_sent_count = 0
+#         self.expiry_reminder_sent_at = None
+#         self.expiry_reminder_sent_count = 0
+#         self.expiry_expired_sent_count = 0
 
-        self.renewed_at = timezone.now()
-        self.renewed_by = user
+#         self.renewed_at = timezone.now()
+#         self.renewed_by = user
 
-        self.save()
+#         self.save()
     
-    def get_expiry_progress(self):
-        if not self.end_date:
-            return "0/7"
+#     def get_expiry_progress(self):
+#         if not self.end_date:
+#             return "0/7"
 
-        now = timezone.now().date()
-        end = self.end_date.date()
+#         now = timezone.now().date()
+#         end = self.end_date.date()
 
-        days_diff = (end - now).days
+#         days_diff = (end - now).days
 
-        # 🟡 BEFORE EXPIRY (including today)
-        if 0 <= days_diff <= 7:
-            return f"{self.expiry_reminder_sent_count}/7 (reminder)"
+#         # 🟡 BEFORE EXPIRY (including today)
+#         if 0 <= days_diff <= 7:
+#             return f"{self.expiry_reminder_sent_count}/7 (reminder)"
 
-        # 🔴 AFTER EXPIRY
-        if -7 <= days_diff < 0:
-            return f"{self.expiry_expired_sent_count}/7 (expired)"
+#         # 🔴 AFTER EXPIRY
+#         if -7 <= days_diff < 0:
+#             return f"{self.expiry_expired_sent_count}/7 (expired)"
 
-        return "0/7"
+#         return "0/7"
 
-    # ── SAVE METHOD ───────────────────────────────────────────
+#     # ── SAVE METHOD ───────────────────────────────────────────
 
-    def save(self, *args, **kwargs):
+#     def save(self, *args, **kwargs):
 
-        if self.is_renewed:
-            self.status = "ACTIVE"
-            self.is_expired = False
+#         if self.is_renewed:
+#             self.status = "ACTIVE"
+#             self.is_expired = False
 
-        elif self.does_not_expire:
-            self.status = "ACTIVE"
-            self.is_expired = False
+#         elif self.does_not_expire:
+#             self.status = "ACTIVE"
+#             self.is_expired = False
 
-        elif self.end_date:
-            now = timezone.now()
+#         elif self.end_date:
+#             now = timezone.now()
 
-            if self.end_date < now:
-                self.status = "EXPIRED"
-                self.is_expired = True
+#             if self.end_date < now:
+#                 self.status = "EXPIRED"
+#                 self.is_expired = True
 
-            elif self.end_date <= now + timedelta(days=7):
-                self.status = "EXPIRING_SOON"
-                self.is_expired = False
+#             elif self.end_date <= now + timedelta(days=7):
+#                 self.status = "EXPIRING_SOON"
+#                 self.is_expired = False
 
-            else:
-                self.status = "ACTIVE"
-                self.is_expired = False
+#             else:
+#                 self.status = "ACTIVE"
+#                 self.is_expired = False
 
-        super().save(*args, **kwargs)
+#         super().save(*args, **kwargs)
 
-        # FIX: generate code safely
-        if not self.code:
-            self.code = self.generate_code()
-            Documentation.objects.filter(pk=self.pk).update(code=self.code)
+#         # FIX: generate code safely
+#         if not self.code:
+#             self.code = self.generate_code()
+#             Documentation.objects.filter(pk=self.pk).update(code=self.code)
 
-    # ── STRING ────────────────────────────────────────────────
-    def __str__(self):
-        return f"{self.code} - {self.agreement_name}"
+#     # ── STRING ────────────────────────────────────────────────
+#     def __str__(self):
+#         return f"{self.code} - {self.agreement_name}"
