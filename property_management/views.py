@@ -332,21 +332,20 @@ def options(request):
                 if is_owner:
                     units = Unit.objects.filter(owner=user, leases__isnull=False).distinct()
                 elif is_pm:
-                    if not pm_profile.company:
+                    pmc_ids = PMCPMMapping.objects.filter(pm=pm_profile).values_list("pmc_id", flat=True)
+                    if not pmc_ids:
                         return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
-                    #units = Unit.objects.filter(property_block_tower__property__pmc=pm_profile.company, leases__isnull=False).distinct()
-                    units = Unit.objects.filter(Q(parent_property__pmc=pm_profile.company) | Q(property_block_tower__property__pmc=pm_profile.company),leases__isnull=False).distinct()
+                    units = Unit.objects.filter(Q(parent_property__pmc_id__in=pmc_ids) | Q(property_block_tower__property__pmc_id__in=pmc_ids), leases__isnull=False).distinct()
                 else:
                     units = Unit.objects.none()
             else:
                 if is_owner:
-                    #units = Unit.objects.filter(property_block_tower__property_id=parent_property_id, leases__isnull=False).distinct()
-                    units = Unit.objects.filter( Q(parent_property_id=parent_property_id) | Q(property_block_tower__property_id=parent_property_id), leases__isnull=False ).distinct()
+                    units = Unit.objects.filter(Q(parent_property_id=parent_property_id) | Q(property_block_tower__property_id=parent_property_id), leases__isnull=False).distinct()
                 elif is_pm:
-                    if not pm_profile.company:
+                    pmc_ids = PMCPMMapping.objects.filter(pm=pm_profile).values_list("pmc_id", flat=True)
+                    if not pmc_ids:
                         return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
-                    #units = Unit.objects.filter(property_block_tower__property_id=parent_property_id, property_block_tower__property__pmc=pm_profile.company, leases__isnull=False).distinct()
-                    units = Unit.objects.filter( Q(parent_property_id=parent_property_id, parent_property__pmc=pm_profile.company) | Q(property_block_tower__property_id=parent_property_id, property_block_tower__property__pmc=pm_profile.company), leases__isnull=False).distinct()
+                    units = Unit.objects.filter(Q(parent_property_id=parent_property_id, parent_property__pmc_id__in=pmc_ids) | Q(property_block_tower__property_id=parent_property_id, property_block_tower__property__pmc_id__in=pmc_ids), leases__isnull=False).distinct()
                 else:
                     units = Unit.objects.none()
             content["property_unit_with_lease"] = [{"key": u.id, "value": u.unit_name or "Unnamed Unit"} for u in units]
@@ -418,17 +417,59 @@ def options(request):
                 content["property_unit"] = [{"key": unit.id, "value": unit.unit_name or f"Unit #{unit.id}"} for unit in units]
 
         elif option_type == "PMC_BY_PM":
-            if not is_pm:
-                content["pmc"] = []
-                continue
-            pm_profile = PropertyManager.objects.filter(pk=user.pk).first()
-            if not pm_profile:
+            if is_pm:
+                pm_profile = PropertyManager.objects.filter(pk=user.pk).first()
+                if not pm_profile:
                     content["pmc"] = []
                     continue
-            pmc_ids = PMCPMMapping.objects.filter(pm=pm_profile).values_list("pmc_id", flat=True)
-            pmcs = PropertyManagmentCompany.objects.filter(id__in=pmc_ids, is_active=True).order_by("name")
-            content["pmc"] = [{"key": pmc.id, "value": pmc.name } for pmc in pmcs]
 
+                pmc_ids = PMCPMMapping.objects.filter(pm=pm_profile, is_active=True).values_list("pmc_id", flat=True)
+                pmcs = PropertyManagmentCompany.objects.filter( id__in=pmc_ids,is_active=True).order_by("name")
+            else:
+                tenant_profile = Tenant.objects.filter(pk=user.pk).first()
+                if not tenant_profile:
+                    content["pmc"] = []
+                    continue
+                pmcs = tenant_profile.pmc.filter(is_active=True).order_by("name")
+            content["pmc"] = [ {"key": pmc.id, "value": pmc.name} for pmc in pmcs]
+            
+        elif option_type == "PROPERTY_BY_PMC":
+            pmc_id = request.GET.get("pmc_id")
+            if not pmc_id:
+                content["property"] = []
+            else:
+                pm_profile = PropertyManager.objects.filter(pk=user.pk).first()
+                if pm_profile:
+                    pmc_ids = PMCPMMapping.objects.filter(pm=pm_profile, is_active=True).values_list("pmc_id", flat=True)
+                    if int(pmc_id) not in pmc_ids:
+                        content["property"] = []
+                    else:
+                        properties = Property.objects.filter(pmc_id=pmc_id, is_active=True).order_by("property_name")
+                        content["property"] = [{"key": p.id, "value": p.property_name} for p in properties]
+                else:
+                    tenant_profile = Tenant.objects.filter(pk=user.pk).first()
+                    if not tenant_profile:
+                        content["property"] = []
+                        continue
+                    tenant_pmc_ids = tenant_profile.pmc.filter(is_active=True).values_list("id", flat=True)
+                    if int(pmc_id) not in tenant_pmc_ids:
+                        content["property"] = []
+                        continue
+                    lease = Lease.objects.filter(tenant=tenant_profile,is_active=True).select_related("unit", "unit__parent_property","unit__property_block_tower__property").first()
+                    if not lease:
+                        content["property"] = []
+                        continue
+                    unit = lease.unit
+                    if unit.parent_property:
+                        property_obj = unit.parent_property
+                    elif unit.property_block_tower:
+                        property_obj = unit.property_block_tower.property
+                    else:
+                        property_obj = None
+                    if property_obj:
+                        content["property"] = [{"key": property_obj.id, "value": property_obj.property_name}]
+                    else:
+                        content["property"] = []
         elif option_type == "COMPLAINT_STATUS":
             content["complaint_status"] = [
                 {"key": constants.IN_PROGRESS, "value": "In Progress"},
@@ -437,7 +478,14 @@ def options(request):
                 {"key": constants.REJECTED, "value": "Rejected"},
             ]
         elif option_type == "TENANT_DOCUMENT_TYPE":
-            doc_types = DocumentType.objects.filter(section=constants.TENANT).order_by("id")
+            tenant_profile = Tenant.objects.filter(pk=user.pk).first()
+            owner_profile = Owner.objects.filter(pk=user.pk).first()
+            if tenant_profile:
+                doc_types = DocumentType.objects.filter( section=constants.TENANT).order_by("id")
+            elif owner_profile:
+                doc_types = DocumentType.objects.filter(section=constants.OWNER).order_by("id")
+            else:
+                doc_types = DocumentType.objects.none()
             content["tenant_document_type"] = [{"key": dt.id, "value": dt.name} for dt in doc_types]
 
         elif option_type == "TENANT_BY_COMPANY": #for creating lease we get that tenants

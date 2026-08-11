@@ -289,7 +289,7 @@ class TenantDocuments(Documents):
 
         if not self.code:
             self.code = self.generate_code()
-            super().save(update_fields=["code"])
+            TenantDocuments.objects.filter(pk=self.pk).update(code=self.code)
 
     def __str__(self):
         return f"{self.code} - {self.document_type.name if self.document_type else ''}" 
