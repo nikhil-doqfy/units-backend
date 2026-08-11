@@ -5,6 +5,7 @@ from plugins.logger_plugin import get_logger
 from property_management.utils import audit_logs
 from user_service.models import Tenant, Owner
 from lease.models import Lease
+from lease.views import _get_pmc_ids_for_user
 from utilities.helper_functions import prepare_response, fetch_s3_presigned_url, upload_file_to_s3_base64
 from utilities.decorator import is_request_authenticated
 from utilities import constants, status
@@ -432,11 +433,12 @@ def complaint_api(request):
         if not code:
             return prepare_response(message="code is required", status=status.HTTP_400_BAD_REQUEST)
 
-        company = PropertyManagmentCompany.objects.filter(company_staff=request.user, is_active=True).first()
-        if not company:
+        #company = PropertyManagmentCompany.objects.filter(company_staff=request.user, is_active=True).first()
+        pmc_ids = _get_pmc_ids_for_user(request.user)
+        if not pmc_ids:
             return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
 
-        complaint = Complaint.objects.filter(code=code, company=company, is_active=True).first()
+        complaint = Complaint.objects.filter(code=code, company_id__in=pmc_ids, is_active=True).first()
         if not complaint:
             return prepare_response(message=constants.COMPLAINT_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
 
@@ -468,15 +470,23 @@ def complaint_api(request):
 @is_request_authenticated
 def complaint_detail_api(request):
  
-    company = PropertyManagmentCompany.objects.filter(
-        company_staff=request.user,
-        is_active=True
-    ).first()
-    if not company:
-        return prepare_response(
-            message=constants.COMPANY_NOT_FOUND,
-            status=status.HTTP_404_NOT_FOUND
-        )
+    tenant_profile = Tenant.objects.filter(pk=request.user.pk).first()
+    owner_instance = Owner.objects.filter(pk=request.user.pk).first()
+    if tenant_profile:
+        lease = Lease.objects.filter(tenant=tenant_profile, is_active=True).select_related("unit").first()
+        if not lease:
+            return prepare_response(message="No active unit found.",status=status.HTTP_404_NOT_FOUND)
+        complaint_filter = {
+            "unit": lease.unit,
+            "is_active": True
+        }
+    elif owner_instance:
+        complaint_filter = {"unit__unit_owners__owner": owner_instance, "is_active": True}
+    else:
+        pmc_ids = _get_pmc_ids_for_user(request.user)
+        if not pmc_ids:
+            return prepare_response( message=constants.COMPANY_NOT_FOUND,status=status.HTTP_404_NOT_FOUND)
+        complaint_filter = {"company_id__in": pmc_ids, "is_active": True }
  
     if request.method == "GET":
         code = request.GET.get("code")
@@ -488,8 +498,7 @@ def complaint_detail_api(request):
  
         complaint = Complaint.objects.filter(
             code=code,
-            company=company,
-            is_active=True
+            **complaint_filter
         ).first()
         if not complaint:
             return prepare_response(
