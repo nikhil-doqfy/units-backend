@@ -395,9 +395,8 @@ def options(request):
                     else:
                         units = Unit.objects.none()
                 else:
-                #units = Unit.objects.filter(property_block_tower__property_id=property_id)
                     units = Unit.objects.filter(Q(parent_property_id=property_id) |Q(property_block_tower__property_id=property_id)).distinct()
-                    content["property_unit"] = [{ "key": unit.id,"value": unit.unit_name or f"Unit #{unit.id}"}for unit in units]
+                content["property_unit"] = [{ "key": unit.id,"value": unit.unit_name or f"Unit #{unit.id}"}for unit in units]
 
         elif option_type == "PROPERTY_BLOCK_BY_PROPERTY":
             property_id = request.GET.get("property_id")
