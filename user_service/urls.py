@@ -28,8 +28,7 @@ urlpatterns = [
     path('reset_password', views.reset_user_password, name='reset_user_password'),
     path('share_profile', views.share_profile, name='share_profile'),
     path("privacy_policy", views.privacy_policy_api),
-    path('tenant_documents', views.tenant_document_api, name='tenant_document_api'),
-    path('owner_documents', views.owner_document_api, name='owner_document_api'),
+    path('documents', views.document_api, name='document_api'),
 
  
 ]

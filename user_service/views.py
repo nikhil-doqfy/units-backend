@@ -4088,288 +4088,71 @@ def _serialize_document(doc,user_field):
  
  
 @is_request_authenticated
-def tenant_document_api(request):
+def document_api(request):
     user_profile = request.user
- 
+
+    # ── Role detect ───────────────────────────────────────────────
     tenant = Tenant.objects.filter(pk=user_profile.pk).first()
-    if not tenant:
-        return prepare_response(message=constants.UNAUTHORIZED_ROLE, status=status.HTTP_403_FORBIDDEN)
- 
-    # ─────────────────────────────── GET ────────────────────────────
-    if request.method == "GET":
-        document_id = request.GET.get("document_id")
-        if document_id:
-            main_doc = TenantDocuments.objects.filter(
-                Q(id=document_id) | Q(main_document_id=document_id),
-                tenant=tenant,
-                is_active=True
-            ).order_by("id").first()
-            if not main_doc:
-                return prepare_response(message="Document not found", status=status.HTTP_404_NOT_FOUND)
- 
-            root_id = main_doc.main_document_id or main_doc.id
-            docs = TenantDocuments.objects.filter(
-                Q(id=root_id) | Q(main_document_id=root_id),
-                tenant=tenant,
-                is_active=True
-            ).select_related("document_type", "tenant").order_by("-id")
- 
-        else:
-            all_docs = TenantDocuments.objects.filter(tenant=tenant, is_active=True).select_related("document_type", "tenant").order_by("-id")
-            latest_docs = {}
-            for doc in all_docs:
-                key = doc.main_document_id or doc.id
-                if key not in latest_docs:
-                    latest_docs[key] = doc
-            docs = latest_docs.values()
- 
-        docs = list(docs)
- 
-        export = request.GET.get("export", "").strip().lower()
-        if export == "csv":
-            response = HttpResponse(content_type="text/csv")
-            response["Content-Disposition"] = 'attachment; filename="tenant_documents.csv"'
- 
-            writer = csv.writer(response)
-            writer.writerow([
-                "Code",
-                "Document Type",
-                "Status",
-                "Expiry Date",
-                "Status Label",
-            ])
- 
-            for doc in docs:
-                data = _serialize_document(doc,"tenant")
-                writer.writerow([
-                    data.get("code"),
-                    data.get("document_type"),
-                    data.get("status"),
-                    data.get("expiry_date"),
-                    data.get("status_label"),
-                ])
- 
-            return response
- 
-        content = [_serialize_document(doc,"tenant") for doc in docs]
-        logger.info(
-            "TENANT_DOCUMENTS_FETCHED | user_id=%s | tenant_id=%s | count=%s",
-            request.user.id, tenant.id, len(content)
-        )
- 
-        return prepare_response(content=content, status=status.HTTP_200_OK)
- 
-    # ─────────────────────────────── POST ───────────────────────────
-    elif request.method == "POST":
-        try:
-            body = json.loads(request.body)
-        except Exception:
-            return prepare_response(message="Invalid JSON body", status=status.HTTP_400_BAD_REQUEST)
- 
-        documents = body.get("documents") or []
-        if not isinstance(documents, list) or not documents:
-            return prepare_response(message="documents list is required", status=status.HTTP_400_BAD_REQUEST)
- 
-        cleaned = []
-        for index, item in enumerate(documents):
-            if not isinstance(item, dict):
-                return prepare_response(message=f"documents[{index}]: must be an object", status=status.HTTP_400_BAD_REQUEST)
- 
-            document_type_id = item.get("document_type_id")
-            if not document_type_id:
-                return prepare_response(message=f"documents[{index}]: document_type_id is required", status=status.HTTP_400_BAD_REQUEST)
- 
-            doc_type = DocumentType.objects.filter(id=document_type_id, section=constants.TENANT).first()
-            if not doc_type:
-                return prepare_response(message=f"documents[{index}]: Invalid tenant document type", status=status.HTTP_400_BAD_REQUEST)
- 
-            file_data = item.get("file_data")
-            file_name = (item.get("file_name") or "").strip()
- 
-            if not file_data:
-                return prepare_response(message=f"documents[{index}]: file_data is required", status=status.HTTP_400_BAD_REQUEST)
- 
-            expiry_date, err = parse_expiry_date(item.get("expiry_date"))
-            if err:
-                return prepare_response(message=f"documents[{index}]: {err}", status=status.HTTP_400_BAD_REQUEST)
- 
-            if not expiry_date:
-                return prepare_response(
-                    message=f"documents[{index}]: expiry_date is required",
-                    status=status.HTTP_400_BAD_REQUEST
-                )
- 
-            cleaned.append({
-                "file_data":   file_data,
-                "file_name":   file_name,
-                "expiry_date": expiry_date,
-                "doc_type":    doc_type,
-            })
- 
-        created = []
-        for item in cleaned:
-            ext = get_extension_from_base64(item["file_data"]) or ".pdf"
-            unique_filename = f"{uuid.uuid4()}{ext}"
-            s3_key = f"tenant/{tenant.id}/documents/{item['doc_type'].id}/{unique_filename}"
- 
-            file_url = upload_file_to_s3_base64(
-                file_data=item["file_data"],
-                object_name=s3_key,
-            )
- 
-            doc = TenantDocuments.objects.create(
-                created_by=user_profile.user,
-                tenant=tenant,
-                document_type=item["doc_type"],
-                file_name=item["file_name"] or unique_filename,
-                file_path=file_url,
-                expiry_date=item["expiry_date"],
-            )
-            created.append(doc)
-        logger.info(
-            "TENANT_DOCUMENTS_UPLOADED | user_id=%s | tenant_id=%s | count=%s",
-            request.user.id, tenant.id, len(created)
-        )
- 
-        return prepare_response(
-            message="Documents uploaded successfully",
-            content={
-                "ids":       [d.id for d in created],
-                "documents": [_serialize_document(d, "tenant") for d in created],
-            },
-            status=status.HTTP_201_CREATED,
-        )
- 
-    # ─────────────────── PUT — renew ────────────────────────────────
-    elif request.method == "PUT":
-        try:
-            body = json.loads(request.body)
-        except Exception:
-            return prepare_response(message="Invalid JSON body", status=status.HTTP_400_BAD_REQUEST)
- 
-        document_id = body.get("document_id")
-        if not document_id:
-            return prepare_response(message="document_id is required", status=status.HTTP_400_BAD_REQUEST)
- 
-        documents = body.get("documents") or []
-        if not isinstance(documents, list) or not documents:
-            return prepare_response(
-                message="documents list is required",
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        item = documents[0]
-        doc = TenantDocuments.objects.filter(
-            id=document_id,
-            is_active=True,
-            tenant=tenant
-        ).select_related("document_type", "tenant").first()
-        if not doc:
-            return prepare_response(message="Document not found", status=status.HTTP_404_NOT_FOUND)
- 
-        if not doc.is_expired:
-            return prepare_response(message="Only expired documents can be renewed", status=status.HTTP_400_BAD_REQUEST)
- 
-        file_data = item.get("file_data")
-        file_name = (item.get("file_name") or "").strip()
-        expiry_date, err = parse_expiry_date(item.get("expiry_date"))
-        if err:
-            return prepare_response(message=err, status=status.HTTP_400_BAD_REQUEST)
- 
-        if not expiry_date:
-            return prepare_response(
-                message="expiry_date is required to renew this document",
-                status=status.HTTP_400_BAD_REQUEST,
-            )
- 
-        if expiry_date <= timezone.localdate():
-            return prepare_response(
-                message="Renewal expiry_date must be a future date",
-                status=status.HTTP_400_BAD_REQUEST,
-            )
-        if not file_data:
-            return prepare_response(message="file_data is required for renewal", status=status.HTTP_400_BAD_REQUEST)
-        ext = get_extension_from_base64(file_data) or ".pdf"
-        unique_filename = f"{uuid.uuid4()}{ext}"
-        s3_key = f"tenant/{tenant.id}/documents/{doc.document_type_id}/{unique_filename}"
- 
-        file_url = upload_file_to_s3_base64(
-            file_data=file_data,
-            object_name=s3_key
-        )
- 
-        main_document = doc.main_document or doc
-        new_doc = TenantDocuments.objects.create(
-            created_by=user_profile.user,
-            tenant=tenant,
-            document_type=doc.document_type,
-            file_name=file_name or unique_filename,
-            file_path=file_url,
-            expiry_date=expiry_date,
-            main_document=main_document,
-        )
- 
-        logger.info(
-            "TENANT_DOCUMENT_RENEWED | user_id=%s | old_doc_id=%s | new_doc_id=%s | main_document_id=%s",
-            request.user.id, doc.id, new_doc.id, main_document.id,
-        )
- 
-        return prepare_response(
-            message="Document renewed successfully",
-            content=_serialize_document(new_doc, "tenant"),
-            status=status.HTTP_201_CREATED
-        )
- 
-    return prepare_response(
-        message=constants.INVALID_REQUEST_METHOD,
-        status=status.HTTP_405_METHOD_NOT_ALLOWED
-    )
- 
- 
-@is_request_authenticated
-def owner_document_api(request):
-    user_profile = request.user
     owner = Owner.objects.filter(pk=user_profile.pk).first()
-    if not owner:
-        return prepare_response(message=constants.UNAUTHORIZED_ROLE, status=status.HTTP_403_FORBIDDEN)
- 
+
+    if tenant:
+        role = "tenant"
+        profile = tenant
+        DocModel = TenantDocuments
+        profile_field = "tenant"
+        doc_section = constants.TENANT
+        s3_prefix = "tenant"
+    elif owner:
+        role = "owner"
+        profile = owner
+        DocModel = OwnerDocuments
+        profile_field = "owner"
+        doc_section = constants.OWNER
+        s3_prefix = "owner"
+    else:
+        return prepare_response(
+            message=constants.UNAUTHORIZED_ROLE,
+            status=status.HTTP_403_FORBIDDEN
+        )
+
     # ─────────────────────────────── GET ────────────────────────────
     if request.method == "GET":
         document_id = request.GET.get("document_id")
+
         if document_id:
-            main_doc = OwnerDocuments.objects.filter(
+            main_doc = DocModel.objects.filter(
                 Q(id=document_id) | Q(main_document_id=document_id),
-                owner=owner,
+                **{profile_field: profile},
                 is_active=True
             ).order_by("id").first()
             if not main_doc:
                 return prepare_response(message="Document not found", status=status.HTTP_404_NOT_FOUND)
- 
+
             root_id = main_doc.main_document_id or main_doc.id
-            docs = OwnerDocuments.objects.filter(
+            docs = DocModel.objects.filter(
                 Q(id=root_id) | Q(main_document_id=root_id),
-                owner=owner,
+                **{profile_field: profile},
                 is_active=True
-            ).select_related("document_type", "owner").order_by("-id")
- 
+            ).select_related("document_type", profile_field).order_by("-id")
+
         else:
-            all_docs = OwnerDocuments.objects.filter(
-                owner=owner,
+            all_docs = DocModel.objects.filter(
+                **{profile_field: profile},
                 is_active=True
-            ).select_related("document_type", "owner").order_by("-id")
- 
+            ).select_related("document_type", profile_field).order_by("-id")
+
             latest_docs = {}
             for doc in all_docs:
                 key = doc.main_document_id or doc.id
                 if key not in latest_docs:
                     latest_docs[key] = doc
             docs = latest_docs.values()
- 
+
         docs = list(docs)
- 
         export = request.GET.get("export", "").strip().lower()
         if export == "csv":
             response = HttpResponse(content_type="text/csv")
-            response["Content-Disposition"] = 'attachment; filename="owner_documents.csv"'
+            response["Content-Disposition"] = f'attachment; filename="{role}_documents.csv"'
             writer = csv.writer(response)
             writer.writerow([
                 "Code",
@@ -4378,9 +4161,9 @@ def owner_document_api(request):
                 "Status",
                 "Status Label",
             ])
- 
+
             for doc in docs:
-                data = _serialize_document(doc, "owner")
+                data = _serialize_document(doc, profile_field)
                 writer.writerow([
                     data.get("code"),
                     data.get("document_type"),
@@ -4388,17 +4171,15 @@ def owner_document_api(request):
                     data.get("status"),
                     data.get("status_label"),
                 ])
- 
+
             return response
- 
-        content = [_serialize_document(doc, "owner") for doc in docs]
+        content = [_serialize_document(doc, profile_field) for doc in docs]
         logger.info(
-            "OWNER_DOCUMENTS_FETCHED | user_id=%s | owner_id=%s | count=%s",
-            request.user.id, owner.id, len(content)
+            "DOCUMENTS_FETCHED | user_id=%s | role=%s | profile_id=%s | count=%s",
+            request.user.id, role, profile.id, len(content)
         )
- 
         return prepare_response(content=content, status=status.HTTP_200_OK)
- 
+
     # ─────────────────────────────── POST ───────────────────────────
     elif request.method == "POST":
         try:
@@ -4409,7 +4190,6 @@ def owner_document_api(request):
         documents = body.get("documents") or []
         if not isinstance(documents, list) or not documents:
             return prepare_response(message="documents list is required", status=status.HTTP_400_BAD_REQUEST)
- 
         cleaned = []
         for index, item in enumerate(documents):
             if not isinstance(item, dict):
@@ -4418,16 +4198,17 @@ def owner_document_api(request):
             document_type_id = item.get("document_type_id")
             if not document_type_id:
                 return prepare_response(message=f"documents[{index}]: document_type_id is required", status=status.HTTP_400_BAD_REQUEST)
- 
-            doc_type = DocumentType.objects.filter(id=document_type_id, section=constants.OWNER).first()
+
+            doc_type = DocumentType.objects.filter(id=document_type_id, section=doc_section).first()
             if not doc_type:
-                return prepare_response(message=f"documents[{index}]: Invalid owner document type", status=status.HTTP_400_BAD_REQUEST)
- 
+                return prepare_response(message=f"documents[{index}]: Invalid {role} document type", status=status.HTTP_400_BAD_REQUEST)
+
             file_data = item.get("file_data")
             file_name = (item.get("file_name") or "").strip()
+
             if not file_data:
                 return prepare_response(message=f"documents[{index}]: file_data is required", status=status.HTTP_400_BAD_REQUEST)
- 
+
             expiry_date, err = parse_expiry_date(item.get("expiry_date"))
             if err:
                 return prepare_response(message=f"documents[{index}]: {err}", status=status.HTTP_400_BAD_REQUEST)
@@ -4449,33 +4230,31 @@ def owner_document_api(request):
         for item in cleaned:
             ext = get_extension_from_base64(item["file_data"]) or ".pdf"
             unique_filename = f"{uuid.uuid4()}{ext}"
-            s3_key = f"owner/{owner.id}/documents/{item['doc_type'].id}/{unique_filename}"
- 
+            s3_key = f"{s3_prefix}/{profile.id}/documents/{item['doc_type'].id}/{unique_filename}"
+
             file_url = upload_file_to_s3_base64(
                 file_data=item["file_data"],
                 object_name=s3_key,
             )
- 
-            doc = OwnerDocuments.objects.create(
+            doc = DocModel.objects.create(
                 created_by=user_profile.user,
-                owner=owner,
+                **{profile_field: profile},
                 document_type=item["doc_type"],
                 file_name=item["file_name"] or unique_filename,
                 file_path=file_url,
                 expiry_date=item["expiry_date"],
             )
             created.append(doc)
- 
         logger.info(
-            "OWNER_DOCUMENTS_UPLOADED | user_id=%s | owner_id=%s | count=%s",
-            request.user.id, owner.id, len(created)
+            "DOCUMENTS_UPLOADED | user_id=%s | role=%s | profile_id=%s | count=%s",
+            request.user.id, role, profile.id, len(created)
         )
- 
+
         return prepare_response(
             message="Documents uploaded successfully",
             content={
                 "ids":       [d.id for d in created],
-                "documents": [_serialize_document(d, "owner") for d in created],
+                "documents": [_serialize_document(d, profile_field) for d in created],
             },
             status=status.HTTP_201_CREATED,
         )
@@ -4498,11 +4277,11 @@ def owner_document_api(request):
             )
  
         item = documents[0]
-        doc = OwnerDocuments.objects.filter(
+        doc = DocModel.objects.filter(
             id=document_id,
             is_active=True,
-            owner=owner
-        ).select_related("document_type", "owner").first()
+            **{profile_field: profile}
+        ).select_related("document_type", profile_field).first()
         if not doc:
             return prepare_response(message="Document not found", status=status.HTTP_404_NOT_FOUND)
  
@@ -4531,17 +4310,17 @@ def owner_document_api(request):
  
         ext = get_extension_from_base64(file_data) or ".pdf"
         unique_filename = f"{uuid.uuid4()}{ext}"
-        s3_key = f"owner/{owner.id}/documents/{doc.document_type_id}/{unique_filename}"
- 
+        s3_key = f"{s3_prefix}/{profile.id}/documents/{doc.document_type_id}/{unique_filename}"
+
         file_url = upload_file_to_s3_base64(
             file_data=file_data,
             object_name=s3_key
         )
  
         main_document = doc.main_document or doc
-        new_doc = OwnerDocuments.objects.create(
+        new_doc = DocModel.objects.create(
             created_by=user_profile.user,
-            owner=owner,
+            **{profile_field: profile},
             document_type=doc.document_type,
             file_name=file_name or unique_filename,
             file_path=file_url,
@@ -4550,15 +4329,12 @@ def owner_document_api(request):
         )
  
         logger.info(
-            "OWNER_DOCUMENT_RENEWED | user_id=%s | old_doc_id=%s | new_doc_id=%s | main_document_id=%s",
-            request.user.id, doc.id, new_doc.id, main_document.id,
+            "DOCUMENT_RENEWED | user_id=%s | role=%s | old_doc_id=%s | new_doc_id=%s | main_document_id=%s",
+            request.user.id, role, doc.id, new_doc.id, main_document.id,
         )
         return prepare_response(
             message="Document renewed successfully",
-            content=_serialize_document(new_doc,"owner"),
+            content=_serialize_document(new_doc, profile_field),
             status=status.HTTP_201_CREATED
         )
-    return prepare_response(
-        message=constants.INVALID_REQUEST_METHOD,
-        status=status.HTTP_405_METHOD_NOT_ALLOWED
-    )
+    return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
