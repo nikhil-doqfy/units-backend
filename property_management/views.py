@@ -426,10 +426,14 @@ def options(request):
                 pmcs = PropertyManagmentCompany.objects.filter( id__in=pmc_ids,is_active=True).order_by("name")
             else:
                 tenant_profile = Tenant.objects.filter(pk=user.pk).first()
-                if not tenant_profile:
-                    content["pmc"] = []
-                    continue
-                pmcs = tenant_profile.pmc.filter(is_active=True).order_by("name")
+                if tenant_profile:
+                    pmcs = tenant_profile.pmc.filter(is_active=True).order_by("name")
+                else:
+                    owner_profile = Owner.objects.filter(pk=user.pk).first()
+                    if not owner_profile:
+                        content["pmc"] = []
+                        continue
+                    pmcs = owner_profile.pmc.filter(is_active=True).order_by("name")
             content["pmc"] = [ {"key": pmc.id, "value": pmc.name} for pmc in pmcs]
             
         elif option_type == "PROPERTY_BY_PMC":
