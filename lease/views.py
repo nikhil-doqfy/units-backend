@@ -3193,27 +3193,37 @@ def export_lease_tenancy_csv(request):
         lease_status_param = request.GET.get("lease_status")
 
         leases_qs = Lease.objects.select_related(
-            "lease_property",
-            "lease_property__company",
+            "unit",
+            "unit__property_block_tower__property__pmc",
             "tenant",
             "tenant__user"
         )
-        if current_user.user_role == constants.OWNER:
-            leases_qs = leases_qs.filter(owner=current_user)
+        owner_profile = Owner.objects.filter(pk=current_user.pk).first()
+        pm_profile = PropertyManager.objects.filter(
+            pk=current_user.pk
+        ).select_related("company").first()
 
-        elif current_user.user_role == constants.COMPANY_USER:
+        if owner_profile:
             leases_qs = leases_qs.filter(
-                lease_property__company__company_user=current_user
+                unit__unit_owners__owner=owner_profile
+            ).distinct()
+        elif pm_profile and pm_profile.company:
+            pmc_ids = _get_pmc_ids_for_user(current_user)
+            leases_qs = leases_qs.filter(
+                Q(unit__property_block_tower__property__pmc_id__in=pmc_ids) |
+                Q(unit__parent_property__pmc_id__in=pmc_ids)
             ).distinct()
         else:
             logger.warning(
-                        "LEASE_TENANCY_EXPORT_FAILED | user_id=%s | reason=UNAUTHORIZED_ROLE", request.user.id )
+                "LEASE_TENANCY_EXPORT_FAILED | user_id=%s | reason=UNAUTHORIZED_ROLE",
+                current_user.id
+            )
             return prepare_response(
                 message=constants.UNAUTHORIZED_ROLE,
                 status=status.HTTP_403_FORBIDDEN
             )
         if lease_status_param:
-            status_list = [s.strip().upper() for s in lease_status_param.split(",")]
+            status_list = [s.strip().upper() for s in lease_status_param.split(",") if s.strip()]
             leases_qs = leases_qs.filter(lease_status__in=status_list)
         field_names = [
             "Property Code",
@@ -3225,22 +3235,30 @@ def export_lease_tenancy_csv(request):
         ]
 
         data_list = []
-
         for lease in leases_qs.order_by("-created"):
             tenant = lease.tenant
-            property_unit = lease.lease_property
+            unit = lease.unit
 
             data_list.append({
-                "Property Code": property_unit.property_code if property_unit else "",
-                "Agreement With": tenant.user.get_full_name() if tenant and tenant.user else "",
+                "Property Code": unit.code if unit else "",
+                "Agreement With": (
+                    tenant.user.get_full_name()
+                    if tenant and tenant.user else ""
+                ),
                 "Contact Number": tenant.contact_number if tenant else "",
-                "Agreement Start Date": lease.lease_start_date.strftime("%Y-%m-%d") if lease.lease_start_date else "",
-                "Agreement End Date": lease.lease_end_date.strftime("%Y-%m-%d") if lease.lease_end_date else "",
-                "Lease Status": lease.lease_status
+                "Agreement Start Date": (
+                    lease.start_date.strftime("%d/%m/%Y")
+                    if lease.start_date else ""
+                ),
+                "Agreement End Date": (
+                    lease.end_date.strftime("%d/%m/%Y")
+                    if lease.end_date else ""
+                ),
+                "Lease Status": lease.lease_status or ""
             })
         logger.info(
             "LEASE_TENANCY_EXPORTED | user_id=%s | total_records=%s",
-            request.user.id, len(data_list) )
+            current_user.id, len(data_list) )
         return export_to_csv(
             filename="lease_tenancy_export",
             field_names=field_names,
@@ -3293,7 +3311,7 @@ def lease_pdf_view(request):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        file_name = f"lease_{lease.lease_number}.pdf"
+        file_name = f"lease_{lease.code}.pdf"
 
 
         if purpose == "download":
@@ -3322,7 +3340,8 @@ def lease_pdf_view(request):
         return prepare_response(
             content={
                 "lease_id": lease.id,
-                "lease_number": lease.lease_number,
+                #"lease_number": lease.lease_number,
+                "lease_number": lease.code,
                 "purpose": purpose or "preview",
                 "pdf_url": presigned_url
             },
