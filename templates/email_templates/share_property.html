@@ -4,62 +4,97 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Property Shared with You</title>
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f5f6fa;
-            margin: 0;
-            padding: 0;
-        }
+
+<style>
+    body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background-color: #f5f6fa;
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        overflow-x: hidden;
+    }
+
+    .email-container {
+        background-color: #ffffff;
+        width: 100%;
+        max-width: 600px;
+        margin: 30px auto;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        overflow: hidden;
+        box-sizing: border-box;
+    }
+
+    .header {
+        text-align: center;
+        padding: 25px 20px;
+        background-color: #6a11cb;
+        color: #ffffff;
+    }
+
+    .content {
+        padding: 25px;
+        color: #333333;
+        box-sizing: border-box;
+    }
+
+    .footer {
+        background-color: #f1f1f1;
+        text-align: center;
+        padding: 15px;
+        font-size: 13px;
+        color: #666666;
+    }
+
+    .footer a {
+        color: #2575fc;
+        text-decoration: none;
+    }
+
+    .notice-box {
+        background-color: #f8f9fc;
+        border: 1px solid #e0e4f0;
+        border-radius: 6px;
+        padding: 12px 16px;
+        margin-top: 20px;
+        margin-bottom: 20px;
+        font-size: 13px;
+        color: #333333;
+        line-height: 1.5;
+    }
+
+    .arabic {
+        direction: rtl;
+        text-align: right;
+        margin-top: 15px;
+    }
+
+    @media screen and (max-width: 620px) {
         .email-container {
-            background-color: #ffffff;
-            max-width: 600px;
-            margin: 30px auto;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            overflow: hidden;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 auto !important;
+            border-radius: 0 !important;
         }
-        .header {
-            text-align: center;
-            padding: 25px 20px;
-            background: linear-gradient(90deg, #6a11cb 0%, #2575fc 100%);
-            color: #ffffff;
-        }
+
         .content {
-            padding: 25px;
-            color: #333333;
+            padding: 20px 15px !important;
+            box-sizing: border-box !important;
         }
-        .footer {
-            background-color: #f1f1f1;
-            text-align: center;
-            padding: 15px;
-            font-size: 13px;
-            color: #666666;
+        table {
+            max-width: 100% !important;
         }
-        .footer a {
-            color: #2575fc;
-            text-decoration: none;
+
+        td {
+            box-sizing: border-box !important;
         }
-        .notice-box {
-            background-color: #fff8e1;
-            border: 1px solid #ffe082;
-            border-radius: 6px;
-            padding: 12px 16px;
-            margin-top: 20px;
-            margin-bottom: 20px;
-            font-size: 13px;
-            color: #7a5800;
-            line-height: 1.5;
-        }
-        .arabic {
-            direction: rtl;
-            text-align: right;
-            margin-top: 15px;
-        }
-    </style>
+    }
+</style>
+
 </head>
 <body>
-<div class="email-container">
+    <div class="email-container">
     <!-- ================= HEADER ================= -->
     <div class="header">
         <img
@@ -83,7 +118,7 @@
             font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             font-size:14px;
             line-height:20px;
-            color:#ffffff;
+            color:#f0f0f0;
             text-align:center;
             display:block;
         ">
@@ -108,28 +143,33 @@
             has shared the following property with you via the Units platform.
         </p>
         <!-- ================= PROPERTY HEADER CARD ================= -->
-        <table width="100%" cellpadding="0" cellspacing="0" border="0"
-               style="
-                    background-color:#f8f9fc;
-                    border:1px solid #e0e4f0;
-                    border-radius:6px;
-                    margin-bottom:20px;
-               ">
+        <table
+            width="100%"
+            cellpadding="0"
+            cellspacing="0"
+            border="0"
+            style="
+                background-color:#f8f9fc;
+                border:1px solid #e0e4f0;
+                border-radius:6px;
+                margin-bottom:20px;
+            "
+        >
             <tr>
                 <td style="padding:16px 18px;">
                     <p style="
                         margin:0 0 6px 0;
                         font-size:18px;
                         font-weight:700;
-                        color:#1a1a2e;
+                        color:#222222;
                     ">
                         {{ property_name }}
                     </p>
                     {% if property_code %}
                     <span style="
                         display:inline-block;
-                        background:linear-gradient(90deg,#6a11cb 0%,#2575fc 100%);
-                        color:#1a1a2e;
+                        background-color:#6a11cb;
+                        color:#ffffff;
                         font-size:11px;
                         font-weight:600;
                         padding:3px 12px;
@@ -144,19 +184,33 @@
             </tr>
         </table>
         <!-- ================= PROPERTY DETAILS ================= -->
-        <table width="100%" cellpadding="0" cellspacing="0" border="0"
-               style="margin-bottom:8px;">
+        <table
+            width="100%"
+            cellpadding="0"
+            cellspacing="0"
+            border="0"
+            style="margin-bottom:8px;"
+        >
+
             <!-- ROW 1 -->
             <tr>
                 <!-- Property Type -->
-                <td width="50%" valign="top"
-                    style="padding:0 6px 12px 0;">
-                    <table width="100%" cellpadding="0" cellspacing="0" border="0"
-                           style="
-                                background-color:#f8f9fc;
-                                border:1px solid #e0e4f0;
-                                border-radius:6px;
-                           ">
+                <td
+                    width="50%"
+                    valign="top"
+                    style="padding:0 6px 12px 0;"
+                >
+                    <table
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        style="
+                            background-color:#f8f9fc;
+                            border:1px solid #e0e4f0;
+                            border-radius:6px;
+                        "
+                    >
                         <tr>
                             <td style="padding:12px 14px;">
                                 <p style="
@@ -172,7 +226,7 @@
                                 <p style="
                                     margin:0;
                                     font-size:14px;
-                                    color:#1a1a2e;
+                                    color:#333333;
                                     font-weight:500;
                                     word-break:break-word;
                                 ">
@@ -183,16 +237,25 @@
                     </table>
                 </td>
                 <!-- Status -->
-                <td width="50%" valign="top"
-                    style="padding:0 0 12px 6px;">
-                    <table width="100%" cellpadding="0" cellspacing="0" border="0"
-                           style="
-                                background-color:#f8f9fc;
-                                border:1px solid #e0e4f0;
-                                border-radius:6px;
-                           ">
+                <td
+                    width="50%"
+                    valign="top"
+                    style="padding:0 0 12px 6px;"
+                >
+                    <table
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        style="
+                            background-color:#f8f9fc;
+                            border:1px solid #e0e4f0;
+                            border-radius:6px;
+                        "
+                    >
                         <tr>
                             <td style="padding:12px 14px;">
+
                                 <p style="
                                     margin:0 0 4px 0;
                                     font-size:11px;
@@ -206,7 +269,7 @@
                                 <p style="
                                     margin:0;
                                     font-size:14px;
-                                    color:#1a1a2e;
+                                    color:#333333;
                                     font-weight:500;
                                 ">
                                     {{ status|default:"-" }}
@@ -219,16 +282,25 @@
             <!-- ROW 2 -->
             <tr>
                 <!-- Address -->
-                <td width="50%" valign="top"
-                    style="padding:0 6px 12px 0;">
-                    <table width="100%" cellpadding="0" cellspacing="0" border="0"
-                           style="
-                                background-color:#f8f9fc;
-                                border:1px solid #e0e4f0;
-                                border-radius:6px;
-                           ">
+                <td
+                    width="50%"
+                    valign="top"
+                    style="padding:0 6px 12px 0;"
+                >
+                    <table
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        style="
+                            background-color:#f8f9fc;
+                            border:1px solid #e0e4f0;
+                            border-radius:6px;
+                        "
+                    >
                         <tr>
                             <td style="padding:12px 14px;">
+
                                 <p style="
                                     margin:0 0 4px 0;
                                     font-size:11px;
@@ -242,7 +314,7 @@
                                 <p style="
                                     margin:0;
                                     font-size:14px;
-                                    color:#1a1a2e;
+                                    color:#333333;
                                     font-weight:500;
                                     word-break:break-word;
                                 ">
@@ -253,16 +325,25 @@
                     </table>
                 </td>
                 <!-- Address 2 -->
-                <td width="50%" valign="top"
-                    style="padding:0 0 12px 6px;">
-                    <table width="100%" cellpadding="0" cellspacing="0" border="0"
-                           style="
-                                background-color:#f8f9fc;
-                                border:1px solid #e0e4f0;
-                                border-radius:6px;
-                           ">
+                <td
+                    width="50%"
+                    valign="top"
+                    style="padding:0 0 12px 6px;"
+                >
+                    <table
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        style="
+                            background-color:#f8f9fc;
+                            border:1px solid #e0e4f0;
+                            border-radius:6px;
+                        "
+                    >
                         <tr>
                             <td style="padding:12px 14px;">
+
                                 <p style="
                                     margin:0 0 4px 0;
                                     font-size:11px;
@@ -273,33 +354,47 @@
                                 ">
                                     Address 2
                                 </p>
+
                                 <p style="
                                     margin:0;
                                     font-size:14px;
-                                    color:#1a1a2e;
+                                    color:#333333;
                                     font-weight:500;
                                     word-break:break-word;
                                 ">
                                     {{ address_line_2|default:"-" }}
                                 </p>
+
                             </td>
                         </tr>
                     </table>
                 </td>
+
             </tr>
+
             <!-- ROW 3 -->
             <tr>
+
                 <!-- Landmark -->
-                <td width="50%" valign="top"
-                    style="padding:0 6px 12px 0;">
-                    <table width="100%" cellpadding="0" cellspacing="0" border="0"
-                           style="
-                                background-color:#f8f9fc;
-                                border:1px solid #e0e4f0;
-                                border-radius:6px;
-                           ">
+                <td
+                    width="50%"
+                    valign="top"
+                    style="padding:0 6px 12px 0;"
+                >
+                    <table
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        style="
+                            background-color:#f8f9fc;
+                            border:1px solid #e0e4f0;
+                            border-radius:6px;
+                        "
+                    >
                         <tr>
                             <td style="padding:12px 14px;">
+
                                 <p style="
                                     margin:0 0 4px 0;
                                     font-size:11px;
@@ -310,28 +405,38 @@
                                 ">
                                     Landmark
                                 </p>
+
                                 <p style="
                                     margin:0;
                                     font-size:14px;
-                                    color:#1a1a2e;
+                                    color:#333333;
                                     font-weight:500;
                                     word-break:break-word;
                                 ">
                                     {{ landmark|default:"-" }}
                                 </p>
+
                             </td>
                         </tr>
                     </table>
                 </td>
                 <!-- Pincode -->
-                <td width="50%" valign="top"
-                    style="padding:0 0 12px 6px;">
-                    <table width="100%" cellpadding="0" cellspacing="0" border="0"
-                           style="
-                                background-color:#f8f9fc;
-                                border:1px solid #e0e4f0;
-                                border-radius:6px;
-                           ">
+                <td
+                    width="50%"
+                    valign="top"
+                    style="padding:0 0 12px 6px;"
+                >
+                    <table
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        style="
+                            background-color:#f8f9fc;
+                            border:1px solid #e0e4f0;
+                            border-radius:6px;
+                        "
+                    >
                         <tr>
                             <td style="padding:12px 14px;">
                                 <p style="
@@ -347,7 +452,7 @@
                                 <p style="
                                     margin:0;
                                     font-size:14px;
-                                    color:#1a1a2e;
+                                    color:#333333;
                                     font-weight:500;
                                 ">
                                     {{ pincode|default:"-" }}
@@ -360,14 +465,22 @@
             <!-- ROW 4 -->
             <tr>
                 <!-- Blocks -->
-                <td width="50%" valign="top"
-                    style="padding:0 6px 12px 0;">
-                    <table width="100%" cellpadding="0" cellspacing="0" border="0"
-                           style="
-                                background-color:#f8f9fc;
-                                border:1px solid #e0e4f0;
-                                border-radius:6px;
-                           ">
+                <td
+                    width="50%"
+                    valign="top"
+                    style="padding:0 6px 12px 0;"
+                >
+                    <table
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        style="
+                            background-color:#f8f9fc;
+                            border:1px solid #e0e4f0;
+                            border-radius:6px;
+                        "
+                    >
                         <tr>
                             <td style="padding:12px 14px;">
                                 <p style="
@@ -383,7 +496,7 @@
                                 <p style="
                                     margin:0;
                                     font-size:14px;
-                                    color:#1a1a2e;
+                                    color:#333333;
                                     font-weight:500;
                                 ">
                                     {{ no_of_blocks|default:"0" }}
@@ -393,14 +506,22 @@
                     </table>
                 </td>
                 <!-- Units -->
-                <td width="50%" valign="top"
-                    style="padding:0 0 12px 6px;">
-                    <table width="100%" cellpadding="0" cellspacing="0" border="0"
-                           style="
-                                background-color:#f8f9fc;
-                                border:1px solid #e0e4f0;
-                                border-radius:6px;
-                           ">
+                <td
+                    width="50%"
+                    valign="top"
+                    style="padding:0 0 12px 6px;"
+                >
+                    <table
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        style="
+                            background-color:#f8f9fc;
+                            border:1px solid #e0e4f0;
+                            border-radius:6px;
+                        "
+                    >
                         <tr>
                             <td style="padding:12px 14px;">
                                 <p style="
@@ -413,10 +534,11 @@
                                 ">
                                     No. of Units
                                 </p>
+
                                 <p style="
                                     margin:0;
                                     font-size:14px;
-                                    color:#1a1a2e;
+                                    color:#333333;
                                     font-weight:500;
                                 ">
                                     {{ no_of_units|default:"0" }}
@@ -429,14 +551,22 @@
             <!-- ROW 5 -->
             <tr>
                 <!-- Plot -->
-                <td width="50%" valign="top"
-                    style="padding:0 6px 12px 0;">
-                    <table width="100%" cellpadding="0" cellspacing="0" border="0"
-                           style="
-                                background-color:#f8f9fc;
-                                border:1px solid #e0e4f0;
-                                border-radius:6px;
-                           ">
+                <td
+                    width="50%"
+                    valign="top"
+                    style="padding:0 6px 12px 0;"
+                >
+                    <table
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        style="
+                            background-color:#f8f9fc;
+                            border:1px solid #e0e4f0;
+                            border-radius:6px;
+                        "
+                    >
                         <tr>
                             <td style="padding:12px 14px;">
                                 <p style="
@@ -452,7 +582,7 @@
                                 <p style="
                                     margin:0;
                                     font-size:14px;
-                                    color:#1a1a2e;
+                                    color:#333333;
                                     font-weight:500;
                                 ">
                                     {{ plot_no|default:"-" }}
@@ -462,14 +592,22 @@
                     </table>
                 </td>
                 <!-- DEWA -->
-                <td width="50%" valign="top"
-                    style="padding:0 0 12px 6px;">
-                    <table width="100%" cellpadding="0" cellspacing="0" border="0"
-                           style="
-                                background-color:#f8f9fc;
-                                border:1px solid #e0e4f0;
-                                border-radius:6px;
-                           ">
+                <td
+                    width="50%"
+                    valign="top"
+                    style="padding:0 0 12px 6px;"
+                >
+                    <table
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        style="
+                            background-color:#f8f9fc;
+                            border:1px solid #e0e4f0;
+                            border-radius:6px;
+                        "
+                    >
                         <tr>
                             <td style="padding:12px 14px;">
                                 <p style="
@@ -485,7 +623,7 @@
                                 <p style="
                                     margin:0;
                                     font-size:14px;
-                                    color:#1a1a2e;
+                                    color:#333333;
                                     font-weight:500;
                                 ">
                                     {{ dewa_no|default:"-" }}
@@ -543,7 +681,7 @@
         <!-- ================= THANK YOU ================= -->
         <p style="margin-top:20px;">
             Thank you,<br>
-            <strong>The Units Team</strong>
+            <strong>The Doqfy Team</strong>
         </p>
         <p class="arabic">
             شكرًا لكم،<br>
@@ -553,7 +691,7 @@
     <!-- ================= FOOTER ================= -->
     <div class="footer">
         <p style="margin:0 0 8px 0;">
-            © 2025 Units
+            © 2026 Units
         </p>
         <p style="margin:0;">
             Need help?

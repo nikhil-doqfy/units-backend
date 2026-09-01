@@ -7,4 +7,5 @@ urlpatterns = [
     path('lead/activity-log', views.activity_log_view, name='activity_log_view'),
     path('lead/check-active-lease', views.lead_check_active_lease, name='lead_check_active_lease'),
     path('lead/schedule-meeting', views.schedule_meeting_view, name='schedule_meeting_view'),
+    path("tenancy-ledger", views.tenancy_ledger_view, name="tenancy_ledger_view"),
 ]

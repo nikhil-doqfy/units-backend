@@ -29,6 +29,7 @@ urlpatterns = [
     path('share_profile', views.share_profile, name='share_profile'),
     path("privacy_policy", views.privacy_policy_api),
     path('documents', views.document_api, name='document_api'),
-
+    path("invite-pm", views.invite_pm, name="invite-pm"),
+    path("owner/export", views.export_owner_units_csv, name="owner/export"),
  
 ]

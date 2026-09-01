@@ -12,6 +12,8 @@ from property import urls as property_urls
 from lead import urls as lead_urls
 from lease import urls as lease_urls
 from complaint import urls as complaint_urls
+from support import urls as support_urls
+from broadcast import urls as broadcast_urls
 from notification import urls as notification_urls
 from rest_framework import permissions
 from drf_yasg.views import get_schema_view
@@ -63,6 +65,8 @@ urlpatterns = [
     path('', include(complaint_urls)),
     path('', include(notification_urls)),
     path('terms/', include(terms_urls)),
+    path('', include(support_urls)),
+    path('', include(broadcast_urls)),
 
     re_path(r"^media/(?P<path>.*)$", views.serve_media),
     path('options', views.options, name='options'),

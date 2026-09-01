@@ -33,6 +33,9 @@ urlpatterns = [
     path("api/lease/ejari-signature-otp-verify", views.ejari_signature_verify_otp,     name="ejari_signature_verify_otp"),
     path("api/lease/ejari-submit-signature",     views.submit_ejari_signature,         name="ejari_submit_signature"),
     path("api/lease/activate",                   views.activate_lease_view,            name="activate_lease"),
+    path("lease/cheque/export",                 views.export_lease_cheque_csv,         name="export-lease-cheque"),
+    path("invoice/share",                       views.share_invoice_email,             name="share_invoice_email"),
+
     # Moved from property_management
     path('save/lease', views.lease_details_view, name='lease_details_view'),
     path('lease_documents', views.lease_documents, name='lease_documents'),
