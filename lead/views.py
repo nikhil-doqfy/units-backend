@@ -7,7 +7,10 @@ from django.db.models import Q
 from django.http import HttpResponse
 from .models import Lead, ActivityLog, ScheduleMeeting
 from property.models import Unit, PMCPMMapping
-from user_service.models import PropertyManager, Tenant
+from user_service.models import PropertyManager, Tenant, Owner
+from rest_framework import status
+from lease.models import Lease
+from lease.views import _get_pmc_ids_for_user
 from plugins.logger_plugin import get_logger
 
 logger = get_logger(__name__)
@@ -700,3 +703,128 @@ def schedule_meeting_view(request):
         },
         status=status.HTTP_201_CREATED
     )
+
+@api_view(["GET"])
+@is_request_authenticated
+def tenancy_ledger_view(request):
+    try:
+        user_profile = request.user
+        search = request.GET.get("search", "").strip()
+        property_id = request.GET.get("property_id")
+        agreement_status = request.GET.get("agreement_status")
+        property_status = request.GET.get("property_status")
+        export = request.GET.get("export", "").lower() == "true"
+        platform_choices = dict(constants.PLATFORM_CHOICES)
+        page = int(request.GET.get("page", 1))
+        page_size = int(request.GET.get("page_size", 10))
+
+        leases = Lease.objects.select_related(
+            "unit", "unit__parent_property", "unit__property_block_tower", "unit__parent_property__pmc", "tenant"
+        ).order_by("-id")
+
+        # PMC / Property Manager
+        pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).select_related("company").first()
+        if pm_profile:
+            pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile, is_active=True).values_list("pmc_id", flat=True))
+            if not pmc_ids and pm_profile.company_id:
+                pmc_ids = [pm_profile.company_id]
+            leases = leases.filter(unit__parent_property__pmc_id__in=pmc_ids) if pmc_ids else Lease.objects.none()
+        else:
+            # Owner
+            owner_profile = Owner.objects.filter(pk=user_profile.pk).first()
+            if owner_profile:
+                leases = leases.filter(unit__unit_owners__owner=owner_profile).distinct()
+            else:
+                # Tenant
+                tenant_profile = Tenant.objects.filter(pk=user_profile.pk).first()
+                leases = leases.filter(tenant=tenant_profile) if tenant_profile else Lease.objects.none()
+
+        # Property Filter
+        if property_id:
+            leases = leases.filter(unit__parent_property_id=property_id)
+        # Agreement Status Filter
+        if agreement_status:
+            leases = leases.filter(lease_status=agreement_status)
+        # Unit Occupancy Filter
+        if property_status:
+            if property_status.upper() == "OCCUPIED":
+                leases = leases.filter(unit__is_occupied=True)
+            elif property_status.upper() == "VACANT":
+                leases = leases.filter(unit__is_occupied=False)
+        # Search
+        if search:
+            leases = leases.filter(
+                Q(unit__parent_property__property_name__icontains=search) |
+                Q(unit__parent_property__code__icontains=search) |
+                Q(unit__unit_name__icontains=search) |
+                Q(unit__code__icontains=search) |
+                Q(tenant__code__icontains=search) |
+                Q(tenant__user__first_name__icontains=search) |
+                Q(tenant__user__last_name__icontains=search)
+            )
+
+        # CSV Export
+        if export:
+            import csv
+            response = HttpResponse(content_type="text/csv")
+            response["Content-Disposition"] = 'attachment; filename="tenancy_ledger.csv"'
+            writer = csv.writer(response)
+            writer.writerow(["Property Id", "Property Name", "Blocks / Towers", "Unit", "Tenant Name", "Agreement Status", "Dimension", "Property Status", "PMC", "Rental Amount", "RERA Index", "Platform"])
+
+            for lease in leases.iterator():
+                unit = lease.unit
+                prop = unit.parent_property
+                block = unit.property_block_tower
+                tenant = lease.tenant
+                tenant_name = f"{tenant.user.first_name} {tenant.user.last_name}".strip() if tenant and tenant.user else ""
+                writer.writerow([
+                    prop.id if prop else "",
+                    prop.property_name if prop else "",
+                    block.block_name if block else "",
+                    unit.unit_name if unit else "",
+                    tenant_name,
+                    lease.lease_status or "",
+                    f"{unit.no_of_bedrooms} BHK" if unit.no_of_bedrooms is not None else "",
+                    "Occupied" if unit.is_occupied else "Vacant",
+                    prop.pmc.name if prop and prop.pmc else "",
+                    lease.rent if lease.rent is not None else "",
+                    "",
+                    platform_choices.get(lease.platform, lease.platform).lower() if lease.platform else ""
+                ])
+            return response
+
+        # Pagination
+        total_count = leases.count()
+        start = (page - 1) * page_size
+        paginated_leases = leases[start:start + page_size]
+
+        data = []
+        for lease in paginated_leases:
+            unit = lease.unit
+            prop = unit.parent_property
+            block = unit.property_block_tower
+            tenant = lease.tenant
+            data.append({
+                "property_id": prop.id if prop else None,
+                "property_name": prop.property_name if prop else None,
+                "block_tower": block.block_name if block else None,
+                "unit": unit.unit_name if unit else None,
+                "tenant_name": f"{tenant.user.first_name} {tenant.user.last_name}".strip() if tenant and tenant.user else None,
+                "agreement_status": lease.lease_status,
+                "dimension": f"{unit.no_of_bedrooms} BHK" if unit.no_of_bedrooms is not None else None,
+                "property_status": "Occupied" if unit.is_occupied else "Vacant",
+                "pmc": prop.pmc.name if prop and prop.pmc else None,
+                "rental_amount": lease.rent,
+                "rera_index": None,
+                "platform": platform_choices.get(lease.platform, lease.platform).lower() if lease.platform else None
+            })
+
+        return prepare_response(
+            content=data,
+            pagination={"total_records": total_count, "page": page, "page_size": page_size},
+            status=status.HTTP_200_OK
+        )
+
+    except Exception as e:
+        logger.exception("TENANCY_LEDGER_ERROR")
+        return prepare_response(message="Error fetching tenancy ledger", content={}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
