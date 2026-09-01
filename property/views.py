@@ -276,6 +276,14 @@ def property(request):
             return prepare_response(
                 message=constants.PMC_NOT_FOUND, status=status.HTTP_404_NOT_FOUND )
 
+        platforms = data.get("platforms", [])
+        if not isinstance(platforms, list):
+            return prepare_response( message="Platforms must be a list", status=status.HTTP_400_BAD_REQUEST)
+        valid_platforms = {choice[0] for choice in constants.PLATFORM_CHOICES}
+        invalid_platforms = set(platforms) - valid_platforms
+        if invalid_platforms:
+            return prepare_response(message="One or more platform values are invalid",status=status.HTTP_400_BAD_REQUEST)
+
         prop = Property.objects.create(
             created_by=user_profile.user,
             property_name=property_name,
@@ -296,11 +304,11 @@ def property(request):
             map_address=data.get("map_address"),
             approx_rent=data.get("approx_rent"),
             pmc=pmc,
+            platforms=platforms,
         )
         property_types = data.get("property_type")
         if not property_types:
-            if not property_types:
-                property_types = [constants.APARTMENT]
+            property_types = [constants.APARTMENT]
         property_type_objs = PropertyType.objects.filter(code__in=property_types)
         prop.property_type.set(property_type_objs)
         logger.info(
@@ -347,11 +355,24 @@ def property(request):
         if pm_profile and pm_profile.company:
             prop.pmc = pm_profile.company
 
-        prop.save()
         property_types = data.get("property_type")
         if property_types is not None:
             types = PropertyType.objects.filter(code__in=property_types)
             prop.property_type.set(types)
+
+        platforms = data.get("platforms")
+        if platforms is not None:
+            if not isinstance(platforms, list):
+                return prepare_response(message="Platforms must be a list", status=status.HTTP_400_BAD_REQUEST)
+
+            valid_platforms = {choice[0] for choice in constants.PLATFORM_CHOICES}
+            invalid_platforms = set(platforms) - valid_platforms
+
+            if invalid_platforms:
+                return prepare_response( message="One or more platform values are invalid", status=status.HTTP_400_BAD_REQUEST)
+        # Save exactly the current selection
+            prop.platforms = platforms
+        prop.save()
         logger.info(
             "PROPERTY_UPDATED | user_id=%d | property_id=%d | property_name=%s | status=SUCCESS",
             request.user.id, prop.id, prop.property_name,)
