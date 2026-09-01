@@ -321,6 +321,35 @@ class Approval(Base):
     def __str__(self):
         return f"{self.unit} - {self.tenant}"
 
+import uuid
+from property.models import PropertyManagmentCompany
+class PMInvitation(Base):
+    STATUS_CHOICES = (
+        ("PENDING", "Pending"),
+        ("ACCEPTED", "Accepted"),
+        ("EMAIL_MISMATCH", "Email Mismatch"),
+        ("EXPIRED", "Expired"),
+        ("CANCELLED", "Cancelled"),
+    )
+
+    pmc = models.ForeignKey(
+        PropertyManagmentCompany,
+        on_delete=models.CASCADE,
+        related_name="pm_invitations"
+    )
+
+    invited_by = models.ForeignKey(
+        UserProfile,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="sent_pm_invitations"
+    )
+    invited_email = models.EmailField()
+    signup_email = models.EmailField(null=True,blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="PENDING")
+    invited_at = models.DateTimeField(auto_now_add=True)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    invitation_token = models.UUIDField( default=uuid.uuid4, unique=True, editable=False)
 
 # class Documentation(Documents):
 

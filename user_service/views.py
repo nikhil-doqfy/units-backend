@@ -939,6 +939,13 @@ def staff_view(request):
                     "leases__tenant__user",
                     "unit_owners__owner__user",
                 )
+                if search:
+                    units_qs = units_qs.filter(
+                        Q(code__icontains=search) |
+                        Q(unit_name__icontains=search) |
+                        Q(parent_property__property_name__icontains=search) |
+                        Q(property_block_tower__property__property_name__icontains=search)
+                    ).distinct()
 
                 assigned_properties = []
                 for unit in units_qs:
@@ -1809,6 +1816,44 @@ def owner_crud(request):
 
     return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
+@api_view(["GET"])
+@is_request_authenticated
+def export_owner_units_csv(request):
+    try:
+        owner_id = request.GET.get("owner_id", "").strip()
+        if not owner_id:
+            return prepare_response(message="Owner ID is required", status=status.HTTP_400_BAD_REQUEST)
+        pm_profile = PropertyManager.objects.filter(pk=request.user.pk).first()
+        if pm_profile:
+            pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile, is_active=True).values_list("pmc_id", flat=True))
+            if not pmc_ids:
+                return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+            owner = Owner.objects.select_related("user").filter(id=owner_id, user__is_active=True, is_active=True, pmc__id__in=pmc_ids).distinct().first()
+        else:
+            owner = Owner.objects.for_user(user_profile).select_related("user").filter(id=owner_id, user__is_active=True).first()
+        if not owner:
+            logger.warning("OWNER_EXPORT_FAILED | user_id=%s | owner_id=%s | reason=OWNER_NOT_FOUND", request.user.id, owner_id)
+            return prepare_response(message="Owner not found", status=status.HTTP_404_NOT_FOUND)
+        tenancy_status = request.GET.get("tenancy_status", "").strip()
+        units_qs = Unit.objects.filter(unit_owners__owner=owner).prefetch_related("leases", "leases__tenant__user", "property_block_tower__property")
+        rows = []
+        for unit in units_qs:
+            is_occupied = unit.leases.filter(lease_status="ACTIVE", is_active=True).exists()
+            if tenancy_status == "OCCUPIED" and not is_occupied:
+                continue
+            if tenancy_status == "VACANT" and is_occupied:
+                continue
+            data = serialize_owner_unit(unit, owner)
+            rows.append({"code": data.get("code", ""), "property_name": data.get("property_name", ""), "tenant_name": data.get("tenant_name", ""), "tenancy_status": data.get("tenancy_status", ""), "agreement": data.get("agreement", "")})
+        if not rows:
+            return prepare_response(message="No data available for export", status=status.HTTP_404_NOT_FOUND)
+        fields = ["code", "property_name", "tenant_name", "tenancy_status", "agreement"]
+        logger.info("OWNER_UNITS_CSV_EXPORTED | user_id=%s | owner_id=%s | total_records=%s", request.user.id, owner.id, len(rows))
+        return export_to_csv("owner_units", fields, rows)
+    except Exception:
+        logger.exception("OWNER_UNITS_CSV_EXPORT_ERROR | user_id=%s | owner_id=%s", request.user.id, request.GET.get("owner_id"))
+        return prepare_response(message="Failed to export owner units", status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 def _serialize_tenant(tenant):
     def _doc_entry(d):
@@ -2509,6 +2554,7 @@ def approval_view(request):
 
 # This view is for the logged-in user with role "OWNER".
 # It provides details of all PMC (Property Management PropertyManagmentCompany) associated with the owner's properties.
+from user_service.serializers import _get_pdf_urls
 @owner_pmc_get
 @api_view(["GET"])
 @is_request_authenticated
@@ -2519,6 +2565,7 @@ def owner_pmc_view(request):
         pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).select_related("company").first()
         company_id = request.GET.get("company_id")
         search = request.GET.get("search", "").strip()
+        tenancy_status = request.GET.get("tenancy_status", "").strip().upper()
         page = int(request.GET.get("page", 1))
         limit = int(request.GET.get("limit", 10))
         try:
@@ -2570,6 +2617,7 @@ def owner_pmc_view(request):
                     total_count = owner_company_units.count()
                     leased_count = Lease.objects.filter(
                         unit__in=owner_company_units,
+                        lease_status="ACTIVE",
                         is_active=True
                     ).count()
                     tenancy_ratio = f"{leased_count}:{total_count}" if total_count else "0:0"
@@ -2667,6 +2715,14 @@ def owner_pmc_view(request):
                         Q(property_block_tower__property__property_name__icontains=search)|
                         Q(parent_property__property_name__icontains=search)
                     )
+                if tenancy_status == "OCCUPIED":
+                    properties_qs = properties_qs.filter(leases__is_active=True).distinct()
+                    
+                elif tenancy_status == "VACANT":
+                    properties_qs = properties_qs.exclude(leases__is_active=True).distinct()
+                    
+                elif tenancy_status:
+                    return prepare_response(message="Invalid tenancy status. Use OCCUPIED or VACANT.",status=status.HTTP_400_BAD_REQUEST)
 
                 paginator = Paginator(properties_qs, limit)
                 try:
@@ -2675,7 +2731,8 @@ def owner_pmc_view(request):
                     property_page = paginator.page(paginator.num_pages)
                 properties_data = []
                 for prop in property_page:
-                    lease = prop.leases.filter(is_active=True).first()
+                    # lease = prop.leases.filter(is_active=True).first()
+                    lease = prop.leases.filter( lease_status="ACTIVE",is_active=True).first()
                     tenant_name = None
                     lease_id = None
                     tenancy_status = "Vacant"
@@ -2684,6 +2741,8 @@ def owner_pmc_view(request):
                         tenant_name = f"{tenant_user.first_name} {tenant_user.last_name}".strip()
                         lease_id = lease.id
                         tenancy_status = "Occupied"
+                                           
+                    pdf_url, pdf_download_url = _get_pdf_urls(lease)
  
                     property_obj = prop.property_block_tower.property if prop.property_block_tower else prop.parent_property
                     properties_data.append({
@@ -2693,6 +2752,8 @@ def owner_pmc_view(request):
                         "tenancy_status": tenancy_status,
                         "dimension": str(prop.unit_size) if prop.unit_size is not None else prop.area,
                         "lease_id": lease_id,
+                        "pdf_url": pdf_url,
+                        "pdf_download_url": pdf_download_url,
                     })
  
                 pm_mappings = PMCPMMapping.objects.filter(pmc=company, is_active=True).select_related("pm__user")
@@ -4338,3 +4399,131 @@ def document_api(request):
             status=status.HTTP_201_CREATED
         )
     return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+from .models import PMInvitation
+from property_management.utils import audit_logs
+@api_view(["POST"])
+@is_request_authenticated
+def invite_pm(request):
+    if request.method == "POST":
+        try:
+            body = json.loads(request.body)
+            pmc_id = body.get("pmc_id")
+            email = body.get("email", "").strip().lower()
+ 
+            if not pmc_id:
+                return prepare_response(message="pmc_id is required", status=status.HTTP_400_BAD_REQUEST)
+            if not email:
+                return prepare_response(message="email is required", status=status.HTTP_400_BAD_REQUEST)
+ 
+            user_profile = request.user
+            owner_profile = Owner.objects.filter(pk=user_profile.pk).first()
+            pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).first()
+ 
+            if not owner_profile and not pm_profile:
+                return prepare_response(message="Only Owner or Property Manager can invite a PM", status=status.HTTP_403_FORBIDDEN)
+            company = PropertyManagmentCompany.objects.filter(pk=pmc_id, is_active=True).first()
+            if not company:
+                return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+ 
+            # PM can invite only for assigned PMC
+            if pm_profile:
+                has_access = PMCPMMapping.objects.filter(
+                    pm=pm_profile,
+                    pmc=company,
+                    is_active=True
+                ).exists()
+ 
+                if not has_access:
+                    return prepare_response(message="You do not have access to this PMC", status=status.HTTP_403_FORBIDDEN)
+ 
+            # Owner can invite for PMC associated with owner's units
+            elif owner_profile:
+                has_access = Unit.objects.filter(
+                    unit_owners__owner=owner_profile,
+                    is_active=True
+                ).filter(
+                    Q(property_block_tower__property__pmc=company) |
+                    Q(parent_property__pmc=company)
+                ).exists()
+                if not has_access:
+                    return prepare_response(message="You do not have access to this PMC", status=status.HTTP_403_FORBIDDEN)
+            existing_pm = PropertyManager.objects.filter(user__email__iexact=email).first()
+ 
+            if existing_pm:
+                already_mapped = PMCPMMapping.objects.filter(
+                    pm=existing_pm,
+                    pmc=company,
+                    is_active=True
+                ).exists()
+ 
+                if already_mapped:
+                    return prepare_response(message="This PM is already assigned to the selected PMC", status=status.HTTP_400_BAD_REQUEST)
+                return prepare_response(message="This email already belongs to a PM", status=status.HTTP_400_BAD_REQUEST)
+            invitation = PMInvitation.objects.create(pmc=company, invited_by=user_profile, invited_email=email,created_by=user_profile.user,)
+ 
+            from utilities.config import FRONTEND_URL
+            from urllib.parse import urlencode
+            qs = urlencode({
+                "role": "pm",
+                "email": email,
+                "pmc_id": company.id,
+                "invitation_token": str(invitation.invitation_token),
+            })
+ 
+            signup_url = f"{FRONTEND_URL}/auth/new-user?{qs}"
+            inviter_name = "Units User"
+            if user_profile.user:
+                name = f"{user_profile.user.first_name} {user_profile.user.last_name}".strip()
+                if name:
+                    inviter_name = name
+ 
+            context = {
+                "invited_pm_email": email,
+                "invited_by": inviter_name,
+                "company_name": company.name,
+                "company_code": company.code,
+                "signup_url": signup_url,
+            }
+ 
+            body_html = render_to_string("email_templates/pm_invitation.html", context)
+            body_text = (
+                f"Hello,\n\n"
+                f"{inviter_name} has invited you to join {company.name} on the Units platform.\n\n"
+                f"Please sign up using the link below:\n"
+                f"{signup_url}\n\n"
+                f"Thank you,\n"
+                f"The Units Team"
+            )
+            ok = send_ses_email(
+                email,
+                f"You have been invited to join {company.name} - Units",
+                body_text,
+                body_html
+            )
+            if not ok:
+                invitation.status = "CANCELLED"
+                invitation.save(update_fields=["status"])
+            if ok:
+                logger.info(
+                    "PM_INVITE_SENT | user_id=%d | pmc_id=%d | email=%s",
+                    request.user.id, company.id, email)
+                audit_logs(request, f"Sent PM invitation to {email} for PMC {company.name}", constants.CREATED)
+            else:
+                logger.warning(
+                    "PM_INVITE_FAILED | user_id=%d | pmc_id=%d | email=%s",
+                    request.user.id, company.id, email )
+            return prepare_response(
+                message="Invite email sent successfully",
+                content={"sent": email, "pmc_id": company.id, "success": ok},
+                status=status.HTTP_200_OK
+            )
+        except json.JSONDecodeError:
+            return prepare_response(message="Invalid JSON body", status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            logger.exception(
+                "PM_INVITE_ERROR | user_id=%d | error=%s",
+                request.user.id,
+                str(e)
+            )
+            return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
