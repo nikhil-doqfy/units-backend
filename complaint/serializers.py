@@ -7,14 +7,21 @@ def serialize_complaint(c):
     Serialize a Complaint object into a JSON-ready dictionary.
     Includes assigned technicians, appointment slots, images, and rating.
     """
+    property_obj = None
+
+    if c.unit:
+        if c.unit.property_block_tower:
+            property_obj = c.unit.property_block_tower.property
+        elif c.unit.parent_property:
+            property_obj = c.unit.parent_property
+
     return {
         "id": c.id,
         "code": c.code,
         "unit": {
             "id": c.unit.id,
             "unit_name": c.unit.unit_name,
-            "property_name": c.unit.property_block_tower.property.property_name
-                             if c.unit.property_block_tower else None,
+            "property_name": property_obj.property_name if property_obj else None,
         },
         "raised_by": {
             "id": c.raised_by.id,

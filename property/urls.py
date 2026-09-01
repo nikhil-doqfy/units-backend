@@ -19,4 +19,7 @@ urlpatterns = [
     path('export/property', views.export_property_table_csv, name='export_property_table_csv'),
     path('interested', views.toggle_property_interest, name='toggle_property_interest'),
     path('companies', views.company_list, name='company_list'),
+    path('share-property', views.share_property, name='share-property'),
+    path('share-unit', views.share_unit, name='share-unit')
+
 ]

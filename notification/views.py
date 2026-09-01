@@ -124,6 +124,7 @@ def notification_read(request, pk):
         notification.mark_read()
 
         return prepare_response(
+            content=serialize_notification(notification),
             message="Notification marked as read.",
             status=status.HTTP_200_OK
         )

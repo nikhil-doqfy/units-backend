@@ -5,7 +5,7 @@ import json
 from datetime import datetime
 from django.db.models import Q
 from django.http import HttpResponse
-from .models import Lead, ActivityLog
+from .models import Lead, ActivityLog, ScheduleMeeting
 from property.models import Unit, PMCPMMapping
 from user_service.models import PropertyManager, Tenant
 from plugins.logger_plugin import get_logger
@@ -583,4 +583,120 @@ def lead_bulk_import(request):
         message=f"{created} lead(s) imported successfully. {skipped} skipped.",
         content={"created": created, "skipped": skipped, "errors": errors},
         status=status.HTTP_201_CREATED,
+    )
+
+from urllib.parse import urlencode
+def generate_google_calendar_url(title, description, start_time, end_time):
+    """
+    Generate a pre-filled Google Calendar event URL.
+    """
+    start_time = start_time.astimezone()
+    end_time = end_time.astimezone()
+    start_str = start_time.strftime("%Y%m%dT%H%M%S")
+    end_str = end_time.strftime("%Y%m%dT%H%M%S")
+
+    params = {
+        "action": "TEMPLATE",
+        "text": title,
+        "dates": f"{start_str}/{end_str}",
+        "stz": "Asia/Kolkata",
+        "etz": "Asia/Kolkata",
+        "details": description or "",
+    }
+    return (
+        "https://calendar.google.com/calendar/r/eventedit?"
+        + urlencode(params)
+    )
+
+@api_view(["POST"])
+@is_request_authenticated
+def schedule_meeting_view(request):
+    user_profile = request.user
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return prepare_response(message="Invalid JSON", status=status.HTTP_400_BAD_REQUEST)
+
+    lead_id = data.get("lead_id")
+    title = (data.get("title") or "").strip()
+    description = (data.get("description") or "").strip()
+    start_time = data.get("start_time")
+    end_time = data.get("end_time")
+
+    if not lead_id:
+        return prepare_response(message="lead_id is required", status=status.HTTP_400_BAD_REQUEST)
+
+    if not title:
+        return prepare_response(message="title is required", status=status.HTTP_400_BAD_REQUEST)
+
+    if not start_time:
+        return prepare_response(message="start_time is required", status=status.HTTP_400_BAD_REQUEST)
+
+    if not end_time:
+        return prepare_response(message="end_time is required", status=status.HTTP_400_BAD_REQUEST)
+
+    pmc_ids = _get_pmc_ids(user_profile)
+    if not pmc_ids:
+        return prepare_response(message="Company not found for this user", status=status.HTTP_400_BAD_REQUEST)
+
+    lead = Lead.objects.filter(id=lead_id, pmc_id__in=pmc_ids, is_active=True).first()
+
+    if not lead:
+        return prepare_response(message="Lead not found", status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        start_datetime = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+        end_datetime = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return prepare_response(message="Invalid start_time or end_time format", status=status.HTTP_400_BAD_REQUEST)
+
+    if end_datetime <= start_datetime:
+        return prepare_response(message="end_time must be greater than start_time", status=status.HTTP_400_BAD_REQUEST)
+
+    google_calendar_url = generate_google_calendar_url(
+        title=title,
+        description=description,
+        start_time=start_datetime,
+        end_time=end_datetime,
+    )
+
+    meeting = ScheduleMeeting.objects.create(
+        lead=lead,
+        title=title,
+        description=description,
+        start_time=start_datetime,
+        end_time=end_datetime,
+        status="SCHEDULED",
+        google_calendar_url=google_calendar_url,
+        created_by=user_profile.user,
+    )
+
+    ActivityLog.objects.create(
+        lead=lead,
+        activity_type=constants.NOTE,
+        title="scheduled a meeting",
+        description=(
+            f"{title} scheduled from "
+            f"{start_datetime.strftime('%d %b %Y %I:%M %p')} "
+            f"to "
+            f"{end_datetime.strftime('%d %b %Y %I:%M %p')}"
+        ),
+        created_by=user_profile.user,
+    )
+
+    return prepare_response(
+        message="Meeting scheduled successfully",
+        content={
+            "id": meeting.id,
+            "lead_id": lead.id,
+            "lead_name": lead.name,
+            "lead_email": lead.email,
+            "title": meeting.title,
+            "description": meeting.description,
+            "start_time": meeting.start_time,
+            "end_time": meeting.end_time,
+            "status": meeting.status,
+            "google_calendar_url": meeting.google_calendar_url,
+        },
+        status=status.HTTP_201_CREATED
     )

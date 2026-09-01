@@ -110,6 +110,8 @@ def options(request):
 
         elif option_type == "PARENT_PROPERTY":
             properties = Property.objects.none()
+            tenant_profile = Tenant.objects.filter(pk=user.pk).first()
+            is_tenant = tenant_profile is not None
             if is_owner:
                 property_ids = Unit.objects.filter(unit_owners__owner=user).values_list("property_block_tower__property_id", flat=True).distinct()
                 properties = Property.objects.filter(id__in=property_ids)
@@ -118,6 +120,15 @@ def options(request):
                 if not pmc_ids and pm_profile.company_id:
                     pmc_ids = [pm_profile.company_id]
                 properties = Property.objects.filter( pmc_id__in=pmc_ids, is_active=True)
+            elif is_tenant:
+                if tenant_profile:
+                    lease = Lease.objects.filter(tenant=tenant_profile, is_active=True).select_related("unit", "unit__parent_property","unit__property_block_tower__property").first()
+                    if lease:
+                        unit = lease.unit
+                        if unit.parent_property:
+                            properties = Property.objects.filter(pk=unit.parent_property.pk)
+                        elif unit.property_block_tower:
+                            properties = Property.objects.filter(pk=unit.property_block_tower.property_id)
             content["property"] = [{"key": prop.id, "value": prop.property_name}for prop in properties]
         elif option_type == "PROPERTY_TYPE":
             content["property_type"] = [
@@ -166,17 +177,24 @@ def options(request):
             content["property_unit"] = [{"key": u.id, "value": u.unit_name or "Unnamed Unit"} for u in units]
         
         elif option_type == "PMCS":
-            if is_pm:
+            tenant_profile = Tenant.objects.filter(pk=user.pk).first()
+            if tenant_profile:
+                pmcs = tenant_profile.pmc.filter(is_active=True).order_by("name")
+            elif is_pm:
                 if not pm_profile.company:
                     return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
-                organization = pm_profile.company.organization            
+                organization = pm_profile.company.organization
+                pmcs = PropertyManagmentCompany.objects.filter(
+                    organization=organization,
+                    is_active=True
+                ).order_by("name")            
             else:
                 company = PropertyManagmentCompany.objects.filter(created_by=user.user, is_active=True).first()
                 
                 if not company:
                     return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND )
                 organization = company.organization
-            pmcs = PropertyManagmentCompany.objects.filter(organization=organization, is_active=True).order_by("name")          
+                pmcs = PropertyManagmentCompany.objects.filter(organization=organization, is_active=True).order_by("name")          
             content["pmcs"] = [
                 {
                     "key": pmc.id,
@@ -314,21 +332,20 @@ def options(request):
                 if is_owner:
                     units = Unit.objects.filter(owner=user, leases__isnull=False).distinct()
                 elif is_pm:
-                    if not pm_profile.company:
+                    pmc_ids = PMCPMMapping.objects.filter(pm=pm_profile).values_list("pmc_id", flat=True)
+                    if not pmc_ids:
                         return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
-                    #units = Unit.objects.filter(property_block_tower__property__pmc=pm_profile.company, leases__isnull=False).distinct()
-                    units = Unit.objects.filter(Q(parent_property__pmc=pm_profile.company) | Q(property_block_tower__property__pmc=pm_profile.company),leases__isnull=False).distinct()
+                    units = Unit.objects.filter(Q(parent_property__pmc_id__in=pmc_ids) | Q(property_block_tower__property__pmc_id__in=pmc_ids), leases__isnull=False).distinct()
                 else:
                     units = Unit.objects.none()
             else:
                 if is_owner:
-                    #units = Unit.objects.filter(property_block_tower__property_id=parent_property_id, leases__isnull=False).distinct()
-                    units = Unit.objects.filter( Q(parent_property_id=parent_property_id) | Q(property_block_tower__property_id=parent_property_id), leases__isnull=False ).distinct()
+                    units = Unit.objects.filter(Q(parent_property_id=parent_property_id) | Q(property_block_tower__property_id=parent_property_id), leases__isnull=False).distinct()
                 elif is_pm:
-                    if not pm_profile.company:
+                    pmc_ids = PMCPMMapping.objects.filter(pm=pm_profile).values_list("pmc_id", flat=True)
+                    if not pmc_ids:
                         return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
-                    #units = Unit.objects.filter(property_block_tower__property_id=parent_property_id, property_block_tower__property__pmc=pm_profile.company, leases__isnull=False).distinct()
-                    units = Unit.objects.filter( Q(parent_property_id=parent_property_id, parent_property__pmc=pm_profile.company) | Q(property_block_tower__property_id=parent_property_id, property_block_tower__property__pmc=pm_profile.company), leases__isnull=False).distinct()
+                    units = Unit.objects.filter(Q(parent_property_id=parent_property_id, parent_property__pmc_id__in=pmc_ids) | Q(property_block_tower__property_id=parent_property_id, property_block_tower__property__pmc_id__in=pmc_ids), leases__isnull=False).distinct()
                 else:
                     units = Unit.objects.none()
             content["property_unit_with_lease"] = [{"key": u.id, "value": u.unit_name or "Unnamed Unit"} for u in units]
@@ -360,8 +377,25 @@ def options(request):
             if not property_id:
                 content["property_unit"] = []
             else:
-                #units = Unit.objects.filter(property_block_tower__property_id=property_id)
-                units = Unit.objects.filter(Q(parent_property_id=property_id) |Q(property_block_tower__property_id=property_id)).distinct()
+                tenant_profile = Tenant.objects.filter(pk=user.pk).first()
+                if tenant_profile:
+                    lease = Lease.objects.filter(
+                        tenant=tenant_profile,
+                        is_active=True
+                    ).select_related("unit").first()
+                    if lease:                   
+                        unit = lease.unit
+                        if (
+                            (unit.parent_property_id and str(unit.parent_property_id) == property_id) or
+                            (unit.property_block_tower and str(unit.property_block_tower.property_id) == property_id)
+                        ):
+                            units = Unit.objects.filter(pk=unit.pk)
+                        else:
+                            units = Unit.objects.none()
+                    else:
+                        units = Unit.objects.none()
+                else:
+                    units = Unit.objects.filter(Q(parent_property_id=property_id) |Q(property_block_tower__property_id=property_id)).distinct()
                 content["property_unit"] = [{ "key": unit.id,"value": unit.unit_name or f"Unit #{unit.id}"}for unit in units]
 
         elif option_type == "PROPERTY_BLOCK_BY_PROPERTY":
@@ -382,17 +416,63 @@ def options(request):
                 content["property_unit"] = [{"key": unit.id, "value": unit.unit_name or f"Unit #{unit.id}"} for unit in units]
 
         elif option_type == "PMC_BY_PM":
-            if not is_pm:
-                content["pmc"] = []
-                continue
-            pm_profile = PropertyManager.objects.filter(pk=user.pk).first()
-            if not pm_profile:
+            if is_pm:
+                pm_profile = PropertyManager.objects.filter(pk=user.pk).first()
+                if not pm_profile:
                     content["pmc"] = []
                     continue
-            pmc_ids = PMCPMMapping.objects.filter(pm=pm_profile).values_list("pmc_id", flat=True)
-            pmcs = PropertyManagmentCompany.objects.filter(id__in=pmc_ids, is_active=True).order_by("name")
-            content["pmc"] = [{"key": pmc.id, "value": pmc.name } for pmc in pmcs]
 
+                pmc_ids = PMCPMMapping.objects.filter(pm=pm_profile, is_active=True).values_list("pmc_id", flat=True)
+                pmcs = PropertyManagmentCompany.objects.filter( id__in=pmc_ids,is_active=True).order_by("name")
+            else:
+                tenant_profile = Tenant.objects.filter(pk=user.pk).first()
+                if tenant_profile:
+                    pmcs = tenant_profile.pmc.filter(is_active=True).order_by("name")
+                else:
+                    owner_profile = Owner.objects.filter(pk=user.pk).first()
+                    if not owner_profile:
+                        content["pmc"] = []
+                        continue
+                    pmcs = owner_profile.pmc.filter(is_active=True).order_by("name")
+            content["pmc"] = [ {"key": pmc.id, "value": pmc.name} for pmc in pmcs]
+            
+        elif option_type == "PROPERTY_BY_PMC":
+            pmc_id = request.GET.get("pmc_id")
+            if not pmc_id:
+                content["property"] = []
+            else:
+                pm_profile = PropertyManager.objects.filter(pk=user.pk).first()
+                if pm_profile:
+                    pmc_ids = PMCPMMapping.objects.filter(pm=pm_profile, is_active=True).values_list("pmc_id", flat=True)
+                    if int(pmc_id) not in pmc_ids:
+                        content["property"] = []
+                    else:
+                        properties = Property.objects.filter(pmc_id=pmc_id, is_active=True).order_by("property_name")
+                        content["property"] = [{"key": p.id, "value": p.property_name} for p in properties]
+                else:
+                    tenant_profile = Tenant.objects.filter(pk=user.pk).first()
+                    if not tenant_profile:
+                        content["property"] = []
+                        continue
+                    tenant_pmc_ids = tenant_profile.pmc.filter(is_active=True).values_list("id", flat=True)
+                    if int(pmc_id) not in tenant_pmc_ids:
+                        content["property"] = []
+                        continue
+                    lease = Lease.objects.filter(tenant=tenant_profile,is_active=True).select_related("unit", "unit__parent_property","unit__property_block_tower__property").first()
+                    if not lease:
+                        content["property"] = []
+                        continue
+                    unit = lease.unit
+                    if unit.parent_property:
+                        property_obj = unit.parent_property
+                    elif unit.property_block_tower:
+                        property_obj = unit.property_block_tower.property
+                    else:
+                        property_obj = None
+                    if property_obj:
+                        content["property"] = [{"key": property_obj.id, "value": property_obj.property_name}]
+                    else:
+                        content["property"] = []
         elif option_type == "COMPLAINT_STATUS":
             content["complaint_status"] = [
                 {"key": constants.IN_PROGRESS, "value": "In Progress"},
@@ -401,7 +481,14 @@ def options(request):
                 {"key": constants.REJECTED, "value": "Rejected"},
             ]
         elif option_type == "TENANT_DOCUMENT_TYPE":
-            doc_types = DocumentType.objects.filter(section=constants.TENANT).order_by("id")
+            tenant_profile = Tenant.objects.filter(pk=user.pk).first()
+            owner_profile = Owner.objects.filter(pk=user.pk).first()
+            if tenant_profile:
+                doc_types = DocumentType.objects.filter( section=constants.TENANT).order_by("id")
+            elif owner_profile:
+                doc_types = DocumentType.objects.filter(section=constants.OWNER).order_by("id")
+            else:
+                doc_types = DocumentType.objects.none()
             content["tenant_document_type"] = [{"key": dt.id, "value": dt.name} for dt in doc_types]
 
         elif option_type == "TENANT_BY_COMPANY": #for creating lease we get that tenants
@@ -850,31 +937,92 @@ def dashboard_top_revenue_properties(request):
         return prepare_response(message={"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 @faq_get
-@api_view(["GET"])
+@api_view(["GET", "POST", "PUT", "DELETE"])
+@is_request_authenticated
 def faq_api(request):
 
+    # ---------------- GET ----------------
     if request.method == "GET":
-        faqs = FAQ.objects.all()
-        data = [
-            {
+        faq_id = request.GET.get("faq_id")
+        if faq_id:
+            faq = FAQ.objects.filter(id=faq_id).first()
+            if not faq:
+                return prepare_response( message="FAQ not found", status=status.HTTP_404_NOT_FOUND)
+
+            content = {
                 "id": faq.id,
                 "question": faq.question,
                 "answer": faq.answer
             }
-            for faq in faqs
-        ]
-        logger.info(
-            "FAQ_FETCHED | total_faqs=%s", len(data) )
-        return prepare_response(
-            content=data
+
+        else:
+            faqs = FAQ.objects.all().order_by("id")
+            content = []
+            for faq in faqs:
+                content.append({
+                    "id": faq.id,
+                    "question": faq.question,
+                    "answer": faq.answer
+                })
+
+        return prepare_response( content=content, message="FAQ fetched successfully",status=status.HTTP_200_OK)
+    # ---------------- POST ----------------
+    elif request.method == "POST":
+        try:
+            body = json.loads(request.body)
+        except Exception:
+            return prepare_response(message="Invalid JSON body", status=status.HTTP_400_BAD_REQUEST)
+
+        question = body.get("question")
+        answer = body.get("answer")
+        if not question or not answer:
+            return prepare_response(message="question and answer are required", status=status.HTTP_400_BAD_REQUEST)
+        faq = FAQ.objects.create(
+            question=question,
+            answer=answer
         )
-    else:
-        logger.warning(
-            "FAQ_FETCH_FAILED | reason=METHOD_NOT_ALLOWED" )
+
         return prepare_response(
-            message=constants.INVALID_REQUEST,
-            status=status.HTTP_405_METHOD_NOT_ALLOWED
+            content={
+                "id": faq.id
+            },
+            message="FAQ created successfully",
+            status=status.HTTP_201_CREATED
         )
+
+
+    # ---------------- PUT ----------------
+    elif request.method == "PUT":
+        try:
+            body = json.loads(request.body)
+        except Exception:
+            return prepare_response(message="Invalid JSON body", status=status.HTTP_400_BAD_REQUEST)
+        faq_id = body.get("faq_id")
+        if not faq_id:
+            return prepare_response(message="faq_id is required", status=status.HTTP_400_BAD_REQUEST)
+        faq = FAQ.objects.filter(id=faq_id).first()
+        if not faq:
+            return prepare_response(message="FAQ not found", status=status.HTTP_404_NOT_FOUND)
+
+        faq.question = body.get("question", faq.question)
+        faq.answer = body.get("answer", faq.answer)
+        faq.save()
+
+        return prepare_response(
+            message="FAQ updated successfully",
+            status=status.HTTP_200_OK
+        )
+    # ---------------- DELETE ----------------
+    elif request.method == "DELETE":
+        faq_id = request.GET.get("faq_id")
+        if not faq_id:
+            return prepare_response( message="faq_id is required", status=status.HTTP_400_BAD_REQUEST)
+        faq = FAQ.objects.filter(id=faq_id).first()
+        if not faq:
+            return prepare_response(message="FAQ not found", status=status.HTTP_404_NOT_FOUND)
+        faq.delete()
+        return prepare_response(message="FAQ deleted successfully", status=status.HTTP_200_OK)
+    return prepare_response(message="Method not allowed", status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
 
 #--------------------------------------------> Dashboard API<------------------------------------------------------------------

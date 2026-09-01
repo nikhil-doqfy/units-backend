@@ -3,7 +3,7 @@ from utilities import status, constants
 from utilities.helper_functions import prepare_response, datetime_to_epoch_millis, safe_epoch_to_datetime, get_extension_from_base64, export_to_csv, send_ses_email, fetch_s3_presigned_url, upload_file_to_s3_base64
 import uuid
 from django.template.loader import render_to_string
-from user_service.models import UserProfile, Documents, OwnerDocuments, TenantDocuments, Role, Owner, Tenant, PropertyManager ,Approval, DocumentType, Documentation, PrivacyPolicy
+from user_service.models import UserProfile, Documents, OwnerDocuments, TenantDocuments, Role, Owner, Tenant, PropertyManager ,Approval, DocumentType, PrivacyPolicy
 from property.models import PropertyManagerDocuments, Unit, Property, PropertyManagmentCompany, UnitOwner
 from django.db import transaction
 from django.views.decorators.csrf import csrf_exempt
@@ -17,6 +17,10 @@ from property_management.utils import get_staff_details, get_property_images, ge
 from property.models import PMCPMMapping
 from user_service.utils import upload_document, process_rent_approval
 from lease.models import Lease, LeaseDocuments
+from datetime import date, datetime
+from django.utils.dateparse import parse_date
+from django.http import HttpResponse
+import csv
 from user_service.serializers import serialize_owner_detail, serialize_owner_unit
 from user_service.tasks import send_renewal_email
 from rest_framework.decorators import api_view
@@ -2777,32 +2781,45 @@ def export_owner_pmc_csv(request):
     try:
         user_profile = request.user
         owner_profile = Owner.objects.filter(pk=user_profile.pk).first()
+        pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).select_related("company").first()
         company_id = request.GET.get("company_id")
         search = request.GET.get("search", "").strip()
 
-        if owner_profile and not company_id:
-            user = owner_profile
-
-            owner_units = Unit.objects.filter(unit_owners__owner=user,is_active=True).select_related("property_block_tower__property__pmc")
+        # ── CASE 1: PMC LIST (no company_id) ──────────────────────────────
+        if (owner_profile or pm_profile) and not company_id:
+            if owner_profile:
+                owner_units = Unit.objects.filter(
+                    unit_owners__owner=owner_profile,
+                    is_active=True
+                ).select_related("property_block_tower__property__pmc")
+            else:
+                pmc_ids = list(
+                    PMCPMMapping.objects.filter(pm=pm_profile).values_list("pmc_id", flat=True)
+                )
+                owner_units = Unit.objects.filter(
+                    Q(property_block_tower__property__pmc_id__in=pmc_ids) |
+                    Q(parent_property__pmc_id__in=pmc_ids),
+                    is_active=True
+                ).select_related(
+                    "property_block_tower__property__pmc",
+                    "parent_property__pmc",
+                )
 
             company_ids = owner_units.values_list(
                 "property_block_tower__property__pmc_id", flat=True
-            ).distinct()
+            ).union(owner_units.values_list("parent_property__pmc_id", flat=True))
 
             pmc_qs = PropertyManagmentCompany.objects.filter(id__in=company_ids,is_active=True)
 
             if search:
                 pmc_qs = pmc_qs.filter(
                     Q(name__icontains=search) |
-                    Q(code__icontains=search) |
-                    Q(company_staff__user__first_name__icontains=search) |
-                    Q(company_staff__user__last_name__icontains=search) |
-                    Q(company_staff__user__email__icontains=search)
+                    Q(code__icontains=search)
                 ).distinct()
 
             field_names = [
                 "PropertyManagmentCompany Code",
-                "Property Handling ",
+                "Property Handling",
                 "PropertyManagmentCompany Name",
                 "Tenancy Ratio",
                 "PropertyManagmentCompany Address",
@@ -2812,7 +2829,8 @@ def export_owner_pmc_csv(request):
 
             for company in pmc_qs:
                 owner_company_units = owner_units.filter(
-                    property_block_tower__property__pmc=company
+                    Q(property_block_tower__property__pmc=company) |
+                    Q(parent_property__pmc=company)
                 )
                 total_props = owner_company_units.count()
                 leased_props = Lease.objects.filter(
@@ -2821,20 +2839,30 @@ def export_owner_pmc_csv(request):
                 ).count()
                 tenancy_ratio = f"{leased_props}:{total_props}" if total_props else "0:0"
 
-                pmc_user = PropertyManager.objects.filter(
-                    company=company
-                ).select_related("user").first()
+                mappings = PMCPMMapping.objects.filter(
+                    pmc=company,
+                    is_active=True
+                ).select_related("pm__user")
+                pm_names = []
+                for mapping in mappings:
+                    if mapping.pm and mapping.pm.user:
+                        pm_names.append(
+                            f"{mapping.pm.user.first_name} {mapping.pm.user.last_name}".strip()
+                        )
+                property_handling = ", ".join(pm_names)
+                first_mapping = mappings.first()
+                pmc_user = first_mapping.pm if first_mapping else None
 
                 data_list.append({
-                    "PropertyManagmentCompany Code": pmc_user.code if pmc_user else None,
-                    "Property Handling ": company.name,
-                    "PropertyManagmentCompany Name": (
-                        f"{pmc_user.user.first_name} {pmc_user.user.last_name}".strip()
-                        if pmc_user and pmc_user.user else None
-                    ),
+                    "PropertyManagmentCompany Code": company.code,
+                    "Property Handling": property_handling,
+                    # "PropertyManagmentCompany Name": (
+                    #     f"{pmc_user.user.first_name} {pmc_user.user.last_name}".strip()
+                    #     if pmc_user and pmc_user.user else None
+                    # ),
+                    "PropertyManagmentCompany Name": company.name,
                     "PropertyManagmentCompany Address": (
-                        f"{pmc_user.address_line_1 or ''} {pmc_user.address_line_2 or ''}".strip()
-                        if pmc_user else None
+                        f"{company.address_line_1 or ''} {company.address_line_2 or ''}".strip()
                     ),
                     "Tenancy Ratio": tenancy_ratio,
                 })
@@ -2848,11 +2876,8 @@ def export_owner_pmc_csv(request):
                 data_list=data_list
             )
 
-        # -------------------------------
-        # CASE 2: PROPERTY LIST (company_id present)
-        # -------------------------------
-        elif owner_profile and company_id:
-            user = owner_profile
+        # ── CASE 2: PROPERTY LIST (company_id present) ────────────────────
+        elif (owner_profile or pm_profile) and company_id:
 
             company = PropertyManagmentCompany.objects.filter(id=company_id, is_active=True).first()
             if not company:
@@ -2864,24 +2889,40 @@ def export_owner_pmc_csv(request):
                     status=status.HTTP_404_NOT_FOUND
                 )
 
-            properties_qs = Unit.objects.filter(
-                unit_owners__owner=user,
-                is_active=True
-            ).filter(
-                Q(property_block_tower__property__pmc=company) |
-                Q(parent_property__pmc=company)
-            ).select_related(
-                "property_block_tower__property"
-            ).prefetch_related(
-                "leases__tenant__user"
-            )
+            if owner_profile:
+                properties_qs = Unit.objects.filter(
+                    unit_owners__owner=owner_profile,
+                    is_active=True
+                ).filter(
+                    Q(property_block_tower__property__pmc=company) |
+                    Q(parent_property__pmc=company)
+                ).select_related(
+                    "property_block_tower__property",
+                    "parent_property"
+                ).prefetch_related(
+                    "leases__tenant__user"
+                )
+            else:
+                pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile).values_list("pmc_id", flat=True))
+                if company.id not in pmc_ids:
+                    return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+
+                properties_qs = Unit.objects.filter(
+                    Q(property_block_tower__property__pmc=company) |
+                    Q(parent_property__pmc=company),
+                    is_active=True
+                ).select_related(
+                    "property_block_tower__property",
+                    "parent_property"
+                ).prefetch_related(
+                    "leases__tenant__user"
+                )
 
             if search:
                 properties_qs = properties_qs.filter(
                     Q(unit_name__icontains=search) |
                     Q(property_block_tower__property__property_name__icontains=search) |
                     Q(parent_property__property_name__icontains=search)
-
                 )
 
             field_names = [
@@ -3310,445 +3351,445 @@ def company_tenants(request):
         )
 
 
-def serialize_agreement(a):
-    return {
-        "id": a.id,
-        "code": a.code,
-        "agreement_name": a.agreement_name,
-        "agreement_type": {
-            "key": a.agreement_type,
-            "value": a.get_agreement_type_display()
-        },
-        "status": {
-            "key": a.get_status(),
-            "label": a.get_status_display_label()
-        },
-        "issued_by": a.issued_by,
-        "does_not_expire": a.does_not_expire,
-        "is_expired": a.is_expired,
-        "is_renewed": a.is_renewed,
-        "renewed_at": int(a.renewed_at.timestamp()) if a.renewed_at else None,
-        "start_date": int(a.start_date.timestamp()) if a.start_date else None,
-        "end_date": int(a.end_date.timestamp()) if a.end_date else None,
-        "expiry_reminder_count": a.expiry_reminder_count,
-        "cc_emails": a.get_cc_emails_list(),
-        "document": {
-            "file_name": a.file_name,
-            "url": fetch_s3_presigned_url(a.file_path, file_name=a.file_name) if a.file_path else None,
-        } if a.file_path else None,
-        "document_type": {
-            "id": a.document_type.id,
-            "name": a.document_type.name,
-        } if a.document_type else None,
-        "notes": a.notes,
-        "created": int(a.created.timestamp()) if a.created else None,
-    }
+# def serialize_agreement(a):
+#     return {
+#         "id": a.id,
+#         "code": a.code,
+#         "agreement_name": a.agreement_name,
+#         "agreement_type": {
+#             "key": a.agreement_type,
+#             "value": a.get_agreement_type_display()
+#         },
+#         "status": {
+#             "key": a.get_status(),
+#             "label": a.get_status_display_label()
+#         },
+#         "issued_by": a.issued_by,
+#         "does_not_expire": a.does_not_expire,
+#         "is_expired": a.is_expired,
+#         "is_renewed": a.is_renewed,
+#         "renewed_at": int(a.renewed_at.timestamp()) if a.renewed_at else None,
+#         "start_date": int(a.start_date.timestamp()) if a.start_date else None,
+#         "end_date": int(a.end_date.timestamp()) if a.end_date else None,
+#         "expiry_reminder_count": a.expiry_reminder_count,
+#         "cc_emails": a.get_cc_emails_list(),
+#         "document": {
+#             "file_name": a.file_name,
+#             "url": fetch_s3_presigned_url(a.file_path, file_name=a.file_name) if a.file_path else None,
+#         } if a.file_path else None,
+#         "document_type": {
+#             "id": a.document_type.id,
+#             "name": a.document_type.name,
+#         } if a.document_type else None,
+#         "notes": a.notes,
+#         "created": int(a.created.timestamp()) if a.created else None,
+#     }
 
 
-# =====================================================
+# # =====================================================
 # STEP 1 - agreement_api (GET ALL + POST)
 # =====================================================
 
-@agreement_get
-@agreement_post
-@api_view(["GET", "POST"])
-@is_request_authenticated
-def agreement_api(request):
+# @agreement_get
+# @agreement_post
+# @api_view(["GET", "POST"])
+# @is_request_authenticated
+# def agreement_api(request):
 
-    if request.method == "GET":
+#     if request.method == "GET":
 
-        # Convert UserProfile to PropertyManager instance
-        property_manager = PropertyManager.objects.filter(pk=request.user.pk).first()
-        if not property_manager:
-            logger.warning(
-                "AGREEMENT_LIST_FETCH_FAILED | user_id=%s | reason=PROPERTY_MANAGER_NOT_FOUND",
-                request.user.id )
-            return prepare_response(
-                message=constants.ONLY_PM_ALLOWED,
-                status=status.HTTP_403_FORBIDDEN
-            )
+#         # Convert UserProfile to PropertyManager instance
+#         property_manager = PropertyManager.objects.filter(pk=request.user.pk).first()
+#         if not property_manager:
+#             logger.warning(
+#                 "AGREEMENT_LIST_FETCH_FAILED | user_id=%s | reason=PROPERTY_MANAGER_NOT_FOUND",
+#                 request.user.id )
+#             return prepare_response(
+#                 message=constants.ONLY_PM_ALLOWED,
+#                 status=status.HTTP_403_FORBIDDEN
+#             )
 
-        # ── Only logged in user's agreements ──────────────────
-        agreements = Documentation.objects.filter(
-            user=property_manager,
-            is_active=True
-        ).select_related(
-            'document_type', 'user__user'
-        ).order_by('-id')
+#         # ── Only logged in user's agreements ──────────────────
+#         agreements = Documentation.objects.filter(
+#             user=property_manager,
+#             is_active=True
+#         ).select_related(
+#             'document_type', 'user__user'
+#         ).order_by('-id')
 
-        # ── Filters ───────────────────────────────────────────
-        status_filter = request.GET.get("status")
-        search = request.GET.get("search")
-        does_not_expire = request.GET.get("does_not_expire")
+#         # ── Filters ───────────────────────────────────────────
+#         status_filter = request.GET.get("status")
+#         search = request.GET.get("search")
+#         does_not_expire = request.GET.get("does_not_expire")
 
-        if status_filter:
-            agreements = agreements.filter(status=status_filter.upper())
+#         if status_filter:
+#             agreements = agreements.filter(status=status_filter.upper())
 
-        if search:
-            agreements = agreements.filter(agreement_name__icontains=search)
+#         if search:
+#             agreements = agreements.filter(agreement_name__icontains=search)
 
-        if does_not_expire is not None:
-            agreements = agreements.filter(does_not_expire=does_not_expire.lower() == 'true')
+#         if does_not_expire is not None:
+#             agreements = agreements.filter(does_not_expire=does_not_expire.lower() == 'true')
 
-        # ── Pagination ────────────────────────────────────────
-        page_size = int(request.GET.get("page_size", 10))
-        page = int(request.GET.get("page", 1))
-        total = agreements.count()
-        start = (page - 1) * page_size
-        end = start + page_size
-        paginated = agreements[start:end]
+#         # ── Pagination ────────────────────────────────────────
+#         page_size = int(request.GET.get("page_size", 10))
+#         page = int(request.GET.get("page", 1))
+#         total = agreements.count()
+#         start = (page - 1) * page_size
+#         end = start + page_size
+#         paginated = agreements[start:end]
          
-        logger.info(
-            "AGREEMENTS_FETCHED | user_id=%s | total=%s | page=%s",
-            request.user.id, total, page )
-        return prepare_response(
-            content={
-                "results": [serialize_agreement(a) for a in paginated],
-                "total": total,
-                "page": page,
-                "page_size": page_size,
-                "total_pages": (total + page_size - 1) // page_size,
-            },
-            message=constants.AGREEMENTS_FETCHED,
-            status=status.HTTP_200_OK
-        )
+#         logger.info(
+#             "AGREEMENTS_FETCHED | user_id=%s | total=%s | page=%s",
+#             request.user.id, total, page )
+#         return prepare_response(
+#             content={
+#                 "results": [serialize_agreement(a) for a in paginated],
+#                 "total": total,
+#                 "page": page,
+#                 "page_size": page_size,
+#                 "total_pages": (total + page_size - 1) // page_size,
+#             },
+#             message=constants.AGREEMENTS_FETCHED,
+#             status=status.HTTP_200_OK
+#         )
 
-    elif request.method == "POST":
-        body = json.loads(request.body)
+#     elif request.method == "POST":
+#         body = json.loads(request.body)
 
-        agreement_name = body.get("agreement_name")
-        if not agreement_name:
-            logger.warning(
-                "AGREEMENT_CREATE_FAILED | user_id=%s | reason=AGREEMENT_NAME_MISSING",
-                request.user.id )
-            return prepare_response(
-                message=constants.AGREEMENT_NAME_REQUIRED,
-                status=status.HTTP_400_BAD_REQUEST
-            )
+#         agreement_name = body.get("agreement_name")
+#         if not agreement_name:
+#             logger.warning(
+#                 "AGREEMENT_CREATE_FAILED | user_id=%s | reason=AGREEMENT_NAME_MISSING",
+#                 request.user.id )
+#             return prepare_response(
+#                 message=constants.AGREEMENT_NAME_REQUIRED,
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
 
-        document_type_id = body.get("document_type_id")
-        document_type = DocumentType.objects.filter(id=document_type_id).first()
-        if not document_type:
-            logger.warning(
-                "AGREEMENT_CREATE_FAILED | user_id=%s | reason=DOCUMENT_TYPE_INVALID",
-                request.user.id )
-            return prepare_response(
-                message=constants.DOCUMENT_TYPE_REQUIRED,
-                status=status.HTTP_400_BAD_REQUEST
-            )
+#         document_type_id = body.get("document_type_id")
+#         document_type = DocumentType.objects.filter(id=document_type_id).first()
+#         if not document_type:
+#             logger.warning(
+#                 "AGREEMENT_CREATE_FAILED | user_id=%s | reason=DOCUMENT_TYPE_INVALID",
+#                 request.user.id )
+#             return prepare_response(
+#                 message=constants.DOCUMENT_TYPE_REQUIRED,
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
 
-        does_not_expire = body.get("does_not_expire", False)
-        start_date = body.get("start_date")
-        end_date = body.get("end_date")
+#         does_not_expire = body.get("does_not_expire", False)
+#         start_date = body.get("start_date")
+#         end_date = body.get("end_date")
 
-        if not does_not_expire and not end_date:
-            logger.warning(
-                "AGREEMENT_CREATE_FAILED | user_id=%s | reason=END_DATE_REQUIRED",
-                request.user.id )
-            return prepare_response(
-                message=constants.END_DATE_REQUIRED,
-                status=status.HTTP_400_BAD_REQUEST
-            )
+#         if not does_not_expire and not end_date:
+#             logger.warning(
+#                 "AGREEMENT_CREATE_FAILED | user_id=%s | reason=END_DATE_REQUIRED",
+#                 request.user.id )
+#             return prepare_response(
+#                 message=constants.END_DATE_REQUIRED,
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
 
-        # Convert UserProfile to PropertyManager instance
-        property_manager = PropertyManager.objects.filter(pk=request.user.pk).first()
-        if not property_manager:
-            logger.warning(
-                "AGREEMENT_CREATE_FAILED | user_id=%s | reason=PROPERTY_MANAGER_NOT_FOUND",
-                request.user.id )
-            return prepare_response(
-                message=constants.ONLY_PM_CREATE,
-                status=status.HTTP_403_FORBIDDEN
-            )
+#         # Convert UserProfile to PropertyManager instance
+#         property_manager = PropertyManager.objects.filter(pk=request.user.pk).first()
+#         if not property_manager:
+#             logger.warning(
+#                 "AGREEMENT_CREATE_FAILED | user_id=%s | reason=PROPERTY_MANAGER_NOT_FOUND",
+#                 request.user.id )
+#             return prepare_response(
+#                 message=constants.ONLY_PM_CREATE,
+#                 status=status.HTTP_403_FORBIDDEN
+#             )
 
-        agreement = Documentation.objects.create(
-            user=property_manager,
-            document_type=document_type,
-            agreement_name=agreement_name,
-            agreement_type=body.get("agreement_type", "OTHER"),
-            status='ACTIVE',
-            issued_by=body.get("issued_by"),
-            does_not_expire=does_not_expire,
-            notes=body.get("notes"),
-            cc_emails=body.get("cc_emails"),
-            file_name=body.get("file_name", ""),
-            file_path=body.get("file_path", ""),
-            start_date=timezone.datetime.fromtimestamp(start_date, tz=timezone.utc) if start_date else None,
-            end_date=timezone.datetime.fromtimestamp(end_date, tz=timezone.utc) if end_date and not does_not_expire else None,
-            created_by=request.user.user
-        )
-        logger.info(
-            "AGREEMENT_CREATED | user_id=%s | agreement_id=%s | agreement_code=%s",
-            request.user.id, agreement.id, agreement.code )
-        return prepare_response(
-            content={"id": agreement.id, "code": agreement.code},
-            message=constants.AGREEMENT_CREATED,
-            status=status.HTTP_201_CREATED
-        )
+#         agreement = Documentation.objects.create(
+#             user=property_manager,
+#             document_type=document_type,
+#             agreement_name=agreement_name,
+#             agreement_type=body.get("agreement_type", "OTHER"),
+#             status='ACTIVE',
+#             issued_by=body.get("issued_by"),
+#             does_not_expire=does_not_expire,
+#             notes=body.get("notes"),
+#             cc_emails=body.get("cc_emails"),
+#             file_name=body.get("file_name", ""),
+#             file_path=body.get("file_path", ""),
+#             start_date=timezone.datetime.fromtimestamp(start_date, tz=timezone.utc) if start_date else None,
+#             end_date=timezone.datetime.fromtimestamp(end_date, tz=timezone.utc) if end_date and not does_not_expire else None,
+#             created_by=request.user.user
+#         )
+#         logger.info(
+#             "AGREEMENT_CREATED | user_id=%s | agreement_id=%s | agreement_code=%s",
+#             request.user.id, agreement.id, agreement.code )
+#         return prepare_response(
+#             content={"id": agreement.id, "code": agreement.code},
+#             message=constants.AGREEMENT_CREATED,
+#             status=status.HTTP_201_CREATED
+#         )
 
-    return prepare_response(
-        message=constants.METHOD_NOT_ALLOWED,
-        status=status.HTTP_405_METHOD_NOT_ALLOWED
-    )
-
-
-# =====================================================
-# STEP 2 - agreement_detail_api (GET + PUT + DELETE)
-# =====================================================
-
-@agreement_detail_get
-@agreement_detail_put
-@agreement_detail_delete
-@api_view(["GET", "PUT", "DELETE"])
-@is_request_authenticated
-def agreement_detail_api(request, pk):
-
-    # Convert UserProfile to PropertyManager instance
-    property_manager = PropertyManager.objects.filter(pk=request.user.pk).first()
-    if not property_manager:
-        logger.warning(
-                    "AGREEMENT_ACCESS_FAILED | user_id=%s | reason=PROPERTY_MANAGER_NOT_FOUND",
-                    request.user.id )
-        return prepare_response(
-            message="Only Property Managers can access agreements.",
-            status=status.HTTP_403_FORBIDDEN
-        )
-
-    agreement = Documentation.objects.filter(
-        id=pk,
-        user=property_manager,
-        is_active=True
-    ).select_related('document_type', 'user__user').first()
-
-    if not agreement:
-        logger.warning(
-            "AGREEMENT_ACCESS_FAILED | user_id=%s | agreement_id=%s | reason=NOT_FOUND",
-            request.user.id, pk )
-        return prepare_response(
-            message="Agreement not found.",
-            status=status.HTTP_404_NOT_FOUND
-        )
-
-    if request.method == "GET":
-        logger.info(
-            "AGREEMENT_FETCHED | user_id=%s | agreement_id=%s",
-            request.user.id, agreement.id )
-        return prepare_response(
-            content=serialize_agreement(agreement),
-            message=constants.AGREEMENT_FETCHED,
-            status=status.HTTP_200_OK
-        )
-
-    elif request.method == "PUT":
-        body = json.loads(request.body)
-
-        agreement.agreement_name = body.get("agreement_name", agreement.agreement_name)
-        agreement.agreement_type = body.get("agreement_type", agreement.agreement_type)
-        agreement.notes = body.get("notes", agreement.notes)
-        agreement.status = body.get("status", agreement.status)
-        agreement.issued_by = body.get("issued_by", agreement.issued_by)
-        agreement.cc_emails = body.get("cc_emails", agreement.cc_emails)
-        agreement.does_not_expire = body.get("does_not_expire", agreement.does_not_expire)
-
-        start_date = body.get("start_date")
-        end_date = body.get("end_date")
-        if start_date:
-            agreement.start_date = timezone.datetime.fromtimestamp(start_date, tz=timezone.utc)
-        if end_date:
-            agreement.end_date = timezone.datetime.fromtimestamp(end_date, tz=timezone.utc)
-
-        document_type_id = body.get("document_type_id")
-        if document_type_id:
-            document_type = DocumentType.objects.filter(id=document_type_id).first()
-            if document_type:
-                agreement.document_type = document_type
-
-        agreement.save()
-        agreement.update_status()
-        logger.info(
-            "AGREEMENT_UPDATED | user_id=%s | agreement_id=%s",
-            request.user.id, agreement.id )
-        return prepare_response(
-            message=constants.AGREEMENT_UPDATED,
-            status=status.HTTP_200_OK
-        )
-
-    elif request.method == "DELETE":
-        agreement.is_active = False
-        agreement.save()
-        logger.info(
-                "AGREEMENT_DELETED | user_id=%s | agreement_id=%s",
-                request.user.id, agreement.id )
-        return prepare_response(
-            message=constants.AGREEMENT_DELETED,
-            status=status.HTTP_200_OK
-        )
-
-    return prepare_response(
-        message=constants.METHOD_NOT_ALLOWED,
-        status=status.HTTP_405_METHOD_NOT_ALLOWED
-    )
+#     return prepare_response(
+#         message=constants.METHOD_NOT_ALLOWED,
+#         status=status.HTTP_405_METHOD_NOT_ALLOWED
+#     )
 
 
-# =====================================================
-# STEP 3 - renew_agreement
-# =====================================================
-@renew_agreement_patch
-@api_view(["PATCH"])
-@is_request_authenticated
-def renew_agreement(request, pk):
+# # =====================================================
+# # STEP 2 - agreement_detail_api (GET + PUT + DELETE)
+# # =====================================================
 
-    if request.method == "PATCH":
+# @agreement_detail_get
+# @agreement_detail_put
+# @agreement_detail_delete
+# @api_view(["GET", "PUT", "DELETE"])
+# @is_request_authenticated
+# def agreement_detail_api(request, pk):
 
-        from user_service.models import Documentation, PropertyManager
-        from user_service.tasks import send_renewal_email
+#     # Convert UserProfile to PropertyManager instance
+#     property_manager = PropertyManager.objects.filter(pk=request.user.pk).first()
+#     if not property_manager:
+#         logger.warning(
+#                     "AGREEMENT_ACCESS_FAILED | user_id=%s | reason=PROPERTY_MANAGER_NOT_FOUND",
+#                     request.user.id )
+#         return prepare_response(
+#             message="Only Property Managers can access agreements.",
+#             status=status.HTTP_403_FORBIDDEN
+#         )
 
-        property_manager = PropertyManager.objects.filter(pk=request.user.pk).first()
-        if not property_manager:
-            logger.warning(
-                        "AGREEMENT_RENEW_FAILED | user_id=%s | reason=PROPERTY_MANAGER_NOT_FOUND",
-                        request.user.id )
-            return prepare_response(
-                message=constants.ONLY_PM_RENEW,
-                status=status.HTTP_403_FORBIDDEN
-            )
+#     agreement = Documentation.objects.filter(
+#         id=pk,
+#         user=property_manager,
+#         is_active=True
+#     ).select_related('document_type', 'user__user').first()
 
-        agreement = Documentation.objects.filter(
-            id=pk,
-            user=property_manager,
-            is_active=True
-        ).first()
+#     if not agreement:
+#         logger.warning(
+#             "AGREEMENT_ACCESS_FAILED | user_id=%s | agreement_id=%s | reason=NOT_FOUND",
+#             request.user.id, pk )
+#         return prepare_response(
+#             message="Agreement not found.",
+#             status=status.HTTP_404_NOT_FOUND
+#         )
 
-        if not agreement:
-            logger.warning(
-                    "AGREEMENT_RENEW_FAILED | user_id=%s | agreement_id=%s | reason=AGREEMENT_NOT_FOUND",
-                    request.user.id, pk )
-            return prepare_response(
-                message="Agreement not found.",
-                status=status.HTTP_404_NOT_FOUND
-            )
+#     if request.method == "GET":
+#         logger.info(
+#             "AGREEMENT_FETCHED | user_id=%s | agreement_id=%s",
+#             request.user.id, agreement.id )
+#         return prepare_response(
+#             content=serialize_agreement(agreement),
+#             message=constants.AGREEMENT_FETCHED,
+#             status=status.HTTP_200_OK
+#         )
 
-        body = json.loads(request.body)
-        new_end_date_epoch = body.get("new_end_date")
+#     elif request.method == "PUT":
+#         body = json.loads(request.body)
 
-        if not new_end_date_epoch:
-            logger.warning(
-                "AGREEMENT_RENEW_FAILED | user_id=%s | agreement_id=%s | reason=NEW_END_DATE_MISSING",
-                request.user.id, pk )
-            return prepare_response(
-                message=constants.NEW_END_DATE_REQUIRED,
-                status=status.HTTP_400_BAD_REQUEST
-            )
+#         agreement.agreement_name = body.get("agreement_name", agreement.agreement_name)
+#         agreement.agreement_type = body.get("agreement_type", agreement.agreement_type)
+#         agreement.notes = body.get("notes", agreement.notes)
+#         agreement.status = body.get("status", agreement.status)
+#         agreement.issued_by = body.get("issued_by", agreement.issued_by)
+#         agreement.cc_emails = body.get("cc_emails", agreement.cc_emails)
+#         agreement.does_not_expire = body.get("does_not_expire", agreement.does_not_expire)
 
-        new_end_date = timezone.datetime.fromtimestamp(
-            new_end_date_epoch,
-            tz=timezone.utc
-        )
+#         start_date = body.get("start_date")
+#         end_date = body.get("end_date")
+#         if start_date:
+#             agreement.start_date = timezone.datetime.fromtimestamp(start_date, tz=timezone.utc)
+#         if end_date:
+#             agreement.end_date = timezone.datetime.fromtimestamp(end_date, tz=timezone.utc)
 
-        # ✅ 1. Renew Agreement
-        agreement.mark_renewed(
-            user=property_manager,
-            new_end_date=new_end_date
-        )
+#         document_type_id = body.get("document_type_id")
+#         if document_type_id:
+#             document_type = DocumentType.objects.filter(id=document_type_id).first()
+#             if document_type:
+#                 agreement.document_type = document_type
 
-        # ✅ 2. IMPORTANT (ensure fresh data)
-        agreement.refresh_from_db()
+#         agreement.save()
+#         agreement.update_status()
+#         logger.info(
+#             "AGREEMENT_UPDATED | user_id=%s | agreement_id=%s",
+#             request.user.id, agreement.id )
+#         return prepare_response(
+#             message=constants.AGREEMENT_UPDATED,
+#             status=status.HTTP_200_OK
+#         )
 
-        # ✅ 3. SEND EMAIL ASYNC (BEST PRACTICE)
-        send_renewal_email.delay(agreement.id, property_manager.id)
-        logger.info(
-            "AGREEMENT_RENEWED | user_id=%s | agreement_id=%s | agreement_code=%s",
-            request.user.id, agreement.id, agreement.code )
-        return prepare_response(
-            content={
-                "code": agreement.code,
-                "new_end_date": new_end_date_epoch,
-                "is_renewed": True
-            },
-            message=constants.AGREEMENT_RENEWED,
-            status=status.HTTP_200_OK
-        )
+#     elif request.method == "DELETE":
+#         agreement.is_active = False
+#         agreement.save()
+#         logger.info(
+#                 "AGREEMENT_DELETED | user_id=%s | agreement_id=%s",
+#                 request.user.id, agreement.id )
+#         return prepare_response(
+#             message=constants.AGREEMENT_DELETED,
+#             status=status.HTTP_200_OK
+#         )
 
-    return prepare_response(
-        message=constants.METHOD_NOT_ALLOWED,
-        status=status.HTTP_405_METHOD_NOT_ALLOWED
-    )
+#     return prepare_response(
+#         message=constants.METHOD_NOT_ALLOWED,
+#         status=status.HTTP_405_METHOD_NOT_ALLOWED
+#     )
 
-# =====================================================
-# STEP 4 - upload_agreement_document
-# =====================================================
 
-@upload_agreement_document_post
-@api_view(["POST"])
-@is_request_authenticated
-def upload_agreement_document(request, pk):
+# # =====================================================
+# # STEP 3 - renew_agreement
+# # =====================================================
+# @renew_agreement_patch
+# @api_view(["PATCH"])
+# @is_request_authenticated
+# def renew_agreement(request, pk):
 
-    if request.method == "POST":
-        # Convert UserProfile to PropertyManager instance
-        property_manager = PropertyManager.objects.filter(pk=request.user.pk).first()
-        if not property_manager:
-            logger.warning(
-                "AGREEMENT_DOCUMENT_UPLOAD_FAILED | user_id=%s | reason=PROPERTY_MANAGER_NOT_FOUND",
-                request.user.id )
-            return prepare_response(
-                message=constants.ONLY_PM_UPLOAD,
-                status=status.HTTP_403_FORBIDDEN
-            )
+#     if request.method == "PATCH":
 
-        body = json.loads(request.body)
+#         from user_service.models import Documentation, PropertyManager
+#         from user_service.tasks import send_renewal_email
 
-        agreement = Documentation.objects.filter(
-            id=pk,
-            user=property_manager,
-            is_active=True
-        ).first()
+#         property_manager = PropertyManager.objects.filter(pk=request.user.pk).first()
+#         if not property_manager:
+#             logger.warning(
+#                         "AGREEMENT_RENEW_FAILED | user_id=%s | reason=PROPERTY_MANAGER_NOT_FOUND",
+#                         request.user.id )
+#             return prepare_response(
+#                 message=constants.ONLY_PM_RENEW,
+#                 status=status.HTTP_403_FORBIDDEN
+#             )
 
-        if not agreement:
-            logger.warning(
-                "AGREEMENT_DOCUMENT_UPLOAD_FAILED | user_id=%s | agreement_id=%s | reason=NOT_FOUND",
-                request.user.id, pk )
-            return prepare_response(
-                message=constants.AGREEMENT_NOT_FOUND,
-                status=status.HTTP_404_NOT_FOUND
-            )
+#         agreement = Documentation.objects.filter(
+#             id=pk,
+#             user=property_manager,
+#             is_active=True
+#         ).first()
 
-        file_name = body.get("file_name")
-        file_data = body.get("file_data")
+#         if not agreement:
+#             logger.warning(
+#                     "AGREEMENT_RENEW_FAILED | user_id=%s | agreement_id=%s | reason=AGREEMENT_NOT_FOUND",
+#                     request.user.id, pk )
+#             return prepare_response(
+#                 message="Agreement not found.",
+#                 status=status.HTTP_404_NOT_FOUND
+#             )
 
-        if not file_name or not file_data:
-            logger.warning(
-                "AGREEMENT_DOCUMENT_UPLOAD_FAILED | user_id=%s | agreement_id=%s | reason=FILE_MISSING",
-                request.user.id, pk )
-            return prepare_response(
-                message=constants.FILE_REQUIRED,
-                status=status.HTTP_400_BAD_REQUEST
-            )
+#         body = json.loads(request.body)
+#         new_end_date_epoch = body.get("new_end_date")
 
-        object_name = f"agreements/{agreement.code}/{uuid.uuid4()}_{file_name}"
-        file_url = upload_file_to_s3_base64(
-            file_data=file_data,
-            object_name=object_name
-        )
+#         if not new_end_date_epoch:
+#             logger.warning(
+#                 "AGREEMENT_RENEW_FAILED | user_id=%s | agreement_id=%s | reason=NEW_END_DATE_MISSING",
+#                 request.user.id, pk )
+#             return prepare_response(
+#                 message=constants.NEW_END_DATE_REQUIRED,
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
 
-        agreement.file_path = file_url
-        agreement.file_name = file_name
-        agreement.save()
-        logger.info(
-            "AGREEMENT_DOCUMENT_UPLOADED | user_id=%s | agreement_id=%s | file_name=%s",
-            request.user.id, agreement.id, file_name )
-        return prepare_response(
-            content={
-                "file_name": file_name,
-                "url": fetch_s3_presigned_url(file_url, file_name=file_name)
-            },
-            message=constants.DOCUMENT_UPLOADED,
-            status=status.HTTP_200_OK
-        )
+#         new_end_date = timezone.datetime.fromtimestamp(
+#             new_end_date_epoch,
+#             tz=timezone.utc
+#         )
 
-    return prepare_response(
-        message=constants.METHOD_NOT_ALLOWED,
-        status=status.HTTP_405_METHOD_NOT_ALLOWED
-    )
+#         # ✅ 1. Renew Agreement
+#         agreement.mark_renewed(
+#             user=property_manager,
+#             new_end_date=new_end_date
+#         )
+
+#         # ✅ 2. IMPORTANT (ensure fresh data)
+#         agreement.refresh_from_db()
+
+#         # ✅ 3. SEND EMAIL ASYNC (BEST PRACTICE)
+#         send_renewal_email.delay(agreement.id, property_manager.id)
+#         logger.info(
+#             "AGREEMENT_RENEWED | user_id=%s | agreement_id=%s | agreement_code=%s",
+#             request.user.id, agreement.id, agreement.code )
+#         return prepare_response(
+#             content={
+#                 "code": agreement.code,
+#                 "new_end_date": new_end_date_epoch,
+#                 "is_renewed": True
+#             },
+#             message=constants.AGREEMENT_RENEWED,
+#             status=status.HTTP_200_OK
+#         )
+
+#     return prepare_response(
+#         message=constants.METHOD_NOT_ALLOWED,
+#         status=status.HTTP_405_METHOD_NOT_ALLOWED
+#     )
+
+# # =====================================================
+# # STEP 4 - upload_agreement_document
+# # =====================================================
+
+# @upload_agreement_document_post
+# @api_view(["POST"])
+# @is_request_authenticated
+# def upload_agreement_document(request, pk):
+
+#     if request.method == "POST":
+#         # Convert UserProfile to PropertyManager instance
+#         property_manager = PropertyManager.objects.filter(pk=request.user.pk).first()
+#         if not property_manager:
+#             logger.warning(
+#                 "AGREEMENT_DOCUMENT_UPLOAD_FAILED | user_id=%s | reason=PROPERTY_MANAGER_NOT_FOUND",
+#                 request.user.id )
+#             return prepare_response(
+#                 message=constants.ONLY_PM_UPLOAD,
+#                 status=status.HTTP_403_FORBIDDEN
+#             )
+
+#         body = json.loads(request.body)
+
+#         agreement = Documentation.objects.filter(
+#             id=pk,
+#             user=property_manager,
+#             is_active=True
+#         ).first()
+
+#         if not agreement:
+#             logger.warning(
+#                 "AGREEMENT_DOCUMENT_UPLOAD_FAILED | user_id=%s | agreement_id=%s | reason=NOT_FOUND",
+#                 request.user.id, pk )
+#             return prepare_response(
+#                 message=constants.AGREEMENT_NOT_FOUND,
+#                 status=status.HTTP_404_NOT_FOUND
+#             )
+
+#         file_name = body.get("file_name")
+#         file_data = body.get("file_data")
+
+#         if not file_name or not file_data:
+#             logger.warning(
+#                 "AGREEMENT_DOCUMENT_UPLOAD_FAILED | user_id=%s | agreement_id=%s | reason=FILE_MISSING",
+#                 request.user.id, pk )
+#             return prepare_response(
+#                 message=constants.FILE_REQUIRED,
+#                 status=status.HTTP_400_BAD_REQUEST
+#             )
+
+#         object_name = f"agreements/{agreement.code}/{uuid.uuid4()}_{file_name}"
+#         file_url = upload_file_to_s3_base64(
+#             file_data=file_data,
+#             object_name=object_name
+#         )
+
+#         agreement.file_path = file_url
+#         agreement.file_name = file_name
+#         agreement.save()
+#         logger.info(
+#             "AGREEMENT_DOCUMENT_UPLOADED | user_id=%s | agreement_id=%s | file_name=%s",
+#             request.user.id, agreement.id, file_name )
+#         return prepare_response(
+#             content={
+#                 "file_name": file_name,
+#                 "url": fetch_s3_presigned_url(file_url, file_name=file_name)
+#             },
+#             message=constants.DOCUMENT_UPLOADED,
+#             status=status.HTTP_200_OK
+#         )
+
+#     return prepare_response(
+#         message=constants.METHOD_NOT_ALLOWED,
+#         status=status.HTTP_405_METHOD_NOT_ALLOWED
+#     )
 
 
 @share_profile_post
@@ -3889,21 +3930,43 @@ def reset_user_password(request):
         print("reset_user_password error:", e)
         return prepare_response(message=constants.INTERNAL_SERVER_ERROR, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
+
 @api_view(["GET", "POST", "PUT", "DELETE"])
 @is_request_authenticated
 def privacy_policy_api(request):
     user_profile = request.user
-    if request.method == "GET": 
-        policies = PrivacyPolicy.objects.filter(is_active=True).order_by("-id") 
+    if request.method == "GET":
+        policy_id = request.GET.get("id")
+        if policy_id:
+            policy = PrivacyPolicy.objects.filter(id=policy_id, is_active=True).first()
+            if not policy:
+                return prepare_response( message="Privacy policy not found.", status=status.HTTP_404_NOT_FOUND)
+            return prepare_response(
+                content={
+                    "id": policy.id,
+                    "title": policy.title,
+                    "other_policy_content": policy.other_policy_content,
+                    "created": int(policy.created.timestamp()) if policy.created else None,
+                },
+                message="Privacy policy fetched successfully.",
+                status=status.HTTP_200_OK
+            )
+ 
+        policies = PrivacyPolicy.objects.filter(is_active=True).order_by("id")
+        default_policy = policies.first()
         return prepare_response(
             content={
-                "results": [
+                "default_policy": {
+                    "id": default_policy.id,
+                    "title": default_policy.title,
+                    "other_policy_content": default_policy.other_policy_content,
+                    "created": int(default_policy.created.timestamp()) if default_policy.created else None,
+                } if default_policy else None,
+ 
+                "policies": [
                     {
                         "id": policy.id,
                         "title": policy.title,
-                        "content": policy.content,
-                        "other_policy_content": policy.other_policy_content,
-                        "created": int(policy.created.timestamp()) if policy.created else None,
                     }
                     for policy in policies
                 ]
@@ -3911,59 +3974,55 @@ def privacy_policy_api(request):
             message="Privacy policies fetched successfully.",
             status=status.HTTP_200_OK
         )
- 
-    # PM only below
-    pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).first() 
+    pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).first()
     if not pm_profile:
         return prepare_response(message="Only Property Manager is allowed.", status=status.HTTP_403_FORBIDDEN)
-    # POST
+ 
+    try:
+        body = json.loads(request.body)
+    except Exception:
+        return prepare_response(
+            message="Invalid JSON body.",
+            status=status.HTTP_400_BAD_REQUEST
+        )
+ 
     if request.method == "POST":
-        body = json.loads(request.body) 
         title = body.get("title")
-        content = body.get("content") 
+        other_policy_content = body.get("other_policy_content")
+ 
         if not title:
             return prepare_response(message="Title is required.", status=status.HTTP_400_BAD_REQUEST)
-        if not content:
-            return prepare_response(message="Content is required.", status=status.HTTP_400_BAD_REQUEST)
+        if not other_policy_content:
+            return prepare_response(message="Other policy content is required.", status=status.HTTP_400_BAD_REQUEST)
  
         policy = PrivacyPolicy.objects.create(
             title=title,
-            content=content,
-            other_policy_content=body.get("other_policy_content", ""),
+            other_policy_content=other_policy_content,
             created_by=user_profile.user
         )
         return prepare_response(
-            content={
-                "id": policy.id
-            },
-            message="Privacy policy created successfully.", status=status.HTTP_201_CREATED )
+            content={"id": policy.id},
+            message="Privacy policy created successfully.",
+            status=status.HTTP_201_CREATED
+        )
  
-    # PUT
     elif request.method == "PUT":
-        body = json.loads(request.body)
         policy_id = body.get("id")
         if not policy_id:
-            return prepare_response(message="Policy id is required.", status=status.HTTP_400_BAD_REQUEST) 
+            return prepare_response(message="Policy id is required.", status=status.HTTP_400_BAD_REQUEST)
         policy = PrivacyPolicy.objects.filter(id=policy_id, is_active=True).first()
         if not policy:
             return prepare_response(message="Privacy policy not found.", status=status.HTTP_404_NOT_FOUND)
-
-        policy.title = body.get("title", policy.title)
-        policy.content = body.get("content", policy.content)
-        policy.other_policy_content = body.get(
-            "other_policy_content",
-            policy.other_policy_content
-        ) 
-        policy.save() 
-        return prepare_response(message="Privacy policy updated successfully.",status=status.HTTP_200_OK )
  
-     # DELETE
+        policy.title = body.get("title", policy.title)
+        policy.other_policy_content = body.get("other_policy_content", policy.other_policy_content)
+        policy.save()
+        return prepare_response(message="Privacy policy updated successfully.", status=status.HTTP_200_OK)
     elif request.method == "DELETE":
-        body = json.loads(request.body)
         policy_id = body.get("id")
         if not policy_id:
-            return prepare_response(message="Policy id is required.", status=status.HTTP_400_BAD_REQUEST) 
-        policy = PrivacyPolicy.objects.filter(id=policy_id, is_active=True).first() 
+            return prepare_response(message="Policy id is required.", status=status.HTTP_400_BAD_REQUEST)
+        policy = PrivacyPolicy.objects.filter(id=policy_id, is_active=True).first()
         if not policy:
             return prepare_response(message="Privacy policy not found.", status=status.HTTP_404_NOT_FOUND)
  
@@ -3971,104 +4030,311 @@ def privacy_policy_api(request):
         policy.save()
         return prepare_response( message="Privacy policy deleted successfully.", status=status.HTTP_200_OK)
     return prepare_response(message=constants.METHOD_NOT_ALLOWED, status=status.HTTP_405_METHOD_NOT_ALLOWED)
-
+ 
+ 
+DATE_INPUT_FORMATS = (
+    "%Y-%m-%d",   # 2026-08-13
+    "%d-%m-%Y",   # 13-08-2026
+    "%d/%m/%Y",   # 13/08/2026
+    "%m/%d/%Y",   # 08/13/2026
+    "%Y/%m/%d",   # 2026/08/13
+)
+ 
+def parse_expiry_date(value):
+    """
+    Returns (date_obj, error_message).
+    Tolerates '2026-8-13' which date.fromisoformat() rejects.
+    """
+    if value in (None, "", "null"):
+        return None, None
+ 
+    if isinstance(value, datetime):
+        return value.date(), None
+    if isinstance(value, date):
+        return value, None
+    value = str(value).strip()
+    parsed = parse_date(value)
+    if parsed:
+        return parsed, None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).date(), None
+    except ValueError:
+        pass
+    for fmt in DATE_INPUT_FORMATS:
+        try:
+            return datetime.strptime(value, fmt).date(), None
+        except ValueError:
+            continue
+    return None, f"Invalid date format: '{value}'. Use YYYY-MM-DD."
+ 
+ 
+def _serialize_document(doc,user_field):
+    doc_status, status_label = doc.get_document_status()
+    user = getattr(doc, user_field)
+    return {
+        "document_id":    doc.id,
+        "code":           doc.code,
+        "title":          doc.document_type.name if doc.document_type else None,
+        f"{user_field}_id": user.id if user else None,
+        f"{user_field}_code": getattr(user, "code", None) if user else None,
+        "document_type":  doc.document_type.name if doc.document_type else None,
+        "issued_date":    doc.issued_date,
+        "expiry_date":    doc.expiry_date,
+        "days_to_expiry": doc.days_to_expiry,
+        "status":         doc_status.replace("_", " ").title(),
+        "status_label":   status_label,
+        "url":            fetch_s3_presigned_url(doc.file_path, doc.file_name),
+    }
+ 
+ 
 @is_request_authenticated
-def tenant_document_api(request):
+def document_api(request):
     user_profile = request.user
-    # ── GET ──────────────────────────────────────────────────────────────────
+
+    # ── Role detect ───────────────────────────────────────────────
+    tenant = Tenant.objects.filter(pk=user_profile.pk).first()
+    owner = Owner.objects.filter(pk=user_profile.pk).first()
+
+    if tenant:
+        role = "tenant"
+        profile = tenant
+        DocModel = TenantDocuments
+        profile_field = "tenant"
+        doc_section = constants.TENANT
+        s3_prefix = "tenant"
+    elif owner:
+        role = "owner"
+        profile = owner
+        DocModel = OwnerDocuments
+        profile_field = "owner"
+        doc_section = constants.OWNER
+        s3_prefix = "owner"
+    else:
+        return prepare_response(
+            message=constants.UNAUTHORIZED_ROLE,
+            status=status.HTTP_403_FORBIDDEN
+        )
+
+    # ─────────────────────────────── GET ────────────────────────────
     if request.method == "GET":
-        tenant_id = request.GET.get("tenant_id", "").strip()
-        tenant_profile = Tenant.objects.filter(pk=user_profile.pk).first()
-        pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).first()
+        document_id = request.GET.get("document_id")
 
-        if tenant_profile:
-            tenants = Tenant.objects.filter(pk=tenant_profile.pk)
-        elif pm_profile:
-            if tenant_id:
-                tenant = Tenant.objects.for_user(pm_profile).filter(id=tenant_id, user__is_active=True).first()
-                if not tenant:
-                    return prepare_response(message="Tenant not accessible for this PM", status=status.HTTP_403_FORBIDDEN)
-                tenants = Tenant.objects.filter(id=tenant.id)
-            else:
-                tenants = Tenant.objects.for_user(pm_profile)
+        if document_id:
+            main_doc = DocModel.objects.filter(
+                Q(id=document_id) | Q(main_document_id=document_id),
+                **{profile_field: profile},
+                is_active=True
+            ).order_by("id").first()
+            if not main_doc:
+                return prepare_response(message="Document not found", status=status.HTTP_404_NOT_FOUND)
+
+            root_id = main_doc.main_document_id or main_doc.id
+            docs = DocModel.objects.filter(
+                Q(id=root_id) | Q(main_document_id=root_id),
+                **{profile_field: profile},
+                is_active=True
+            ).select_related("document_type", profile_field).order_by("-id")
+
         else:
-            return prepare_response(message=constants.UNAUTHORIZED_ROLE, status=status.HTTP_403_FORBIDDEN)
+            all_docs = DocModel.objects.filter(
+                **{profile_field: profile},
+                is_active=True
+            ).select_related("document_type", profile_field).order_by("-id")
 
-        docs = TenantDocuments.objects.filter(tenant__in=tenants, is_active=True).select_related("document_type", "tenant").order_by("-id")
-        doc_type_id = request.GET.get("document_type_id", "").strip()
-        if doc_type_id:
-            docs = docs.filter(document_type_id=doc_type_id)
+            latest_docs = {}
+            for doc in all_docs:
+                key = doc.main_document_id or doc.id
+                if key not in latest_docs:
+                    latest_docs[key] = doc
+            docs = latest_docs.values()
 
-        content = [
-            {
-                "id": doc.id,
-                "file_name": doc.file_name,
-                "tenant_id": doc.tenant.id,
-                "tenant_code": doc.tenant.code,
-                "document_type_name": doc.document_type.name if doc.document_type else None,
-                "url": fetch_s3_presigned_url(doc.file_path, doc.file_name),
-            }
-            for doc in docs
-        ]
+        docs = list(docs)
+        export = request.GET.get("export", "").strip().lower()
+        if export == "csv":
+            response = HttpResponse(content_type="text/csv")
+            response["Content-Disposition"] = f'attachment; filename="{role}_documents.csv"'
+            writer = csv.writer(response)
+            writer.writerow([
+                "Code",
+                "Document Type",
+                "Expiry Date",
+                "Status",
+                "Status Label",
+            ])
+
+            for doc in docs:
+                data = _serialize_document(doc, profile_field)
+                writer.writerow([
+                    data.get("code"),
+                    data.get("document_type"),
+                    data.get("expiry_date"),
+                    data.get("status"),
+                    data.get("status_label"),
+                ])
+
+            return response
+        content = [_serialize_document(doc, profile_field) for doc in docs]
         logger.info(
-            "TENANT_DOCUMENTS_FETCHED | user_id=%s | count=%s",
-            request.user.id, len(content)
+            "DOCUMENTS_FETCHED | user_id=%s | role=%s | profile_id=%s | count=%s",
+            request.user.id, role, profile.id, len(content)
         )
         return prepare_response(content=content, status=status.HTTP_200_OK)
 
-    # ── POST ─────────────────────────────────────────────────────────────────
+    # ─────────────────────────────── POST ───────────────────────────
     elif request.method == "POST":
         try:
             body = json.loads(request.body)
         except Exception:
             return prepare_response(message="Invalid JSON body", status=status.HTTP_400_BAD_REQUEST)
-        tenant_profile = Tenant.objects.filter(pk=user_profile.pk).first()
-        pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).first()
-
-        if tenant_profile:
-            tenant = tenant_profile
-        elif pm_profile:
-            tenant_id = body.get("tenant_id")
-            if not tenant_id:
-                return prepare_response(message="tenant_id is required", status=status.HTTP_400_BAD_REQUEST)
-            tenant = Tenant.objects.filter(id=tenant_id, user__is_active=True).first()
-            if not tenant:
-                return prepare_response(message="Tenant not found", status=status.HTTP_404_NOT_FOUND)
-        else:
-            return prepare_response(message=constants.UNAUTHORIZED_ROLE, status=status.HTTP_403_FORBIDDEN)
-        documents_data = body.get("documents") or []
-        if not documents_data:
+ 
+        documents = body.get("documents") or []
+        if not isinstance(documents, list) or not documents:
             return prepare_response(message="documents list is required", status=status.HTTP_400_BAD_REQUEST)
+        cleaned = []
+        for index, item in enumerate(documents):
+            if not isinstance(item, dict):
+                return prepare_response(message=f"documents[{index}]: must be an object", status=status.HTTP_400_BAD_REQUEST)
+ 
+            document_type_id = item.get("document_type_id")
+            if not document_type_id:
+                return prepare_response(message=f"documents[{index}]: document_type_id is required", status=status.HTTP_400_BAD_REQUEST)
 
-        created_ids = []
-        for doc_data in documents_data:
-            file_data = doc_data.get("file_data") or doc_data.get("data")
-            if not file_data:
-                continue
-
-            file_name = doc_data.get("file_name") or f"{uuid.uuid4()}.pdf"
-            doc_type = DocumentType.objects.filter(section=constants.TENANT).first()
+            doc_type = DocumentType.objects.filter(id=document_type_id, section=doc_section).first()
             if not doc_type:
-                return prepare_response(message="Tenant document type not configured", status=status.HTTP_400_BAD_REQUEST)
+                return prepare_response(message=f"documents[{index}]: Invalid {role} document type", status=status.HTTP_400_BAD_REQUEST)
 
-            ext = get_extension_from_base64(file_data) or ".pdf"
+            file_data = item.get("file_data")
+            file_name = (item.get("file_name") or "").strip()
+
+            if not file_data:
+                return prepare_response(message=f"documents[{index}]: file_data is required", status=status.HTTP_400_BAD_REQUEST)
+
+            expiry_date, err = parse_expiry_date(item.get("expiry_date"))
+            if err:
+                return prepare_response(message=f"documents[{index}]: {err}", status=status.HTTP_400_BAD_REQUEST)
+ 
+            if not expiry_date:
+                return prepare_response(
+                    message=f"documents[{index}]: expiry_date is required",
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+ 
+            cleaned.append({
+                "file_data":   file_data,
+                "file_name":   file_name,
+                "expiry_date": expiry_date,
+                "doc_type":    doc_type,
+            })
+ 
+        created = []
+        for item in cleaned:
+            ext = get_extension_from_base64(item["file_data"]) or ".pdf"
             unique_filename = f"{uuid.uuid4()}{ext}"
-            s3_key = f"tenant/{tenant.id}/documents/{doc_type.id}/{unique_filename}"
-            url = upload_file_to_s3_base64(file_data, s3_key)
-            doc = TenantDocuments.objects.create(
-                created_by=user_profile.user,
-                tenant=tenant,
-                document_type=doc_type,
-                file_name=file_name,
-                file_path=url,
+            s3_key = f"{s3_prefix}/{profile.id}/documents/{item['doc_type'].id}/{unique_filename}"
+
+            file_url = upload_file_to_s3_base64(
+                file_data=item["file_data"],
+                object_name=s3_key,
             )
-            created_ids.append(doc.id)
-        if not created_ids:
-            return prepare_response(message="No documents uploaded — check document_type_id and file_data", status=status.HTTP_400_BAD_REQUEST)
+            doc = DocModel.objects.create(
+                created_by=user_profile.user,
+                **{profile_field: profile},
+                document_type=item["doc_type"],
+                file_name=item["file_name"] or unique_filename,
+                file_path=file_url,
+                expiry_date=item["expiry_date"],
+            )
+            created.append(doc)
         logger.info(
-            "TENANT_DOCUMENTS_UPLOADED | user_id=%s | tenant_id=%s | count=%s",
-            request.user.id, tenant.id, len(created_ids)
+            "DOCUMENTS_UPLOADED | user_id=%s | role=%s | profile_id=%s | count=%s",
+            request.user.id, role, profile.id, len(created)
         )
-        return prepare_response(message="Documents uploaded successfully", content={"ids": created_ids}, status=status.HTTP_201_CREATED)
-    else:
-        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+        return prepare_response(
+            message="Documents uploaded successfully",
+            content={
+                "ids":       [d.id for d in created],
+                "documents": [_serialize_document(d, profile_field) for d in created],
+            },
+            status=status.HTTP_201_CREATED,
+        )
+ 
+    # ─────────────────── PUT — renew ────────────────────────────────
+    elif request.method == "PUT":
+        try:
+            body = json.loads(request.body)
+        except Exception:
+            return prepare_response(message="Invalid JSON body", status=status.HTTP_400_BAD_REQUEST)
+ 
+        document_id = body.get("document_id")
+        if not document_id:
+            return prepare_response(message="document_id is required", status=status.HTTP_400_BAD_REQUEST)
+        documents = body.get("documents") or []
+        if not isinstance(documents, list) or not documents:
+            return prepare_response(
+                message="documents list is required",
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+ 
+        item = documents[0]
+        doc = DocModel.objects.filter(
+            id=document_id,
+            is_active=True,
+            **{profile_field: profile}
+        ).select_related("document_type", profile_field).first()
+        if not doc:
+            return prepare_response(message="Document not found", status=status.HTTP_404_NOT_FOUND)
+ 
+        if not doc.is_expired:
+            return prepare_response(message="Only expired documents can be renewed", status=status.HTTP_400_BAD_REQUEST)
+ 
+        file_data = item.get("file_data")
+        file_name = (item.get("file_name") or "").strip()
+        expiry_date, err = parse_expiry_date(item.get("expiry_date"))
+        if err:
+            return prepare_response(message=err, status=status.HTTP_400_BAD_REQUEST)
+        if not expiry_date:
+            return prepare_response(
+                message="expiry_date is required to renew this document",
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+ 
+        if expiry_date <= timezone.localdate():
+            return prepare_response(
+                message="Renewal expiry_date must be a future date",
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+ 
+        if not file_data:
+            return prepare_response(message="file_data is required for renewal", status=status.HTTP_400_BAD_REQUEST)
+ 
+        ext = get_extension_from_base64(file_data) or ".pdf"
+        unique_filename = f"{uuid.uuid4()}{ext}"
+        s3_key = f"{s3_prefix}/{profile.id}/documents/{doc.document_type_id}/{unique_filename}"
+
+        file_url = upload_file_to_s3_base64(
+            file_data=file_data,
+            object_name=s3_key
+        )
+ 
+        main_document = doc.main_document or doc
+        new_doc = DocModel.objects.create(
+            created_by=user_profile.user,
+            **{profile_field: profile},
+            document_type=doc.document_type,
+            file_name=file_name or unique_filename,
+            file_path=file_url,
+            expiry_date=expiry_date,
+            main_document=main_document,
+        )
+ 
+        logger.info(
+            "DOCUMENT_RENEWED | user_id=%s | role=%s | old_doc_id=%s | new_doc_id=%s | main_document_id=%s",
+            request.user.id, role, doc.id, new_doc.id, main_document.id,
+        )
+        return prepare_response(
+            message="Document renewed successfully",
+            content=_serialize_document(new_doc, profile_field),
+            status=status.HTTP_201_CREATED
+        )
+    return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)

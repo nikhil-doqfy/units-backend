@@ -3193,27 +3193,37 @@ def export_lease_tenancy_csv(request):
         lease_status_param = request.GET.get("lease_status")
 
         leases_qs = Lease.objects.select_related(
-            "lease_property",
-            "lease_property__company",
+            "unit",
+            "unit__property_block_tower__property__pmc",
             "tenant",
             "tenant__user"
         )
-        if current_user.user_role == constants.OWNER:
-            leases_qs = leases_qs.filter(owner=current_user)
+        owner_profile = Owner.objects.filter(pk=current_user.pk).first()
+        pm_profile = PropertyManager.objects.filter(
+            pk=current_user.pk
+        ).select_related("company").first()
 
-        elif current_user.user_role == constants.COMPANY_USER:
+        if owner_profile:
             leases_qs = leases_qs.filter(
-                lease_property__company__company_user=current_user
+                unit__unit_owners__owner=owner_profile
+            ).distinct()
+        elif pm_profile and pm_profile.company:
+            pmc_ids = _get_pmc_ids_for_user(current_user)
+            leases_qs = leases_qs.filter(
+                Q(unit__property_block_tower__property__pmc_id__in=pmc_ids) |
+                Q(unit__parent_property__pmc_id__in=pmc_ids)
             ).distinct()
         else:
             logger.warning(
-                        "LEASE_TENANCY_EXPORT_FAILED | user_id=%s | reason=UNAUTHORIZED_ROLE", request.user.id )
+                "LEASE_TENANCY_EXPORT_FAILED | user_id=%s | reason=UNAUTHORIZED_ROLE",
+                current_user.id
+            )
             return prepare_response(
                 message=constants.UNAUTHORIZED_ROLE,
                 status=status.HTTP_403_FORBIDDEN
             )
         if lease_status_param:
-            status_list = [s.strip().upper() for s in lease_status_param.split(",")]
+            status_list = [s.strip().upper() for s in lease_status_param.split(",") if s.strip()]
             leases_qs = leases_qs.filter(lease_status__in=status_list)
         field_names = [
             "Property Code",
@@ -3225,22 +3235,30 @@ def export_lease_tenancy_csv(request):
         ]
 
         data_list = []
-
         for lease in leases_qs.order_by("-created"):
             tenant = lease.tenant
-            property_unit = lease.lease_property
+            unit = lease.unit
 
             data_list.append({
-                "Property Code": property_unit.property_code if property_unit else "",
-                "Agreement With": tenant.user.get_full_name() if tenant and tenant.user else "",
+                "Property Code": unit.code if unit else "",
+                "Agreement With": (
+                    tenant.user.get_full_name()
+                    if tenant and tenant.user else ""
+                ),
                 "Contact Number": tenant.contact_number if tenant else "",
-                "Agreement Start Date": lease.lease_start_date.strftime("%Y-%m-%d") if lease.lease_start_date else "",
-                "Agreement End Date": lease.lease_end_date.strftime("%Y-%m-%d") if lease.lease_end_date else "",
-                "Lease Status": lease.lease_status
+                "Agreement Start Date": (
+                    lease.start_date.strftime("%d/%m/%Y")
+                    if lease.start_date else ""
+                ),
+                "Agreement End Date": (
+                    lease.end_date.strftime("%d/%m/%Y")
+                    if lease.end_date else ""
+                ),
+                "Lease Status": lease.lease_status or ""
             })
         logger.info(
             "LEASE_TENANCY_EXPORTED | user_id=%s | total_records=%s",
-            request.user.id, len(data_list) )
+            current_user.id, len(data_list) )
         return export_to_csv(
             filename="lease_tenancy_export",
             field_names=field_names,
@@ -3293,7 +3311,7 @@ def lease_pdf_view(request):
                 status=status.HTTP_404_NOT_FOUND
             )
 
-        file_name = f"lease_{lease.lease_number}.pdf"
+        file_name = f"lease_{lease.code}.pdf"
 
 
         if purpose == "download":
@@ -3322,7 +3340,8 @@ def lease_pdf_view(request):
         return prepare_response(
             content={
                 "lease_id": lease.id,
-                "lease_number": lease.lease_number,
+                #"lease_number": lease.lease_number,
+                "lease_number": lease.code,
                 "purpose": purpose or "preview",
                 "pdf_url": presigned_url
             },
@@ -3813,6 +3832,95 @@ def invoice_view(request):
     if request.method != "GET":
         return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
+    tenant_profile = Tenant.objects.filter(pk=request.user.pk).first()
+    if tenant_profile:
+        leases = (
+            Lease.objects
+            .filter(tenant=tenant_profile, is_active=True)
+            .select_related("tenant__user", "unit__property_block_tower__property")
+        )
+        invoices = []
+        for lease in leases:
+            t = lease.tenant
+            unit = lease.unit
+            pb = unit.property_block_tower if unit else None
+            prop = pb.property if pb else None
+
+            tenant_info = {
+                "name": f"{t.user.first_name} {t.user.last_name}".strip() if t and t.user else None,
+                "code": t.code if t else None,
+                "email": t.user.email if t and t.user else None,
+                "contact": t.contact_number if t else None,
+                "address_line_1": t.address_line_1 if t else None,
+                "address_line_2": t.address_line_2 if t else None,
+            }
+
+            property_info = {
+                "property_name": prop.property_name if prop else None,
+                "block_name": pb.block_name if pb else None,
+                "unit_name": unit.unit_name if unit else None,
+                "start_date": str(lease.start_date)[:10] if lease.start_date else None,
+                "end_date": str(lease.end_date)[:10] if lease.end_date else None,
+                "lease_code": lease.code,
+            }
+
+            qs = (
+                lease.lease_cheques
+                .select_related("charge", "origin_bank")
+                .filter(is_active=True)
+                .order_by("created")
+            )
+
+            def _desc(ch):
+                if ch.cheque_type == constants.OTHER_CHARGE:
+                    return ch.charge.description if ch.charge else "Other Charge"
+
+                label = (
+                    "Rent"
+                    if ch.cheque_type == constants.RENT_CHEQUE
+                    else "Additional Charge"
+                )
+
+                if ch.start_date and ch.end_date:
+                    return f"{label} [{str(ch.start_date)[:7]} – {str(ch.end_date)[:7]}]"
+
+                return label
+
+            transactions = [
+                {
+                    "id": ch.id,
+                    "code": ch.code,
+                    "cheque_type": ch.cheque_type,
+                    "description": _desc(ch),
+                    "cheque_date": str(ch.cheque_date)[:10] if ch.cheque_date else None,
+                    "cheque_number": ch.cheque_number,
+                    "payment_type": ch.payment_type,
+                    "status": ch.status,
+                    "amount": ch.amount,
+                    "vat": ch.vat,
+                    "total": ch.total if ch.cheque_type == constants.OTHER_CHARGE else ch.amount,
+                    "tax_code": ch.charge.tax_code if ch.charge else None,
+                    "origin_bank_name": ch.origin_bank.name if ch.origin_bank else None,
+                    "origin_account_number": ch.origin_account_number,
+                }
+                for ch in qs
+            ]
+
+            subtotal = sum((x["amount"] or 0) for x in transactions)
+            vat_total = sum(x["vat"] for x in transactions)
+            grand_total = round(sum(x["total"] for x in transactions), 2)
+            invoices.append({
+                "tenant": tenant_info,
+                "property": property_info,
+                "transactions": transactions,
+                "totals": {
+                    "subtotal": subtotal,
+                    "vat_total": vat_total,
+                    "grand_total": grand_total,
+                },
+            })
+        return prepare_response(content=invoices)
+
     lease_id = request.GET.get("lease_id")
     if not lease_id:
         logger.warning(
@@ -3889,8 +3997,8 @@ def invoice_view(request):
     vat_total   = sum(t["vat"]           for t in transactions)
     grand_total = round(sum(t["total"]   for t in transactions), 2)
     logger.info(
-            "INVOICE_FETCHED | user_id=%s | lease_id=%s | transaction_count=%s",
-            request.user.id, lease_id, len(transactions) )
+        "INVOICE_FETCHED | user_id=%s | lease_id=%s | transaction_count=%s",
+        request.user.id, lease_id, len(transactions) )
     return prepare_response(content={
         "tenant":       tenant_info,
         "property":     property_info,
