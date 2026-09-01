@@ -1099,3 +1099,41 @@ DOCUMENT_STATUS_CHOICES = (
     (EXPIRING_SOON, "Expiring Soon"),
     (EXPIRED, "Expired"),
 )
+
+OPEN = "OPEN"
+IN_PROGRESS = "IN_PROGRESS"
+RESOLVED = "RESOLVED"
+CLOSED = "CLOSED"
+
+SUPPORT_STATUS_CHOICES = (
+    ("OPEN", "Open"),
+    ("IN_PROGRESS", "In Progress"),
+    ("RESOLVED", "Resolved"),
+    ("CLOSED", "Closed"),
+)
+
+BROADCAST_PRIORITY_CHOICES = [
+    ("NORMAL", "Normal"),
+    ("IMPORTANT", "Important"),
+    ("URGENT", "Urgent"),
+]
+
+BROADCAST_CHANNEL_CHOICES = [
+    ("APP", "App Notification"),
+    ("SMS", "SMS"),
+    ("MAIL", "Mail"),
+    ("WHATSAPP", "WhatsApp"),
+]
+
+BROADCAST_STATUS_CHOICES = [
+    ("DRAFT", "Draft"),
+    ("SCHEDULED", "Scheduled"),
+    ("SENT", "Sent"),
+    ("DELETED", "Deleted"),
+]
+
+BROADCAST_RECIPIENT_STATUS_CHOICES = [
+    ("PENDING", "Pending"),
+    ("DELIVERED", "Delivered"),
+    ("FAILED", "Failed"),
+]
