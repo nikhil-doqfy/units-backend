@@ -5,69 +5,99 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Unit Shared with You</title>
 
-    <style>
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: #f5f6fa;
-            margin: 0;
-            padding: 0;
-        }
+<style>
+    body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background-color: #f5f6fa;
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        overflow-x: hidden;
+    }
 
+    .email-container {
+        background-color: #ffffff;
+        width: 100%;
+        max-width: 600px;
+        margin: 30px auto;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        overflow: hidden;
+        box-sizing: border-box;
+    }
+
+    .header {
+        text-align: center;
+        padding: 25px 20px;
+        background-color: #6a11cb;
+        color: #ffffff;
+        box-sizing: border-box;
+    }
+
+    .content {
+        padding: 25px;
+        color: #333333;
+        box-sizing: border-box;
+    }
+
+    .footer {
+        background-color: #f1f1f1;
+        text-align: center;
+        padding: 15px;
+        font-size: 13px;
+        color: #666666;
+        box-sizing: border-box;
+    }
+
+    .footer a {
+        color: #2575fc;
+        text-decoration: none;
+    }
+
+    .notice-box {
+        background-color: #f8f9fc;
+        border: 1px solid #e0e4f0;
+        border-radius: 6px;
+        padding: 12px 16px;
+        margin-top: 20px;
+        margin-bottom: 20px;
+        font-size: 13px;
+        color: #333333;
+        line-height: 1.5;
+        box-sizing: border-box;
+    }
+
+    .arabic {
+        direction: rtl;
+        text-align: right;
+        margin-top: 15px;
+    }
+
+    @media screen and (max-width: 620px) {
         .email-container {
-            background-color: #ffffff;
-            max-width: 600px;
-            margin: 30px auto;
-            border-radius: 8px;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-            overflow: hidden;
-        }
-
-        .header {
-            text-align: center;
-            padding: 25px 20px;
-            background: linear-gradient(90deg, #6a11cb 0%, #2575fc 100%);
-            color: #ffffff;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 auto !important;
+            border-radius: 0 !important;
         }
 
         .content {
-            padding: 25px;
-            color: #333333;
+            padding: 20px 15px !important;
+            box-sizing: border-box !important;
         }
 
-        .footer {
-            background-color: #f1f1f1;
-            text-align: center;
-            padding: 15px;
-            font-size: 13px;
-            color: #666666;
+        table {
+            max-width: 100% !important;
         }
 
-        .footer a {
-            color: #2575fc;
-            text-decoration: none;
+        td {
+            box-sizing: border-box !important;
         }
-
-        .notice-box {
-            background-color: #fff8e1;
-            border: 1px solid #ffe082;
-            border-radius: 6px;
-            padding: 12px 16px;
-            margin-top: 20px;
-            margin-bottom: 20px;
-            font-size: 13px;
-            color: #7a5800;
-            line-height: 1.5;
-        }
-
-        .arabic {
-            direction: rtl;
-            text-align: right;
-            margin-top: 15px;
-        }
-    </style>
+    }
+</style>
 </head>
 <body>
-<div class="email-container">
+    <div class="email-container">
 
     <!-- ================= HEADER ================= -->
     <div class="header">
@@ -93,7 +123,7 @@
             font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             font-size:14px;
             line-height:20px;
-            color:#ffffff;
+            color:#f0f0f0;
             text-align:center;
             display:block;
         ">
@@ -123,23 +153,27 @@
             has shared the following unit with you via the Units platform.
         </p>
 
-
         <!-- ================= UNIT HEADER CARD ================= -->
-        <table width="100%" cellpadding="0" cellspacing="0" border="0"
-               style="
-                    background-color:#f8f9fc;
-                    border:1px solid #e0e4f0;
-                    border-radius:6px;
-                    margin-bottom:20px;
-               ">
-
+        <table
+            width="100%"
+            cellpadding="0"
+            cellspacing="0"
+            border="0"
+            style="
+                background-color:#f8f9fc;
+                border:1px solid #e0e4f0;
+                border-radius:6px;
+                margin-bottom:20px;
+            "
+        >
             <tr>
                 <td style="padding:16px 18px;">
                     <p style="
                         margin:0 0 6px 0;
                         font-size:18px;
                         font-weight:700;
-                        color:#1a1a2e;
+                        color:#222222;
+                        word-break:break-word;
                     ">
                         {{ unit_name }}
                     </p>
@@ -147,8 +181,8 @@
                     {% if unit_code %}
                     <span style="
                         display:inline-block;
-                        background:linear-gradient(90deg,#6a11cb 0%,#2575fc 100%);
-                        color:#1a1a2e;
+                        background-color:#6a11cb;
+                        color:#ffffff;
                         font-size:11px;
                         font-weight:600;
                         padding:3px 12px;
@@ -164,25 +198,40 @@
         </table>
 
         <!-- ================= UNIT DETAILS ================= -->
-        <table width="100%" cellpadding="0" cellspacing="0" border="0"
-               style="margin-bottom:8px;">
+        <table
+            width="100%"
+            cellpadding="0"
+            cellspacing="0"
+            border="0"
+            style="
+                margin-bottom:8px;
+                table-layout:fixed;
+            "
+        >
 
             <!-- ROW 1 -->
             <tr>
 
                 <!-- Property -->
-                <td width="50%" valign="top"
-                    style="padding:0 6px 12px 0;">
-
-                    <table width="100%" cellpadding="0" cellspacing="0" border="0"
-                           style="
-                                background-color:#f8f9fc;
-                                border:1px solid #e0e4f0;
-                                border-radius:6px;
-                           ">
+                <td
+                    width="50%"
+                    valign="top"
+                    style="padding:0 6px 12px 0;"
+                >
+                    <table
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        style="
+                            background-color:#f8f9fc;
+                            border:1px solid #e0e4f0;
+                            border-radius:6px;
+                            table-layout:fixed;
+                        "
+                    >
                         <tr>
                             <td style="padding:12px 14px;">
-
                                 <p style="
                                     margin:0 0 4px 0;
                                     font-size:11px;
@@ -197,33 +246,38 @@
                                 <p style="
                                     margin:0;
                                     font-size:14px;
-                                    color:#1a1a2e;
+                                    color:#333333;
                                     font-weight:500;
                                     word-break:break-word;
+                                    overflow-wrap:break-word;
                                 ">
                                     {{ property_name|default:"-" }}
                                 </p>
-
                             </td>
                         </tr>
                     </table>
                 </td>
 
-
                 <!-- Block / Tower -->
-                <td width="50%" valign="top"
-                    style="padding:0 0 12px 6px;">
-
-                    <table width="100%" cellpadding="0" cellspacing="0" border="0"
-                           style="
-                                background-color:#f8f9fc;
-                                border:1px solid #e0e4f0;
-                                border-radius:6px;
-                           ">
-
+                <td
+                    width="50%"
+                    valign="top"
+                    style="padding:0 0 12px 6px;"
+                >
+                    <table
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        style="
+                            background-color:#f8f9fc;
+                            border:1px solid #e0e4f0;
+                            border-radius:6px;
+                            table-layout:fixed;
+                        "
+                    >
                         <tr>
                             <td style="padding:12px 14px;">
-
                                 <p style="
                                     margin:0 0 4px 0;
                                     font-size:11px;
@@ -238,37 +292,42 @@
                                 <p style="
                                     margin:0;
                                     font-size:14px;
-                                    color:#1a1a2e;
+                                    color:#333333;
                                     font-weight:500;
                                     word-break:break-word;
+                                    overflow-wrap:break-word;
                                 ">
                                     {{ block_name|default:"-" }}
                                 </p>
-
                             </td>
                         </tr>
                     </table>
                 </td>
             </tr>
 
-
             <!-- ROW 2 -->
             <tr>
 
                 <!-- Bedrooms -->
-                <td width="50%" valign="top"
-                    style="padding:0 6px 12px 0;">
-
-                    <table width="100%" cellpadding="0" cellspacing="0" border="0"
-                           style="
-                                background-color:#f8f9fc;
-                                border:1px solid #e0e4f0;
-                                border-radius:6px;
-                           ">
-
+                <td
+                    width="50%"
+                    valign="top"
+                    style="padding:0 6px 12px 0;"
+                >
+                    <table
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        style="
+                            background-color:#f8f9fc;
+                            border:1px solid #e0e4f0;
+                            border-radius:6px;
+                            table-layout:fixed;
+                        "
+                    >
                         <tr>
                             <td style="padding:12px 14px;">
-
                                 <p style="
                                     margin:0 0 4px 0;
                                     font-size:11px;
@@ -283,7 +342,7 @@
                                 <p style="
                                     margin:0;
                                     font-size:14px;
-                                    color:#1a1a2e;
+                                    color:#333333;
                                     font-weight:500;
                                 ">
                                     {{ no_of_bedrooms|default:"-" }}
@@ -293,21 +352,26 @@
                     </table>
                 </td>
 
-
                 <!-- Floor No -->
-                <td width="50%" valign="top"
-                    style="padding:0 0 12px 6px;">
-
-                    <table width="100%" cellpadding="0" cellspacing="0" border="0"
-                           style="
-                                background-color:#f8f9fc;
-                                border:1px solid #e0e4f0;
-                                border-radius:6px;
-                           ">
-
+                <td
+                    width="50%"
+                    valign="top"
+                    style="padding:0 0 12px 6px;"
+                >
+                    <table
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        style="
+                            background-color:#f8f9fc;
+                            border:1px solid #e0e4f0;
+                            border-radius:6px;
+                            table-layout:fixed;
+                        "
+                    >
                         <tr>
                             <td style="padding:12px 14px;">
-
                                 <p style="
                                     margin:0 0 4px 0;
                                     font-size:11px;
@@ -322,36 +386,40 @@
                                 <p style="
                                     margin:0;
                                     font-size:14px;
-                                    color:#1a1a2e;
+                                    color:#333333;
                                     font-weight:500;
                                 ">
                                     {{ floor_no|default:"-" }}
                                 </p>
-
                             </td>
                         </tr>
                     </table>
                 </td>
             </tr>
 
-
             <!-- ROW 3 -->
             <tr>
 
                 <!-- Unit Size -->
-                <td width="50%" valign="top"
-                    style="padding:0 6px 12px 0;">
-
-                    <table width="100%" cellpadding="0" cellspacing="0" border="0"
-                           style="
-                                background-color:#f8f9fc;
-                                border:1px solid #e0e4f0;
-                                border-radius:6px;
-                           ">
-
+                <td
+                    width="50%"
+                    valign="top"
+                    style="padding:0 6px 12px 0;"
+                >
+                    <table
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        style="
+                            background-color:#f8f9fc;
+                            border:1px solid #e0e4f0;
+                            border-radius:6px;
+                            table-layout:fixed;
+                        "
+                    >
                         <tr>
                             <td style="padding:12px 14px;">
-
                                 <p style="
                                     margin:0 0 4px 0;
                                     font-size:11px;
@@ -366,32 +434,37 @@
                                 <p style="
                                     margin:0;
                                     font-size:14px;
-                                    color:#1a1a2e;
+                                    color:#333333;
                                     font-weight:500;
+                                    word-break:break-word;
                                 ">
                                     {{ unit_size|default:"-" }}
                                 </p>
-
                             </td>
                         </tr>
                     </table>
                 </td>
 
-
                 <!-- Area -->
-                <td width="50%" valign="top"
-                    style="padding:0 0 12px 6px;">
-
-                    <table width="100%" cellpadding="0" cellspacing="0" border="0"
-                           style="
-                                background-color:#f8f9fc;
-                                border:1px solid #e0e4f0;
-                                border-radius:6px;
-                           ">
-
+                <td
+                    width="50%"
+                    valign="top"
+                    style="padding:0 0 12px 6px;"
+                >
+                    <table
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        style="
+                            background-color:#f8f9fc;
+                            border:1px solid #e0e4f0;
+                            border-radius:6px;
+                            table-layout:fixed;
+                        "
+                    >
                         <tr>
                             <td style="padding:12px 14px;">
-
                                 <p style="
                                     margin:0 0 4px 0;
                                     font-size:11px;
@@ -406,36 +479,41 @@
                                 <p style="
                                     margin:0;
                                     font-size:14px;
-                                    color:#1a1a2e;
+                                    color:#333333;
                                     font-weight:500;
+                                    word-break:break-word;
                                 ">
                                     {{ area|default:"-" }} {{ land_area_unit|default:"" }}
                                 </p>
-
                             </td>
                         </tr>
                     </table>
                 </td>
             </tr>
 
-
             <!-- ROW 4 -->
             <tr>
 
                 <!-- Land No -->
-                <td width="50%" valign="top"
-                    style="padding:0 6px 12px 0;">
-
-                    <table width="100%" cellpadding="0" cellspacing="0" border="0"
-                           style="
-                                background-color:#f8f9fc;
-                                border:1px solid #e0e4f0;
-                                border-radius:6px;
-                           ">
-
+                <td
+                    width="50%"
+                    valign="top"
+                    style="padding:0 6px 12px 0;"
+                >
+                    <table
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        style="
+                            background-color:#f8f9fc;
+                            border:1px solid #e0e4f0;
+                            border-radius:6px;
+                            table-layout:fixed;
+                        "
+                    >
                         <tr>
                             <td style="padding:12px 14px;">
-
                                 <p style="
                                     margin:0 0 4px 0;
                                     font-size:11px;
@@ -450,31 +528,37 @@
                                 <p style="
                                     margin:0;
                                     font-size:14px;
-                                    color:#1a1a2e;
+                                    color:#333333;
                                     font-weight:500;
+                                    word-break:break-word;
                                 ">
                                     {{ land_no|default:"-" }}
                                 </p>
-
                             </td>
                         </tr>
                     </table>
                 </td>
 
                 <!-- Makani No -->
-                <td width="50%" valign="top"
-                    style="padding:0 0 12px 6px;">
-
-                    <table width="100%" cellpadding="0" cellspacing="0" border="0"
-                           style="
-                                background-color:#f8f9fc;
-                                border:1px solid #e0e4f0;
-                                border-radius:6px;
-                           ">
-
+                <td
+                    width="50%"
+                    valign="top"
+                    style="padding:0 0 12px 6px;"
+                >
+                    <table
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        style="
+                            background-color:#f8f9fc;
+                            border:1px solid #e0e4f0;
+                            border-radius:6px;
+                            table-layout:fixed;
+                        "
+                    >
                         <tr>
                             <td style="padding:12px 14px;">
-
                                 <p style="
                                     margin:0 0 4px 0;
                                     font-size:11px;
@@ -489,12 +573,12 @@
                                 <p style="
                                     margin:0;
                                     font-size:14px;
-                                    color:#1a1a2e;
+                                    color:#333333;
                                     font-weight:500;
+                                    word-break:break-word;
                                 ">
                                     {{ makani_no|default:"-" }}
                                 </p>
-
                             </td>
                         </tr>
                     </table>
@@ -504,19 +588,25 @@
             <tr>
 
                 <!-- DEWA No -->
-                <td width="50%" valign="top"
-                    style="padding:0 6px 12px 0;">
-
-                    <table width="100%" cellpadding="0" cellspacing="0" border="0"
-                           style="
-                                background-color:#f8f9fc;
-                                border:1px solid #e0e4f0;
-                                border-radius:6px;
-                           ">
-
+                <td
+                    width="50%"
+                    valign="top"
+                    style="padding:0 6px 12px 0;"
+                >
+                    <table
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        style="
+                            background-color:#f8f9fc;
+                            border:1px solid #e0e4f0;
+                            border-radius:6px;
+                            table-layout:fixed;
+                        "
+                    >
                         <tr>
                             <td style="padding:12px 14px;">
-
                                 <p style="
                                     margin:0 0 4px 0;
                                     font-size:11px;
@@ -531,8 +621,9 @@
                                 <p style="
                                     margin:0;
                                     font-size:14px;
-                                    color:#1a1a2e;
+                                    color:#333333;
                                     font-weight:500;
+                                    word-break:break-word;
                                 ">
                                     {{ dewa_no|default:"-" }}
                                 </p>
@@ -542,19 +633,25 @@
                 </td>
 
                 <!-- Rent -->
-                <td width="50%" valign="top"
-                    style="padding:0 0 12px 6px;">
-
-                    <table width="100%" cellpadding="0" cellspacing="0" border="0"
-                           style="
-                                background-color:#f8f9fc;
-                                border:1px solid #e0e4f0;
-                                border-radius:6px;
-                           ">
-
+                <td
+                    width="50%"
+                    valign="top"
+                    style="padding:0 0 12px 6px;"
+                >
+                    <table
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        style="
+                            background-color:#f8f9fc;
+                            border:1px solid #e0e4f0;
+                            border-radius:6px;
+                            table-layout:fixed;
+                        "
+                    >
                         <tr>
                             <td style="padding:12px 14px;">
-
                                 <p style="
                                     margin:0 0 4px 0;
                                     font-size:11px;
@@ -569,12 +666,12 @@
                                 <p style="
                                     margin:0;
                                     font-size:14px;
-                                    color:#1a1a2e;
+                                    color:#333333;
                                     font-weight:500;
+                                    word-break:break-word;
                                 ">
                                     {{ rent|default:"-" }}
                                 </p>
-
                             </td>
                         </tr>
                     </table>
@@ -653,7 +750,7 @@
     <!-- ================= FOOTER ================= -->
     <div class="footer">
         <p style="margin:0 0 8px 0;">
-            © 2025 Units
+            © 2026 Units
         </p>
         <p style="margin:0;">
             Need help?
