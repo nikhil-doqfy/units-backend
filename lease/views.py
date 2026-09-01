@@ -1780,7 +1780,9 @@ def lease_cheque_view(request):
                 message="lease_id or cheque_id is required",
                 status=status.HTTP_400_BAD_REQUEST
             )
-
+        search = request.GET.get("search", "").strip()
+        payment_type = request.GET.get("payment_type")
+        cheque_status = request.GET.get("status")
         if pmc_ids:
             cheques = LeaseTransaction.objects.filter(
                 lease_id=lease_id,
@@ -1805,6 +1807,20 @@ def lease_cheque_view(request):
                 "lease__unit__property_block_tower__property",
                 "lease__unit__parent_property",
             ).distinct()
+        # ── Search ─────────────────────────────────────────────
+        if search:
+            cheques = cheques.filter(
+                Q(cheque_number__icontains=search) |
+                Q(code__icontains=search) |
+                Q(origin_bank__name__icontains=search) |
+                Q(selltlement_bank__name__icontains=search)
+            )
+        #filters
+        if payment_type:
+            cheques = cheques.filter(payment_type=payment_type)
+            
+        if cheque_status:
+            cheques = cheques.filter(status=cheque_status)
         logger.info(
             "LEASE_CHEQUE_LIST_FETCHED | user_id=%d | lease_id=%s | count=%d",
             request.user.id, lease_id, cheques.count() )
@@ -2022,6 +2038,74 @@ def lease_cheque_view(request):
 
     return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
 
+@is_request_authenticated
+def export_lease_cheque_csv(request):
+    try:
+        if request.method != "GET":
+            return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+        user_profile = request.user
+        pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).select_related("company").first()
+        owner_profile = Owner.objects.filter(pk=user_profile.pk).first()
+        pmc_ids = _get_pmc_ids_for_user(user_profile) if pm_profile else []
+        if not pmc_ids and not owner_profile:
+            logger.warning("LEASE_CHEQUE_EXPORT_FAILED | user_id=%d | reason=UNAUTHORIZED_ROLE", request.user.id)
+            return prepare_response(message=constants.UNAUTHORIZED_ROLE, status=status.HTTP_403_FORBIDDEN)
+        lease_id = request.GET.get("lease_id")
+        if not lease_id:
+            logger.warning("LEASE_CHEQUE_EXPORT_FAILED | user_id=%d | reason=LEASE_ID_MISSING", request.user.id)
+            return prepare_response(message="lease_id is required", status=status.HTTP_400_BAD_REQUEST)
+        search = request.GET.get("search", "").strip()
+        payment_type = request.GET.get("payment_type")
+        cheque_status = request.GET.get("status")
+        if pmc_ids:
+            cheques = LeaseTransaction.objects.filter(lease_id=lease_id).filter(
+                Q(lease__unit__parent_property__pmc_id__in=pmc_ids) |
+                Q(lease__unit__property_block_tower__property__pmc_id__in=pmc_ids)
+            ).select_related("origin_bank", "selltlement_bank", "document_type", "charge", "lease__unit__property_block_tower__property", "lease__unit__parent_property")
+        else:
+            cheques = LeaseTransaction.objects.filter(
+                lease_id=lease_id,
+                lease__unit__unit_owners__owner=owner_profile
+            ).select_related("origin_bank", "selltlement_bank", "document_type", "charge", "lease__unit__property_block_tower__property", "lease__unit__parent_property").distinct()
+        if search:
+            cheques = cheques.filter(
+                Q(cheque_number__icontains=search) |
+                Q(code__icontains=search) |
+                Q(origin_bank__name__icontains=search) |
+                Q(selltlement_bank__name__icontains=search)
+            )
+        if payment_type:
+            cheques = cheques.filter(payment_type=payment_type)
+        if cheque_status:
+            cheques = cheques.filter(status=cheque_status)
+        if not cheques.exists():
+            logger.warning("LEASE_CHEQUE_EXPORT_FAILED | user_id=%d | lease_id=%s | reason=NO_CHEQUES_FOUND", request.user.id, lease_id)
+            return prepare_response(message="No cheques found for this lease", status=status.HTTP_404_NOT_FOUND)
+        field_names = ["Transaction ID", "Bank Name", "Bank Account", "Cheque Number", "Cheque Date", "Payment type", "Purpose", "Status", "Amount", "Additional Charges", "Total Amount"]
+        data_list = []
+        for cheque in cheques:
+            amount = cheque.amount or 0
+            additional_charges = cheque.vat or 0
+            total_amount = cheque.total if cheque.cheque_type == constants.OTHER_CHARGE else amount + additional_charges
+            purpose = cheque.charge.description if cheque.charge else ""
+            data_list.append({
+                "Transaction ID": cheque.code or str(cheque.id),
+                "Bank Name": cheque.origin_bank.name if cheque.origin_bank else "",
+                "Bank Account": str(cheque.origin_account_number) if cheque.origin_account_number is not None else "",
+                "Cheque Number": cheque.cheque_number or "",
+                "Cheque Date": str(cheque.cheque_date)[:10] if cheque.cheque_date else "",
+                "Payment type": cheque.payment_type or "",
+                "Purpose": purpose,
+                "Status": cheque.status or "",
+                "Amount": amount,
+                "Additional Charges": additional_charges,
+                "Total Amount": total_amount
+            })
+        logger.info("LEASE_CHEQUE_EXPORTED | user_id=%d | lease_id=%s | total_records=%s | search=%s | payment_type=%s | status=%s", request.user.id, lease_id, len(data_list), search, payment_type, cheque_status)
+        return export_to_csv(filename="lease_cheques", field_names=field_names, data_list=data_list)
+    except Exception as e:
+        logger.exception("LEASE_CHEQUE_EXPORT_ERROR | user_id=%s | error=%s", getattr(request.user, "id", None), str(e))
+        return prepare_response(message=f"Error exporting lease cheque CSV: {str(e)}", status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 def lease_cheque_status(request):
     """Legacy — kept for backward compat. Delegates to lease_cheque_view."""
@@ -3225,6 +3309,14 @@ def export_lease_tenancy_csv(request):
         if lease_status_param:
             status_list = [s.strip().upper() for s in lease_status_param.split(",") if s.strip()]
             leases_qs = leases_qs.filter(lease_status__in=status_list)
+
+        if not leases_qs.exists():
+            logger.info(
+                "LEASE_TENANCY_EXPORT_FAILED | user_id=%s | reason=NO_DATA",
+                current_user.id
+            ) 
+            return prepare_response(message="No lease/tenancy data available for export.", status=status.HTTP_404_NOT_FOUND)
+
         field_names = [
             "Property Code",
             "Agreement With",
@@ -4718,4 +4810,186 @@ def activate_lease_view(request):
         logger.exception(
             "LEASE_ACTIVATION_ERROR | user_id=%s | error=%s",
             request.user.id, str(e) )
+        return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+from utilities.ses_utils import send_invoice_email
+@is_request_authenticated
+def share_invoice_email(request):
+    if request.method != "POST":
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    try:
+        body = json.loads(request.body or "{}")
+        lease_id = body.get("lease_id")
+
+        if not lease_id:
+            return prepare_response(message=constants.LEASE_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
+
+        lease = (
+            Lease.objects
+            .filter(id=lease_id, is_active=True)
+            .select_related("tenant__user", "unit__property_block_tower__property")
+            .first()
+        )
+
+        if not lease:
+            logger.warning(
+                "INVOICE_SHARE_FAILED | user_id=%s | lease_id=%s | reason=LEASE_NOT_FOUND",
+                request.user.id, lease_id
+            )
+            return prepare_response(message=constants.LEASE_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+
+        tenant = lease.tenant
+        if not tenant or not tenant.user or not tenant.user.email:
+            return prepare_response(message="Tenant email not found", status=status.HTTP_400_BAD_REQUEST)
+
+        tenant_email = tenant.user.email
+        unit = lease.unit
+        pb = unit.property_block_tower if unit else None
+        prop = pb.property if pb else None
+
+        qs = (
+            lease.lease_cheques
+            .select_related("charge", "origin_bank")
+            .filter(is_active=True)
+            .order_by("created")
+        )
+
+        def _desc(ch):
+            if ch.cheque_type == constants.OTHER_CHARGE:
+                return ch.charge.description if ch.charge else "Other Charge"
+
+            label = "Rent" if ch.cheque_type == constants.RENT_CHEQUE else "Additional Charge"
+
+            if ch.start_date and ch.end_date:
+                return f"{label} [{str(ch.start_date)[:7]} – {str(ch.end_date)[:7]}]"
+
+            return label
+
+        def _type_label(ct):
+            return {
+                "RENT_CHEQUE": "Rent",
+                "ADDITIONAL_CHEQUE": "Additional",
+                "OTHER_CHARGE": "Other Charge",
+            }.get(ct, ct or "—")
+
+        transactions = [
+            {
+                "description": _desc(ch),
+                "cheque_number": ch.cheque_number or "—",
+                "cheque_date": str(ch.cheque_date)[:10] if ch.cheque_date else "—",
+                "type_label": _type_label(ch.cheque_type),
+                "status": ch.status or "—",
+                "payment_type": ch.payment_type or "—",
+                "amount": float(ch.amount or 0),
+                "vat": float(ch.vat or 0),
+                "tax_code": ch.charge.tax_code if ch.charge else None,
+                "total": float(ch.total if ch.cheque_type == constants.OTHER_CHARGE else (ch.amount or 0)),
+            }
+            for ch in qs
+        ]
+
+        subtotal = sum(t["amount"] for t in transactions)
+        vat_total = sum(t["vat"] for t in transactions)
+        grand_total = round(sum(t["total"] for t in transactions), 2)
+
+        html_content = _build_invoice_html(
+            tenant={
+                "name": f"{tenant.user.first_name} {tenant.user.last_name}".strip(),
+                "code": tenant.code or "",
+                "email": tenant.user.email,
+                "contact": tenant.contact_number or "",
+                "address_line_1": tenant.address_line_1 or "",
+                "address_line_2": tenant.address_line_2 or "",
+            },
+            property_info={
+                "property_name": prop.property_name if prop else "—",
+                "block_name": pb.block_name if pb else "",
+                "unit_name": unit.unit_name if unit else "",
+                "start_date": str(lease.start_date)[:10] if lease.start_date else "—",
+                "end_date": str(lease.end_date)[:10] if lease.end_date else "—",
+                "lease_code": lease.code or "—",
+            },
+            transactions=transactions,
+            totals={"subtotal": subtotal, "vat_total": vat_total, "grand_total": grand_total},
+        )
+
+        try:
+            pdf_bytes = WeasyprintHTML(string=html_content).write_pdf()
+        except Exception as e:
+            logger.exception(
+                "INVOICE_SHARE_PDF_FAILED | user_id=%s | lease_id=%s | error=%s",
+                request.user.id, lease_id, str(e)
+            )
+            return prepare_response(message="PDF generation failed", status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        first_name = tenant.user.first_name or "Tenant"
+        subject = f"Invoice - {lease.code} - Units"
+
+        body_text = (
+            f"Hello {first_name},\n\n"
+            f"Please find your invoice attached.\n\n"
+            f"Lease Code: {lease.code}\n"
+            f"Property: {prop.property_name if prop else ''}\n"
+            f"Unit: {unit.unit_name if unit else ''}\n\n"
+            f"Regards,\n"
+            f"Units Team"
+        )
+
+        body_html = f"""
+        <html>
+        <body>
+            <p>Hello {first_name},</p>
+            <p>Please find your invoice attached.</p>
+            <p>
+                <strong>Lease Code:</strong> {lease.code}<br>
+                <strong>Property:</strong> {prop.property_name if prop else ''}<br>
+                <strong>Unit:</strong> {unit.unit_name if unit else ''}
+            </p>
+            <p>Regards,<br>Units Team</p>
+        </body>
+        </html>
+        """
+
+        pdf_filename = f"invoice_{lease.code}.pdf"
+
+        try:
+            send_invoice_email(
+                recipient=tenant_email,
+                subject=subject,
+                body_text=body_text,
+                body_html=body_html,
+                pdf_bytes=pdf_bytes,
+                pdf_filename=pdf_filename,
+            )
+        except Exception as e:
+            logger.exception(
+                "INVOICE_EMAIL_FAILED | user_id=%s | lease_id=%s | email=%s | error=%s",
+                request.user.id, lease_id, tenant_email, str(e)
+            )
+            return prepare_response(message="Failed to send invoice email", status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        logger.info(
+            "INVOICE_EMAIL_SENT | user_id=%s | lease_id=%s | email=%s",
+            request.user.id, lease_id, tenant_email
+        )
+
+        return prepare_response(
+            message="Invoice sent successfully",
+            content={
+                "sent_to": tenant_email,
+                "lease_id": lease_id,
+                "file_name": pdf_filename,
+            },
+            status=status.HTTP_200_OK
+        )
+
+    except json.JSONDecodeError:
+        return prepare_response(message="Invalid JSON body", status=status.HTTP_400_BAD_REQUEST)
+
+    except Exception as e:
+        logger.exception(
+            "INVOICE_SHARE_ERROR | user_id=%s | error=%s",
+            request.user.id, str(e)
+        )
         return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
