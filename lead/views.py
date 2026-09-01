@@ -5,9 +5,12 @@ import json
 from datetime import datetime
 from django.db.models import Q
 from django.http import HttpResponse
-from .models import Lead, ActivityLog
+from .models import Lead, ActivityLog, ScheduleMeeting
 from property.models import Unit, PMCPMMapping
-from user_service.models import PropertyManager, Tenant
+from user_service.models import PropertyManager, Tenant, Owner
+from rest_framework import status
+from lease.models import Lease
+from lease.views import _get_pmc_ids_for_user
 from plugins.logger_plugin import get_logger
 
 logger = get_logger(__name__)
@@ -584,3 +587,244 @@ def lead_bulk_import(request):
         content={"created": created, "skipped": skipped, "errors": errors},
         status=status.HTTP_201_CREATED,
     )
+
+from urllib.parse import urlencode
+def generate_google_calendar_url(title, description, start_time, end_time):
+    """
+    Generate a pre-filled Google Calendar event URL.
+    """
+    start_time = start_time.astimezone()
+    end_time = end_time.astimezone()
+    start_str = start_time.strftime("%Y%m%dT%H%M%S")
+    end_str = end_time.strftime("%Y%m%dT%H%M%S")
+
+    params = {
+        "action": "TEMPLATE",
+        "text": title,
+        "dates": f"{start_str}/{end_str}",
+        "stz": "Asia/Kolkata",
+        "etz": "Asia/Kolkata",
+        "details": description or "",
+    }
+    return (
+        "https://calendar.google.com/calendar/r/eventedit?"
+        + urlencode(params)
+    )
+
+@api_view(["POST"])
+@is_request_authenticated
+def schedule_meeting_view(request):
+    user_profile = request.user
+    try:
+        data = json.loads(request.body)
+    except json.JSONDecodeError:
+        return prepare_response(message="Invalid JSON", status=status.HTTP_400_BAD_REQUEST)
+
+    lead_id = data.get("lead_id")
+    title = (data.get("title") or "").strip()
+    description = (data.get("description") or "").strip()
+    start_time = data.get("start_time")
+    end_time = data.get("end_time")
+
+    if not lead_id:
+        return prepare_response(message="lead_id is required", status=status.HTTP_400_BAD_REQUEST)
+
+    if not title:
+        return prepare_response(message="title is required", status=status.HTTP_400_BAD_REQUEST)
+
+    if not start_time:
+        return prepare_response(message="start_time is required", status=status.HTTP_400_BAD_REQUEST)
+
+    if not end_time:
+        return prepare_response(message="end_time is required", status=status.HTTP_400_BAD_REQUEST)
+
+    pmc_ids = _get_pmc_ids(user_profile)
+    if not pmc_ids:
+        return prepare_response(message="Company not found for this user", status=status.HTTP_400_BAD_REQUEST)
+
+    lead = Lead.objects.filter(id=lead_id, pmc_id__in=pmc_ids, is_active=True).first()
+
+    if not lead:
+        return prepare_response(message="Lead not found", status=status.HTTP_404_NOT_FOUND)
+
+    try:
+        start_datetime = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
+        end_datetime = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return prepare_response(message="Invalid start_time or end_time format", status=status.HTTP_400_BAD_REQUEST)
+
+    if end_datetime <= start_datetime:
+        return prepare_response(message="end_time must be greater than start_time", status=status.HTTP_400_BAD_REQUEST)
+
+    google_calendar_url = generate_google_calendar_url(
+        title=title,
+        description=description,
+        start_time=start_datetime,
+        end_time=end_datetime,
+    )
+
+    meeting = ScheduleMeeting.objects.create(
+        lead=lead,
+        title=title,
+        description=description,
+        start_time=start_datetime,
+        end_time=end_datetime,
+        status="SCHEDULED",
+        google_calendar_url=google_calendar_url,
+        created_by=user_profile.user,
+    )
+
+    ActivityLog.objects.create(
+        lead=lead,
+        activity_type=constants.NOTE,
+        title="scheduled a meeting",
+        description=(
+            f"{title} scheduled from "
+            f"{start_datetime.strftime('%d %b %Y %I:%M %p')} "
+            f"to "
+            f"{end_datetime.strftime('%d %b %Y %I:%M %p')}"
+        ),
+        created_by=user_profile.user,
+    )
+
+    return prepare_response(
+        message="Meeting scheduled successfully",
+        content={
+            "id": meeting.id,
+            "lead_id": lead.id,
+            "lead_name": lead.name,
+            "lead_email": lead.email,
+            "title": meeting.title,
+            "description": meeting.description,
+            "start_time": meeting.start_time,
+            "end_time": meeting.end_time,
+            "status": meeting.status,
+            "google_calendar_url": meeting.google_calendar_url,
+        },
+        status=status.HTTP_201_CREATED
+    )
+
+@api_view(["GET"])
+@is_request_authenticated
+def tenancy_ledger_view(request):
+    try:
+        user_profile = request.user
+        search = request.GET.get("search", "").strip()
+        property_id = request.GET.get("property_id")
+        agreement_status = request.GET.get("agreement_status")
+        property_status = request.GET.get("property_status")
+        export = request.GET.get("export", "").lower() == "true"
+        platform_choices = dict(constants.PLATFORM_CHOICES)
+        page = int(request.GET.get("page", 1))
+        page_size = int(request.GET.get("page_size", 10))
+
+        leases = Lease.objects.select_related(
+            "unit", "unit__parent_property", "unit__property_block_tower", "unit__parent_property__pmc", "tenant"
+        ).order_by("-id")
+
+        # PMC / Property Manager
+        pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).select_related("company").first()
+        if pm_profile:
+            pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile, is_active=True).values_list("pmc_id", flat=True))
+            if not pmc_ids and pm_profile.company_id:
+                pmc_ids = [pm_profile.company_id]
+            leases = leases.filter(unit__parent_property__pmc_id__in=pmc_ids) if pmc_ids else Lease.objects.none()
+        else:
+            # Owner
+            owner_profile = Owner.objects.filter(pk=user_profile.pk).first()
+            if owner_profile:
+                leases = leases.filter(unit__unit_owners__owner=owner_profile).distinct()
+            else:
+                # Tenant
+                tenant_profile = Tenant.objects.filter(pk=user_profile.pk).first()
+                leases = leases.filter(tenant=tenant_profile) if tenant_profile else Lease.objects.none()
+
+        # Property Filter
+        if property_id:
+            leases = leases.filter(unit__parent_property_id=property_id)
+        # Agreement Status Filter
+        if agreement_status:
+            leases = leases.filter(lease_status=agreement_status)
+        # Unit Occupancy Filter
+        if property_status:
+            if property_status.upper() == "OCCUPIED":
+                leases = leases.filter(unit__is_occupied=True)
+            elif property_status.upper() == "VACANT":
+                leases = leases.filter(unit__is_occupied=False)
+        # Search
+        if search:
+            leases = leases.filter(
+                Q(unit__parent_property__property_name__icontains=search) |
+                Q(unit__parent_property__code__icontains=search) |
+                Q(unit__unit_name__icontains=search) |
+                Q(unit__code__icontains=search) |
+                Q(tenant__code__icontains=search) |
+                Q(tenant__user__first_name__icontains=search) |
+                Q(tenant__user__last_name__icontains=search)
+            )
+
+        # CSV Export
+        if export:
+            import csv
+            response = HttpResponse(content_type="text/csv")
+            response["Content-Disposition"] = 'attachment; filename="tenancy_ledger.csv"'
+            writer = csv.writer(response)
+            writer.writerow(["Property Id", "Property Name", "Blocks / Towers", "Unit", "Tenant Name", "Agreement Status", "Dimension", "Property Status", "PMC", "Rental Amount", "RERA Index", "Platform"])
+
+            for lease in leases.iterator():
+                unit = lease.unit
+                prop = unit.parent_property
+                block = unit.property_block_tower
+                tenant = lease.tenant
+                tenant_name = f"{tenant.user.first_name} {tenant.user.last_name}".strip() if tenant and tenant.user else ""
+                writer.writerow([
+                    prop.id if prop else "",
+                    prop.property_name if prop else "",
+                    block.block_name if block else "",
+                    unit.unit_name if unit else "",
+                    tenant_name,
+                    lease.lease_status or "",
+                    f"{unit.no_of_bedrooms} BHK" if unit.no_of_bedrooms is not None else "",
+                    "Occupied" if unit.is_occupied else "Vacant",
+                    prop.pmc.name if prop and prop.pmc else "",
+                    lease.rent if lease.rent is not None else "",
+                    "",
+                    platform_choices.get(lease.platform, lease.platform).lower() if lease.platform else ""
+                ])
+            return response
+
+        # Pagination
+        total_count = leases.count()
+        start = (page - 1) * page_size
+        paginated_leases = leases[start:start + page_size]
+
+        data = []
+        for lease in paginated_leases:
+            unit = lease.unit
+            prop = unit.parent_property
+            block = unit.property_block_tower
+            tenant = lease.tenant
+            data.append({
+                "property_id": prop.id if prop else None,
+                "property_name": prop.property_name if prop else None,
+                "block_tower": block.block_name if block else None,
+                "unit": unit.unit_name if unit else None,
+                "tenant_name": f"{tenant.user.first_name} {tenant.user.last_name}".strip() if tenant and tenant.user else None,
+                "agreement_status": lease.lease_status,
+                "dimension": f"{unit.no_of_bedrooms} BHK" if unit.no_of_bedrooms is not None else None,
+                "property_status": "Occupied" if unit.is_occupied else "Vacant",
+                "pmc": prop.pmc.name if prop and prop.pmc else None,
+                "rental_amount": lease.rent,
+                "rera_index": None,
+                "platform": platform_choices.get(lease.platform, lease.platform).lower() if lease.platform else None
+            })
+
+        return prepare_response(
+            content=data,
+            pagination={"total_records": total_count, "page": page, "page_size": page_size},
+            status=status.HTTP_200_OK
+        )
+
+    except Exception as e:
+        logger.exception("TENANCY_LEDGER_ERROR")
+        return prepare_response(message="Error fetching tenancy ledger", content={}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

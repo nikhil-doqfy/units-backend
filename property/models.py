@@ -130,6 +130,7 @@ class Property(Base):
         blank=True,
         related_name="properties"
     )
+    platforms = models.JSONField(default=list, blank=True)
     land_area = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     land_area_unit = models.CharField(
         max_length=20,
@@ -176,6 +177,7 @@ class Property(Base):
         return fetch_s3_presigned_url(img.image_path, img.file_name)
 
     def _serialize_property(self):
+        platform_choices = dict(constants.PLATFORM_CHOICES)
         return {
             "id": self.id,
             "code": self.code,
@@ -185,6 +187,10 @@ class Property(Base):
             #"no_of_blocks": PropertyBlocks.objects.filter(property=self).count(),
             "no_of_blocks": self.no_of_blocks,
             "no_of_units": self.no_of_units,
+            "platforms": [
+                platform_choices.get(platform, platform.replace("_", " ").title()).lower()
+                for platform in (self.platforms or [])
+            ],
             # "no_of_units": Unit.objects.filter(property_block_tower__property=self).count(),
             "land_area": self.land_area,
             "land_area_unit": self.land_area_unit,

@@ -276,6 +276,14 @@ def property(request):
             return prepare_response(
                 message=constants.PMC_NOT_FOUND, status=status.HTTP_404_NOT_FOUND )
 
+        platforms = data.get("platforms", [])
+        if not isinstance(platforms, list):
+            return prepare_response( message="Platforms must be a list", status=status.HTTP_400_BAD_REQUEST)
+        valid_platforms = {choice[0] for choice in constants.PLATFORM_CHOICES}
+        invalid_platforms = set(platforms) - valid_platforms
+        if invalid_platforms:
+            return prepare_response(message="One or more platform values are invalid",status=status.HTTP_400_BAD_REQUEST)
+
         prop = Property.objects.create(
             created_by=user_profile.user,
             property_name=property_name,
@@ -296,11 +304,11 @@ def property(request):
             map_address=data.get("map_address"),
             approx_rent=data.get("approx_rent"),
             pmc=pmc,
+            platforms=platforms,
         )
         property_types = data.get("property_type")
         if not property_types:
-            if not property_types:
-                property_types = [constants.APARTMENT]
+            property_types = [constants.APARTMENT]
         property_type_objs = PropertyType.objects.filter(code__in=property_types)
         prop.property_type.set(property_type_objs)
         logger.info(
@@ -347,11 +355,24 @@ def property(request):
         if pm_profile and pm_profile.company:
             prop.pmc = pm_profile.company
 
-        prop.save()
         property_types = data.get("property_type")
         if property_types is not None:
             types = PropertyType.objects.filter(code__in=property_types)
             prop.property_type.set(types)
+
+        platforms = data.get("platforms")
+        if platforms is not None:
+            if not isinstance(platforms, list):
+                return prepare_response(message="Platforms must be a list", status=status.HTTP_400_BAD_REQUEST)
+
+            valid_platforms = {choice[0] for choice in constants.PLATFORM_CHOICES}
+            invalid_platforms = set(platforms) - valid_platforms
+
+            if invalid_platforms:
+                return prepare_response( message="One or more platform values are invalid", status=status.HTTP_400_BAD_REQUEST)
+        # Save exactly the current selection
+            prop.platforms = platforms
+        prop.save()
         logger.info(
             "PROPERTY_UPDATED | user_id=%d | property_id=%d | property_name=%s | status=SUCCESS",
             request.user.id, prop.id, prop.property_name,)
@@ -2088,3 +2109,185 @@ def bulk_upload_property_excel(request):
             },
             status=status.HTTP_201_CREATED
         )
+
+from django.template.loader import render_to_string
+from utilities.helper_functions import send_ses_email
+@api_view(["POST"])
+@is_request_authenticated
+def share_property(request):
+    try:
+        if request.method == "POST":
+            data = json.loads(request.body)
+            property_id = data.get("property_id")
+            recipient_email = data.get("recipient_email", "").strip()
+
+            if not property_id or not recipient_email:
+                return prepare_response(message=constants.FIELD_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
+
+            prop = Property.objects.for_user(request.user).filter(id=property_id, is_active=True).first()
+            if not prop:
+                return prepare_response(message=constants.PROPERTY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+
+            p = prop._serialize_property()
+            property_types = p.get("property_type") or []
+            if isinstance(property_types, list):
+                property_type = ", ".join(
+                    item.get("value", "") if isinstance(item, dict) else str(item)
+                    for item in property_types
+                )
+            else:
+                property_type = str(property_types)
+
+            shared_by = (
+                request.user.user.get_full_name()
+                or request.user.user.email
+            )
+            context = {
+                "property_name": p.get("property_name") or prop.property_name or "Property",
+                "property_code": p.get("code") or prop.code or "",
+                "property_type": property_type,
+                "status": p.get("status") or "",
+                "address_line_1": p.get("address_line_1") or "",
+                "address_line_2": p.get("address_line_2") or "",
+                "landmark": p.get("landmark") or "",
+                "pincode": p.get("pincode") or "",
+                "no_of_blocks": p.get("no_of_blocks") or 0,
+                "no_of_units": p.get("no_of_units") or 0,
+                "plot_no": p.get("plot_no") or "",
+                "dewa_no": p.get("dewa_no") or "",
+                "shared_by": shared_by,
+            }
+
+            body_html = render_to_string(
+                "email_templates/share_property.html",
+                context
+            )
+
+            body_text = "\n".join([
+                f"Property Shared: {context['property_name']}",
+                f"Property Code: {context['property_code']}",
+                f"Property Type: {property_type}",
+                f"Status: {context['status']}",
+                f"Address: {context['address_line_1']}",
+                f"Address 2: {context['address_line_2']}",
+                f"Landmark: {context['landmark']}",
+                f"Pincode: {context['pincode']}",
+                f"Blocks: {context['no_of_blocks']}",
+                f"Units: {context['no_of_units']}",
+                f"Plot No: {context['plot_no']}",
+                f"DEWA No: {context['dewa_no']}",
+                f"Shared by: {shared_by}",
+            ])
+
+            send_ses_email(
+                recipient_email,
+                f"Property: {context['property_name']}",
+                body_text,
+                body_html
+            )
+            logger.info(
+                "PROPERTY_SHARED | user_id=%s | property_id=%s | recipient_email=%s",
+                request.user.id, property_id, recipient_email)
+
+            return prepare_response( message="Property shared successfully.", status=status.HTTP_200_OK)
+        else:
+            return prepare_response( message=constants.INVALID_REQUEST, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    except json.JSONDecodeError:
+        return prepare_response(message="Invalid JSON request body.", status=status.HTTP_400_BAD_REQUEST)
+
+    except Exception as e:
+        logger.exception(
+            "PROPERTY_SHARE_ERROR | user_id=%s | property_id=%s | error=%s",
+            request.user.id, property_id if "property_id" in locals() else None, str(e))
+        return prepare_response(message=f"Error: {str(e)}", status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["POST"])
+@is_request_authenticated
+def share_unit(request):
+    try:
+        if request.method == "POST":
+            data = json.loads(request.body)
+
+            unit_id = data.get("unit_id")
+            recipient_email = data.get("recipient_email", "").strip()
+            if not unit_id or not recipient_email:
+                return prepare_response( message=constants.FIELD_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
+
+            unit_obj = (
+                Unit.objects
+                .for_user(request.user)
+                .filter(id=unit_id, is_active=True)
+                .select_related(
+                    "property_block_tower__property",
+                    "parent_property"
+                )
+                .prefetch_related("unit_owners")
+                .first()
+            )
+
+            if not unit_obj:
+                return prepare_response(message=constants.UNIT_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+
+            u = unit_obj._serialize_unit()
+            shared_by = (
+                request.user.user.get_full_name()
+                or request.user.user.email
+            )
+
+            context = {
+                "unit_name": u.get("unit_name") or "",
+                "unit_code": u.get("code") or "",
+                "property_name": u.get("property_name") or "",
+                "block_name": u.get("block_name") or "",
+                "no_of_bedrooms": u.get("no_of_bedrooms") or 0,
+                "floor_no": u.get("floor_no") or "",
+                "land_no": u.get("land_no") or "",
+                "unit_size": u.get("unit_size") or "",
+                "area": u.get("area") or "",
+                "land_area_unit": u.get("land_area_unit") or "",
+                "makani_no": u.get("makani_no") or "",
+                "dewa_no": u.get("dewa_no") or "",
+                "rent": u.get("rent") or "",
+                "shared_by": shared_by,
+            }
+
+            body_html = render_to_string( "email_templates/share_unit.html", context)
+            body_text = "\n".join([
+                f"Unit Shared: {context['unit_name']}",
+                f"Unit Code: {context['unit_code']}",
+                f"Property: {context['property_name']}",
+                f"Block/Tower: {context['block_name']}",
+                f"Bedrooms: {context['no_of_bedrooms']}",
+                f"Floor No: {context['floor_no']}",
+                f"Land No: {context['land_no']}",
+                f"Unit Size: {context['unit_size']}",
+                f"Area: {context['area']} {context['land_area_unit']}".strip(),
+                f"Makani No: {context['makani_no']}",
+                f"DEWA No: {context['dewa_no']}",
+                f"Rent: {context['rent']}",
+                f"Shared by: {shared_by}",
+            ])
+            send_ses_email(
+                recipient_email,
+                f"Unit: {context['unit_name']}",
+                body_text,
+                body_html
+            )
+
+            logger.info(
+                "UNIT_SHARED | user_id=%s | unit_id=%s | recipient_email=%s",
+                request.user.id, unit_id, recipient_email )
+
+            return prepare_response( message="Unit shared successfully.", status=status.HTTP_200_OK)
+
+        else:
+            return prepare_response( message=constants.INVALID_REQUEST, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    except json.JSONDecodeError:
+        return prepare_response( message="Invalid JSON request body.", status=status.HTTP_400_BAD_REQUEST)
+
+    except Exception as e:
+        logger.exception("UNIT_SHARE_ERROR | user_id=%s | unit_id=%s | error=%s",
+            request.user.id, unit_id if "unit_id" in locals() else None, str(e))
+        return prepare_response(message=f"Error: {str(e)}", status=status.HTTP_500_INTERNAL_SERVER_ERROR)

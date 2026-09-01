@@ -3,7 +3,7 @@ from user_service.models import (
     UserProfile, Permission, Role, UserVerification,
     Documents, OwnerDocuments, TenantDocuments,
     Owner, Tenant, PropertyManager,
-    FAQ, PrivacyPolicy, Approval, Documentation, DocumentType
+    FAQ, PrivacyPolicy, Approval, DocumentType, PMInvitation
 )
 
 
@@ -92,70 +92,71 @@ class ApprovalAdmin(admin.ModelAdmin):
     list_filter = ("approved","approved_at",)
     search_fields = ("tenant__id","unit__unit_name",)
 
-from django.contrib import admin
-from .models import Documentation
+@admin.register(PMInvitation)
+class PMInvitationAdmin(admin.ModelAdmin):
+    list_display = ("id", "pmc", "invited_by", "invited_email", "signup_email", "status", "invited_at", "accepted_at","invitation_token",)
+    list_filter = ("status", "pmc","invited_at",)
+    search_fields = ("invited_email", "signup_email", "pmc__name",)
+    
+# from django.contrib import admin
+# from .models import Documentation
 
-from django.contrib import admin
-from .models import Documentation
+# from django.contrib import admin
+# from .models import Documentation
 
-@admin.register(Documentation)
-class DocumentationAdmin(admin.ModelAdmin):
+# @admin.register(Documentation)
+# class DocumentationAdmin(admin.ModelAdmin):
 
-    list_display = (
-        "id",
-        "code",
-        "agreement_name",
-        "agreement_type",
-        "status_display",
-        "renewal_status",
-        "is_expired",
-        "expiry_reminder_sent_count",
-        "expiry_expired_sent_count",
-        "progress_display",
-        "expiry_reminder_sent_at",
-        "last_email_sent_date"
-    )
+#     list_display = (
+#         "id",
+#         "code",
+#         "agreement_name",
+#         "agreement_type",
+#         "status_display",
+#         "renewal_status",
+#         "is_expired",
+#         "expiry_reminder_sent_count",
+#         "expiry_expired_sent_count",
+#         "progress_display",
+#         "expiry_reminder_sent_at",
+#         "last_email_sent_date"
+#     )
 
-    list_filter = (
-        "status",
-        "is_expired",
-        "is_renewed",
-        "does_not_expire",
-    )
+#     list_filter = (
+#         "status",
+#         "is_expired",
+#         "is_renewed",
+#         "does_not_expire",
+#     )
 
-    readonly_fields = (
-        "code",
-        "status",
-        "is_expired",
-        "expiry_reminder_sent_count",
-        "expiry_expired_sent_count",
-    )
+#     readonly_fields = (
+#         "code",
+#         "status",
+#         "is_expired",
+#         "expiry_reminder_sent_count",
+#         "expiry_expired_sent_count",
+#     )
 
-    search_fields = (
-        "agreement_name",
-        "code",
-    )
+#     search_fields = (
+#         "agreement_name",
+#         "code",
+#     )
 
-    # =========================
-    # DISPLAY METHODS
-    # =========================
+#     # =========================
+#     # DISPLAY METHODS
+#     # =========================
 
-    def status_display(self, obj):
-        return obj.get_status()
-    status_display.short_description = "Status"
+#     def status_display(self, obj):
+#         return obj.get_status()
+#     status_display.short_description = "Status"
 
-    def renewal_status(self, obj):
-        return "YES" if obj.is_renewed else "NO"
-    renewal_status.short_description = "Renewed"
+#     def renewal_status(self, obj):
+#         return "YES" if obj.is_renewed else "NO"
+#     renewal_status.short_description = "Renewed"
 
-    def progress_display(self, obj):
-        return obj.get_expiry_progress()
-    progress_display.short_description = "Progress (7-cycle)"
-
-
-
-
-
+#     def progress_display(self, obj):
+#         return obj.get_expiry_progress()
+#     progress_display.short_description = "Progress (7-cycle)"
 
 
 @admin.register(DocumentType)

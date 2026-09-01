@@ -597,6 +597,52 @@ TIMEZONE_CHOICES = (
 RENTAL_AVAILABLE     = "Available"
 RENTAL_NOT_AVAILABLE = "Not Available"
 
+# ── Document Status ────────────────────────────────────────────────────────────
+EXPIRING_SOON = "EXPIRING_SOON"
+
+DOCUMENT_STATUS_CHOICES = (
+    (ACTIVE,        "Active"),
+    (EXPIRING_SOON, "Expiring Soon"),
+    (EXPIRED,       "Expired"),
+)
+
+# ── Support Ticket Status ──────────────────────────────────────────────────────
+OPEN = "OPEN"
+
+SUPPORT_STATUS_CHOICES = (
+    (OPEN,        "Open"),
+    (IN_PROGRESS, "In Progress"),
+    (RESOLVED,    "Resolved"),
+    (CLOSED,      "Closed"),
+)
+
+# ── Broadcast ──────────────────────────────────────────────────────────────────
+BROADCAST_PRIORITY_CHOICES = [
+    ("NORMAL",    "Normal"),
+    ("IMPORTANT", "Important"),
+    ("URGENT",    "Urgent"),
+]
+
+BROADCAST_CHANNEL_CHOICES = [
+    ("APP",      "App Notification"),
+    ("SMS",      "SMS"),
+    ("MAIL",     "Mail"),
+    ("WHATSAPP", "WhatsApp"),
+]
+
+BROADCAST_STATUS_CHOICES = [
+    ("DRAFT",     "Draft"),
+    ("SCHEDULED", "Scheduled"),
+    ("SENT",      "Sent"),
+    ("DELETED",   "Deleted"),
+]
+
+BROADCAST_RECIPIENT_STATUS_CHOICES = [
+    ("PENDING",   "Pending"),
+    ("DELIVERED", "Delivered"),
+    ("FAILED",    "Failed"),
+]
+
 # ── Config ─────────────────────────────────────────────────────────────────────
 JWT_TOKEN_EXPIRY_MINUTES = 60
 OTP_EXPIRY_MINUTES       = 5

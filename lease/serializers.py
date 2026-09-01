@@ -224,6 +224,7 @@ def serialize_cheque_list_row(cheque):
         "unit": {
             "id":   unit.id   if unit else None,
             "code": unit.code if unit else None,
+            "name": unit.unit_name if unit else None,
         },
         "block_tower": {
             "name": pb.block_name if pb else None,

@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Property Shared with You</title>
+
+<style>
+    body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        background-color: #f5f6fa;
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        overflow-x: hidden;
+    }
+
+    .email-container {
+        background-color: #ffffff;
+        width: 100%;
+        max-width: 600px;
+        margin: 30px auto;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        overflow: hidden;
+        box-sizing: border-box;
+    }
+
+    .header {
+        text-align: center;
+        padding: 25px 20px;
+        background-color: #6a11cb;
+        color: #ffffff;
+    }
+
+    .content {
+        padding: 25px;
+        color: #333333;
+        box-sizing: border-box;
+    }
+
+    .footer {
+        background-color: #f1f1f1;
+        text-align: center;
+        padding: 15px;
+        font-size: 13px;
+        color: #666666;
+    }
+
+    .footer a {
+        color: #2575fc;
+        text-decoration: none;
+    }
+
+    .notice-box {
+        background-color: #f8f9fc;
+        border: 1px solid #e0e4f0;
+        border-radius: 6px;
+        padding: 12px 16px;
+        margin-top: 20px;
+        margin-bottom: 20px;
+        font-size: 13px;
+        color: #333333;
+        line-height: 1.5;
+    }
+
+    .arabic {
+        direction: rtl;
+        text-align: right;
+        margin-top: 15px;
+    }
+
+    @media screen and (max-width: 620px) {
+        .email-container {
+            width: 100% !important;
+            max-width: 100% !important;
+            margin: 0 auto !important;
+            border-radius: 0 !important;
+        }
+
+        .content {
+            padding: 20px 15px !important;
+            box-sizing: border-box !important;
+        }
+        table {
+            max-width: 100% !important;
+        }
+
+        td {
+            box-sizing: border-box !important;
+        }
+    }
+</style>
+
+</head>
+<body>
+    <div class="email-container">
+    <!-- ================= HEADER ================= -->
+    <div class="header">
+        <img
+            src="https://units.getunits.ai/assets/logo-email.png"
+            alt="Units Logo"
+            width="150"
+            style="
+                width:150px;
+                max-width:150px;
+                height:auto;
+                display:block;
+                margin:0 auto 10px auto;
+                border:0;
+                outline:none;
+                text-decoration:none;
+            "
+        >
+        <p style="
+            margin:0;
+            padding:0;
+            font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-size:14px;
+            line-height:20px;
+            color:#f0f0f0;
+            text-align:center;
+            display:block;
+        ">
+            Smart Contract &amp; Document Management
+        </p>
+    </div>
+    <!-- ================= CONTENT ================= -->
+    <div class="content">
+        <h2 style="
+            margin-top:0;
+            margin-bottom:15px;
+            color:#222222;
+            font-size:22px;
+        ">
+            Property Shared with You | تمت مشاركة العقار معك
+        </h2>
+        <p>
+            Hello,
+        </p>
+        <p style="margin-bottom:20px;">
+            <strong>{{ shared_by }}</strong>
+            has shared the following property with you via the Units platform.
+        </p>
+        <!-- ================= PROPERTY HEADER CARD ================= -->
+        <table
+            width="100%"
+            cellpadding="0"
+            cellspacing="0"
+            border="0"
+            style="
+                background-color:#f8f9fc;
+                border:1px solid #e0e4f0;
+                border-radius:6px;
+                margin-bottom:20px;
+            "
+        >
+            <tr>
+                <td style="padding:16px 18px;">
+                    <p style="
+                        margin:0 0 6px 0;
+                        font-size:18px;
+                        font-weight:700;
+                        color:#222222;
+                    ">
+                        {{ property_name }}
+                    </p>
+                    {% if property_code %}
+                    <span style="
+                        display:inline-block;
+                        background-color:#6a11cb;
+                        color:#ffffff;
+                        font-size:11px;
+                        font-weight:600;
+                        padding:3px 12px;
+                        border-radius:20px;
+                        letter-spacing:0.5px;
+                        text-transform:uppercase;
+                    ">
+                        {{ property_code }}
+                    </span>
+                    {% endif %}
+                </td>
+            </tr>
+        </table>
+        <!-- ================= PROPERTY DETAILS ================= -->
+        <table
+            width="100%"
+            cellpadding="0"
+            cellspacing="0"
+            border="0"
+            style="margin-bottom:8px;"
+        >
+
+            <!-- ROW 1 -->
+            <tr>
+                <!-- Property Type -->
+                <td
+                    width="50%"
+                    valign="top"
+                    style="padding:0 6px 12px 0;"
+                >
+                    <table
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        style="
+                            background-color:#f8f9fc;
+                            border:1px solid #e0e4f0;
+                            border-radius:6px;
+                        "
+                    >
+                        <tr>
+                            <td style="padding:12px 14px;">
+                                <p style="
+                                    margin:0 0 4px 0;
+                                    font-size:11px;
+                                    color:#6b7a99;
+                                    font-weight:600;
+                                    text-transform:uppercase;
+                                    letter-spacing:0.5px;
+                                ">
+                                    Property Type
+                                </p>
+                                <p style="
+                                    margin:0;
+                                    font-size:14px;
+                                    color:#333333;
+                                    font-weight:500;
+                                    word-break:break-word;
+                                ">
+                                    {{ property_type|default:"-" }}
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+                <!-- Status -->
+                <td
+                    width="50%"
+                    valign="top"
+                    style="padding:0 0 12px 6px;"
+                >
+                    <table
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        style="
+                            background-color:#f8f9fc;
+                            border:1px solid #e0e4f0;
+                            border-radius:6px;
+                        "
+                    >
+                        <tr>
+                            <td style="padding:12px 14px;">
+
+                                <p style="
+                                    margin:0 0 4px 0;
+                                    font-size:11px;
+                                    color:#6b7a99;
+                                    font-weight:600;
+                                    text-transform:uppercase;
+                                    letter-spacing:0.5px;
+                                ">
+                                    Status
+                                </p>
+                                <p style="
+                                    margin:0;
+                                    font-size:14px;
+                                    color:#333333;
+                                    font-weight:500;
+                                ">
+                                    {{ status|default:"-" }}
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+            <!-- ROW 2 -->
+            <tr>
+                <!-- Address -->
+                <td
+                    width="50%"
+                    valign="top"
+                    style="padding:0 6px 12px 0;"
+                >
+                    <table
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        style="
+                            background-color:#f8f9fc;
+                            border:1px solid #e0e4f0;
+                            border-radius:6px;
+                        "
+                    >
+                        <tr>
+                            <td style="padding:12px 14px;">
+
+                                <p style="
+                                    margin:0 0 4px 0;
+                                    font-size:11px;
+                                    color:#6b7a99;
+                                    font-weight:600;
+                                    text-transform:uppercase;
+                                    letter-spacing:0.5px;
+                                ">
+                                    Address
+                                </p>
+                                <p style="
+                                    margin:0;
+                                    font-size:14px;
+                                    color:#333333;
+                                    font-weight:500;
+                                    word-break:break-word;
+                                ">
+                                    {{ address_line_1|default:"-" }}
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+                <!-- Address 2 -->
+                <td
+                    width="50%"
+                    valign="top"
+                    style="padding:0 0 12px 6px;"
+                >
+                    <table
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        style="
+                            background-color:#f8f9fc;
+                            border:1px solid #e0e4f0;
+                            border-radius:6px;
+                        "
+                    >
+                        <tr>
+                            <td style="padding:12px 14px;">
+
+                                <p style="
+                                    margin:0 0 4px 0;
+                                    font-size:11px;
+                                    color:#6b7a99;
+                                    font-weight:600;
+                                    text-transform:uppercase;
+                                    letter-spacing:0.5px;
+                                ">
+                                    Address 2
+                                </p>
+
+                                <p style="
+                                    margin:0;
+                                    font-size:14px;
+                                    color:#333333;
+                                    font-weight:500;
+                                    word-break:break-word;
+                                ">
+                                    {{ address_line_2|default:"-" }}
+                                </p>
+
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+
+            </tr>
+
+            <!-- ROW 3 -->
+            <tr>
+
+                <!-- Landmark -->
+                <td
+                    width="50%"
+                    valign="top"
+                    style="padding:0 6px 12px 0;"
+                >
+                    <table
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        style="
+                            background-color:#f8f9fc;
+                            border:1px solid #e0e4f0;
+                            border-radius:6px;
+                        "
+                    >
+                        <tr>
+                            <td style="padding:12px 14px;">
+
+                                <p style="
+                                    margin:0 0 4px 0;
+                                    font-size:11px;
+                                    color:#6b7a99;
+                                    font-weight:600;
+                                    text-transform:uppercase;
+                                    letter-spacing:0.5px;
+                                ">
+                                    Landmark
+                                </p>
+
+                                <p style="
+                                    margin:0;
+                                    font-size:14px;
+                                    color:#333333;
+                                    font-weight:500;
+                                    word-break:break-word;
+                                ">
+                                    {{ landmark|default:"-" }}
+                                </p>
+
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+                <!-- Pincode -->
+                <td
+                    width="50%"
+                    valign="top"
+                    style="padding:0 0 12px 6px;"
+                >
+                    <table
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        style="
+                            background-color:#f8f9fc;
+                            border:1px solid #e0e4f0;
+                            border-radius:6px;
+                        "
+                    >
+                        <tr>
+                            <td style="padding:12px 14px;">
+                                <p style="
+                                    margin:0 0 4px 0;
+                                    font-size:11px;
+                                    color:#6b7a99;
+                                    font-weight:600;
+                                    text-transform:uppercase;
+                                    letter-spacing:0.5px;
+                                ">
+                                    Pincode
+                                </p>
+                                <p style="
+                                    margin:0;
+                                    font-size:14px;
+                                    color:#333333;
+                                    font-weight:500;
+                                ">
+                                    {{ pincode|default:"-" }}
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+            <!-- ROW 4 -->
+            <tr>
+                <!-- Blocks -->
+                <td
+                    width="50%"
+                    valign="top"
+                    style="padding:0 6px 12px 0;"
+                >
+                    <table
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        style="
+                            background-color:#f8f9fc;
+                            border:1px solid #e0e4f0;
+                            border-radius:6px;
+                        "
+                    >
+                        <tr>
+                            <td style="padding:12px 14px;">
+                                <p style="
+                                    margin:0 0 4px 0;
+                                    font-size:11px;
+                                    color:#6b7a99;
+                                    font-weight:600;
+                                    text-transform:uppercase;
+                                    letter-spacing:0.5px;
+                                ">
+                                    No. of Blocks
+                                </p>
+                                <p style="
+                                    margin:0;
+                                    font-size:14px;
+                                    color:#333333;
+                                    font-weight:500;
+                                ">
+                                    {{ no_of_blocks|default:"0" }}
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+                <!-- Units -->
+                <td
+                    width="50%"
+                    valign="top"
+                    style="padding:0 0 12px 6px;"
+                >
+                    <table
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        style="
+                            background-color:#f8f9fc;
+                            border:1px solid #e0e4f0;
+                            border-radius:6px;
+                        "
+                    >
+                        <tr>
+                            <td style="padding:12px 14px;">
+                                <p style="
+                                    margin:0 0 4px 0;
+                                    font-size:11px;
+                                    color:#6b7a99;
+                                    font-weight:600;
+                                    text-transform:uppercase;
+                                    letter-spacing:0.5px;
+                                ">
+                                    No. of Units
+                                </p>
+
+                                <p style="
+                                    margin:0;
+                                    font-size:14px;
+                                    color:#333333;
+                                    font-weight:500;
+                                ">
+                                    {{ no_of_units|default:"0" }}
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+            <!-- ROW 5 -->
+            <tr>
+                <!-- Plot -->
+                <td
+                    width="50%"
+                    valign="top"
+                    style="padding:0 6px 12px 0;"
+                >
+                    <table
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        style="
+                            background-color:#f8f9fc;
+                            border:1px solid #e0e4f0;
+                            border-radius:6px;
+                        "
+                    >
+                        <tr>
+                            <td style="padding:12px 14px;">
+                                <p style="
+                                    margin:0 0 4px 0;
+                                    font-size:11px;
+                                    color:#6b7a99;
+                                    font-weight:600;
+                                    text-transform:uppercase;
+                                    letter-spacing:0.5px;
+                                ">
+                                    Plot No
+                                </p>
+                                <p style="
+                                    margin:0;
+                                    font-size:14px;
+                                    color:#333333;
+                                    font-weight:500;
+                                ">
+                                    {{ plot_no|default:"-" }}
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+                <!-- DEWA -->
+                <td
+                    width="50%"
+                    valign="top"
+                    style="padding:0 0 12px 6px;"
+                >
+                    <table
+                        width="100%"
+                        cellpadding="0"
+                        cellspacing="0"
+                        border="0"
+                        style="
+                            background-color:#f8f9fc;
+                            border:1px solid #e0e4f0;
+                            border-radius:6px;
+                        "
+                    >
+                        <tr>
+                            <td style="padding:12px 14px;">
+                                <p style="
+                                    margin:0 0 4px 0;
+                                    font-size:11px;
+                                    color:#6b7a99;
+                                    font-weight:600;
+                                    text-transform:uppercase;
+                                    letter-spacing:0.5px;
+                                ">
+                                    DEWA No
+                                </p>
+                                <p style="
+                                    margin:0;
+                                    font-size:14px;
+                                    color:#333333;
+                                    font-weight:500;
+                                ">
+                                    {{ dewa_no|default:"-" }}
+                                </p>
+                            </td>
+                        </tr>
+                    </table>
+                </td>
+            </tr>
+        </table>
+        <!-- ================= SHARED BY ================= -->
+        <div class="notice-box">
+            This property was shared by
+            <strong>{{ shared_by }}</strong>
+            via the Units Platform.
+        </div>
+        <!-- ================= ARABIC ================= -->
+        <div class="arabic">
+            <p>
+                مرحبًا،
+            </p>
+            <p>
+                قام <strong>{{ shared_by }}</strong>
+                بمشاركة العقار التالي معك عبر منصة يونيتس.
+            </p>
+            <p>
+                <strong>اسم العقار:</strong>
+                {{ property_name }}
+            </p>
+            {% if property_code %}
+            <p>
+                <strong>رمز العقار:</strong>
+                {{ property_code }}
+            </p>
+            {% endif %}
+            {% if property_type %}
+            <p>
+                <strong>نوع العقار:</strong>
+                {{ property_type }}
+            </p>
+            {% endif %}
+            {% if address_line_1 %}
+            <p>
+                <strong>العنوان:</strong>
+                {{ address_line_1 }}
+            </p>
+            {% endif %}
+            {% if no_of_units %}
+            <p>
+                <strong>عدد الوحدات:</strong>
+                {{ no_of_units }}
+            </p>
+            {% endif %}
+        </div>
+        <!-- ================= THANK YOU ================= -->
+        <p style="margin-top:20px;">
+            Thank you,<br>
+            <strong>The Doqfy Team</strong>
+        </p>
+        <p class="arabic">
+            شكرًا لكم،<br>
+            <strong>فريق دوكفي</strong>
+        </p>
+    </div>
+    <!-- ================= FOOTER ================= -->
+    <div class="footer">
+        <p style="margin:0 0 8px 0;">
+            © 2026 Units
+        </p>
+        <p style="margin:0;">
+            Need help?
+            <a href="mailto:admin@getunits.ai">
+                admin@getunits.ai
+            </a>
+        </p>
+    </div>
+</div>
+</body>
+</html>
