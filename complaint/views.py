@@ -117,7 +117,8 @@ def complaint_api(request):
         total = complaints.count()
         completed = complaints.filter(status=constants.CLOSED).count()
         in_progress = complaints.filter(status=constants.IN_PROGRESS).count()
-        rejected = complaints.filter(status=constants.PENDING).count()
+        #rejected = complaints.filter(status=constants.PENDING).count()
+        rejected = complaints.filter(status=constants.REJECTED).count()
 
         # ── Pagination ────────────────────────────────────────────
         page = int(request.GET.get("page", 1))
