@@ -15,7 +15,7 @@ from django.utils.timezone import now
 from django.utils.dateparse import parse_date
 
 from user_service.models import Role, FAQ, Owner, Tenant, PropertyManager, DocumentType
-from property.models import Unit, Property, PropertyManagmentCompany, UnitOwner, PMCPMMapping
+from property.models import Unit, Property, PropertyManagmentCompany, UnitOwner, PMCPMMapping, PropertyBlocks
 from property_management.models import Country, State, City, AuditLog, DashboardVisualization
 from lease.models import Lease, Template, LeaseTransaction
 from lead.models import Lead
@@ -164,13 +164,10 @@ def options(request):
             if is_owner:
                 units = Unit.objects.filter(owner=user)
             elif is_pm:
-                if not pm_profile.company:
-                    logger.warning(
-                        "OPTIONS_FETCH_FAILED | user_id=%s | option_type=%s | reason=COMPANY_NOT_FOUND",
-                        request.user.id, option_type )
-                    return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+                mapped_pmc_ids = PMCPMMapping.objects.filter(pm=pm_profile).values_list("pmc_id", flat=True)
+                units = Unit.objects.filter(Q(parent_property__pmc_id__in=mapped_pmc_ids) | Q(property_block_tower__property__pmc_id__in=mapped_pmc_ids)).distinct()
                 #units = Unit.objects.filter(property_block_tower__property__pmc=pm_profile.company)
-                units = Unit.objects.filter(Q(parent_property__pmc=pm_profile.company) |Q(property_block_tower__property__pmc=pm_profile.company)).distinct()
+                #units = Unit.objects.filter(Q(parent_property__pmc=pm_profile.company) |Q(property_block_tower__property__pmc=pm_profile.company)).distinct()
             else:
                 company = PropertyManagmentCompany.objects.filter(created_by=user.user, is_active=True).first()
                 units = Unit.objects.filter(property_block_tower__property__pmc=company) if company else Unit.objects.none()
@@ -280,7 +277,8 @@ def options(request):
             content["owners"] = [{"key": owner.id, "value": f"{owner.user.first_name} {owner.user.last_name}"} for owner in owners]
 
         elif option_type == "PMC_OWNERS":
-            owners = Owner.objects.select_related('user').filter(user__is_active=True)
+            #owners = Owner.objects.select_related('user').filter(user__is_active=True)
+            owners = (Owner.objects.for_user(user).select_related("user").filter(user__is_active=True).distinct())
             content["pmc_owners"] = [
                 {
                     "key": owner.id,
@@ -501,6 +499,12 @@ def options(request):
             tenants_interested = Tenant.objects.filter(interested_properties__property_unit__company=company, interested_properties__is_active=True, tenant_status=tenant_status)
             tenants = (tenants_created | tenants_interested).distinct()
             content["tenant"] = [{"key": t.id, "value": f"{t.user.first_name} {t.user.last_name}"} for t in tenants]
+
+        elif option_type == "SUPPORT_STATUS":
+            content["support_status"] = [{"id": value,"name": label} for value, label in constants.SUPPORT_STATUS_CHOICES]
+
+        elif option_type == "TENANCY_LEDGER_AGREEMENT_STATUS":
+            content["tenancy_ledger_agreement_status"] = [{"key": key, "value": value} for key, value in constants.LEASE_STATUS_CHOICES]
 
         elif option_type == "TIMEZONE":
             content["timezone"] = [{"key": key, "value": value} for key, value in constants.TIMEZONE_CHOICES]
