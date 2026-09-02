@@ -41,8 +41,8 @@ INSTALLED_APPS = [
     'lease',
     'terms',
     "notification",
-    'broadcast',
     'support',
+    'broadcast',
     'drf_yasg',
     'rest_framework',
 
