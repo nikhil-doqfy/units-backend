@@ -3,7 +3,7 @@ from utilities import status, constants
 from utilities.helper_functions import prepare_response, datetime_to_epoch_millis, safe_epoch_to_datetime, get_extension_from_base64, export_to_csv, send_ses_email, fetch_s3_presigned_url, upload_file_to_s3_base64
 import uuid
 from django.template.loader import render_to_string
-from user_service.models import UserProfile, Documents, OwnerDocuments, TenantDocuments, Role, Owner, Tenant, PropertyManager ,Approval, DocumentType, PrivacyPolicy
+from user_service.models import UserProfile, Documents, OwnerDocuments, TenantDocuments, Role, Owner, Tenant, PropertyManager ,Approval, DocumentType, PrivacyPolicy, PMCDocuments
 from property.models import PropertyManagerDocuments, Unit, Property, PropertyManagmentCompany, UnitOwner
 from django.db import transaction
 from django.views.decorators.csrf import csrf_exempt
@@ -4155,6 +4155,8 @@ def document_api(request):
     # ── Role detect ───────────────────────────────────────────────
     tenant = Tenant.objects.filter(pk=user_profile.pk).first()
     owner = Owner.objects.filter(pk=user_profile.pk).first()
+    pm = PropertyManager.objects.filter(pk=user_profile.pk).first()
+    pmc_ids = []
 
     if tenant:
         role = "tenant"
@@ -4170,6 +4172,15 @@ def document_api(request):
         profile_field = "owner"
         doc_section = constants.OWNER
         s3_prefix = "owner"
+    elif pm:
+        role = "pm"
+        profile = pm
+        DocModel = PMCDocuments
+        profile_field = "pmc"
+        doc_section = constants.PROPERTY_MANAGER
+        s3_prefix = "pmc"
+
+        pmc_ids = list(PMCPMMapping.objects.filter(pm=pm).values_list("pmc_id", flat=True))
     else:
         return prepare_response(
             message=constants.UNAUTHORIZED_ROLE,
@@ -4179,28 +4190,66 @@ def document_api(request):
     # ─────────────────────────────── GET ────────────────────────────
     if request.method == "GET":
         document_id = request.GET.get("document_id")
+        pmc_id = request.GET.get("pmc_id")
+        if role == "pm":
+            all_docs = DocModel.objects.filter(
+                pmc_id__in=pmc_ids,
+                is_active=True
+            ).select_related("document_type", "pmc")
+
+            if pmc_id:
+                try:
+                    pmc_id = int(pmc_id)
+                except (TypeError, ValueError):
+                    return prepare_response(
+                        message="Invalid pmc_id",
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+                if pmc_id not in pmc_ids:
+                    return prepare_response(
+                        message="You do not have access to this PMC",
+                        status=status.HTTP_403_FORBIDDEN
+                    )
+
+                all_docs = all_docs.filter(pmc_id=pmc_id)
 
         if document_id:
-            main_doc = DocModel.objects.filter(
-                Q(id=document_id) | Q(main_document_id=document_id),
-                **{profile_field: profile},
-                is_active=True
-            ).order_by("id").first()
+            if role == "pm":
+                main_doc = all_docs.filter(
+                    Q(id=document_id) | Q(main_document_id=document_id)
+                ).order_by("id").first()
+            else:
+                main_doc = DocModel.objects.filter(
+                    Q(id=document_id) | Q(main_document_id=document_id),
+                    **{profile_field: profile},
+                    is_active=True
+                ).order_by("id").first()
+
             if not main_doc:
                 return prepare_response(message="Document not found", status=status.HTTP_404_NOT_FOUND)
 
             root_id = main_doc.main_document_id or main_doc.id
-            docs = DocModel.objects.filter(
-                Q(id=root_id) | Q(main_document_id=root_id),
-                **{profile_field: profile},
-                is_active=True
-            ).select_related("document_type", profile_field).order_by("-id")
+
+            if role == "pm":
+                docs = all_docs.filter(
+                    Q(id=root_id) | Q(main_document_id=root_id)
+                ).order_by("-id")
+            else:
+                docs = DocModel.objects.filter(
+                    Q(id=root_id) | Q(main_document_id=root_id),
+                    **{profile_field: profile},
+                    is_active=True
+                ).select_related("document_type", profile_field).order_by("-id")
 
         else:
-            all_docs = DocModel.objects.filter(
-                **{profile_field: profile},
-                is_active=True
-            ).select_related("document_type", profile_field).order_by("-id")
+            if role == "pm":
+                all_docs = all_docs.order_by("-id")
+            else:
+                all_docs = DocModel.objects.filter(
+                    **{profile_field: profile},
+                    is_active=True
+                ).select_related("document_type", profile_field).order_by("-id")
 
             latest_docs = {}
             for doc in all_docs:
@@ -4215,26 +4264,60 @@ def document_api(request):
             response = HttpResponse(content_type="text/csv")
             response["Content-Disposition"] = f'attachment; filename="{role}_documents.csv"'
             writer = csv.writer(response)
-            writer.writerow([
-                "Code",
-                "Document Type",
-                "Expiry Date",
-                "Status",
-                "Status Label",
-            ])
+
+            if role == "pm":
+                writer.writerow([
+                    "Code",
+                    "PMC ID",
+                    "PMC Name",
+                    "Document Type",
+                    "Expiry Date",
+                    "Status",
+                    "Status Label",
+                ])
+            else:
+                writer.writerow([
+                    "Code",
+                    "Document Type",
+                    "Expiry Date",
+                    "Status",
+                    "Status Label",
+                ])
 
             for doc in docs:
                 data = _serialize_document(doc, profile_field)
-                writer.writerow([
-                    data.get("code"),
-                    data.get("document_type"),
-                    data.get("expiry_date"),
-                    data.get("status"),
-                    data.get("status_label"),
-                ])
+
+                if role == "pm":
+                    writer.writerow([
+                        data.get("code"),
+                        doc.pmc_id,
+                        doc.pmc.name,
+                        data.get("document_type"),
+                        data.get("expiry_date"),
+                        data.get("status"),
+                        data.get("status_label"),
+                    ])
+                else:
+                    writer.writerow([
+                        data.get("code"),
+                        data.get("document_type"),
+                        data.get("expiry_date"),
+                        data.get("status"),
+                        data.get("status_label"),
+                    ])
 
             return response
-        content = [_serialize_document(doc, profile_field) for doc in docs]
+
+        content = []
+        for doc in docs:
+            data = _serialize_document(doc, profile_field)
+
+            if role == "pm":
+                data["pmc_id"] = doc.pmc_id
+                data["pmc_name"] = doc.pmc.name
+
+            content.append(data)
+
         logger.info(
             "DOCUMENTS_FETCHED | user_id=%s | role=%s | profile_id=%s | count=%s",
             request.user.id, role, profile.id, len(content)
@@ -4247,7 +4330,36 @@ def document_api(request):
             body = json.loads(request.body)
         except Exception:
             return prepare_response(message="Invalid JSON body", status=status.HTTP_400_BAD_REQUEST)
- 
+
+        pmc = None
+
+        if role == "pm":
+            pmc_id = body.get("pmc_id")
+            if not pmc_id:
+                return prepare_response(message="pmc_id is required", status=status.HTTP_400_BAD_REQUEST)
+
+            try:
+                pmc_id = int(pmc_id)
+            except (TypeError, ValueError):
+                return prepare_response(message="Invalid pmc_id", status=status.HTTP_400_BAD_REQUEST)
+
+            if pmc_id not in pmc_ids:
+                return prepare_response(
+                    message="You do not have access to this PMC",
+                    status=status.HTTP_403_FORBIDDEN
+                )
+
+            pmc = PropertyManagmentCompany.objects.filter(
+                id=pmc_id,
+                is_active=True
+            ).first()
+
+            if not pmc:
+                return prepare_response(
+                    message="PMC not found",
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
         documents = body.get("documents") or []
         if not isinstance(documents, list) or not documents:
             return prepare_response(message="documents list is required", status=status.HTTP_400_BAD_REQUEST)
@@ -4291,31 +4403,57 @@ def document_api(request):
         for item in cleaned:
             ext = get_extension_from_base64(item["file_data"]) or ".pdf"
             unique_filename = f"{uuid.uuid4()}{ext}"
-            s3_key = f"{s3_prefix}/{profile.id}/documents/{item['doc_type'].id}/{unique_filename}"
+
+            if role == "pm":
+                s3_key = f"{s3_prefix}/{pmc.id}/documents/{item['doc_type'].id}/{unique_filename}"
+            else:
+                s3_key = f"{s3_prefix}/{profile.id}/documents/{item['doc_type'].id}/{unique_filename}"
 
             file_url = upload_file_to_s3_base64(
                 file_data=item["file_data"],
                 object_name=s3_key,
             )
-            doc = DocModel.objects.create(
-                created_by=user_profile.user,
-                **{profile_field: profile},
-                document_type=item["doc_type"],
-                file_name=item["file_name"] or unique_filename,
-                file_path=file_url,
-                expiry_date=item["expiry_date"],
-            )
+
+            if role == "pm":
+                doc = DocModel.objects.create(
+                    created_by=user_profile.user,
+                    pmc=pmc,
+                    document_type=item["doc_type"],
+                    file_name=item["file_name"] or unique_filename,
+                    file_path=file_url,
+                    expiry_date=item["expiry_date"],
+                )
+            else:
+                doc = DocModel.objects.create(
+                    created_by=user_profile.user,
+                    **{profile_field: profile},
+                    document_type=item["doc_type"],
+                    file_name=item["file_name"] or unique_filename,
+                    file_path=file_url,
+                    expiry_date=item["expiry_date"],
+                )
+
             created.append(doc)
         logger.info(
             "DOCUMENTS_UPLOADED | user_id=%s | role=%s | profile_id=%s | count=%s",
             request.user.id, role, profile.id, len(created)
         )
 
+        response_documents = []
+        for doc in created:
+            data = _serialize_document(doc, profile_field)
+
+            if role == "pm":
+                data["pmc_id"] = doc.pmc_id
+                data["pmc_name"] = doc.pmc.name
+
+            response_documents.append(data)
+
         return prepare_response(
             message="Documents uploaded successfully",
             content={
                 "ids":       [d.id for d in created],
-                "documents": [_serialize_document(d, profile_field) for d in created],
+                "documents": response_documents,
             },
             status=status.HTTP_201_CREATED,
         )
@@ -4338,11 +4476,20 @@ def document_api(request):
             )
  
         item = documents[0]
-        doc = DocModel.objects.filter(
-            id=document_id,
-            is_active=True,
-            **{profile_field: profile}
-        ).select_related("document_type", profile_field).first()
+ 
+        if role == "pm":
+            doc = DocModel.objects.filter(
+                id=document_id,
+                pmc_id__in=pmc_ids,
+                is_active=True
+            ).select_related("document_type", "pmc").first()
+        else:
+            doc = DocModel.objects.filter(
+                id=document_id,
+                is_active=True,
+                **{profile_field: profile}
+            ).select_related("document_type", profile_field).first()
+
         if not doc:
             return prepare_response(message="Document not found", status=status.HTTP_404_NOT_FOUND)
  
@@ -4371,7 +4518,11 @@ def document_api(request):
  
         ext = get_extension_from_base64(file_data) or ".pdf"
         unique_filename = f"{uuid.uuid4()}{ext}"
-        s3_key = f"{s3_prefix}/{profile.id}/documents/{doc.document_type_id}/{unique_filename}"
+ 
+        if role == "pm":
+            s3_key = f"{s3_prefix}/{doc.pmc_id}/documents/{doc.document_type_id}/{unique_filename}"
+        else:
+            s3_key = f"{s3_prefix}/{profile.id}/documents/{doc.document_type_id}/{unique_filename}"
 
         file_url = upload_file_to_s3_base64(
             file_data=file_data,
@@ -4379,23 +4530,42 @@ def document_api(request):
         )
  
         main_document = doc.main_document or doc
-        new_doc = DocModel.objects.create(
-            created_by=user_profile.user,
-            **{profile_field: profile},
-            document_type=doc.document_type,
-            file_name=file_name or unique_filename,
-            file_path=file_url,
-            expiry_date=expiry_date,
-            main_document=main_document,
-        )
- 
+
+        if role == "pm":
+            new_doc = DocModel.objects.create(
+                created_by=user_profile.user,
+                pmc=doc.pmc,
+                document_type=doc.document_type,
+                file_name=file_name or unique_filename,
+                file_path=file_url,
+                expiry_date=expiry_date,
+                main_document=main_document,
+            )
+        else:
+            new_doc = DocModel.objects.create(
+                created_by=user_profile.user,
+                **{profile_field: profile},
+                document_type=doc.document_type,
+                file_name=file_name or unique_filename,
+                file_path=file_url,
+                expiry_date=expiry_date,
+                main_document=main_document,
+            )
+
         logger.info(
             "DOCUMENT_RENEWED | user_id=%s | role=%s | old_doc_id=%s | new_doc_id=%s | main_document_id=%s",
             request.user.id, role, doc.id, new_doc.id, main_document.id,
         )
+
+        response_data = _serialize_document(new_doc, profile_field)
+
+        if role == "pm":
+            response_data["pmc_id"] = new_doc.pmc_id
+            response_data["pmc_name"] = new_doc.pmc.name
+
         return prepare_response(
             message="Document renewed successfully",
-            content=_serialize_document(new_doc, profile_field),
+            content=response_data,
             status=status.HTTP_201_CREATED
         )
     return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
