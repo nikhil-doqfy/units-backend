@@ -2716,11 +2716,19 @@ def owner_pmc_view(request):
                         Q(parent_property__property_name__icontains=search)
                     )
                 if tenancy_status == "OCCUPIED":
-                    properties_qs = properties_qs.filter(leases__is_active=True).distinct()
-                    
+                    properties_qs = properties_qs.filter(
+                        leases__lease_status="ACTIVE",
+                        leases__is_active=True, 
+                        leases__tenant__isnull=False
+                    ).distinct()
+
                 elif tenancy_status == "VACANT":
-                    properties_qs = properties_qs.exclude(leases__is_active=True).distinct()
-                    
+                    occupied_unit_ids = Lease.objects.filter(
+                        lease_status="ACTIVE",
+                        is_active=True,
+                        tenant__isnull=False
+                    ).values_list("unit_id", flat=True)
+                    properties_qs = properties_qs.exclude(id__in=occupied_unit_ids).distinct()
                 elif tenancy_status:
                     return prepare_response(message="Invalid tenancy status. Use OCCUPIED or VACANT.",status=status.HTTP_400_BAD_REQUEST)
 
