@@ -2755,6 +2755,7 @@ def owner_pmc_view(request):
                     property_obj = prop.property_block_tower.property if prop.property_block_tower else prop.parent_property
                     properties_data.append({
                         "property_unit_id": prop.id,
+                        "unit_code": prop.code,
                         "property_name": prop.unit_name or (property_obj.property_name if property_obj else None),
                         "tenant_name": tenant_name,
                         "tenancy_status": tenancy_status,
@@ -2791,9 +2792,15 @@ def owner_pmc_view(request):
                     "email": pmc_user.user.email if pmc_user and pmc_user.user else None,
                     "first_name": pmc_user.user.first_name if pmc_user and pmc_user.user else None,
                     "last_name": pmc_user.user.last_name if pmc_user and pmc_user.user else None,
-                    "postal_code": pmc_user.pin_code if pmc_user else None,
+                    "postal_code": company.postal_code,
                     "profile_image": pmc_user.profile_image if pmc_user else None,
                     "total_properties_handled": total_properties_handled,
+                    "phone_number": company.phone_number,
+                    "city": company.city,
+                    "locality": company.locality,
+                    "licence_number": company.licence_number,
+                    "address_line_1": company.address_line_1,
+                    "address_line_2": company.address_line_2,
                     # "total_properties_handled": Unit.objects.filter(
                     #     unit_owners__owner=user,
                     #     property_block_tower__property__pmc=company,
@@ -2904,6 +2911,7 @@ def export_owner_pmc_csv(request):
                 total_props = owner_company_units.count()
                 leased_props = Lease.objects.filter(
                     unit__in=owner_company_units,
+                    lease_status="ACTIVE",
                     is_active=True
                 ).count()
                 tenancy_ratio = f"{leased_props}:{total_props}" if total_props else "0:0"
@@ -2999,18 +3007,18 @@ def export_owner_pmc_csv(request):
                 "Property Name",
                 "Tenant Name",
                 "Tenancy Status",
-                "Dimension / Bedroom",
+                "Dimension ",
             ]
 
             data_list = []
 
             for prop in properties_qs:
-                lease = prop.leases.filter(is_active=True).first()
+                lease = prop.leases.filter(lease_status="ACTIVE", is_active=True).first()
 
                 tenant_name = ""
                 tenancy_status = "Vacant"
 
-                if lease and lease.tenant and lease.tenant.user:
+                if lease and lease.tenant:
                     tenant_user = lease.tenant.user
                     tenant_name = f"{tenant_user.first_name} {tenant_user.last_name}".strip()
                     tenancy_status = "Occupied"
