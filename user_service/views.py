@@ -2785,7 +2785,8 @@ def owner_pmc_view(request):
                 pmc_profile = {
                     "company_id": company.id,
                     "company_code": company.code,
-                    "company_name": (
+                    "company_name": company.name,
+                    "pm_name": (
                         f"{pmc_user.user.first_name} {pmc_user.user.last_name}".strip()
                         if pmc_user and pmc_user.user else None
                     ),
