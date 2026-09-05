@@ -1053,8 +1053,14 @@ def unit(request):
             if field in data and data[field] is not None:
                 setattr(u, field, data[field])
 
-        if data.get("block_id"):
-            block = PropertyBlocks.objects.filter(id=data["block_id"]).first()
+        block_id = data.get("block_id")
+        if isinstance(block_id, dict):
+            block_id = block_id.get("key")
+        block_id = data.get("block_id")
+        if isinstance(block_id, dict):
+            block_id = block_id.get("key")
+        if block_id:
+            block = PropertyBlocks.objects.filter(id=block_id).first()
             if block:
                 u.property_block_tower = block
                 u.parent_property= block.property
