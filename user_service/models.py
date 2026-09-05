@@ -294,6 +294,27 @@ class TenantDocuments(Documents):
     def __str__(self):
         return f"{self.code} - {self.document_type.name if self.document_type else ''}" 
 
+class PMCDocuments(Documents):
+    pmc = models.ForeignKey("property.PropertyManagmentCompany", on_delete=models.CASCADE, related_name="pmc_documents")
+    code = models.CharField(max_length=50, blank=True)
+ 
+    def generate_code(self):
+        return f"PD{self.pk:05d}"
+ 
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+ 
+        if not self.code:
+            self.code = self.generate_code()
+            PMCDocuments.objects.filter(pk=self.pk).update(code=self.code)
+ 
+    def __str__(self):
+        return (
+            f"{self.code} - "
+            f"{self.pmc.name} - "
+            f"{self.document_type.name if self.document_type else ''}"
+        )
+
 class PrivacyPolicy(Base):
     title = models.CharField(max_length=255)
     other_policy_content = models.JSONField(default=list, blank=True)
