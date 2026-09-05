@@ -11,6 +11,8 @@ from user_service.models import PropertyManager, Tenant, Owner
 from rest_framework import status
 from lease.models import Lease
 from lease.views import _get_pmc_ids_for_user
+from django.template.loader import render_to_string
+from utilities.helper_functions import send_ses_email
 from plugins.logger_plugin import get_logger
 
 logger = get_logger(__name__)
@@ -805,6 +807,7 @@ def tenancy_ledger_view(request):
             block = unit.property_block_tower
             tenant = lease.tenant
             data.append({
+                "lease_id": lease.id,
                 "property_id": prop.id if prop else None,
                 "property_name": prop.property_name if prop else None,
                 "block_tower": block.block_name if block else None,
@@ -828,3 +831,133 @@ def tenancy_ledger_view(request):
     except Exception as e:
         logger.exception("TENANCY_LEDGER_ERROR")
         return prepare_response(message="Error fetching tenancy ledger", content={}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["POST"])
+@is_request_authenticated
+def share_tenancy_ledger(request):
+    try:
+        data = json.loads(request.body)
+        lease_id = data.get("lease_id")
+
+        if not lease_id :
+            return prepare_response(message=constants.FIELD_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
+
+        lease = Lease.objects.select_related(
+            "unit",
+            "unit__parent_property",
+            "unit__property_block_tower",
+            "unit__parent_property__pmc",
+            "tenant",
+            "tenant__user",
+        ).filter(id=lease_id).first()
+
+        if not lease:
+            return prepare_response(message="Tenancy ledger record not found", status=status.HTTP_404_NOT_FOUND)
+
+        unit = lease.unit
+        prop = unit.parent_property if unit else None
+        block = unit.property_block_tower if unit else None
+        tenant = lease.tenant
+        recipient_email = tenant.user.email if tenant and tenant.user else ""
+        if not recipient_email: 
+            return prepare_response(message="Tenant email not found for this lease.", status=status.HTTP_400_BAD_REQUEST)
+
+        pm_profile = PropertyManager.objects.filter(pk=request.user.pk).first()
+
+        if pm_profile:
+            pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile, is_active=True).values_list("pmc_id", flat=True))
+
+            if not pmc_ids and pm_profile.company_id:
+                pmc_ids = [pm_profile.company_id]
+
+            if not prop or prop.pmc_id not in pmc_ids:
+                return prepare_response(message=constants.PERMISSION_DENIED, status=status.HTTP_403_FORBIDDEN)
+
+        else:
+            owner_profile = Owner.objects.filter(pk=request.user.pk).first()
+
+            if owner_profile:
+                if not unit or not unit.unit_owners.filter(owner=owner_profile).exists():
+                    return prepare_response(message=constants.PERMISSION_DENIED, status=status.HTTP_403_FORBIDDEN)
+
+            else:
+                tenant_profile = Tenant.objects.filter(pk=request.user.pk).first()
+
+                if not tenant_profile or lease.tenant_id != tenant_profile.id:
+                    return prepare_response(message=constants.PERMISSION_DENIED, status=status.HTTP_403_FORBIDDEN)
+
+        platform_choices = dict(constants.PLATFORM_CHOICES)
+
+        tenant_name = (
+            f"{tenant.user.first_name} {tenant.user.last_name}".strip()
+            if tenant and tenant.user else ""
+        )
+
+        shared_by = request.user.user.get_full_name() or request.user.user.email
+
+        platform = (
+            platform_choices.get(lease.platform, lease.platform).lower()
+            if lease.platform else ""
+        )
+
+        context = {
+            "property_id": prop.id if prop else "",
+            "property_name": prop.property_name if prop else "",
+            "block_tower": block.block_name if block else "",
+            "unit": unit.unit_name if unit else "",
+            "tenant_name": tenant_name,
+            "agreement_status": lease.lease_status or "",
+            "dimension": f"{unit.no_of_bedrooms} BHK" if unit and unit.no_of_bedrooms is not None else "",
+            "property_status": "Occupied" if unit and unit.is_occupied else "Vacant",
+            "pmc": prop.pmc.name if prop and prop.pmc else "",
+            "rental_amount": lease.rent if lease.rent is not None else "",
+            "rera_index": "",
+            "platform": platform,
+            "shared_by": shared_by,
+        }
+
+        body_html = render_to_string("email_templates/share_tenancy_ledger.html", context)
+
+        body_text = "\n".join([
+            "Tenancy Ledger Shared",
+            f"Property ID: {context['property_id']}",
+            f"Property Name: {context['property_name']}",
+            f"Block / Tower: {context['block_tower']}",
+            f"Unit: {context['unit']}",
+            f"Tenant Name: {context['tenant_name']}",
+            f"Agreement Status: {context['agreement_status']}",
+            f"Dimension: {context['dimension']}",
+            f"Property Status: {context['property_status']}",
+            f"PMC: {context['pmc']}",
+            f"Rental Amount: {context['rental_amount']}",
+            f"RERA Index: {context['rera_index']}",
+            f"Platform: {context['platform']}",
+            f"Shared by: {context['shared_by']}",
+        ])
+
+        send_ses_email(
+            recipient_email,
+            f"Tenancy Ledger: {context['unit']}",
+            body_text,
+            body_html
+        )
+
+        logger.info(
+            "TENANCY_LEDGER_SHARED | user_id=%s | lease_id=%s | recipient_email=%s",
+            request.user.id, lease_id, recipient_email
+        )
+
+        return prepare_response(message="Tenancy ledger shared successfully.", status=status.HTTP_200_OK)
+
+    except json.JSONDecodeError:
+        return prepare_response(message="Invalid JSON request body.", status=status.HTTP_400_BAD_REQUEST)
+
+    except Exception as e:
+        logger.exception(
+            "TENANCY_LEDGER_SHARE_ERROR | user_id=%s | lease_id=%s | error=%s",
+            request.user.id,
+            lease_id if "lease_id" in locals() else None,
+            str(e)
+        )
+        return prepare_response(message=f"Error: {str(e)}", status=status.HTTP_500_INTERNAL_SERVER_ERROR)
