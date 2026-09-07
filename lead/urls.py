@@ -8,4 +8,5 @@ urlpatterns = [
     path('lead/check-active-lease', views.lead_check_active_lease, name='lead_check_active_lease'),
     path('lead/schedule-meeting', views.schedule_meeting_view, name='schedule_meeting_view'),
     path("tenancy-ledger", views.tenancy_ledger_view, name="tenancy_ledger_view"),
+    path("share/tenancy-ledger", views.share_tenancy_ledger, name="share-tenancy-ledger"),
 ]

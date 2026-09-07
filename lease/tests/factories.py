@@ -15,7 +15,7 @@ third-party library (factory_boy) required.
 from datetime import datetime, timedelta
 from django.contrib.auth.models import User
 from django.utils import timezone
-from property.models import PropertyManagmentCompany, Property, PropertyBlocks, Unit
+from property.models import Organization, PropertyManagmentCompany, Property, PropertyBlocks, Unit
 from user_service.models import PropertyManager, Tenant, Owner
 
 # Counter so every factory call produces a unique username / email / number
@@ -51,9 +51,15 @@ def UserFactory(
         **kwargs,
     )
 # CompanyFactory
-def CompanyFactory(*, created_by: User, name=None, **kwargs) -> PropertyManagmentCompany:
+def CompanyFactory(*, created_by: User, name=None, organization=None, **kwargs) -> PropertyManagmentCompany:
     n = _seq("company")
+    organization = organization or Organization.objects.create(
+        name=f"Test Org {_seq('organization')}",
+        address="1 Org Way",
+        created_by=created_by,
+    )
     return PropertyManagmentCompany.objects.create(
+        organization=organization,
         name=name or f"Test PMC {n}",
         address_line_1="123 Main St",
         address_line_2="Suite 1",

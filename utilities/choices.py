@@ -536,6 +536,7 @@ PERM_BROADCAST           = "Broadcast"
 PERM_USERS               = "Users"
 PERM_TEAM                = "Team"
 PERM_ROLES_AND_PERMISSION = "Roles and Permission"
+PERM_FINANCE              = "Finance"
 
 PERMISSION_MODULE_CHOICES = [
     (PERM_PROPERTIES,           "Properties"),
@@ -550,6 +551,7 @@ PERMISSION_MODULE_CHOICES = [
     (PERM_USERS,                "Users"),
     (PERM_TEAM,                 "Team"),
     (PERM_ROLES_AND_PERMISSION, "Roles and Permission"),
+    (PERM_FINANCE,               "Finance"),
 ]
 
 DEFAULT_PERMISSIONS = {

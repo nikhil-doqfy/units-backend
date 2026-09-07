@@ -58,8 +58,13 @@ class PropertyManagmentCompany(Base):
     )
     code = models.CharField(max_length=255, blank=True) 
     name = models.CharField(max_length=255)
+    email = models.EmailField(max_length=255)
+    phone_number = models.CharField(max_length=20)
     address_line_1 = models.CharField(max_length=255)
     address_line_2 = models.CharField(max_length=255)
+    city = models.CharField(max_length=100)
+    locality = models.CharField(max_length=150)
+    postal_code = models.CharField(max_length=20)
     licence_number = models.CharField(max_length=100)
     licence_expiry_date = models.DateTimeField()
     licence_issuer = models.CharField(max_length=150)
@@ -412,6 +417,17 @@ class UnitOwner(Base):
         null=True,
         blank=True,
         related_name="unit_owner_links"
+    )
+    ownership_percent = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=False,
+        default=100,
+        help_text="Story 2.7 (AD-15) prerequisite: this owner's share of the "
+        "unit, 0-100. NOT NULL with a default=100 so existing write paths "
+        "(property/views.py unit-create/unit-update) that create a "
+        "UnitOwner without an explicit split keep working unchanged -- a "
+        "single implied 100%-owner is correct for those call sites.",
     )
 
     def __str__(self):

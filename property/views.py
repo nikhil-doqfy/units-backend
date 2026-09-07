@@ -365,13 +365,24 @@ def property(request):
             if not isinstance(platforms, list):
                 return prepare_response(message="Platforms must be a list", status=status.HTTP_400_BAD_REQUEST)
 
-            valid_platforms = {choice[0] for choice in constants.PLATFORM_CHOICES}
-            invalid_platforms = set(platforms) - valid_platforms
-
-            if invalid_platforms:
-                return prepare_response( message="One or more platform values are invalid", status=status.HTTP_400_BAD_REQUEST)
-        # Save exactly the current selection
-            prop.platforms = platforms
+            # Frontend value -> Database choice value
+            platform_mapping = {
+                "property finder": "PROPERTY_FINDER",
+                "property_finder": "PROPERTY_FINDER",
+                "bayut": "BAYUT",
+                "direct": "DIRECT",
+                "referral": "REFERRAL",
+            }
+            normalized_platforms = []
+            for platform in platforms:
+                platform_key = str(platform).strip().lower()
+                if platform_key not in platform_mapping:
+                    return prepare_response(
+                        message=f"Invalid platform value: {platform}",
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                normalized_platforms.append(platform_mapping[platform_key])
+            prop.platforms = normalized_platforms
         prop.save()
         logger.info(
             "PROPERTY_UPDATED | user_id=%d | property_id=%d | property_name=%s | status=SUCCESS",
@@ -1042,8 +1053,14 @@ def unit(request):
             if field in data and data[field] is not None:
                 setattr(u, field, data[field])
 
-        if data.get("block_id"):
-            block = PropertyBlocks.objects.filter(id=data["block_id"]).first()
+        block_id = data.get("block_id")
+        if isinstance(block_id, dict):
+            block_id = block_id.get("key")
+        block_id = data.get("block_id")
+        if isinstance(block_id, dict):
+            block_id = block_id.get("key")
+        if block_id:
+            block = PropertyBlocks.objects.filter(id=block_id).first()
             if block:
                 u.property_block_tower = block
                 u.parent_property= block.property
@@ -1062,8 +1079,9 @@ def unit(request):
 
         if "unit_owners" in data:
             u.unit_owners.all().delete()
+            pmc = u.parent_property.pmc if u.parent_property else None
             for owner in data["unit_owners"]:
-                owner_obj = _get_or_create_owner(owner, user_profile.user)
+                owner_obj = _get_or_create_owner(owner, user_profile.user, u.parent_property.pmc)
                 if owner_obj:
                     UnitOwner.objects.create(
                         created_by=user_profile.user,
