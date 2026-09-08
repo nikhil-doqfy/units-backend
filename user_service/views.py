@@ -4403,12 +4403,6 @@ def document_api(request):
             if err:
                 return prepare_response(message=f"documents[{index}]: {err}", status=status.HTTP_400_BAD_REQUEST)
  
-            if not expiry_date:
-                return prepare_response(
-                    message=f"documents[{index}]: expiry_date is required",
-                    status=status.HTTP_400_BAD_REQUEST
-                )
- 
             cleaned.append({
                 "file_data":   file_data,
                 "file_name":   file_name,
