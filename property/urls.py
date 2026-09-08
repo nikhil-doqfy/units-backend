@@ -20,6 +20,7 @@ urlpatterns = [
     path('interested', views.toggle_property_interest, name='toggle_property_interest'),
     path('companies', views.company_list, name='company_list'),
     path('share-property', views.share_property, name='share-property'),
-    path('share-unit', views.share_unit, name='share-unit')
+    path('share-unit', views.share_unit, name='share-unit'),
+    path("organization", views.organization_view, name='organization'),
 
 ]
