@@ -2309,3 +2309,102 @@ def share_unit(request):
         logger.exception("UNIT_SHARE_ERROR | user_id=%s | unit_id=%s | error=%s",
             request.user.id, unit_id if "unit_id" in locals() else None, str(e))
         return prepare_response(message=f"Error: {str(e)}", status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@is_request_authenticated
+def organization_view(request):
+    user_profile = request.user
+
+    if request.method == "GET":
+        property_manager = PropertyManager.objects.filter(pk=user_profile.pk).select_related("company__organization").first()
+        if not property_manager:
+            logger.warning("PROPERTY_MANAGER_NOT_FOUND | user_id=%d", request.user.id)
+            return prepare_response(message=constants.PROPERTY_MANAGER_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+
+        if not property_manager.company_id:
+            logger.warning("COMPANY_NOT_FOUND | user_id=%d", request.user.id)
+            return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+
+        organization = property_manager.company.organization
+
+        if not organization:
+            logger.warning(
+                "ORGANIZATION_NOT_FOUND | user_id=%d",
+                request.user.id
+            )
+            return prepare_response(message=constants.ORGANIZATION_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+
+        content = {
+            "id": organization.id,
+            "code": organization.code,
+            "name": organization.name,
+            "address": organization.address or "",
+            "email": organization.email or "",
+            "contact_number": organization.contact_number or "",
+            "city": organization.city.name if organization.city else "",
+            "expiry_date": organization.expiry_date,
+        }
+
+        logger.info(
+            "ORGANIZATION_FETCHED | user_id=%d | organization_id=%d",
+            request.user.id, organization.id)
+
+        return prepare_response(content=content, status=status.HTTP_200_OK)
+
+    elif request.method == "PUT":
+        data = json.loads(request.body)
+
+        property_manager = PropertyManager.objects.filter(pk=user_profile.pk).select_related("company__organization").first()
+
+        if not property_manager:
+            logger.warning("PROPERTY_MANAGER_NOT_FOUND | user_id=%d", request.user.id)
+            return prepare_response(message=constants.PROPERTY_MANAGER_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+
+        if not property_manager.company_id:
+            logger.warning("COMPANY_NOT_FOUND | user_id=%d", request.user.id)
+            return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+
+        organization = property_manager.company.organization
+
+        if not organization:
+            logger.warning(
+                "ORGANIZATION_NOT_FOUND | user_id=%d",
+                request.user.id
+            )
+            return prepare_response(message=constants.ORGANIZATION_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+
+        if "address" in data:
+            organization.address = data.get("address")
+
+        if "email" in data:
+            organization.email = data.get("email")
+
+        if "contact_number" in data:
+            organization.contact_number = data.get("contact_number")
+
+        if "expiry_date" in data:
+            organization.expiry_date = data.get("expiry_date")
+
+        organization.save()
+
+        content = {
+            "id": organization.id,
+            "code": organization.code,
+            "name": organization.name,
+            "address": organization.address or "",
+            "email": organization.email or "",
+            "contact_number": organization.contact_number or "",
+            "city": organization.city.name if organization.city else "",
+            "expiry_date": organization.expiry_date,
+        }
+
+        logger.info(
+            "ORGANIZATION_UPDATED | user_id=%d | organization_id=%d",
+            request.user.id, organization.id)
+
+        return prepare_response(
+            content=content,
+            message="Organization updated successfully.",
+            status=status.HTTP_200_OK
+        )
+
+    return prepare_response(message="Invalid request method.", status=status.HTTP_405_METHOD_NOT_ALLOWED)
