@@ -351,10 +351,6 @@ def property(request):
             if field in data and data[field] is not None:
                 setattr(prop, field, data[field])
 
-        pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).select_related('company').first()
-        if pm_profile and pm_profile.company:
-            prop.pmc = pm_profile.company
-
         property_types = data.get("property_type")
         if property_types is not None:
             types = PropertyType.objects.filter(code__in=property_types)
