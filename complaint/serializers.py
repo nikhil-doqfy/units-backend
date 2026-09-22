@@ -15,13 +15,24 @@ def serialize_complaint(c):
         elif c.unit.parent_property:
             property_obj = c.unit.parent_property
 
+    pmc_obj = property_obj.pmc if property_obj else None
+
     return {
         "id": c.id,
         "code": c.code,
+        "pmc_id": pmc_obj.id if pmc_obj else None,
+        "pmc_name": pmc_obj.name if pmc_obj else None,
+        "property_id": property_obj.id if property_obj else None,
+        "property_name": property_obj.property_name if property_obj else None,
+        "unit_id": c.unit.id if c.unit else None,
         "unit": {
             "id": c.unit.id,
             "unit_name": c.unit.unit_name,
             "property_name": property_obj.property_name if property_obj else None,
+            "address_line_1": property_obj.address_line_1 if property_obj else None,
+            "address_line_2": property_obj.address_line_2 if property_obj else None,
+            "landmark":       property_obj.landmark       if property_obj else None,
+            "map_address":    property_obj.map_address    if property_obj else None,
         },
         "raised_by": {
             "id": c.raised_by.id,

@@ -3148,6 +3148,20 @@ def lease_documents(request):
             status=status.HTTP_500_INTERNAL_SERVER_ERROR
         )
 
+def _get_pdf_urls(lease):
+    if not lease or not lease.pdf_path:
+        return None, None
+
+    file_name = f"lease_{lease.code}.pdf"
+    pdf_url = fetch_s3_presigned_url(
+        file_url=lease.pdf_path,
+        file_name=file_name
+    )
+    pdf_download_url = fetch_s3_presigned_url_for_download(
+        file_url=lease.pdf_path,
+        file_name=file_name
+    )
+    return pdf_url, pdf_download_url
 
 @is_request_authenticated
 def lease_tenancy(request):
@@ -3223,6 +3237,7 @@ def lease_tenancy(request):
         for lease in leases_page:
             tenant_profile = lease.tenant
             property_unit = lease.unit
+            pdf_url, pdf_download_url = _get_pdf_urls(lease)
 
             table_data.append({
                 "lease_id": lease.id,
@@ -3237,6 +3252,8 @@ def lease_tenancy(request):
                 "lease_status": lease.lease_status,
                 "agreement_start_date": datetime_to_epoch_millis(lease.start_date),
                 "agreement_end_date": datetime_to_epoch_millis(lease.end_date),
+                "pdf_url": pdf_url,
+                "pdf_download_url": pdf_download_url,
             })
         logger.info(
             "LEASE_TENANCY_FETCHED | user_id=%s | records=%s | page=%s",

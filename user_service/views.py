@@ -2279,6 +2279,9 @@ def approval_view(request):
                 "tenant": f"{approval.tenant.user.first_name} {approval.tenant.user.last_name}".strip() if approval.tenant and approval.tenant.user else None,
                 "created_by": (approval.created_by.get_full_name() or approval.created_by.username) if approval.created_by else None,
                 "property": (approval.unit.property_block_tower.property.property_name if approval.unit.property_block_tower and approval.unit.property_block_tower.property else( approval.unit.parent_property.property_name if approval.unit.parent_property else None)),
+                "property_id": (approval.unit.property_block_tower.property.id
+                if approval.unit.property_block_tower and approval.unit.property_block_tower.property
+                else (approval.unit.parent_property.id if approval.unit.parent_property else None)),
                 "property_image": approval.unit.property_block_tower.property._get_thumbnail() if approval.unit.property_block_tower and approval.unit.property_block_tower.property else None,
                 "block": approval.unit.property_block_tower.block_name if approval.unit.property_block_tower else None,
                 "unit": approval.unit.unit_name,
@@ -2379,6 +2382,11 @@ def approval_view(request):
                 "property":(a.unit.property_block_tower.property.property_name
                 if a.unit.property_block_tower and a.unit.property_block_tower.property
                 else ( a.unit.parent_property.property_name if a.unit.parent_property else None)),
+                "property_id": (a.unit.property_block_tower.property.id
+                if a.unit.property_block_tower and a.unit.property_block_tower.property
+                else (
+                    a.unit.parent_property.id if a.unit.parent_property else None
+                )),
                 "property_image": a.unit.property_block_tower.property._get_thumbnail()
                 if a.unit.property_block_tower and a.unit.property_block_tower.property else None,
                 "block": a.unit.property_block_tower.block_name if a.unit.property_block_tower else None,
@@ -4402,12 +4410,6 @@ def document_api(request):
             expiry_date, err = parse_expiry_date(item.get("expiry_date"))
             if err:
                 return prepare_response(message=f"documents[{index}]: {err}", status=status.HTTP_400_BAD_REQUEST)
- 
-            if not expiry_date:
-                return prepare_response(
-                    message=f"documents[{index}]: expiry_date is required",
-                    status=status.HTTP_400_BAD_REQUEST
-                )
  
             cleaned.append({
                 "file_data":   file_data,

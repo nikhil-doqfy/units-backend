@@ -486,7 +486,7 @@ def options(request):
             elif owner_profile:
                 doc_types = DocumentType.objects.filter(section=constants.OWNER).order_by("id")
             else:
-                doc_types = DocumentType.objects.none()
+                doc_types = DocumentType.objects.filter(section=constants.PROPERTY_MANAGER).order_by("id")
             content["tenant_document_type"] = [{"key": dt.id, "value": dt.name} for dt in doc_types]
 
         elif option_type == "TENANT_BY_COMPANY": #for creating lease we get that tenants
