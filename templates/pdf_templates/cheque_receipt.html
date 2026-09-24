@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 20mm 15mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #1f2937; background: #fff; }
+
+  .receipt-page { page-break-after: always; }
+  .receipt-page:last-child { page-break-after: auto; }
+
+  .header-table { width: 100%; border-collapse: collapse; margin-bottom: 28px; border-bottom: 3px solid #0c6ce9; padding-bottom: 16px; }
+  .receipt-title { font-size: 26px; font-weight: 900; color: #0c6ce9; letter-spacing: 3px; }
+  .sub-text { font-size: 12px; color: #6b7280; margin-top: 4px; }
+  .receipt-meta { text-align: right; font-size: 11px; color: #555; }
+  .receipt-meta div { margin-bottom: 3px; }
+
+  .parties-table { width: 100%; border-collapse: collapse; margin-bottom: 28px; }
+  .party-box { background: #eff6ff; border-radius: 8px; padding: 16px 18px; vertical-align: top; width: 48%; }
+  .party-spacer { width: 4%; }
+  .section-label { font-size: 10px; font-weight: 700; color: #0c6ce9; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .party-name { font-size: 14px; font-weight: 700; color: #111; margin-bottom: 6px; }
+  .party-detail { font-size: 11px; color: #555; margin-bottom: 3px; }
+
+  .detail-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 24px; }
+  .detail-table td { padding: 8px 10px; border-bottom: 1px solid #f3f4f6; }
+  .detail-table td.label { color: #6b7280; width: 40%; }
+  .detail-table td.value { font-weight: 600; color: #111; }
+
+  .amount-box { background: #0c6ce9; color: #fff; border-radius: 6px; padding: 14px 18px; margin-top: 8px; }
+  .amount-box .amount-label { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; opacity: 0.85; }
+  .amount-box .amount-value { font-size: 22px; font-weight: 800; margin-top: 4px; }
+
+  .status-badge { display: inline-block; padding: 3px 10px; border-radius: 10px; font-size: 10px; font-weight: 700; }
+
+  .footer { margin-top: 36px; padding-top: 12px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 10px; color: #9ca3af; }
+</style>
+</head>
+<body>
+
+{% for e in entries %}
+<div class="receipt-page">
+
+  <table class="header-table" style="margin-bottom:0;border-bottom:none;">
+    <tr>
+      <td style="padding-bottom:16px;border-bottom:3px solid #0c6ce9;">
+        <div class="receipt-title">PAYMENT RECEIPT</div>
+        <div class="sub-text">{{ property_info.property_name }}{% if property_info.block_name %} &ndash; {{ property_info.block_name }}{% endif %}{% if property_info.unit_name %} &ndash; Unit {{ property_info.unit_name }}{% endif %}</div>
+      </td>
+      <td style="padding-bottom:16px;border-bottom:3px solid #0c6ce9;">
+        <div class="receipt-meta">
+          <div><strong>Receipt No:</strong> {{ e.code }}</div>
+          <div><strong>Lease Code:</strong> {{ property_info.lease_code }}</div>
+          <div><strong>Date Issued:</strong> {{ today }}</div>
+        </div>
+      </td>
+    </tr>
+  </table>
+  <div style="height:28px;"></div>
+
+  <table class="parties-table">
+    <tr>
+      <td class="party-box">
+        <div class="section-label">Received From</div>
+        <div class="party-name">{{ tenant.name }}</div>
+        {% if tenant.code %}<div class="party-detail">Tenant Code: {{ tenant.code }}</div>{% endif %}
+        {% if tenant.contact %}<div class="party-detail">Contact: {{ tenant.contact }}</div>{% endif %}
+        {% if tenant.email %}<div class="party-detail">{{ tenant.email }}</div>{% endif %}
+      </td>
+      <td class="party-spacer"></td>
+      <td class="party-box">
+        <div class="section-label">Property Details</div>
+        <div class="party-name">{{ property_info.property_name }}</div>
+        {% if property_info.unit_name %}<div class="party-detail">Unit: {{ property_info.unit_name }}</div>{% endif %}
+        <div class="party-detail">Lease Term: {{ property_info.start_date }} &ndash; {{ property_info.end_date }}</div>
+      </td>
+    </tr>
+  </table>
+
+  <table class="detail-table">
+    <tr><td class="label">Description</td><td class="value">{{ e.description }}</td></tr>
+    <tr><td class="label">Payment Method</td><td class="value">{{ e.payment_type }}</td></tr>
+    {% if e.cheque_number %}<tr><td class="label">Cheque Number</td><td class="value">{{ e.cheque_number }}</td></tr>{% endif %}
+    <tr><td class="label">Cheque / Due Date</td><td class="value">{{ e.cheque_date }}</td></tr>
+    {% if e.drawn_bank %}<tr><td class="label">Drawn Bank</td><td class="value">{{ e.drawn_bank }}</td></tr>{% endif %}
+    {% if e.settlement_bank %}<tr><td class="label">Settlement Bank</td><td class="value">{{ e.settlement_bank }}</td></tr>{% endif %}
+    <tr><td class="label">Amount</td><td class="value">AED {{ e.amount }}</td></tr>
+    <tr><td class="label">VAT ({{ e.tax_code }}%)</td><td class="value">AED {{ e.vat }}</td></tr>
+    <tr><td class="label">Status</td><td class="value"><span class="status-badge" style="{{ e.status_style }}">{{ e.status }}</span></td></tr>
+  </table>
+
+  <div class="amount-box">
+    <div class="amount-label">Total Amount</div>
+    <div class="amount-value">AED {{ e.total }}</div>
+  </div>
+
+  <div class="footer">This receipt is system-generated and does not require a signature.</div>
+
+</div>
+{% endfor %}
+
+</body>
+</html>

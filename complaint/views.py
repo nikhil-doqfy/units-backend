@@ -69,6 +69,8 @@ def complaint_api(request):
         tenant_profile = Tenant.objects.filter(pk=request.user.pk).first()
         owner_instance = Owner.objects.filter(pk=request.user.pk).first()
 
+        pmc_id = request.GET.get("pmc_id", "").strip()
+
         if tenant_profile:
             lease = Lease.objects.filter(tenant=tenant_profile, is_active=True).select_related("unit").first()
             if not lease:
@@ -80,11 +82,20 @@ def complaint_api(request):
                 unit__unit_owners__owner=owner_instance,
                 is_active=True
             ).distinct().order_by("-id")
+            if pmc_id:
+                complaints = complaints.filter(
+                    Q(unit__property_block_tower__property__pmc_id=pmc_id) |
+                    Q(unit__parent_property__pmc_id=pmc_id)
+                )
             # Existing PM logic
         else:
             pmc_ids = list(PMCPMMapping.objects.filter( pm=request.user, is_active=True).values_list("pmc_id", flat=True))
             if not pmc_ids:
                 return prepare_response( message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+            if pmc_id:
+                if int(pmc_id) not in pmc_ids:
+                    return prepare_response(message="You are not allowed to access this PMC", status=status.HTTP_403_FORBIDDEN)
+                pmc_ids = [int(pmc_id)]
 
             complaints = Complaint.objects.filter( company_id__in=pmc_ids, is_active=True).order_by('-id')
 

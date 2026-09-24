@@ -58,6 +58,10 @@ class UserProfile(Base):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_CHOICES[0][0])
     token = models.TextField(null=True, blank=True)
     password_change_timestamp = models.DateTimeField(null=True, blank=True)
+    # Navbar PMC selector's last choice, restored automatically on next
+    # login (see userprofile_view GET/PUT). Not a hard FK -- PropertyManagmentCompany
+    # lives in a different app and this is just a loose remembered id.
+    last_selected_pmc_id = models.BigIntegerField(null=True, blank=True)
 
     def get_user_basic_info(self):
         return {

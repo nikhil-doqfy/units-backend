@@ -205,6 +205,7 @@ def userprofile_view(request):
                 "emirate_id": user_profile.emirate_id,
                 "time_zone": user_profile.timezone,
                 "permissions": permissions,
+                "last_selected_pmc_id": user_profile.last_selected_pmc_id,
             }
             logger.info(
                     "USER_PROFILE_FETCHED | user_id=%s | role=%s",
@@ -253,6 +254,7 @@ def userprofile_view(request):
                 "contact_number": "contact_number",
                 "emirate_id": "emirate_id",
                 "time_zone": "timezone",
+                "last_selected_pmc_id": "last_selected_pmc_id",
             }
             for body_key, model_field in field_map.items():
                 if body_key in body:
@@ -395,23 +397,40 @@ def user_management(request):
                     request.user.id )
                 return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND )
 
+            requested_pmc_id = request.GET.get("pmc_id", "").strip()
+            if requested_pmc_id:
+                if int(requested_pmc_id) not in pmc_ids:
+                    return prepare_response(message="You are not allowed to access this PMC", status=status.HTTP_403_FORBIDDEN)
+                pmc_ids = [int(requested_pmc_id)]
+
             # Collect UserProfile IDs from all three user types linked to this company:
             # 1. Property Managers (staff) — directly linked via company FK
             pm_ids = set(PMCPMMapping.objects.filter( pmc_id__in=pmc_ids,is_active=True).values_list("pm_id", flat=True))
 
-            # 2. Owners — via UnitOwner → Unit → PropertyBlocks → Property → pmc
+            # 2. Owners — via UnitOwner → Unit → PropertyBlocks → Property → pmc.
+            # Owner.pmc is only tagged at owner-creation time
+            # (_get_or_create_owner in property/views.py), so an owner whose
+            # UnitOwner links predate that (or came from a different path)
+            # never gets it set -- match the real unit-ownership relationship
+            # too so this doesn't silently drop legitimate owners (same fix
+            # as owner_crud's list endpoint).
             owner_ids = set(
                 Owner.objects.filter(
-                    pmc__id__in=pmc_ids,
+                    Q(pmc__id__in=pmc_ids) |
+                    Q(unit_owner_links__unit__property_block_tower__property__pmc_id__in=pmc_ids) |
+                    Q(unit_owner_links__unit__parent_property__pmc_id__in=pmc_ids),
                     is_active=True,
                 ).distinct().values_list("pk", flat=True)
             )
 
-            # 3. Tenants — via Lease → Unit → PropertyBlocks → Property → pmc
+            # 3. Tenants — via Lease → Unit → PropertyBlocks → Property → pmc.
+            # Same fragility as Owner.pmc above -- also match via each
+            # tenant's actual lease/unit relationship.
             tenant_ids = set(
                 Tenant.objects.filter(
-                    # unit__property_block_tower__property__pmc=company
-                    pmc__id__in=pmc_ids,
+                    Q(pmc__id__in=pmc_ids) |
+                    Q(lease__unit__property_block_tower__property__pmc_id__in=pmc_ids) |
+                    Q(lease__unit__parent_property__pmc_id__in=pmc_ids),
                     is_active=True,
                 ).distinct().values_list("pk", flat=True)
             )
@@ -679,9 +698,26 @@ def role_table_view(request):
     user = request.user
     try:
         django_user = user.user
-        company = PropertyManagmentCompany.objects.filter(created_by=django_user, is_active=True).first()
+        pm_check = PropertyManager.objects.filter(pk=user.pk).select_related("company").first()
+
+        # Roles are scoped to a single PropertyManagmentCompany (Role.company),
+        # but a PM can be assigned to several via PMCPMMapping (navbar PMC
+        # selector) -- honor ?pmc_id= when given, validated against those,
+        # rather than always falling back to pm_check.company (whichever PMC
+        # happened to be set there, often stale for a multi-PMC PM).
+        company = None
+        pmc_id = request.GET.get("pmc_id", "").strip()
+        if pmc_id and pm_check:
+            authorized_pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_check).values_list("pmc_id", flat=True))
+            if not authorized_pmc_ids and pm_check.company_id:
+                authorized_pmc_ids = [pm_check.company_id]
+            if int(pmc_id) not in authorized_pmc_ids:
+                return prepare_response(message="You are not allowed to access this PMC", status=status.HTTP_403_FORBIDDEN)
+            company = PropertyManagmentCompany.objects.filter(id=pmc_id, is_active=True).first()
+
         if not company:
-            pm_check = PropertyManager.objects.filter(pk=user.pk).select_related("company").first()
+            company = PropertyManagmentCompany.objects.filter(created_by=django_user, is_active=True).first()
+        if not company:
             company = pm_check.company if pm_check else None
         if not company:
             logger.warning(
@@ -907,6 +943,12 @@ def staff_view(request):
             search = request.GET.get("search", "").strip()
             page = int(request.GET.get("page_number", 1))
             limit = int(request.GET.get("limit", 10))
+
+            requested_pmc_id = request.GET.get("pmc_id", "").strip()
+            if requested_pmc_id and login_pmc_ids:
+                if int(requested_pmc_id) not in login_pmc_ids:
+                    return prepare_response(message="You are not allowed to access this PMC", status=status.HTTP_403_FORBIDDEN)
+                login_pmc_ids = [int(requested_pmc_id)]
 
             #qs = PropertyManager.objects.filter(company=company).select_related("user", "city").prefetch_related("roles")
             pm_ids = PMCPMMapping.objects.filter(pmc_id__in=login_pmc_ids).values_list("pm_id", flat=True).distinct()
@@ -1558,7 +1600,7 @@ def owner_crud(request):
             )
             table_data = []
             for unit in units_qs:
-                is_occupied = unit.leases.filter(lease_status="ACTIVE", is_active=True).exists()
+                is_occupied = unit.is_leased
                 if tenancy_status:
                     if tenancy_status == "OCCUPIED" and not is_occupied:
                         continue
@@ -1581,6 +1623,7 @@ def owner_crud(request):
         page = int(request.GET.get("page", 1))
         page_size = int(request.GET.get("page_size", 10))
         export = request.GET.get("export", "").strip()
+        pmc_id = request.GET.get("pmc_id", "").strip()
 
         # Filter owners created by any staff member of the logged-in user's PMC
         pm_profile = PropertyManager.objects.filter(pk=request.user.pk).first()
@@ -1589,10 +1632,24 @@ def owner_crud(request):
                 PMCPMMapping.objects.filter(pm=pm_profile, is_active=True).values_list("pmc_id", flat=True))
             if not pmc_ids:
                 return prepare_response(message=constants.COMPANY_NOT_FOUND,status=status.HTTP_404_NOT_FOUND)
+            if pmc_id:
+                if int(pmc_id) not in pmc_ids:
+                    return prepare_response(message="You are not allowed to access this PMC", status=status.HTTP_403_FORBIDDEN)
+                pmc_ids = [int(pmc_id)]
+            # Owner.pmc is only tagged at owner-creation time
+            # (_get_or_create_owner in property/views.py) -- an owner
+            # whose UnitOwner links predate that, or were created through
+            # a different path, never gets it set, making them invisible
+            # here despite genuinely owning units under this PMC. Also
+            # match via actual unit ownership so this list doesn't depend
+            # on that tag staying in sync (same relationship owner_pmc_view
+            # already uses to scope Owner-role access).
             owners = Owner.objects.select_related("user").filter(
+                Q(pmc__id__in=pmc_ids) |
+                Q(unit_owner_links__unit__property_block_tower__property__pmc_id__in=pmc_ids) |
+                Q(unit_owner_links__unit__parent_property__pmc_id__in=pmc_ids),
                 user__is_active=True,
                 is_active=True,
-                pmc__id__in=pmc_ids,
             ).distinct().order_by("-id")
         else:
             owners = Owner.objects.for_user(user_profile).select_related("user").filter(user__is_active=True).distinct().order_by("-id")
@@ -1838,7 +1895,7 @@ def export_owner_units_csv(request):
         units_qs = Unit.objects.filter(unit_owners__owner=owner).prefetch_related("leases", "leases__tenant__user", "property_block_tower__property")
         rows = []
         for unit in units_qs:
-            is_occupied = unit.leases.filter(lease_status="ACTIVE", is_active=True).exists()
+            is_occupied = unit.is_leased
             if tenancy_status == "OCCUPIED" and not is_occupied:
                 continue
             if tenancy_status == "VACANT" and is_occupied:
@@ -1994,6 +2051,7 @@ def tenant_crud(request):
         page      = int(request.GET.get("page", 1))
         page_size = int(request.GET.get("page_size", 10))
         export    = request.GET.get("export", "")
+        pmc_id    = request.GET.get("pmc_id", "").strip()
         today     = _date.today()
 
       # ── Role detection: PMC → Owner ───────────────────────────────────────
@@ -2004,6 +2062,10 @@ def tenant_crud(request):
             pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile).values_list("pmc_id", flat=True))
             if not pmc_ids:
                 return prepare_response( message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+            if pmc_id:
+                if int(pmc_id) not in pmc_ids:
+                    return prepare_response(message="You are not allowed to access this PMC", status=status.HTTP_403_FORBIDDEN)
+                pmc_ids = [int(pmc_id)]
 
         elif owner_profile:
             pass
@@ -2054,6 +2116,11 @@ def tenant_crud(request):
                     unit__unit_owners__owner=owner_profile
                 )
             )
+            if pmc_id:
+                qs = qs.filter(
+                    Q(unit__property_block_tower__property__pmc_id=pmc_id) |
+                    Q(unit__parent_property__pmc_id=pmc_id)
+                )
 
         if tab == "onboarding":
             qs = qs.filter(lease_status="DRAFT")
@@ -2249,6 +2316,11 @@ def approval_view(request):
     if not pmc_ids and pm_profile.company_id:
         pmc_ids = [pm_profile.company_id]
     if request.method == "GET":
+        pmc_id = request.GET.get("pmc_id", "").strip()
+        if pmc_id:
+            if int(pmc_id) not in pmc_ids:
+                return prepare_response(message="You are not allowed to access this PMC", status=status.HTTP_403_FORBIDDEN)
+            pmc_ids = [int(pmc_id)]
 
         lease_id_param = request.GET.get("lease_id")
         if lease_id_param:
@@ -2575,9 +2647,16 @@ def owner_pmc_view(request):
                         unit_owners__owner=owner_profile,
                         is_active=True
                     ).select_related("property_block_tower__property__pmc")
+
+                    # Owners have no direct PMC assignment -- a PMC is only
+                    # visible to them through units they own, so it's
+                    # correct to derive company_ids from owner_units here.
+                    company_ids = owner_units.values_list(
+                        "property_block_tower__property__pmc_id", flat=True
+                    ).union(owner_units.values_list("parent_property__pmc_id", flat=True))
                 else:
                     pmc_ids = list(
-                        PMCPMMapping.objects.filter(pm=pm_profile).values_list("pmc_id", flat=True))
+                        PMCPMMapping.objects.filter(pm=pm_profile, is_active=True).values_list("pmc_id", flat=True))
                     owner_units = Unit.objects.filter(
                         Q(property_block_tower__property__pmc_id__in=pmc_ids) |
                         Q(parent_property__pmc_id__in=pmc_ids),
@@ -2586,11 +2665,16 @@ def owner_pmc_view(request):
                         "property_block_tower__property__pmc",
                         "parent_property__pmc",
                     )
- 
-                company_ids = owner_units.values_list(
-                    "property_block_tower__property__pmc_id", flat=True
-                ).union(owner_units.values_list("parent_property__pmc_id",flat=True))
- 
+
+                    # A PM is assigned to a PMC via PMCPMMapping directly --
+                    # unlike Owners, this doesn't depend on the PMC already
+                    # having properties/units. Re-deriving visibility from
+                    # owner_units here (as the Owner branch does) silently
+                    # hid every PMC with zero units, even though the PM was
+                    # actively mapped to it (a newly onboarded PMC with no
+                    # properties yet would never show up on this page).
+                    company_ids = pmc_ids
+
                 pmc_qs = PropertyManagmentCompany.objects.filter(
                     id__in=company_ids,
                     is_active=True
@@ -3159,7 +3243,7 @@ def export_company_owners_csv(request):
 
         for unit in units_qs:
             lease = unit.lease_details.filter(lease_status="ACTIVE").first()
-            is_occupied = True if lease else False
+            is_occupied = unit.is_leased
 
             if tenancy_status:
                 if tenancy_status == "OCCUPIED" and not is_occupied:

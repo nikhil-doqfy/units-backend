@@ -214,11 +214,17 @@ def support_ticket_api(request):
                     status=status.HTTP_403_FORBIDDEN
                 )
 
-            pmc_ids = (
+            pmc_ids = list(
                 PMCPMMapping.objects
                 .filter(pm=pm_profile)
                 .values_list("pmc_id", flat=True)
             )
+
+            pmc_id = request.GET.get("pmc_id", "").strip()
+            if pmc_id:
+                if int(pmc_id) not in pmc_ids:
+                    return prepare_response(message="You are not allowed to access this PMC", status=status.HTTP_403_FORBIDDEN)
+                pmc_ids = [int(pmc_id)]
 
             tickets = (
                 SupportTicket.objects

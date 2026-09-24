@@ -14,3 +14,4 @@ test_weasy.py
 .django_cache
 .github
 .DS_Store
+.venv_build

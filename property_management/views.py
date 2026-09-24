@@ -1,5 +1,6 @@
 import os
 import json
+import csv
 import calendar
 import math
 from datetime import timedelta, datetime, date
@@ -9,7 +10,7 @@ from dateutil.relativedelta import relativedelta
 from django.core.paginator import Paginator
 from django.db.models import Count, Q, Prefetch, Sum, F
 from django.db.models.functions import Coalesce, TruncMonth
-from django.http import FileResponse
+from django.http import FileResponse, HttpResponse
 from django.utils import timezone
 from django.utils.timezone import now
 from django.utils.dateparse import parse_date
@@ -623,6 +624,22 @@ def send_invitation(request):
         )
 
 
+def _filter_pmc_ids(request, pmc_ids):
+    """Narrow an already-authorized pmc_ids list down to a single PMC when
+    the caller passes ?pmc_id=<id> (the navbar's PMC selector) -- ignored
+    if the requested id isn't one the user is already scoped to, so this
+    can only narrow visibility, never widen it beyond what the user's own
+    PMCPMMapping already grants."""
+    requested = request.GET.get("pmc_id")
+    if not requested:
+        return pmc_ids
+    try:
+        requested = int(requested)
+    except (TypeError, ValueError):
+        return pmc_ids
+    return [requested] if requested in pmc_ids else pmc_ids
+
+
 @dashboard_overview_get
 @api_view(["GET"])
 @is_request_authenticated
@@ -646,6 +663,7 @@ def dashboard_overview(request):
 
         if pm_instance:
             pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_instance).values_list("pmc_id", flat=True))
+            pmc_ids = _filter_pmc_ids(request, pmc_ids)
             if not pmc_ids and pm_instance.company_id:
                 pmc_ids = [pm_instance.company_id]
             if not pmc_ids:
@@ -659,6 +677,12 @@ def dashboard_overview(request):
             ).distinct()
         elif owner_instance:
             units_qs = Unit.objects.filter(unit_owners__owner=owner_instance)
+            _owner_pmc_id = request.GET.get("pmc_id")
+            if _owner_pmc_id:
+                units_qs = units_qs.filter(
+                    Q(property_block_tower__property__pmc_id=_owner_pmc_id) |
+                    Q(parent_property__pmc_id=_owner_pmc_id)
+                )
         else:
             units_qs = Unit.objects.none()
 
@@ -757,6 +781,12 @@ def dashboard_occupancy(request):
             properties_qs = Property.objects.filter(pmc_id__in=pmc_ids)
         elif owner_instance:
             units_qs = Unit.objects.filter(unit_owners__owner=owner_instance)
+            _owner_pmc_id = request.GET.get("pmc_id")
+            if _owner_pmc_id:
+                units_qs = units_qs.filter(
+                    Q(property_block_tower__property__pmc_id=_owner_pmc_id) |
+                    Q(parent_property__pmc_id=_owner_pmc_id)
+                )
             # owned_prop_ids = units_qs.values_list("property_block_tower__property_id", flat=True).distinct()
             owned_prop_ids = units_qs.annotate(
                 resolved_property_id=Coalesce(
@@ -879,6 +909,7 @@ def dashboard_top_revenue_properties(request):
 
         if pm_instance:
             pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_instance).values_list("pmc_id", flat=True))
+            pmc_ids = _filter_pmc_ids(request, pmc_ids)
             if not pmc_ids and pm_instance.company_id:
                 pmc_ids = [pm_instance.company_id]
             if not pmc_ids:
@@ -893,6 +924,12 @@ def dashboard_top_revenue_properties(request):
             ).distinct()
         elif owner_instance:
             units_qs = Unit.objects.filter(unit_owners__owner=owner_instance)
+            _owner_pmc_id = request.GET.get("pmc_id")
+            if _owner_pmc_id:
+                units_qs = units_qs.filter(
+                    Q(property_block_tower__property__pmc_id=_owner_pmc_id) |
+                    Q(parent_property__pmc_id=_owner_pmc_id)
+                )
         else:
             units_qs = Unit.objects.none()
 
@@ -1091,6 +1128,7 @@ def dashboard_monthly_revenue(request):
         if pm_instance:
             # company = pm_instance.company
             pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_instance).values_list("pmc_id", flat=True))
+            pmc_ids = _filter_pmc_ids(request, pmc_ids)
             if not pmc_ids and pm_instance.company_id:
                 pmc_ids = [pm_instance.company_id]
             if not pmc_ids:
@@ -1257,6 +1295,7 @@ def dashboard_cheque_visibility(request):
 
         if pm_instance:
             pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_instance).values_list("pmc_id", flat=True))
+            pmc_ids = _filter_pmc_ids(request, pmc_ids)
             if not pmc_ids and pm_instance.company_id:
                 pmc_ids = [pm_instance.company_id]
             if not pmc_ids:
@@ -1385,6 +1424,7 @@ def dashboard_cheque_aging(request):
         if pm_instance:
             # company = pm_instance.company
             pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_instance).values_list("pmc_id", flat=True))
+            pmc_ids = _filter_pmc_ids(request, pmc_ids)
             if not pmc_ids and pm_instance.company_id:
                 pmc_ids = [pm_instance.company_id]
             if not pmc_ids:
@@ -1516,6 +1556,7 @@ def dashboard_other_type_payments(request):
         if pm_instance:
             # company = pm_instance.company
             pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_instance).values_list("pmc_id", flat=True))
+            pmc_ids = _filter_pmc_ids(request, pmc_ids)
             if not pmc_ids and pm_instance.company_id:
                 pmc_ids = [pm_instance.company_id]
             transactions = transactions.filter(
@@ -1671,6 +1712,7 @@ def dashboard_yearly_dues(request):
             #     lease__unit__property_block_tower__property__pmc=company
             # )
             pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_instance).values_list("pmc_id", flat=True))
+            pmc_ids = _filter_pmc_ids(request, pmc_ids)
             if not pmc_ids and pm_instance.company_id:
                 pmc_ids = [pm_instance.company_id]
             base_qs = base_qs.filter(
@@ -1813,6 +1855,7 @@ def dashboard_property_owned(request):
         if pm_instance:
 
             pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_instance).values_list("pmc_id", flat=True))
+            pmc_ids = _filter_pmc_ids(request, pmc_ids)
             if not pmc_ids and pm_instance.company_id:
                 pmc_ids = [pm_instance.company_id]
             if not pmc_ids:
@@ -1939,6 +1982,183 @@ def _ensure_visualizations_exist(user):
             "DASHBOARD_VISUALIZATION_CREATED | user_id=%s | count=%s",
             user.id, len(to_create)
         )
+
+
+def _serialize_tenancy_ledger_row(unit):
+    """One row of the Tenancy Ledger -- a Unit joined with its property,
+    PMC, and current lease (if any). `rera_index` has no backing field
+    anywhere in the schema yet, so it's always None (frontend already
+    falls back to '--' for it)."""
+    pb = unit.property_block_tower
+    prop = pb.property if pb else unit.parent_property
+    pmc = prop.pmc if prop else None
+
+    lease = next(
+        (l for l in unit.leases.all() if l.is_active and l.lease_status == constants.ACTIVE),
+        None,
+    ) or next((l for l in unit.leases.all() if l.is_active), None)
+
+    tenant_name = None
+    if lease and lease.tenant and lease.tenant.user:
+        tenant_name = f"{lease.tenant.user.first_name} {lease.tenant.user.last_name}".strip()
+
+    is_occupied = bool(lease and lease.lease_status == constants.ACTIVE and lease.tenant)
+
+    return {
+        "property_id": prop.id if prop else None,
+        "property_unit_id": unit.id,
+        "property_name": prop.property_name if prop else None,
+        "block_tower": pb.block_name if pb else None,
+        "unit": unit.unit_name,
+        "tenant_name": tenant_name,
+        "agreement_status": lease.lease_status if lease else None,
+        "dimension": str(unit.unit_size) if unit.unit_size is not None else unit.area,
+        "property_status": "Occupied" if is_occupied else "Vacant",
+        "pmc": pmc.name if pmc else None,
+        "rental_amount": lease.rent if lease else None,
+        "rera_index": None,
+        "platform": lease.platform if lease else None,
+        "lease_id": lease.id if lease else None,
+    }
+
+
+@api_view(["GET"])
+@is_request_authenticated
+def tenancy_ledger_view(request):
+    """GET /tenancy-ledger -- 'All Properties and Tenants' list backing the
+    Lease/Tenancy page's Tenancy Ledger. One row per Unit, joined with its
+    active lease/tenant/PMC. Same PM -> PMCPMMapping / Owner -> owned-units
+    / Tenant -> own-lease scoping as /property/unit, plus an optional
+    ?pmc_id= narrowing (navbar PMC selector)."""
+    if request.method != "GET":
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    try:
+        from django.core.paginator import Paginator, EmptyPage
+
+        user_profile = request.user
+        search = request.GET.get("search", "").strip()
+        property_id = request.GET.get("property_id", "").strip()
+        agreement_status = request.GET.get("agreement_status", "").strip()
+        property_status = request.GET.get("property_status", "").strip().upper()
+        pmc_id = request.GET.get("pmc_id", "").strip()
+        page = int(request.GET.get("page", 1))
+        page_size = int(request.GET.get("page_size", 10))
+        export = request.GET.get("export", "").strip()
+
+        pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).select_related("company").first()
+        if pm_profile:
+            pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile).values_list("pmc_id", flat=True))
+            if not pmc_ids and pm_profile.company_id:
+                pmc_ids = [pm_profile.company_id]
+            if not pmc_ids:
+                return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+
+            if pmc_id:
+                if int(pmc_id) not in pmc_ids:
+                    return prepare_response(message="You are not allowed to access this PMC", status=status.HTTP_403_FORBIDDEN)
+                pmc_ids = [int(pmc_id)]
+
+            units = Unit.objects.filter(
+                Q(property_block_tower__property__pmc_id__in=pmc_ids) |
+                Q(parent_property__pmc_id__in=pmc_ids),
+                is_active=True,
+            )
+        else:
+            owner_profile = Owner.objects.filter(pk=user_profile.pk).first()
+            if owner_profile:
+                units = Unit.objects.filter(unit_owners__owner=owner_profile, is_active=True)
+                if pmc_id:
+                    units = units.filter(
+                        Q(property_block_tower__property__pmc_id=pmc_id) |
+                        Q(parent_property__pmc_id=pmc_id)
+                    )
+            else:
+                tenant_profile = Tenant.objects.filter(pk=user_profile.pk).first()
+                if tenant_profile:
+                    units = Unit.objects.filter(
+                        leases__tenant=tenant_profile, leases__is_active=True, is_active=True
+                    )
+                else:
+                    return prepare_response(message=constants.UNAUTHORIZED_ROLE, status=status.HTTP_403_FORBIDDEN)
+
+        units = units.select_related(
+            "property_block_tower__property__pmc",
+            "parent_property__pmc",
+        ).prefetch_related(
+            Prefetch("leases", queryset=Lease.objects.select_related("tenant__user").order_by("-id")),
+        ).distinct()
+
+        if search:
+            units = units.filter(
+                Q(unit_name__icontains=search) |
+                Q(property_block_tower__property__property_name__icontains=search) |
+                Q(parent_property__property_name__icontains=search)
+            )
+        if property_id:
+            units = units.filter(
+                Q(property_block_tower__property_id=property_id) |
+                Q(parent_property_id=property_id)
+            )
+        if agreement_status:
+            units = units.filter(leases__lease_status=agreement_status, leases__is_active=True).distinct()
+        if property_status == "OCCUPIED":
+            units = units.filter(
+                leases__lease_status=constants.ACTIVE, leases__is_active=True, leases__tenant__isnull=False
+            ).distinct()
+        elif property_status == "VACANT":
+            occupied_unit_ids = Lease.objects.filter(
+                lease_status=constants.ACTIVE, is_active=True, tenant__isnull=False
+            ).values_list("unit_id", flat=True)
+            units = units.exclude(id__in=occupied_unit_ids).distinct()
+        elif property_status:
+            return prepare_response(message="Invalid property_status. Use OCCUPIED or VACANT.", status=status.HTTP_400_BAD_REQUEST)
+
+        units = units.order_by("-id")
+
+        if export == "true":
+            response = HttpResponse(content_type="text/csv")
+            response["Content-Disposition"] = 'attachment; filename="tenancy_ledger.csv"'
+            writer = csv.writer(response)
+            writer.writerow([
+                "Property ID", "Property Name", "Block/Tower", "Unit", "Tenant Name",
+                "Agreement Status", "Dimension", "Property Status", "PMC",
+                "Rental Amount", "Platform",
+            ])
+            for u in units:
+                r = _serialize_tenancy_ledger_row(u)
+                writer.writerow([
+                    r["property_id"], r["property_name"], r["block_tower"], r["unit"],
+                    r["tenant_name"], r["agreement_status"], r["dimension"],
+                    r["property_status"], r["pmc"], r["rental_amount"], r["platform"],
+                ])
+            return response
+
+        paginator = Paginator(units, page_size)
+        try:
+            page_obj = paginator.page(page)
+        except EmptyPage:
+            page_obj = paginator.page(paginator.num_pages) if paginator.num_pages else paginator.page(1)
+
+        rows = [_serialize_tenancy_ledger_row(u) for u in page_obj]
+
+        logger.info(
+            "TENANCY_LEDGER_FETCHED | user_id=%s | records_returned=%s",
+            request.user.id, len(rows))
+        return prepare_response(
+            content=rows,
+            pagination={
+                "current_page": page_obj.number,
+                "total_records": paginator.count,
+                "total_pages": paginator.num_pages,
+                "page_size": page_size,
+            },
+            status=status.HTTP_200_OK,
+        )
+    except Exception as e:
+        logger.exception(
+            "TENANCY_LEDGER_ERROR | user_id=%s | error=%s",
+            request.user.id, str(e))
+        return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 @dashboard_visualization_get

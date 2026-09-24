@@ -1,3 +1,5 @@
+from rest_framework import serializers
+
 from utilities.helper_functions import fetch_s3_presigned_url
 from utilities import constants
 
@@ -147,7 +149,34 @@ def serialize_lease(lease):
     }
 
 
+class LeaseSerializer(serializers.Serializer):
+    """Real DRF serializer for LeaseViewSet (the first endpoint converted off
+    prepare_response/is_request_authenticated -- see the DRF migration plan).
+    Output delegates to serialize_lease(), which already assembles the
+    nested property/unit/tenant/financials shape other code (and the not-
+    yet-converted lease/lead endpoints) still depends on -- reusing it here
+    keeps that shape identical rather than re-deriving it field by field.
+    """
+
+    def to_representation(self, instance):
+        return serialize_lease(instance)
+
+
 # ── Lease Cheque ──────────────────────────────────────────────────────────────
+
+def _lease_cheque_description(cheque):
+    """Human-readable label for the ledger table's Description column --
+    the manually-entered description if one was given when the cheque was
+    added, otherwise a charge's own description for OTHER_CHARGE rows, or
+    the rent/additional cheque's covered period."""
+    if cheque.description:
+        return cheque.description
+    if cheque.cheque_type == constants.OTHER_CHARGE:
+        return cheque.charge.description if cheque.charge else "Other Charge"
+    if cheque.start_date and cheque.end_date:
+        return f"Rent for the Period [{cheque.start_date:%b-%Y} - {cheque.end_date:%b-%Y}]"
+    return "Rent" if cheque.cheque_type == constants.RENT_CHEQUE else "Additional Cheque"
+
 
 def serialize_lease_cheque(cheque):
     return {
@@ -155,6 +184,7 @@ def serialize_lease_cheque(cheque):
         "code":                      cheque.code or "",
         "cheque_type":               cheque.cheque_type,
         "payment_type":              cheque.payment_type,
+        "description":               _lease_cheque_description(cheque),
 
         # ── Dates ─────────────────────────────────────────────────
         "cheque_date": str(cheque.cheque_date)[:10] if cheque.cheque_date else None,
@@ -183,10 +213,14 @@ def serialize_lease_cheque(cheque):
         "origin_account_number":     cheque.origin_account_number,
         "settlement_account_number": cheque.settlement_account_number,
         "amount":                    cheque.amount,
+        "tax_code":                  cheque.charge.tax_code if cheque.charge else constants.UAE_VAT_RATE * 100,
+        "vat":                       cheque.vat,
+        "total":                     cheque.total,
 
         # ── Document ──────────────────────────────────────────────
         "file_name": cheque.file_name,
         "file_path": fetch_s3_presigned_url(cheque.file_path) if cheque.file_path else None,
+        "invoice_pdf_url": fetch_s3_presigned_url(cheque.invoice_pdf_path) if cheque.invoice_pdf_path else None,
     }
 
 
@@ -207,15 +241,22 @@ def serialize_cheque_list_row(cheque):
     lease  = cheque.lease
     unit   = lease.unit   if lease else None
     pb     = unit.property_block_tower if unit else None
-    # prop   = pb.property  if pb   else None
     prop   = pb.property if pb else unit.parent_property if unit else None
     tenant = lease.tenant if lease else None
+
+    tax_code = cheque.charge.tax_code if cheque.charge else constants.UAE_VAT_RATE * 100
 
     return {
         "cheque": {
             "id":            cheque.id,
+            "lease_id":      lease.id if lease else None,
+            "description":   _lease_cheque_description(cheque),
             "cheque_number": cheque.cheque_number,
+            "due_date":      str(cheque.cheque_date)[:10] if cheque.cheque_date else None,
             "amount":        cheque.amount,
+            "tax_code":      tax_code,
+            "vat":           cheque.vat,
+            "total":         cheque.total,
             "cheque_date":   str(cheque.cheque_date)[:10] if cheque.cheque_date else None,
             "payment_type":  cheque.payment_type,
             "cheque_type":   cheque.cheque_type,

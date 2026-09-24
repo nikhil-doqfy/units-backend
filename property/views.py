@@ -198,6 +198,8 @@ def property(request):
                     ),
                     is_active=True,
                 ).distinct().order_by("-id")
+                if pmc_id:
+                    properties = properties.filter(pmc_id=pmc_id)
  
         # ── Tenant login ──────────────────────────────────────
         if not properties.exists():
@@ -842,6 +844,7 @@ def unit(request):
         no_of_bedrooms = request.GET.get("no_of_bedrooms", "").strip()
         floor_no = request.GET.get("floor_no", "").strip()
         land_area_unit = request.GET.get("land_area_unit", "").strip()
+        pmc_id = request.GET.get("pmc_id", "").strip()
         page = int(request.GET.get("page", 1))
         page_size = int(request.GET.get("page_size", 10))
         export = request.GET.get("export", "").strip()
@@ -856,6 +859,11 @@ def unit(request):
 
             if not pmc_ids:
                 return prepare_response(message=constants.COMPANY_NOT_FOUND,status=status.HTTP_404_NOT_FOUND)
+
+            if pmc_id:
+                if int(pmc_id) not in pmc_ids:
+                    return prepare_response(message="You are not allowed to access this PMC", status=status.HTTP_403_FORBIDDEN)
+                pmc_ids = [int(pmc_id)]
 
             units = Unit.objects.filter(
                 Q(property_block_tower__property__pmc_id__in=pmc_ids) |
@@ -875,6 +883,11 @@ def unit(request):
                 ).select_related(
                     "property_block_tower__property"
                 ).prefetch_related("unit_owners").distinct().order_by("-id")
+                if pmc_id:
+                    units = units.filter(
+                        Q(property_block_tower__property__pmc_id=pmc_id) |
+                        Q(parent_property__pmc_id=pmc_id)
+                    )
  
             else:
                 tenant_profile = Tenant.objects.filter(pk=user_profile.pk).first() 
@@ -1407,7 +1420,7 @@ def property_table_view(request):
 
     elif user.user_role == constants.TENANT:
         # properties_qs = PropertyUnit.objects.filter(lease_details__tenant=user)
-        properties_qs = Unit.objects.filter(is_occupied=False)
+        properties_qs = Unit.objects.filter(status=constants.UNIT_AVAILABLE)
     else:
         logger.warning(
             "PROPERTY_TABLE_FETCH_DENIED | user_id=%d | role=%s",
@@ -1417,9 +1430,9 @@ def property_table_view(request):
         Prefetch("lease_details", queryset=Lease.objects.select_related("tenant__user"))
     ).distinct()
     if tenancy_status == constants.VACANT:
-        properties_qs = properties_qs.filter(is_occupied=False)
+        properties_qs = properties_qs.filter(status=constants.UNIT_AVAILABLE)
     elif tenancy_status == constants.OCCUPIED:
-        properties_qs = properties_qs.filter(is_occupied=True)
+        properties_qs = properties_qs.filter(status=constants.UNIT_ACTIVE)
     if search:
         properties_qs = properties_qs.filter(
             Q(unit_name__icontains=search) |
@@ -1470,7 +1483,7 @@ def property_table_view(request):
             "tenant_profile_image": tenant_profile_image,
             "owner_name": owner_name,
             "company_name": prop.company.company_name if prop.company else None,
-            "tenancy_status": "occupied" if prop.is_occupied else "vacant",
+            "tenancy_status": "occupied" if prop.is_leased else "vacant",
             "dimension":prop.dimension,
             "agreement_expiration":lease_status,
              "property_image": property_image,
@@ -1654,7 +1667,7 @@ def export_property_table_csv(request):
                     "Property Name": prop.property.property_name if prop.property else "",
                     "Tenant Name": lease.tenant.user.get_full_name() if lease else "",
                     "Owner Name": prop.owner.user.get_full_name() if prop.owner else "",
-                    "Tenancy Status": "Occupied" if prop.is_occupied else "Available"
+                    "Tenancy Status": "Occupied" if prop.is_leased else "Available"
                 })
 
 
@@ -1671,7 +1684,7 @@ def export_property_table_csv(request):
                 export_data.append({
                     "Property Name": prop.property.property_name if prop.property else "",
                     "Owner Name": prop.owner.user.get_full_name() if prop.owner else "",
-                    "Tenancy Status": "Occupied" if prop.is_occupied else "Available",
+                    "Tenancy Status": "Occupied" if prop.is_leased else "Available",
                     "Dimension": prop.area_of_property,
                     "PropertyManagmentCompany Name": prop.company.company_name if prop.company else ""
                 })

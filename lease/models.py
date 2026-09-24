@@ -118,6 +118,27 @@ class Lease(Base):
         blank=True,
     )
 
+    # ── Dubai Leasing Management Flow additions ──────────────────────────────
+    # Phase 3: cheque auto-generation / payment frequency.
+    payment_frequency = models.CharField(
+        max_length=15,
+        choices=constants.PAYMENT_FREQUENCY_CHOICES,
+        null=True,
+        blank=True,
+    )
+    # Phase 4: VAT computed at lease-creation time (flat UAE_VAT_RATE on
+    # contract_amount/annual_amount) -- see lease_view's create/update path.
+    vat_amount = models.FloatField(null=True, blank=True)
+    # Phase 5: handover confirmation gate, checked by submit_ejari_signature
+    # and activate_lease_view before either is allowed to fully activate.
+    handover_completed_at = models.DateTimeField(null=True, blank=True)
+    # Phase 6: per-offset send-locks for the 120/10/-10 day reminder sweep
+    # (lease/tasks.py:send_lease_expiry_reminders) -- flat fields, not a
+    # child log model, since there are exactly 3 fixed offsets.
+    renewal_reminder_120_sent_at = models.DateTimeField(null=True, blank=True)
+    renewal_reminder_10_sent_at = models.DateTimeField(null=True, blank=True)
+    legal_notice_10_sent_at = models.DateTimeField(null=True, blank=True)
+
     def __str__(self):
         return "{}-{}".format(self.code or self.id, self.lease_status)
 
@@ -128,9 +149,48 @@ class Lease(Base):
             Lease.objects.filter(pk=self.pk).update(code=self.code)
 
 
+class LeaseSignature(Base):
+    """One e-signature request per (lease, role) -- Ejari activation
+    requires both the tenant and the owner to sign (see
+    esign_start_view / esign_callback_view in lease/views.py). Provider-
+    pluggable, see lease/esign/ -- process_id/document_ref are opaque
+    identifiers from whichever provider handled it (esign_provider),
+    round-tripped through the signer's browser redirect and back into the
+    finish-callback."""
+    ROLE_TENANT = "TENANT"
+    ROLE_OWNER = "OWNER"
+    ROLE_CHOICES = ((ROLE_TENANT, "Tenant"), (ROLE_OWNER, "Owner"))
+
+    lease = models.ForeignKey(Lease, on_delete=models.CASCADE, related_name="esign_requests")
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES)
+    signer_email = models.EmailField()
+    esign_provider = models.CharField(max_length=30, null=True, blank=True)
+    esign_process_id = models.CharField(max_length=255, null=True, blank=True)
+    esign_document_ref = models.CharField(max_length=255, null=True, blank=True)
+    esign_signed_document_path = models.CharField(max_length=2000, null=True, blank=True)
+    signed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        unique_together = ("lease", "role")
+
+    def __str__(self):
+        return f"{self.lease.code}-{self.role}"
+
 
 class LeaseDocuments(Documents):
     lease = models.ForeignKey(Lease, on_delete=models.CASCADE, related_name="lease_documents")
+    # Added to fix a real, verified bug: lease_onboarding_documents_view and
+    # the ejari-signature views already tried to create rows with a
+    # `document_choice` kwarg (and a `document` kwarg, which never existed
+    # as a field on this model at all) -- neither was ever a real field
+    # here, so those calls raised TypeError. See lease/views.py's fixed
+    # upload call sites.
+    document_choice = models.CharField(
+        max_length=30,
+        choices=constants.LEASE_DOCUMENT_CHOICES,
+        blank=True,
+        null=True,
+    )
 
     def __str__(self):
         return f"{self.lease}"
@@ -144,8 +204,8 @@ class LeaseTransaction(Documents):
     cheque_date = models.DateTimeField(null=True, blank=True)
     origin_bank = models.ForeignKey("payment.Bank", on_delete=models.SET_NULL, null=True, blank=True, related_name="origin_cheques")
     selltlement_bank = models.ForeignKey("payment.Bank", on_delete=models.SET_NULL, null=True, blank=True, related_name="settlement_cheques")
-    origin_account_number = models.IntegerField(null=True, blank=True)
-    settlement_account_number = models.IntegerField(null=True, blank=True)
+    origin_account_number = models.BigIntegerField(null=True, blank=True)
+    settlement_account_number = models.BigIntegerField(null=True, blank=True)
     amount = models.FloatField(null=True, blank=True)
     cheque_type = models.CharField(
         max_length=20,
@@ -158,6 +218,10 @@ class LeaseTransaction(Documents):
         default=constants.PAYMENT_TYPE_CHEQUE,
     )
     cheque_number = models.CharField(max_length=100, null=True, blank=True)
+    # Manual override for the ledger's Description column -- when blank,
+    # the description is derived from cheque_type/charge/period instead
+    # (see serializers._lease_cheque_description).
+    description = models.CharField(max_length=255, null=True, blank=True)
     status = models.CharField(
         max_length=20,
         choices=constants.CHEQUE_STATUS_CHOICES,
@@ -167,6 +231,10 @@ class LeaseTransaction(Documents):
     charge = models.ForeignKey(Charge, on_delete=models.SET_NULL, null=True, blank=True, related_name="lease_transactions")
     vat   = models.FloatField(default=0)
     total = models.FloatField(default=0)
+    # Auto-generated the moment this cheque's status first becomes
+    # REALIZED -- see lease_cheque_view's PUT handler. S3 path, not a
+    # presigned URL (those expire; serialize_lease_cheque signs on read).
+    invoice_pdf_path = models.CharField(max_length=2000, null=True, blank=True)
 
     def __str__(self):
         return "{}-{}".format(self.code or self.id, self.lease_id)
@@ -175,6 +243,14 @@ class LeaseTransaction(Documents):
         if self.cheque_type == constants.OTHER_CHARGE and self.charge_id and self.amount is not None:
             tax = self.charge.tax_code or 0
             self.vat   = round(float(self.amount) * tax / 100, 2)
+            self.total = round(float(self.amount) + self.vat, 2)
+        elif self.amount is not None:
+            # Rent/additional cheques, and OTHER_CHARGE rows with no linked
+            # Charge record (commercial-details fields surfaced as charge
+            # lines -- see LeaseViewSet.update) both use the flat UAE VAT
+            # rate (matches the same rate used at lease creation for the
+            # contract's own VAT).
+            self.vat   = round(float(self.amount) * constants.UAE_VAT_RATE, 2)
             self.total = round(float(self.amount) + self.vat, 2)
         super().save(*args, **kwargs)
         if not self.code:

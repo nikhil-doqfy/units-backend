@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: A4; margin: 20mm 15mm; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #1f2937; background: #fff; }
+
+  .header-table { width: 100%; border-collapse: collapse; margin-bottom: 28px; border-bottom: 3px solid #0c6ce9; padding-bottom: 16px; }
+  .doc-title { font-size: 26px; font-weight: 900; color: #0c6ce9; letter-spacing: 3px; }
+  .sub-text { font-size: 12px; color: #6b7280; margin-top: 4px; }
+
+  .parties-table { width: 100%; border-collapse: collapse; margin-bottom: 28px; }
+  .party-box { background: #eff6ff; border-radius: 8px; padding: 16px 18px; vertical-align: top; width: 48%; }
+  .party-spacer { width: 4%; }
+  .section-label { font-size: 10px; font-weight: 700; color: #0c6ce9; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .party-name { font-size: 14px; font-weight: 700; color: #111; margin-bottom: 6px; }
+  .party-detail { font-size: 11px; color: #555; margin-bottom: 3px; }
+
+  .detail-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 24px; }
+  .detail-table td { padding: 8px 10px; border-bottom: 1px solid #f3f4f6; }
+  .detail-table td.label { color: #6b7280; width: 40%; }
+  .detail-table td.value { font-weight: 600; color: #111; }
+
+  .sign-area { margin-top: 60px; }
+  .sign-box { border-top: 1px solid #333; width: 240px; padding-top: 6px; font-size: 11px; color: #555; }
+
+  .footer { margin-top: 36px; padding-top: 12px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 10px; color: #9ca3af; }
+</style>
+</head>
+<body>
+
+  <table class="header-table" style="margin-bottom:0;border-bottom:none;">
+    <tr>
+      <td style="padding-bottom:16px;border-bottom:3px solid #0c6ce9;">
+        <div class="doc-title">EJARI CONTRACT SUMMARY</div>
+        <div class="sub-text">Lease Code: {{ property_info.lease_code }} &middot; Generated {{ today }}</div>
+      </td>
+    </tr>
+  </table>
+  <div style="height:28px;"></div>
+
+  <table class="parties-table">
+    <tr>
+      <td class="party-box">
+        <div class="section-label">Tenant</div>
+        <div class="party-name">{{ tenant.name }}</div>
+        {% if tenant.code %}<div class="party-detail">Tenant Code: {{ tenant.code }}</div>{% endif %}
+        {% if tenant.email %}<div class="party-detail">{{ tenant.email }}</div>{% endif %}
+        {% if tenant.contact %}<div class="party-detail">Contact: {{ tenant.contact }}</div>{% endif %}
+      </td>
+      <td class="party-spacer"></td>
+      <td class="party-box">
+        <div class="section-label">Property Details</div>
+        <div class="party-name">{{ property_info.property_name }}</div>
+        {% if property_info.unit_name %}<div class="party-detail">Unit: {{ property_info.unit_name }}</div>{% endif %}
+        <div class="party-detail">Lease Term: {{ property_info.start_date }} &ndash; {{ property_info.end_date }}</div>
+      </td>
+    </tr>
+  </table>
+
+  <table class="detail-table">
+    <tr><td class="label">Lease Code</td><td class="value">{{ property_info.lease_code }}</td></tr>
+    <tr><td class="label">Property</td><td class="value">{{ property_info.property_name }}{% if property_info.block_name %} &ndash; {{ property_info.block_name }}{% endif %}</td></tr>
+    <tr><td class="label">Unit</td><td class="value">{{ property_info.unit_name }}</td></tr>
+    <tr><td class="label">Lease Start</td><td class="value">{{ property_info.start_date }}</td></tr>
+    <tr><td class="label">Lease End</td><td class="value">{{ property_info.end_date }}</td></tr>
+    <tr><td class="label">Annual Rent</td><td class="value">AED {{ property_info.rent }}</td></tr>
+  </table>
+
+  <div class="sign-area">
+    <div class="sign-box">Tenant Signature</div>
+  </div>
+
+  <div class="footer">This document is generated for Ejari e-signature purposes.</div>
+
+</body>
+</html>

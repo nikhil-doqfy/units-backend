@@ -72,7 +72,9 @@ AGREEMENT_SIGNING  = "AGREEMENT_SIGNING"
 AGREEMENT_SIGNED   = "AGREEMENT_SIGNED"
 EJARI              = "EJARI"
 EJARI_DOCUMENT_UPLOAD = "EJARI_DOCUMENT_UPLOAD"
+EJARI_APPROVED     = "EJARI_APPROVED"
 EJARI_SIGNING      = "EJARI_SIGNING"
+EJARI_SIGNED       = "EJARI_SIGNED"
 ACTIVATED          = "ACTIVATED"
 
 BASIC_DETAILS               = "BASIC_DETAILS"
@@ -100,7 +102,9 @@ LEASE_STAGE_CHOICES = (
     (AGREEMENT_SIGNED,          "Agreement Signed"),
     (EJARI,                     "Ejari"),
     (EJARI_DOCUMENT_UPLOAD,     "Ejari Document Upload"),
+    (EJARI_APPROVED,            "Ejari Approved"),
     (EJARI_SIGNING,             "Ejari Signing"),
+    (EJARI_SIGNED,              "Ejari Signed"),
     (ACTIVATED,                 "Activated"),
 )
 
@@ -215,6 +219,31 @@ ONGOING        = "ONGOING"
 ABOUT_TO_EXPIRE = "ABOUT_TO_EXPIRE"
 EXPIRED        = "EXPIRED"
 
+# ── Unit Status (Leasing Lifecycle) ─────────────────────────────────────────────
+# Prefixed UNIT_* deliberately: the bare ACTIVE constant above is already reused
+# by LEASE_STATUS_CHOICES/AGREEMENT_STATUS_CHOICES/DOCUMENT_STATUS_CHOICES, and a
+# bare "ACTIVE" here would make Lease.lease_status == ACTIVE and Unit.status ==
+# ACTIVE silently indistinguishable in a diff/grep.
+UNIT_AVAILABLE            = "AVAILABLE"
+UNIT_PROPOSAL_SENT        = "PROPOSAL_SENT"
+UNIT_ON_HOLD              = "ON_HOLD"
+UNIT_CONTRACT_IN_PROGRESS = "CONTRACT_IN_PROGRESS"
+UNIT_EJARI_PENDING        = "EJARI_PENDING"
+UNIT_EJARI_APPROVED       = "EJARI_APPROVED"
+UNIT_ESIGN_PENDING        = "ESIGN_PENDING"
+UNIT_ACTIVE               = "ACTIVE"
+
+UNIT_STATUS_CHOICES = (
+    (UNIT_AVAILABLE,            "Available"),
+    (UNIT_PROPOSAL_SENT,        "Proposal Sent"),
+    (UNIT_ON_HOLD,              "On Hold"),
+    (UNIT_CONTRACT_IN_PROGRESS, "Contract In Progress"),
+    (UNIT_EJARI_PENDING,        "Ejari Pending"),
+    (UNIT_EJARI_APPROVED,       "Ejari Approved"),
+    (UNIT_ESIGN_PENDING,        "E-Sign Pending"),
+    (UNIT_ACTIVE,               "Active"),
+)
+
 # ── Numeric Choices ────────────────────────────────────────────────────────────
 BLOCKS_CHOICES  = tuple((i, str(i)) for i in range(1, 21))
 UNITS_CHOICES   = tuple((i, str(i)) for i in range(1, 101))
@@ -266,9 +295,16 @@ PROPERTY_DOCUMENT_CHOICES = (
     (CHEQUE_DOCUMENT,   "Cheque Document"),
 )
 
+EJARI_SIGNATURE   = "EJARI_SIGNATURE"
+HANDOVER_DOCUMENT = "HANDOVER_DOCUMENT"
+METER_READING     = "METER_READING"
+
 LEASE_DOCUMENT_CHOICES = (
     (EJARI_CERTIFICATE, "Ejari Certificate"),
     (CHEQUE_DOCUMENT,   "Cheque Document"),
+    (EJARI_SIGNATURE,   "Ejari Signature"),
+    (HANDOVER_DOCUMENT, "Handover Document"),
+    (METER_READING,     "Meter Reading"),
 )
 
 Ejari_DOCUMENT_CATEGORY_CHOICES = (
@@ -386,6 +422,53 @@ LEAD_TYPE_CHOICES = (
     (WHATSAPP, "WhatsApp"),
     (CALL,     "Call"),
 )
+
+# ── Lead Proposal / Hold (Dubai Leasing Management Flow, Phase 1) ──────────────
+# A separate axis from LEAD_STATUS_CHOICES above (lead qualification --
+# INTERESTED/NOT_INTERESTED/LEASE_TENANCY) -- this tracks the lifecycle of a
+# specific unit proposal/hold, which existing LEAD_STATUS_CHOICES consumers
+# never needed to know about and must not be repurposed for.
+NOT_PROPOSED         = "NOT_PROPOSED"
+PROPOSAL_SENT_STATUS = "PROPOSAL_SENT"
+ON_HOLD_STATUS       = "ON_HOLD"
+HOLD_EXPIRED         = "HOLD_EXPIRED"
+PROPOSAL_CLOSED      = "CLOSED"
+PROPOSAL_CONVERTED   = "CONVERTED"
+
+PROPOSAL_STATUS_CHOICES = (
+    (NOT_PROPOSED,         "Not Proposed"),
+    (PROPOSAL_SENT_STATUS, "Proposal Sent"),
+    (ON_HOLD_STATUS,       "On Hold"),
+    (HOLD_EXPIRED,         "Hold Expired"),
+    (PROPOSAL_CLOSED,      "Closed"),
+    (PROPOSAL_CONVERTED,   "Converted to Lease"),
+)
+
+# ── Payment Frequency (Dubai Leasing Management Flow, Phase 3) ─────────────────
+MONTHLY     = "MONTHLY"
+QUARTERLY   = "QUARTERLY"
+SEMI_ANNUAL = "SEMI_ANNUAL"
+ANNUAL      = "ANNUAL"
+
+PAYMENT_FREQUENCY_CHOICES = (
+    (MONTHLY,     "Monthly"),
+    (QUARTERLY,   "Quarterly"),
+    (SEMI_ANNUAL, "Semi-Annual"),
+    (ANNUAL,      "Annual"),
+)
+
+PAYMENT_FREQUENCY_CHEQUE_COUNT = {
+    MONTHLY:     12,
+    QUARTERLY:   4,
+    SEMI_ANNUAL: 2,
+    ANNUAL:      1,
+}
+
+# ── UAE VAT (Dubai Leasing Management Flow, Phase 4) ───────────────────────────
+# Flat statutory rate applied to a lease's contract/annual amount at
+# creation time -- not driven by the per-charge-type Charge.tax_code
+# catalog, which is a separate, editable-per-row concept.
+UAE_VAT_RATE = 0.05
 
 # ── Complaint ──────────────────────────────────────────────────────────────────
 ASSIGNED            = "ASSIGNED"
@@ -646,5 +729,5 @@ BROADCAST_RECIPIENT_STATUS_CHOICES = [
 ]
 
 # ── Config ─────────────────────────────────────────────────────────────────────
-JWT_TOKEN_EXPIRY_MINUTES = 60
+JWT_TOKEN_EXPIRY_MINUTES = 60 * 24  # 1 day
 OTP_EXPIRY_MINUTES       = 5

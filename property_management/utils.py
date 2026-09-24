@@ -89,8 +89,7 @@ def get_full_property_data(unit_id):
             "step_status": prop.step_status,
             "owner_id": prop.owner.id if prop.owner else None,
             "company_id": prop.company.id if prop.company else None,
-            "is_occupied": prop.is_occupied,
-            "status": "Not Available" if prop.is_occupied else "Available",
+            "status": prop.status,
             "commercial_details": {
                 "rent": prop.rent,
                 "security_deposit": prop.security_deposit,
@@ -473,7 +472,7 @@ def get_staff_details(company_staff, include_password=False):
     staff_profile = company_staff.staff
     django_user = staff_profile.user
     total_properties = company_staff.assigned_properties.count()
-    occupied_properties = company_staff.assigned_properties.filter(is_occupied=True).count()
+    occupied_properties = company_staff.assigned_properties.filter(status=constants.UNIT_ACTIVE).count()
     tenancy_ratio = f"{occupied_properties}:{total_properties}" if total_properties else "0:0"
     data = {
         "staff_id": company_staff.id,

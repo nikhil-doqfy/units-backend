@@ -292,7 +292,11 @@ class Unit(Base):
     cycle = models.CharField(max_length=50, null=True, blank=True)
     notice_period = models.CharField(max_length=50, null=True, blank=True)
     commission_percent = models.DecimalField(max_digits=5, decimal_places=3, null=True, blank=True)
-    is_occupied = models.BooleanField(default=False)
+    status = models.CharField(
+        max_length=25,
+        choices=constants.UNIT_STATUS_CHOICES,
+        default=constants.UNIT_AVAILABLE,
+    )
 
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
@@ -303,6 +307,10 @@ class Unit(Base):
 
     def __str__(self):
         return f"{self.unit_name} - {self.id}"
+
+    @property
+    def is_leased(self):
+        return self.status == constants.UNIT_ACTIVE
 
     def _get_unit_thumbnail(self):
         img = self.unit_images.filter(image_type="EXTERIOR").first()

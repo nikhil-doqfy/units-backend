@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <title>Ejari Signature Required</title>
+    <style>
+      body, table, td, p, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+      table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; border-collapse: collapse; }
+      img { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; }
+      body { margin: 0; padding: 0; background-color: #f5f6fa; font-family: 'Segoe UI', Arial, sans-serif; }
+    </style>
+  </head>
+  <body style="margin:0;padding:0;background-color:#f5f6fa;">
+
+    <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f5f6fa;">
+      <tr>
+        <td align="center" style="padding:30px 10px;">
+
+          <table width="600" cellpadding="0" cellspacing="0" border="0"
+                 style="max-width:600px;width:100%;background-color:#ffffff;border-radius:8px;overflow:hidden;">
+
+            <!-- ── Header ── -->
+            <tr>
+              <td align="center" bgcolor="#0c6ce9"
+                  style="padding:28px 24px;background-color:#0c6ce9;">
+                <img src="https://units.getunits.ai/assets/logo-email.png"
+                     alt="Units" width="150" style="display:block;margin:0 auto 8px;" />
+                <p style="margin:0;font-size:13px;color:#dbeafe;font-family:'Segoe UI',Arial,sans-serif;">
+                  Smart Contract &amp; Document Management
+                </p>
+              </td>
+            </tr>
+
+            <!-- ── Body ── -->
+            <tr>
+              <td style="padding:36px 32px;color:#333333;font-family:'Segoe UI',Arial,sans-serif;">
+
+                <h2 style="margin:0 0 12px;font-size:22px;color:#1a1a2e;font-weight:700;">
+                  Ejari Signature Required
+                </h2>
+
+                <p style="margin:0 0 8px;font-size:15px;line-height:1.7;color:#555555;">
+                  Dear <strong>{{ tenant_name }}</strong>,
+                </p>
+                <p style="margin:0 0 20px;font-size:15px;line-height:1.7;color:#555555;">
+                  Your Ejari document is ready for signature. Please click the button below and
+                  sign in with UAE PASS to complete your signature.
+                </p>
+
+                <!-- Info box -->
+                <table width="100%" cellpadding="0" cellspacing="0" border="0"
+                       style="background-color:#f8f9fc;border:1px solid #e0e4f0;border-radius:6px;margin-bottom:24px;">
+                  <tr>
+                    <td style="padding:14px 16px;font-size:14px;color:#333333;font-family:'Segoe UI',Arial,sans-serif;">
+                      <strong>Lease Code:</strong> {{ lease_code }}<br />
+                      {% if property_name %}<strong>Property:</strong> {{ property_name }}<br />{% endif %}
+                      {% if unit_name %}<strong>Unit:</strong> {{ unit_name }}<br />{% endif %}
+                    </td>
+                  </tr>
+                </table>
+
+                <!-- CTA button -->
+                <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px;">
+                  <tr>
+                    <td align="center">
+                      <a href="{{ sign_url }}"
+                         style="display:inline-block;background-color:#0c6ce9;color:#ffffff;
+                                font-size:16px;font-weight:700;text-decoration:none;
+                                padding:16px 40px;border-radius:8px;font-family:'Segoe UI',Arial,sans-serif;">
+                        Sign with UAE PASS
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+
+                <p style="margin:0 0 20px;font-size:12px;color:#888888;line-height:1.6;word-break:break-all;">
+                  Or copy this link into your browser:<br />
+                  <a href="{{ sign_url }}" style="color:#0c6ce9;">{{ sign_url }}</a>
+                </p>
+
+                <p style="margin:0 0 20px;font-size:12px;color:#888888;line-height:1.6;">
+                  If you did not expect this email, please ignore it or contact us at
+                  <a href="mailto:admin@getunits.ai" style="color:#0c6ce9;text-decoration:none;">admin@getunits.ai</a>.
+                </p>
+
+                <p style="margin:24px 0 0;font-size:15px;color:#333333;line-height:1.7;">
+                  Thank you,<br /><strong>The Units Team</strong>
+                </p>
+
+              </td>
+            </tr>
+
+            <!-- ── Footer ── -->
+            <tr>
+              <td align="center" bgcolor="#f1f1f1"
+                  style="padding:16px;background-color:#f1f1f1;font-size:13px;
+                         color:#666666;font-family:'Segoe UI',Arial,sans-serif;">
+                <p style="margin:0 0 4px;">© 2025 Units</p>
+                <p style="margin:0;">Need help?
+                  <a href="mailto:admin@getunits.ai" style="color:#0c6ce9;text-decoration:none;">admin@getunits.ai</a>
+                </p>
+              </td>
+            </tr>
+
+          </table>
+        </td>
+      </tr>
+    </table>
+
+  </body>
+</html>

@@ -39,9 +39,9 @@ class PropertyImagesAdmin(admin.ModelAdmin):
 
 @admin.register(Unit)
 class UnitAdmin(admin.ModelAdmin):
-    list_display = ["id", "code", "unit_name", "property_block_tower", "floor_no", "is_occupied", "rent"]
+    list_display = ["id", "code", "unit_name", "property_block_tower", "floor_no", "status", "rent"]
     search_fields = ["unit_name", "code"]
-    list_filter = ["is_occupied"]
+    list_filter = ["status"]
 
 
 @admin.register(UnitOwner)

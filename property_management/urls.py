@@ -84,6 +84,7 @@ urlpatterns = [
     path("occupancy", views.dashboard_occupancy, name='dashboard_occupancy'),
     path('top_revenue_properties', views.dashboard_top_revenue_properties, name='dashboard_top_revenue_properties'),
     path('dashboard_visualization', views.dashboard_visualization, name='dashboard_visualization'),
+    path('tenancy-ledger', views.tenancy_ledger_view, name='tenancy_ledger_view'),
 
     # User-service views at root level (original paths, before user/ prefix migration)
     path('api/approval', approval_view, name='approval_view'),

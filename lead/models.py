@@ -45,6 +45,59 @@ class Lead(Base):
             Lead.objects.filter(pk=self.pk).update(code=self.code)
 
 
+class Proposal(Base):
+    """One proposal-and-hold cycle for a Lead (Dubai Leasing Management
+    Flow, Phase 1). A Lead can accumulate several of these over time --
+    e.g. a first proposal is rejected or its hold expires, so a second
+    proposal is sent -- only the one that reaches PROPOSAL_CONVERTED ever
+    produces a Lease. Previously these fields lived directly on Lead, which
+    could only ever represent the single most recent proposal; extracted
+    here so proposal history isn't destroyed by a re-proposal.
+    """
+    lead = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name="proposals")
+
+    # Stored independently from Unit.rent/Unit.maintenance_charges since an
+    # offer can differ from the unit's list price.
+    offered_rent = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    offered_maintenance_charges = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    # List of {"description": str, "amount": float} -- deliberately not FK
+    # rows into charges.Charge: most proposals never convert, so creating
+    # durable catalog rows for them is premature. They graduate into real
+    # LeaseTransaction(cheque_type=OTHER_CHARGE) rows only at conversion
+    # (see confirm_hold_and_proceed).
+    other_charges = models.JSONField(null=True, blank=True, default=list)
+    proposal_sent_at = models.DateTimeField(null=True, blank=True)
+    proposal_channel = models.CharField(max_length=20, choices=constants.LEAD_TYPE_CHOICES, null=True, blank=True)
+
+    # ── Hold ────────────────────────────────────────────────────────────────
+    holding_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    hold_start_date = models.DateTimeField(null=True, blank=True)
+    hold_expiry_date = models.DateTimeField(null=True, blank=True)
+    hold_period_days = models.IntegerField(null=True, blank=True)
+    # Policy note only -- no automated refund. payment/models.py is just a
+    # Bank branch directory; no payment-gateway model exists anywhere in
+    # this codebase capable of executing a real refund transaction.
+    refund_policy_note = models.TextField(null=True, blank=True)
+
+    # A Proposal row only ever gets created once a proposal is actually
+    # sent -- "not proposed" is represented by the absence of any Proposal
+    # row for a lead, not a state a Proposal itself can be in (unlike the
+    # old Lead.proposal_status, which defaulted to NOT_PROPOSED).
+    status = models.CharField(
+        max_length=20,
+        choices=constants.PROPOSAL_STATUS_CHOICES,
+        default=constants.PROPOSAL_SENT_STATUS,
+    )
+
+    # ── Conversion linkage ───────────────────────────────────────────────────
+    converted_lease = models.ForeignKey(
+        "lease.Lease",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="source_proposal",
+    )
+
 
 class ActivityLog(Base):
     lead = models.ForeignKey(Lead, on_delete=models.CASCADE, related_name="activity_logs")

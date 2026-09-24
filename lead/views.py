@@ -2,10 +2,10 @@ import base64
 import csv
 import io
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from django.db.models import Q
 from django.http import HttpResponse
-from .models import Lead, ActivityLog, ScheduleMeeting
+from .models import Lead, ActivityLog, ScheduleMeeting, Proposal
 from property.models import Unit, PMCPMMapping
 from user_service.models import PropertyManager, Tenant, Owner
 from rest_framework import status
@@ -13,6 +13,7 @@ from lease.models import Lease
 from lease.views import _get_pmc_ids_for_user
 from django.template.loader import render_to_string
 from utilities.helper_functions import send_ses_email
+from property_management.utils import audit_logs
 from plugins.logger_plugin import get_logger
 
 logger = get_logger(__name__)
@@ -23,11 +24,16 @@ from utilities.decorator import is_request_authenticated
 from utilities.helper_functions import prepare_response
 from utilities import status, constants
 from lead.swagger import (
-    lead_get, lead_post, lead_put, lead_delete,
     activity_get, activity_post, activity_put, activity_delete,
     lead_check_active_lease_get, lead_bulk_import_post
 )
 from rest_framework.decorators import api_view
+from rest_framework import viewsets
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.exceptions import NotFound, ValidationError, PermissionDenied
+from utilities.authentication import JWTAuthentication
+from lead.serializers import LeadSerializer
 def _get_pmc_ids(user_profile):
     pm = PropertyManager.objects.filter(pk=user_profile.pk).first()
     if not pm:
@@ -65,6 +71,7 @@ def _serialize_lead(lead):
     #prop = block.property
     prop = block.property if block else unit.parent_property
     pmc = prop.pmc
+    latest_proposal = lead.proposals.order_by("-created").first()
 
     return {
         "id": lead.id,
@@ -117,51 +124,73 @@ def _serialize_lead(lead):
         ],
         "tenant_id": lead.tenant_id,
         "created_at": lead.created.strftime("%m/%d/%Y %H:%M") if lead.created else None,
+        # Lets the leads list show a proposal-status badge per row without
+        # a separate fetch -- the full history is only on the detail
+        # endpoint (see _serialize_lead_with_lease's "proposals" list).
+        "latest_proposal_status": latest_proposal.status if latest_proposal else None,
+    }
+
+
+def serialize_proposal(proposal):
+    return {
+        "id": proposal.id,
+        "offered_rent": proposal.offered_rent,
+        "offered_maintenance_charges": proposal.offered_maintenance_charges,
+        "other_charges": proposal.other_charges,
+        "proposal_sent_at": proposal.proposal_sent_at.isoformat() if proposal.proposal_sent_at else None,
+        "proposal_channel": proposal.proposal_channel,
+        "holding_amount": proposal.holding_amount,
+        "hold_start_date": proposal.hold_start_date.isoformat() if proposal.hold_start_date else None,
+        "hold_expiry_date": proposal.hold_expiry_date.isoformat() if proposal.hold_expiry_date else None,
+        "hold_period_days": proposal.hold_period_days,
+        "refund_policy_note": proposal.refund_policy_note,
+        "status": proposal.status,
+        "converted_lease_id": proposal.converted_lease_id,
+        "created_at": proposal.created.strftime("%m/%d/%Y %H:%M") if proposal.created else None,
     }
 
 
 def _serialize_lead_with_lease(lead):
-    """Serialize a lead and attach lease_id / lease_stage from the matching lease."""
+    """Serialize a lead and attach lease_id / lease_stage from the matching
+    lease, plus its full proposal history (newest first) -- a lead can have
+    more than one Proposal if an earlier one was closed or its hold expired."""
     data = _serialize_lead(lead)
     lease = _find_lead_lease(lead)
     data["lease_id"] = lease.id if lease else None
     data["lease_stage"] = lease.lease_stage if lease else None
+    data["proposals"] = [serialize_proposal(p) for p in lead.proposals.order_by("-created")]
     return data
 
-@lead_get
-@lead_post
-@lead_put
-@lead_delete
-@api_view(['GET', 'POST', 'PUT', 'DELETE'])
-@is_request_authenticated
-def lead_view(request):
-    user_profile = request.user
+class LeadViewSet(viewsets.ViewSet):
+    """First lead endpoint converted to real DRF (see the DRF migration
+    plan) -- JWTAuthentication + IsAuthenticated instead of
+    is_request_authenticated, LeadSerializer instead of _serialize_lead
+    called by hand, DRF's Response instead of prepare_response's
+    {content, message, status} envelope. Business logic unchanged from the
+    previous function-based lead_view. No partial_update() defined on
+    purpose, matching lease.views.LeaseViewSet -- PATCH still 405s.
+    """
+    authentication_classes = [JWTAuthentication]
+    permission_classes = [IsAuthenticated]
 
-    # pmc = _get_pmc(user_profile)
-    pmc_ids = _get_pmc_ids(user_profile)
-    if not pmc_ids:
-        return prepare_response(message="Company not found for this user", status=status.HTTP_400_BAD_REQUEST )
+    def list(self, request):
+        user_profile = request.user
+        pmc_ids = _get_pmc_ids(user_profile)
+        if not pmc_ids:
+            raise ValidationError({"detail": "Company not found for this user"})
 
-    if request.method == "GET":
-        lead_id = request.GET.get("lead_id")
-        if lead_id:
-            lead = Lead.objects.filter(id=lead_id, pmc_id__in=pmc_ids).first()
-            if not lead:
-                logger.warning(
-                    "LEAD_FETCH_FAILED | user_id=%d | lead_id=%s | reason=NOT_FOUND",
-                    request.user.id, lead_id )
-                return prepare_response(message="Lead not found", status=status.HTTP_404_NOT_FOUND)
-            logger.info(
-                "LEAD_FETCH_SINGLE | user_id=%d | lead_id=%s | pmc_ids=%s",
-                request.user.id, lead_id, pmc_ids)
-            return prepare_response(content=_serialize_lead_with_lease(lead), status=status.HTTP_200_OK)
+        search = request.query_params.get("search", "").strip()
+        lead_status = request.query_params.get("status", "").strip()
+        platform = request.query_params.get("platform", "").strip()
+        lead_type = request.query_params.get("lead_type", "").strip()
+        pmc_id = request.query_params.get("pmc_id", "").strip()
+        page = int(request.query_params.get("page", 1))
+        page_size = int(request.query_params.get("page_size", 10))
 
-        search = request.GET.get("search", "").strip()
-        lead_status = request.GET.get("status", "").strip()
-        platform = request.GET.get("platform", "").strip()
-        lead_type = request.GET.get("lead_type", "").strip()
-        page = int(request.GET.get("page", 1))
-        page_size = int(request.GET.get("page_size", 10))
+        if pmc_id:
+            if int(pmc_id) not in pmc_ids:
+                raise ValidationError({"detail": "You are not allowed to access this PMC"})
+            pmc_ids = [int(pmc_id)]
 
         leads = Lead.objects.filter(pmc_id__in=pmc_ids).order_by("-id")
         if search:
@@ -173,7 +202,7 @@ def lead_view(request):
         if lead_type:
             leads = leads.filter(lead_type=lead_type)
 
-        export = request.GET.get("export", "").strip()
+        export = request.query_params.get("export", "").strip()
         if export == "csv":
             response = HttpResponse(content_type="text/csv")
             response["Content-Disposition"] = 'attachment; filename="leads.csv"'
@@ -188,18 +217,35 @@ def lead_view(request):
 
         total = leads.count()
         logger.info(
-            "LEAD_LIST_FETCHED | user_id=%d | total=%d", request.user.id, total )
+            "LEAD_LIST_FETCHED | user_id=%d | total=%d", request.user.id, total)
         start = (page - 1) * page_size
         leads = leads[start:start + page_size]
 
-        return prepare_response(
-            content=[_serialize_lead(l) for l in leads],
-            pagination={"total_records": total, "page": page, "page_size": page_size},
-            status=status.HTTP_200_OK,
-        )
+        return Response({
+            "results": LeadSerializer(leads, many=True).data,
+            "pagination": {"total_records": total, "page": page, "page_size": page_size},
+        })
 
-    elif request.method == "POST":
-        data = json.loads(request.body)
+    def retrieve(self, request, pk=None):
+        user_profile = request.user
+        pmc_ids = _get_pmc_ids(user_profile)
+        if not pmc_ids:
+            raise ValidationError({"detail": "Company not found for this user"})
+
+        lead = Lead.objects.filter(id=pk, pmc_id__in=pmc_ids).first()
+        if not lead:
+            logger.warning(
+                "LEAD_FETCH_FAILED | user_id=%d | lead_id=%s | reason=NOT_FOUND",
+                request.user.id, pk)
+            raise NotFound("Lead not found")
+        logger.info(
+            "LEAD_FETCH_SINGLE | user_id=%d | lead_id=%s | pmc_ids=%s",
+            request.user.id, pk, pmc_ids)
+        return Response(LeadSerializer(lead, context={"with_lease": True}).data)
+
+    def create(self, request):
+        user_profile = request.user
+        data = request.data
         unit_id = data.get("unit_id")
         name = (data.get("name") or "").strip()
         email = (data.get("email") or "").strip()
@@ -211,32 +257,29 @@ def lead_view(request):
         if not all([unit_id, name, email, contact_number, platform, lead_type]):
             logger.warning(
                 "LEAD_CREATE_FAILED | user_id=%d | reason=REQUIRED_FIELDS_MISSING", request.user.id)
-            return prepare_response(
-                message="unit_id, name, email, contact_number, platform, lead_type are required",
-                status=status.HTTP_400_BAD_REQUEST,
-            )
+            raise ValidationError({"detail": "unit_id, name, email, contact_number, platform, lead_type are required"})
 
         unit = Unit.objects.filter(id=unit_id).first()
         if not unit:
             logger.warning(
                 "LEAD_CREATE_FAILED | user_id=%d | reason=UNIT_NOT_FOUND",
                 request.user.id)
-            return prepare_response(message="Unit not found", status=status.HTTP_404_NOT_FOUND)
+            raise NotFound("Unit not found")
 
         if unit.property_block_tower:
             pmc = unit.property_block_tower.property.pmc
         else:
             pmc = unit.parent_property.pmc
         if not pmc:
-            return prepare_response( message="PMC not found for selected unit", status=status.HTTP_400_BAD_REQUEST)
+            raise ValidationError({"detail": "PMC not found for selected unit"})
         pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).first()
         if not pm_profile:
-            return prepare_response( message=constants.NOT_VERIFIED_PROPERTY_MANAGER, status=status.HTTP_403_FORBIDDEN)
+            raise PermissionDenied(constants.NOT_VERIFIED_PROPERTY_MANAGER)
         pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile).values_list("pmc_id", flat=True))
         if not pmc_ids and pm_profile.company_id:
             pmc_ids = [pm_profile.company_id]
         if pmc.id not in pmc_ids:
-            return prepare_response( message="You are not allowed to create lead for this property", status=status.HTTP_403_FORBIDDEN)
+            raise PermissionDenied("You are not allowed to create lead for this property")
 
         lead = Lead.objects.create(
             unit=unit,
@@ -259,31 +302,22 @@ def lead_view(request):
             created_by=user_profile.user,
         )
 
-        return prepare_response(
-            message="Lead created successfully",
-            content={"id": lead.id, "code": lead.code},
-            status=status.HTTP_201_CREATED,
-        )
+        return Response({"id": lead.id, "code": lead.code}, status=status.HTTP_201_CREATED)
 
-    elif request.method == "PUT":
-        data = json.loads(request.body)
-        lead_id = data.get("lead_id")
-        if not lead_id:
-            return prepare_response(message="lead_id is required", status=status.HTTP_400_BAD_REQUEST)
+    def update(self, request, pk=None):
+        user_profile = request.user
+        data = request.data
 
-        lead = Lead.objects.for_user(user_profile).filter(id=lead_id).first()
+        lead = Lead.objects.for_user(user_profile).filter(id=pk).first()
         if not lead:
-            return prepare_response(message="Lead not found", status=status.HTTP_404_NOT_FOUND)
+            raise NotFound("Lead not found")
 
         if "status" in data and data["status"] is not None:
             current_status = str(lead.status).upper()
             new_status = str(data["status"]).upper()
 
             if current_status == "NOT_INTERESTED" and new_status == "LEASE_TENANCY":
-                return prepare_response(
-                    message=constants.CANNOT_CONVERT_LEAD,
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
+                raise ValidationError({"detail": constants.CANNOT_CONVERT_LEAD})
 
         STATUS_LABELS = {
             "INTERESTED": "Interested",
@@ -329,27 +363,18 @@ def lead_view(request):
             created_by=user_profile.user,
         )
 
-        return prepare_response(
-            message="Lead updated successfully",
-            content={"id": lead.id},
-            status=status.HTTP_200_OK
-        )
+        return Response({"id": lead.id})
 
-    elif request.method == "DELETE":
-        lead_id = request.GET.get("lead_id")
-        if not lead_id:
-            return prepare_response(message="lead_id is required", status=status.HTTP_400_BAD_REQUEST)
-
-        lead = Lead.objects.for_user(user_profile).filter(id=lead_id).first()
+    def destroy(self, request, pk=None):
+        user_profile = request.user
+        lead = Lead.objects.for_user(user_profile).filter(id=pk).first()
         if not lead:
-            return prepare_response(message="Lead not found", status=status.HTTP_404_NOT_FOUND)
+            raise NotFound("Lead not found")
 
         lead.delete()
         logger.info(
-            "LEAD_DELETED | user_id=%d | lead_id=%s", request.user.id, lead_id )
-        return prepare_response(message="Lead deleted successfully", status=status.HTTP_200_OK)
-
-    return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+            "LEAD_DELETED | user_id=%d | lead_id=%s", request.user.id, pk)
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
 
 def _parse_scheduled_date(value):
@@ -591,373 +616,382 @@ def lead_bulk_import(request):
     )
 
 from urllib.parse import urlencode
-def generate_google_calendar_url(title, description, start_time, end_time):
-    """
-    Generate a pre-filled Google Calendar event URL.
-    """
-    start_time = start_time.astimezone()
-    end_time = end_time.astimezone()
-    start_str = start_time.strftime("%Y%m%dT%H%M%S")
-    end_str = end_time.strftime("%Y%m%dT%H%M%S")
 
-    params = {
-        "action": "TEMPLATE",
-        "text": title,
-        "dates": f"{start_str}/{end_str}",
-        "stz": "Asia/Kolkata",
-        "etz": "Asia/Kolkata",
-        "details": description or "",
-    }
-    return (
-        "https://calendar.google.com/calendar/r/eventedit?"
-        + urlencode(params)
-    )
 
-@api_view(["POST"])
+# ══════════════════════════════════════════════════════════════════════════════
+# Dubai Leasing Management Flow, Phase 1: Proposal & Holding
+# ══════════════════════════════════════════════════════════════════════════════
+
+from django.template.loader import render_to_string as _render_to_string
+from django.utils import timezone as _timezone
+from lease.services import get_active_lease_for_tenant
+from lead.services import release_expired_hold_for_proposal
+
+
 @is_request_authenticated
-def schedule_meeting_view(request):
-    user_profile = request.user
+def send_proposal(request):
+    """POST: send a rental proposal (rent breakdown + other charges) to a
+    prospect for a specific unit. Unit.status: AVAILABLE -> PROPOSAL_SENT."""
+    if request.method != "POST":
+        return prepare_response(message="Method not allowed", status=status.HTTP_405_METHOD_NOT_ALLOWED)
     try:
-        data = json.loads(request.body)
-    except json.JSONDecodeError:
-        return prepare_response(message="Invalid JSON", status=status.HTTP_400_BAD_REQUEST)
+        body = json.loads(request.body)
+        lead_id = body.get("lead_id")
+        channel = (body.get("channel") or constants.EMAIL).upper()
 
-    lead_id = data.get("lead_id")
-    title = (data.get("title") or "").strip()
-    description = (data.get("description") or "").strip()
-    start_time = data.get("start_time")
-    end_time = data.get("end_time")
+        if not lead_id:
+            return prepare_response(message="lead_id is required", status=status.HTTP_400_BAD_REQUEST)
 
-    if not lead_id:
-        return prepare_response(message="lead_id is required", status=status.HTTP_400_BAD_REQUEST)
+        lead = Lead.objects.select_related("unit").filter(id=lead_id, is_active=True).first()
+        if not lead:
+            return prepare_response(message="Lead not found", status=status.HTTP_404_NOT_FOUND)
 
-    if not title:
-        return prepare_response(message="title is required", status=status.HTTP_400_BAD_REQUEST)
-
-    if not start_time:
-        return prepare_response(message="start_time is required", status=status.HTTP_400_BAD_REQUEST)
-
-    if not end_time:
-        return prepare_response(message="end_time is required", status=status.HTTP_400_BAD_REQUEST)
-
-    pmc_ids = _get_pmc_ids(user_profile)
-    if not pmc_ids:
-        return prepare_response(message="Company not found for this user", status=status.HTTP_400_BAD_REQUEST)
-
-    lead = Lead.objects.filter(id=lead_id, pmc_id__in=pmc_ids, is_active=True).first()
-
-    if not lead:
-        return prepare_response(message="Lead not found", status=status.HTTP_404_NOT_FOUND)
-
-    try:
-        start_datetime = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
-        end_datetime = datetime.fromisoformat(end_time.replace("Z", "+00:00"))
-    except (ValueError, TypeError):
-        return prepare_response(message="Invalid start_time or end_time format", status=status.HTTP_400_BAD_REQUEST)
-
-    if end_datetime <= start_datetime:
-        return prepare_response(message="end_time must be greater than start_time", status=status.HTTP_400_BAD_REQUEST)
-
-    google_calendar_url = generate_google_calendar_url(
-        title=title,
-        description=description,
-        start_time=start_datetime,
-        end_time=end_datetime,
-    )
-
-    meeting = ScheduleMeeting.objects.create(
-        lead=lead,
-        title=title,
-        description=description,
-        start_time=start_datetime,
-        end_time=end_datetime,
-        status="SCHEDULED",
-        google_calendar_url=google_calendar_url,
-        created_by=user_profile.user,
-    )
-
-    ActivityLog.objects.create(
-        lead=lead,
-        activity_type=constants.NOTE,
-        title="scheduled a meeting",
-        description=(
-            f"{title} scheduled from "
-            f"{start_datetime.strftime('%d %b %Y %I:%M %p')} "
-            f"to "
-            f"{end_datetime.strftime('%d %b %Y %I:%M %p')}"
-        ),
-        created_by=user_profile.user,
-    )
-
-    return prepare_response(
-        message="Meeting scheduled successfully",
-        content={
-            "id": meeting.id,
-            "lead_id": lead.id,
-            "lead_name": lead.name,
-            "lead_email": lead.email,
-            "title": meeting.title,
-            "description": meeting.description,
-            "start_time": meeting.start_time,
-            "end_time": meeting.end_time,
-            "status": meeting.status,
-            "google_calendar_url": meeting.google_calendar_url,
-        },
-        status=status.HTTP_201_CREATED
-    )
-
-@api_view(["GET"])
-@is_request_authenticated
-def tenancy_ledger_view(request):
-    try:
-        user_profile = request.user
-        search = request.GET.get("search", "").strip()
-        property_id = request.GET.get("property_id")
-        agreement_status = request.GET.get("agreement_status")
-        property_status = request.GET.get("property_status")
-        export = request.GET.get("export", "").lower() == "true"
-        platform_choices = dict(constants.PLATFORM_CHOICES)
-        page = int(request.GET.get("page", 1))
-        page_size = int(request.GET.get("page_size", 10))
-
-        leases = Lease.objects.select_related(
-            "unit", "unit__parent_property", "unit__property_block_tower", "unit__parent_property__pmc", "tenant"
-        ).order_by("-id")
-
-        # PMC / Property Manager
-        pm_profile = PropertyManager.objects.filter(pk=user_profile.pk).select_related("company").first()
-        if pm_profile:
-            pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile, is_active=True).values_list("pmc_id", flat=True))
-            if not pmc_ids and pm_profile.company_id:
-                pmc_ids = [pm_profile.company_id]
-            leases = leases.filter(unit__parent_property__pmc_id__in=pmc_ids) if pmc_ids else Lease.objects.none()
-        else:
-            # Owner
-            owner_profile = Owner.objects.filter(pk=user_profile.pk).first()
-            if owner_profile:
-                leases = leases.filter(unit__unit_owners__owner=owner_profile).distinct()
-            else:
-                # Tenant
-                tenant_profile = Tenant.objects.filter(pk=user_profile.pk).first()
-                leases = leases.filter(tenant=tenant_profile) if tenant_profile else Lease.objects.none()
-
-        # Property Filter
-        if property_id:
-            leases = leases.filter(unit__parent_property_id=property_id)
-        # Agreement Status Filter
-        if agreement_status:
-            leases = leases.filter(lease_status=agreement_status)
-        # Unit Occupancy Filter
-        if property_status:
-            if property_status.upper() == "OCCUPIED":
-                leases = leases.filter(unit__is_occupied=True)
-            elif property_status.upper() == "VACANT":
-                leases = leases.filter(unit__is_occupied=False)
-        # Search
-        if search:
-            leases = leases.filter(
-                Q(unit__parent_property__property_name__icontains=search) |
-                Q(unit__parent_property__code__icontains=search) |
-                Q(unit__unit_name__icontains=search) |
-                Q(unit__code__icontains=search) |
-                Q(tenant__code__icontains=search) |
-                Q(tenant__user__first_name__icontains=search) |
-                Q(tenant__user__last_name__icontains=search)
+        unit = lead.unit
+        if unit and unit.status != constants.UNIT_AVAILABLE:
+            return prepare_response(
+                message=f"Cannot send proposal: unit is in '{unit.status}' status, expected AVAILABLE.",
+                status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # CSV Export
-        if export:
-            import csv
-            response = HttpResponse(content_type="text/csv")
-            response["Content-Disposition"] = 'attachment; filename="tenancy_ledger.csv"'
-            writer = csv.writer(response)
-            writer.writerow(["Property Id", "Property Name", "Blocks / Towers", "Unit", "Tenant Name", "Agreement Status", "Dimension", "Property Status", "PMC", "Rental Amount", "RERA Index", "Platform"])
+        offered_rent = body.get("offered_rent")
+        if offered_rent is None and unit:
+            offered_rent = unit.rent
+        offered_maintenance_charges = body.get("offered_maintenance_charges")
+        if offered_maintenance_charges is None and unit:
+            offered_maintenance_charges = unit.maintenance_charges
+        other_charges = body.get("other_charges") or []
 
-            for lease in leases.iterator():
-                unit = lease.unit
-                prop = unit.parent_property
-                block = unit.property_block_tower
-                tenant = lease.tenant
-                tenant_name = f"{tenant.user.first_name} {tenant.user.last_name}".strip() if tenant and tenant.user else ""
-                writer.writerow([
-                    prop.id if prop else "",
-                    prop.property_name if prop else "",
-                    block.block_name if block else "",
-                    unit.unit_name if unit else "",
-                    tenant_name,
-                    lease.lease_status or "",
-                    f"{unit.no_of_bedrooms} BHK" if unit.no_of_bedrooms is not None else "",
-                    "Occupied" if unit.is_occupied else "Vacant",
-                    prop.pmc.name if prop and prop.pmc else "",
-                    lease.rent if lease.rent is not None else "",
-                    "",
-                    platform_choices.get(lease.platform, lease.platform).lower() if lease.platform else ""
-                ])
-            return response
-
-        # Pagination
-        total_count = leases.count()
-        start = (page - 1) * page_size
-        paginated_leases = leases[start:start + page_size]
-
-        data = []
-        for lease in paginated_leases:
-            unit = lease.unit
-            prop = unit.parent_property
-            block = unit.property_block_tower
-            tenant = lease.tenant
-            data.append({
-                "lease_id": lease.id,
-                "property_id": prop.id if prop else None,
-                "property_name": prop.property_name if prop else None,
-                "block_tower": block.block_name if block else None,
-                "unit": unit.unit_name if unit else None,
-                "tenant_name": f"{tenant.user.first_name} {tenant.user.last_name}".strip() if tenant and tenant.user else None,
-                "agreement_status": lease.lease_status,
-                "dimension": f"{unit.no_of_bedrooms} BHK" if unit.no_of_bedrooms is not None else None,
-                "property_status": "Occupied" if unit.is_occupied else "Vacant",
-                "pmc": prop.pmc.name if prop and prop.pmc else None,
-                "rental_amount": lease.rent,
-                "rera_index": None,
-                "platform": platform_choices.get(lease.platform, lease.platform).lower() if lease.platform else None
-            })
-
-        return prepare_response(
-            content=data,
-            pagination={"total_records": total_count, "page": page, "page_size": page_size},
-            status=status.HTTP_200_OK
+        # A new Proposal row every time -- not an update to the lead's
+        # "current" proposal. This is what lets a lead accumulate real
+        # history (e.g. a rejected/hold-expired proposal followed by a
+        # second one) instead of one proposal's data overwriting another's.
+        proposal = Proposal.objects.create(
+            lead=lead,
+            created_by=request.user.user,
+            offered_rent=offered_rent,
+            offered_maintenance_charges=offered_maintenance_charges,
+            other_charges=other_charges,
+            proposal_sent_at=_timezone.now(),
+            proposal_channel=channel,
+            status=constants.PROPOSAL_SENT_STATUS,
         )
 
-    except Exception as e:
-        logger.exception("TENANCY_LEDGER_ERROR")
-        return prepare_response(message="Error fetching tenancy ledger", content={}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        if unit:
+            unit.status = constants.UNIT_PROPOSAL_SENT
+            unit.save(update_fields=["status"])
 
-
-@api_view(["POST"])
-@is_request_authenticated
-def share_tenancy_ledger(request):
-    try:
-        data = json.loads(request.body)
-        lease_id = data.get("lease_id")
-
-        if not lease_id :
-            return prepare_response(message=constants.FIELD_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
-
-        lease = Lease.objects.select_related(
-            "unit",
-            "unit__parent_property",
-            "unit__property_block_tower",
-            "unit__parent_property__pmc",
-            "tenant",
-            "tenant__user",
-        ).filter(id=lease_id).first()
-
-        if not lease:
-            return prepare_response(message="Tenancy ledger record not found", status=status.HTTP_404_NOT_FOUND)
-
-        unit = lease.unit
-        prop = unit.parent_property if unit else None
-        block = unit.property_block_tower if unit else None
-        tenant = lease.tenant
-        recipient_email = tenant.user.email if tenant and tenant.user else ""
-        if not recipient_email: 
-            return prepare_response(message="Tenant email not found for this lease.", status=status.HTTP_400_BAD_REQUEST)
-
-        pm_profile = PropertyManager.objects.filter(pk=request.user.pk).first()
-
-        if pm_profile:
-            pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile, is_active=True).values_list("pmc_id", flat=True))
-
-            if not pmc_ids and pm_profile.company_id:
-                pmc_ids = [pm_profile.company_id]
-
-            if not prop or prop.pmc_id not in pmc_ids:
-                return prepare_response(message=constants.PERMISSION_DENIED, status=status.HTTP_403_FORBIDDEN)
-
-        else:
-            owner_profile = Owner.objects.filter(pk=request.user.pk).first()
-
-            if owner_profile:
-                if not unit or not unit.unit_owners.filter(owner=owner_profile).exists():
-                    return prepare_response(message=constants.PERMISSION_DENIED, status=status.HTTP_403_FORBIDDEN)
-
-            else:
-                tenant_profile = Tenant.objects.filter(pk=request.user.pk).first()
-
-                if not tenant_profile or lease.tenant_id != tenant_profile.id:
-                    return prepare_response(message=constants.PERMISSION_DENIED, status=status.HTTP_403_FORBIDDEN)
-
-        platform_choices = dict(constants.PLATFORM_CHOICES)
-
-        tenant_name = (
-            f"{tenant.user.first_name} {tenant.user.last_name}".strip()
-            if tenant and tenant.user else ""
-        )
-
-        shared_by = request.user.user.get_full_name() or request.user.user.email
-
-        platform = (
-            platform_choices.get(lease.platform, lease.platform).lower()
-            if lease.platform else ""
-        )
-
-        context = {
-            "property_id": prop.id if prop else "",
-            "property_name": prop.property_name if prop else "",
-            "block_tower": block.block_name if block else "",
-            "unit": unit.unit_name if unit else "",
-            "tenant_name": tenant_name,
-            "agreement_status": lease.lease_status or "",
-            "dimension": f"{unit.no_of_bedrooms} BHK" if unit and unit.no_of_bedrooms is not None else "",
-            "property_status": "Occupied" if unit and unit.is_occupied else "Vacant",
-            "pmc": prop.pmc.name if prop and prop.pmc else "",
-            "rental_amount": lease.rent if lease.rent is not None else "",
-            "rera_index": "",
-            "platform": platform,
-            "shared_by": shared_by,
-        }
-
-        body_html = render_to_string("email_templates/share_tenancy_ledger.html", context)
-
-        body_text = "\n".join([
-            "Tenancy Ledger Shared",
-            f"Property ID: {context['property_id']}",
-            f"Property Name: {context['property_name']}",
-            f"Block / Tower: {context['block_tower']}",
-            f"Unit: {context['unit']}",
-            f"Tenant Name: {context['tenant_name']}",
-            f"Agreement Status: {context['agreement_status']}",
-            f"Dimension: {context['dimension']}",
-            f"Property Status: {context['property_status']}",
-            f"PMC: {context['pmc']}",
-            f"Rental Amount: {context['rental_amount']}",
-            f"RERA Index: {context['rera_index']}",
-            f"Platform: {context['platform']}",
-            f"Shared by: {context['shared_by']}",
-        ])
-
-        send_ses_email(
-            recipient_email,
-            f"Tenancy Ledger: {context['unit']}",
-            body_text,
-            body_html
-        )
+        if channel == constants.EMAIL and lead.email:
+            context = {
+                "recipient_name": lead.name or "Customer",
+                "unit_name": unit.unit_name if unit else "",
+                "offered_rent": offered_rent,
+                "offered_maintenance_charges": offered_maintenance_charges,
+                "other_charges": other_charges,
+            }
+            body_html = _render_to_string("email_templates/lead_proposal.html", context)
+            body_text = (
+                f"Dear {context['recipient_name']},\n\n"
+                f"Proposed rent for {context['unit_name']}: AED {offered_rent}\n"
+                f"Maintenance charges: AED {offered_maintenance_charges}\n"
+            )
+            send_ses_email(lead.email, f"Rental Proposal — {context['unit_name']}", body_text, body_html)
+        elif channel == constants.WHATSAPP:
+            # No WhatsApp Business API integration exists anywhere in this
+            # codebase -- record the channel choice but don't pretend to
+            # send. A real send requires a separate WhatsApp integration.
+            logger.warning(
+                "PROPOSAL_WHATSAPP_SEND_NOT_IMPLEMENTED | lead_id=%s | reason=NO_WHATSAPP_INTEGRATION",
+                lead_id)
 
         logger.info(
-            "TENANCY_LEDGER_SHARED | user_id=%s | lease_id=%s | recipient_email=%s",
-            request.user.id, lease_id, recipient_email
+            "PROPOSAL_SENT | user_id=%s | lead_id=%s | proposal_id=%s | channel=%s",
+            request.user.id, lead_id, proposal.id, channel)
+        audit_logs(request, f"Proposal sent for unit '{unit.unit_name if unit else ''}' via {channel}", constants.CREATED)
+
+        return prepare_response(
+            content={"proposal_id": proposal.id},
+            message="Proposal sent.",
+            status=status.HTTP_200_OK,
         )
-
-        return prepare_response(message="Tenancy ledger shared successfully.", status=status.HTTP_200_OK)
-
-    except json.JSONDecodeError:
-        return prepare_response(message="Invalid JSON request body.", status=status.HTTP_400_BAD_REQUEST)
-
     except Exception as e:
-        logger.exception(
-            "TENANCY_LEDGER_SHARE_ERROR | user_id=%s | lease_id=%s | error=%s",
-            request.user.id,
-            lease_id if "lease_id" in locals() else None,
-            str(e)
+        logger.exception("PROPOSAL_SEND_ERROR | user_id=%s | error=%s", request.user.id, str(e))
+        return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@is_request_authenticated
+def respond_to_proposal(request):
+    """POST: record the customer's response to a specific proposal -- HOLD
+    or NOT_INTERESTED."""
+    if request.method != "POST":
+        return prepare_response(message="Method not allowed", status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    try:
+        body = json.loads(request.body)
+        proposal_id = body.get("proposal_id")
+        response_choice = (body.get("response") or "").upper()
+
+        if not proposal_id or response_choice not in ("HOLD", "NOT_INTERESTED"):
+            return prepare_response(
+                message="proposal_id and response ('HOLD' or 'NOT_INTERESTED') are required",
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        proposal = Proposal.objects.select_related("lead__unit").filter(
+            id=proposal_id, is_active=True, status=constants.PROPOSAL_SENT_STATUS,
+        ).first()
+        if not proposal:
+            return prepare_response(
+                message="Proposal not found or not awaiting a response",
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        lead = proposal.lead
+        unit = lead.unit
+
+        if response_choice == "HOLD":
+            holding_amount = body.get("holding_amount")
+            hold_period_days = body.get("hold_period_days")
+            if holding_amount is None or hold_period_days is None:
+                return prepare_response(
+                    message="holding_amount and hold_period_days are required to place a hold",
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            proposal.holding_amount = holding_amount
+            proposal.hold_period_days = hold_period_days
+            proposal.hold_start_date = _timezone.now()
+            proposal.hold_expiry_date = _timezone.now() + timedelta(days=int(hold_period_days))
+            proposal.status = constants.ON_HOLD_STATUS
+            proposal.save(update_fields=[
+                "holding_amount", "hold_period_days", "hold_start_date",
+                "hold_expiry_date", "status",
+            ])
+
+            if unit:
+                unit.status = constants.UNIT_ON_HOLD
+                unit.save(update_fields=["status"])
+
+            if lead.email:
+                context = {
+                    "recipient_name": lead.name or "Customer",
+                    "unit_name": unit.unit_name if unit else "",
+                    "holding_amount": holding_amount,
+                    "hold_expiry_date": proposal.hold_expiry_date.date().isoformat(),
+                }
+                body_html = _render_to_string("email_templates/hold_confirmation.html", context)
+                body_text = (
+                    f"Dear {context['recipient_name']},\n\n"
+                    f"{context['unit_name']} is on hold for you until {context['hold_expiry_date']}.\n"
+                    f"Holding amount: AED {holding_amount}\n"
+                )
+                send_ses_email(lead.email, f"Unit On Hold — {context['unit_name']}", body_text, body_html)
+
+            audit_logs(request, f"Hold started for unit '{unit.unit_name if unit else ''}'", constants.UPDATED)
+            message = "Unit placed on hold."
+        else:
+            # NOT_INTERESTED is the lead-qualification axis (Lead.status),
+            # orthogonal to this proposal's own outcome (Proposal.status).
+            lead.status = constants.NOT_INTERESTED
+            lead.save(update_fields=["status"])
+            proposal.status = constants.PROPOSAL_CLOSED
+            proposal.save(update_fields=["status"])
+
+            if unit:
+                unit.status = constants.UNIT_AVAILABLE
+                unit.save(update_fields=["status"])
+
+            audit_logs(request, f"Proposal closed (not interested) for unit '{unit.unit_name if unit else ''}'", constants.UPDATED)
+            message = "Proposal closed."
+
+        logger.info(
+            "PROPOSAL_RESPONSE_RECORDED | user_id=%s | proposal_id=%s | response=%s",
+            request.user.id, proposal_id, response_choice)
+
+        return prepare_response(message=message, status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.exception("PROPOSAL_RESPONSE_ERROR | user_id=%s | error=%s", request.user.id, str(e))
+        return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@is_request_authenticated
+def confirm_hold_and_proceed(request):
+    """POST: convert a specific held Proposal into a real Lease, entering
+    Phase 2 (Contract Creation & Registration). The only place a Proposal
+    produces a Lease -- and the only one of a lead's (possibly several)
+    proposals that ever does."""
+    if request.method != "POST":
+        return prepare_response(message="Method not allowed", status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    try:
+        from lease.views import _create_tenant, _update_tenant_fields, _parse_date
+        from lease.cheque_scheduling import generate_cheque_schedule as _generate_cheque_schedule
+        from charges.models import Charge
+        from property_management.models import Country
+
+        body = json.loads(request.body)
+        proposal_id = body.get("proposal_id")
+        if not proposal_id:
+            return prepare_response(message="proposal_id is required", status=status.HTTP_400_BAD_REQUEST)
+
+        proposal = Proposal.objects.select_related("lead__unit", "lead__pmc").filter(
+            id=proposal_id, is_active=True,
+        ).first()
+        if not proposal:
+            return prepare_response(message="Proposal not found", status=status.HTTP_404_NOT_FOUND)
+
+        if proposal.status != constants.ON_HOLD_STATUS:
+            return prepare_response(
+                message=f"Cannot convert proposal: status is '{proposal.status}', expected ON_HOLD.",
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        lead = proposal.lead
+        unit = lead.unit
+        pmc = lead.pmc
+
+        # Resolve tenant: by existing email match, or create new -- reuses
+        # lease_view's own tenant-resolution helpers rather than duplicating
+        # them.
+        tenant_obj = None
+        if lead.email:
+            tenant_obj = Tenant.objects.select_related("user").filter(
+                Q(email__iexact=lead.email) | Q(user__email__iexact=lead.email),
+                user__is_active=True,
+            ).first()
+        tenant_data = {"tenant_name": lead.name, "contact_number": lead.contact_number}
+        if tenant_obj:
+            _update_tenant_fields(tenant_obj, tenant_data)
+            tenant_obj.pmc.add(pmc)
+            tenant_obj.save()
+        elif lead.email:
+            tenant_obj = _create_tenant(lead.email, tenant_data, request.user, pmc)
+        else:
+            return prepare_response(message="Lead has no email; cannot resolve a tenant.", status=status.HTTP_400_BAD_REQUEST)
+
+        active_lease = get_active_lease_for_tenant(tenant_obj)
+        if active_lease:
+            return prepare_response(
+                message=f"Tenant already has an active lease ({active_lease.code}). A new lease cannot be created while an active lease exists.",
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        annual_amount = proposal.offered_rent
+        vat_amount = round(float(annual_amount) * constants.UAE_VAT_RATE, 2) if annual_amount else None
+
+        lease = Lease.objects.create(
+            created_by=request.user.user,
+            unit=unit,
+            tenant=tenant_obj,
+            start_date=_parse_date(body.get("start_date")),
+            end_date=_parse_date(body.get("end_date")),
+            annual_amount=annual_amount,
+            contract_amount=annual_amount,
+            rent=proposal.offered_rent,
+            maintenance_charges=proposal.offered_maintenance_charges,
+            # The holding amount already collected becomes the booking
+            # amount carried into the contract -- re-collecting a second
+            # booking payment after a hold was already paid would double
+            # charge the tenant. Flagged in the plan as a judgment call;
+            # confirm with Finance if a distinct treatment is wanted.
+            booking_amount=proposal.holding_amount,
+            vat_amount=vat_amount,
+            payment_frequency=body.get("payment_frequency"),
+            lease_status=constants.LEASE_STATUS_CHOICES[0][0],
+            lease_stage=constants.BASIC_DETAILS,
         )
-        return prepare_response(message=f"Error: {str(e)}", status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Graduate each proposal-stage "other charge" line item into a real,
+        # VAT-computing LeaseTransaction row.
+        if proposal.other_charges:
+            from user_service.models import DocumentType
+
+            # Charge.country is required (matches charges/views.py's own
+            # user_profile.city.state.country derivation); city is nullable
+            # on UserProfile, so this falls back to any existing Country
+            # row rather than crashing when the PM has no city set.
+            user_country = None
+            if request.user.city and request.user.city.state:
+                user_country = request.user.city.state.country
+            if not user_country:
+                user_country = Country.objects.first()
+
+            # LeaseTransaction extends Documents (MTI) -- document_type is
+            # a required FK with no default, even though an other-charge
+            # cheque has no real uploaded document.
+            other_charge_doc_type, _ = DocumentType.objects.get_or_create(
+                name=constants.OTHER_CHARGE, section=constants.LEASE_CHEQUE,
+                defaults={"created_by": request.user.user},
+            )
+        for item in (proposal.other_charges or []):
+            description = item.get("description")
+            amount = item.get("amount")
+            if not description or amount is None:
+                continue
+            charge, _ = Charge.objects.get_or_create(
+                description=description,
+                defaults={
+                    "amount": amount, "is_editable": True,
+                    "country": user_country, "created_by": request.user.user,
+                },
+            )
+            lease.lease_cheques.create(
+                document_type=other_charge_doc_type,
+                cheque_type=constants.OTHER_CHARGE,
+                payment_type=constants.PAYMENT_TYPE_CHEQUE,
+                cheque_date=_timezone.now(),
+                amount=amount,
+                charge=charge,
+                status=constants.CHEQUE_STATUS_BALANCE,
+                created_by=request.user.user,
+            )
+
+        proposal.status = constants.PROPOSAL_CONVERTED
+        proposal.converted_lease = lease
+        proposal.save(update_fields=["status", "converted_lease"])
+
+        if unit:
+            unit.status = constants.UNIT_CONTRACT_IN_PROGRESS
+            unit.save(update_fields=["status"])
+
+        logger.info(
+            "LEAD_CONVERTED_TO_LEASE | user_id=%s | proposal_id=%s | lead_id=%s | lease_id=%s",
+            request.user.id, proposal_id, lead.id, lease.id)
+        audit_logs(request, f"Lead '{lead.code}' converted to lease '{lease.code}'", constants.CREATED)
+
+        return prepare_response(
+            content={"lease_id": lease.id, "lease_code": lease.code},
+            message="Lease created from proposal.",
+            status=status.HTTP_201_CREATED,
+        )
+    except Exception as e:
+        logger.exception("LEAD_CONVERSION_ERROR | user_id=%s | error=%s", request.user.id, str(e))
+        return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@is_request_authenticated
+def release_expired_hold(request):
+    """POST: manually release a specific expired (or about-to-expire) hold."""
+    if request.method != "POST":
+        return prepare_response(message="Method not allowed", status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    try:
+        body = json.loads(request.body)
+        proposal_id = body.get("proposal_id")
+        if not proposal_id:
+            return prepare_response(message="proposal_id is required", status=status.HTTP_400_BAD_REQUEST)
+
+        proposal = Proposal.objects.select_related("lead__unit").filter(id=proposal_id, is_active=True).first()
+        if not proposal:
+            return prepare_response(message="Proposal not found", status=status.HTTP_404_NOT_FOUND)
+
+        if proposal.status != constants.ON_HOLD_STATUS:
+            return prepare_response(
+                message=f"Cannot release hold: status is '{proposal.status}', expected ON_HOLD.",
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        release_expired_hold_for_proposal(proposal, triggered_by="user")
+        audit_logs(request, f"Hold released for unit '{proposal.lead.unit.unit_name if proposal.lead.unit else ''}' (expired)", constants.UPDATED)
+
+        logger.info("HOLD_RELEASED | user_id=%s | proposal_id=%s", request.user.id, proposal_id)
+        return prepare_response(message="Hold released.", status=status.HTTP_200_OK)
+    except Exception as e:
+        logger.exception("HOLD_RELEASE_ERROR | user_id=%s | error=%s", request.user.id, str(e))
+        return prepare_response(message=str(e), status=status.HTTP_500_INTERNAL_SERVER_ERROR)

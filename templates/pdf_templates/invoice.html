@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tax Invoice</title>
+    <style>
+      :root {
+        --bodyBg: #f5f7fb;
+        --whiteBg: #ffffff;
+        --primaryText: #1b2a41;
+        --primaryDark: #0d1d2d;
+        --textSecondary: #5d6b7b;
+        --textPrimary: #1d2330;
+        --textMuted: #6b7280;
+        --textLight: #49556a;
+        --borderLight: #e7ebf0;
+        --cardLightBg: #f6f8fc;
+        --tableHeaderBg: #0f4c81;
+        --tableBorderLight: rgba(255, 255, 255, 0.28);
+        --accentPrimary: #1e5faa;
+        --accentSecondary: #2c7be5;
+        --grandBg: #1a374e;
+        --shadowSoft: rgba(12, 17, 28, 0.08);
+        --whiteText: #ffffff;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bodyBg);
+        font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+        color: var(--textPrimary);
+      }
+
+      .invoice-page {
+        width: min(820px, calc(100% - 32px));
+        margin: 30px auto;
+        background: var(--whiteBg);
+        padding: 24px;
+        border-radius: 10px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+      }
+
+      .invoice-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding-bottom: 14px;
+        border-bottom: 1px solid var(--borderLight);
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 230px;
+        height: 78px;
+        border-radius: 8px;
+        overflow: hidden;
+      }
+
+      .brand img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: block;
+      }
+
+      .invoice-title {
+        text-align: right;
+      }
+
+      .invoice-title h2 {
+        margin: 0;
+        font-size: 28px;
+        font-weight: 800;
+        letter-spacing: 0.5px;
+        color: var(--accentPrimary);
+      }
+
+      .invoice-title p {
+        margin-top: 4px;
+        font-size: 13px;
+        color: var(--textMuted);
+        font-weight: 500;
+      }
+
+      .invoice-info {
+        display: flex;
+        gap: 32px;
+        background: var(--cardLightBg);
+        padding: 20px;
+        border-radius: 8px;
+        font-size: 13px;
+        color: var(--textSecondary);
+        margin-top: 38px;
+        margin-bottom: 38px;
+      }
+
+      .info-col {
+        flex: 1;
+      }
+
+      .info-col h5 {
+        margin: 0 0 6px;
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--textMuted);
+      }
+
+      .info-col p {
+        margin: 3px 0;
+      }
+
+      .info-col .bold {
+        font-weight: 700;
+        color: var(--textPrimary);
+      }
+
+      .info-card {
+        width: 260px;
+        background: var(--whiteBg);
+        border-radius: 14px;
+        padding: 14px 16px;
+        box-shadow: 0 1px 2px var(--shadowSoft);
+      }
+
+      .info-card p {
+        margin: 6px 0;
+        color: var(--textSecondary);
+      }
+
+      .info-card strong {
+        color: var(--textPrimary);
+      }
+
+      .invoice-table {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 0;
+        font-size: 13px;
+      }
+
+      .invoice-table thead tr {
+        background: var(--tableHeaderBg);
+      }
+
+      .invoice-table th {
+        color: var(--whiteText);
+        padding: 10px 12px;
+        font-weight: 500;
+        text-align: center;
+        border-right: 2px solid var(--tableBorderLight);
+      }
+
+      .invoice-table th:first-child {
+        text-align: left;
+        padding-left: 14px;
+        border-top-left-radius: 14px;
+        border-bottom-left-radius: 14px;
+      }
+
+      .invoice-table th:last-child {
+        border-right: none;
+        border-top-right-radius: 14px;
+        border-bottom-right-radius: 14px;
+      }
+
+      .invoice-table td {
+        padding: 10px 8px;
+        border-bottom: 1px solid var(--borderLight);
+        text-align: center;
+      }
+
+      .invoice-table td:first-child {
+        text-align: left;
+      }
+
+      .totals {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        margin-top: 24px;
+      }
+
+      .words {
+        max-width: 55%;
+      }
+
+      .words p {
+        margin: 4px 0;
+        line-height: 1.6;
+      }
+
+      .summary {
+        min-width: 260px;
+        text-align: right;
+      }
+
+      .summary p {
+        margin: 6px 0;
+        font-size: 14px;
+      }
+
+      .summary .grand {
+        display: inline-block;
+        background: var(--accentPrimary);
+        color: var(--whiteText);
+        padding: 8px 14px;
+        border-radius: 8px;
+        margin-top: 10px;
+        font-weight: 600;
+      }
+
+      .payment {
+        background: var(--cardLightBg);
+        padding: 12px;
+        margin-top: 20px;
+        font-size: 13px;
+        border-radius: 6px;
+      }
+
+      .payment p {
+        color: var(--textLight);
+        margin: 6px 0;
+      }
+
+      .invoice-footer {
+        margin-top: 28px;
+        font-size: 12px;
+        color: var(--textSecondary);
+      }
+
+      .footer-top {
+        display: flex;
+        justify-content: space-between;
+        gap: 24px;
+      }
+
+      .terms {
+        width: 65%;
+      }
+
+      .terms h4 {
+        margin-bottom: 6px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .terms p {
+        line-height: 1.6;
+        margin-bottom: 6px;
+      }
+
+      .signature {
+        width: 30%;
+        text-align: right;
+      }
+
+      .sign-img {
+        font-family: "Brush Script MT", cursive;
+        font-size: 22px;
+        margin-bottom: 6px;
+        color: var(--primaryDark);
+      }
+
+      .signature .name {
+        font-weight: 600;
+        font-size: 21px;
+        margin: 0;
+      }
+
+      .signature .role {
+        font-size: 11px;
+        color: var(--textPrimary);
+        margin-top: 4px;
+      }
+
+      .footer-note {
+        text-align: center;
+        font-size: 11px;
+        margin: 16px 0;
+        color: var(--textMuted);
+      }
+
+      .footer-bottom {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        border-top: 1px solid var(--borderLight);
+        padding-top: 10px;
+        font-size: 11px;
+        color: var(--textSecondary);
+      }
+
+      @media (max-width: 700px) {
+        .invoice-info,
+        .footer-top,
+        .totals {
+          flex-direction: column;
+        }
+
+        .info-card,
+        .terms,
+        .signature,
+        .words,
+        .summary {
+          width: 100%;
+          max-width: 100%;
+          min-width: auto;
+          text-align: left;
+        }
+
+        .invoice-title {
+          text-align: left;
+        }
+      }
+
+      /* This template is rendered by WeasyPrint (lease/views.py), which
+         evaluates CSS as print media -- these rules control the actual
+         generated PDF and compress spacing so it fits on one A4 page.
+         Signature block (.signature / .sign-img / .name / .role) is
+         intentionally left untouched here -- it stays static as-is. */
+      @page {
+        size: A4;
+        margin: 8mm;
+      }
+
+      @media print {
+        body {
+          background: none;
+        }
+
+        .invoice-page {
+          width: 100%;
+          margin: 0;
+          padding: 0;
+          border-radius: 0;
+          box-shadow: none;
+        }
+
+        .invoice-info {
+          margin-top: 16px;
+          margin-bottom: 16px;
+          padding: 12px;
+        }
+
+        .invoice-table th,
+        .invoice-table td {
+          padding: 6px 8px;
+        }
+
+        .totals {
+          margin-top: 12px;
+        }
+
+        .payment {
+          margin-top: 12px;
+          padding: 8px;
+        }
+
+        .invoice-footer {
+          margin-top: 14px;
+        }
+
+        .terms p {
+          line-height: 1.35;
+          margin-bottom: 4px;
+        }
+
+        .footer-note {
+          margin: 8px 0;
+        }
+
+        .footer-bottom {
+          padding-top: 6px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="invoice-page">
+      <div class="invoice-header">
+        <div class="brand">
+          <img src="logo.png" alt="Units Logo" />
+        </div>
+
+        <div class="invoice-title">
+          <h2>TAX INVOICE</h2>
+          <p>TRN {{ trn }}</p>
+        </div>
+      </div>
+
+      <div class="invoice-info">
+        <div class="info-col">
+          <h5>Invoice to:</h5>
+          <p class="bold">{{ tenant.name }}</p>
+          <p>Addr: {{ tenant.address }}</p>
+          <p>Phone: {{ tenant.phone }}</p>
+          <p>TRN: {{ tenant.trn }}</p>
+        </div>
+
+        <div class="info-col">
+          <h5>Property Details:</h5>
+          <p class="bold">{{ property_info.property_name }} | {{ property_info.unit_name }}</p>
+          <p>Period: {{ property_info.period_start }} TO {{ property_info.period_end }}</p>
+          <p>Lease No: {{ property_info.lease_code }}</p>
+          <p>Ref No: {{ property_info.ref_no }}</p>
+        </div>
+
+        <div class="info-card">
+          <p><strong>Invoice No: {{ invoice_no }}</strong></p>
+          <p><strong>Prepared By:</strong> {{ prepared_by }}</p>
+          <p><strong>Invoice Date:</strong> {{ invoice_date }}</p>
+          <p><strong>Due Date:</strong> {{ due_date }}</p>
+        </div>
+      </div>
+
+      <table class="invoice-table">
+        <thead>
+          <tr>
+            <th>Description</th>
+            <th>Quantity</th>
+            <th>Rate</th>
+            <th>Amount</th>
+            <th>VAT</th>
+            <th>VAT Amount</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+          <tr>
+            <td>{{ item.description }}</td>
+            <td>{{ item.quantity }}</td>
+            <td>{{ item.rate }}</td>
+            <td>{{ item.amount }}</td>
+            <td>VAT &#64;{{ item.tax_code }}%</td>
+            <td>{{ item.vat }}</td>
+            <td>{{ item.total }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+
+      <div class="totals">
+        <div class="words">
+          <p><strong>Amount in words:</strong></p>
+          <p>{{ amount_in_words }}</p>
+        </div>
+
+        <div class="summary">
+          <p>Sub Total: <strong>{{ subtotal }}</strong></p>
+          <p>VAT Amount: <strong>{{ vat_total }}</strong></p>
+          <p class="grand">Grand Total: <strong>{{ grand_total }}</strong></p>
+        </div>
+      </div>
+
+      <div class="payment">
+        <p>Payment Method:</p>
+        <p><strong>TYPE: {{ payment_type }}</strong></p>
+        <p>Cheque No:<strong> {{ cheque_number }}</strong></p>
+        <p>Transaction ID: <strong> {{ transaction_id }}</strong></p>
+      </div>
+
+      <div class="invoice-footer">
+        <div class="footer-top">
+          <div class="terms">
+            <h4>TERMS & CONDITIONS</h4>
+            <p>
+              All payments must be settled by the due date specified on this invoice,
+              with any late payments subject to a penalty fee as per the signed
+              Tenancy Contract. For payments made by cheque, the receipt remains valid
+              only upon successful fund realization and any bounced cheques will incur
+              standard administrative charges.
+            </p>
+            <p>
+              This invoice is inclusive of 5% VAT in compliance with UAE Federal Law,
+              and all disputes shall be subject to the exclusive jurisdiction of the UAE courts.
+            </p>
+          </div>
+
+          <div class="signature">
+            <div class="sign-img">Imran Ali Khan</div>
+            <p class="name">Imran Ali Khan</p>
+            <p class="role">Approved By</p>
+          </div>
+        </div>
+
+        <p class="footer-note">
+          Note: This system generated Receipt and does not require any signature
+        </p>
+
+        <div class="footer-bottom">
+          <span>📍 Sheikh Zayed Road, P.O Box 825, Dubai, United Arab Emirates</span>
+          <span>📞 043390000</span>
+          <span>✉ mail@gmail.com</span>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
