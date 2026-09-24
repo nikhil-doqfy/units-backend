@@ -404,7 +404,30 @@ def options(request):
             else:
                 from property.models import PropertyBlocks
                 blocks = PropertyBlocks.objects.filter(property_id=property_id)
-                content["property_block"] = [{"key": b.id, "value": b.block_name} for b in blocks]
+                if blocks.exists():
+                    content["property_block"] = [{"key": b.id, "value": b.block_name} for b in blocks]
+                else:
+                    content["property_block"] = []
+                    tenant_profile = Tenant.objects.filter(pk=user.pk).first()
+                    if tenant_profile:
+                        lease = Lease.objects.filter(
+                            tenant=tenant_profile,
+                            is_active=True
+                        ).select_related("unit").first()
+                        if lease:                  
+                            unit = lease.unit
+                            if (
+                                (unit.parent_property_id and str(unit.parent_property_id) == property_id) or
+                                (unit.property_block_tower and str(unit.property_block_tower.property_id) == property_id)
+                            ):
+                                units = Unit.objects.filter(pk=unit.pk)
+                            else:
+                                units = Unit.objects.none()
+                        else:
+                            units = Unit.objects.none()
+                    else:
+                        units = Unit.objects.filter(Q(parent_property_id=property_id) | Q(property_block_tower__property_id=property_id)).distinct()
+                    content["property_unit"] = [{ "key": unit.id, "value": unit.unit_name or f"Unit #{unit.id}"} for unit in units]
 
         elif option_type == "PROPERTY_UNIT_BY_BLOCK":
             block_id = request.GET.get("block_id")
