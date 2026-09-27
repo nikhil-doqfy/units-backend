@@ -1571,16 +1571,26 @@ def owner_crud(request):
         owner_id = request.GET.get("owner_id", "").strip()
 
         if owner_id:
+            pmc_id = request.GET.get("pmc_id", "").strip()
             pm_profile = PropertyManager.objects.filter(pk=request.user.pk).first()
             if pm_profile:
                 pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile,is_active=True).values_list("pmc_id", flat=True))
                 if not pmc_ids:
                     return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND )
+                # Narrow to the PMC selected in the navbar, if any.
+                if pmc_id:
+                    if not pmc_id.isdigit() or int(pmc_id) not in pmc_ids:
+                        return prepare_response(message="You are not allowed to access this PMC", status=status.HTTP_403_FORBIDDEN)
+                    pmc_ids = [int(pmc_id)]
+                # Same PMC scoping as the list below -- match via unit
+                # ownership too, not just the Owner.pmc tag.
                 owner = Owner.objects.select_related("user").filter(
+                    Q(pmc__id__in=pmc_ids) |
+                    Q(unit_owner_links__unit__property_block_tower__property__pmc_id__in=pmc_ids) |
+                    Q(unit_owner_links__unit__parent_property__pmc_id__in=pmc_ids),
                     id=owner_id,
                     user__is_active=True,
                     is_active=True,
-                    pmc__id__in=pmc_ids,
                 ).distinct().first()
             else:
                 owner = Owner.objects.for_user(user_profile).select_related("user").filter(id=owner_id, user__is_active=True).first()
@@ -1591,9 +1601,19 @@ def owner_crud(request):
                 return prepare_response(message="Owner not found", status=status.HTTP_404_NOT_FOUND)
             # If units table is requested (detail page), return owner detail + units
             tenancy_status = request.GET.get("tenancy_status")
-            units_qs = Unit.objects.filter(
-                unit_owners__owner=owner
-            ).prefetch_related(
+            units_qs = Unit.objects.filter(unit_owners__owner=owner)
+            # Only this PMC's units -- an owner can hold units under several.
+            if pm_profile:
+                units_qs = units_qs.filter(
+                    Q(property_block_tower__property__pmc_id__in=pmc_ids) |
+                    Q(parent_property__pmc_id__in=pmc_ids)
+                )
+            elif pmc_id.isdigit():
+                units_qs = units_qs.filter(
+                    Q(property_block_tower__property__pmc_id=pmc_id) |
+                    Q(parent_property__pmc_id=pmc_id)
+                )
+            units_qs = units_qs.distinct().prefetch_related(
                 "leases",
                 "leases__tenant__user",
                 "property_block_tower__property",
@@ -1880,19 +1900,41 @@ def export_owner_units_csv(request):
         owner_id = request.GET.get("owner_id", "").strip()
         if not owner_id:
             return prepare_response(message="Owner ID is required", status=status.HTTP_400_BAD_REQUEST)
+        pmc_id = request.GET.get("pmc_id", "").strip()
         pm_profile = PropertyManager.objects.filter(pk=request.user.pk).first()
         if pm_profile:
             pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile, is_active=True).values_list("pmc_id", flat=True))
             if not pmc_ids:
                 return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
-            owner = Owner.objects.select_related("user").filter(id=owner_id, user__is_active=True, is_active=True, pmc__id__in=pmc_ids).distinct().first()
+            if pmc_id:
+                if not pmc_id.isdigit() or int(pmc_id) not in pmc_ids:
+                    return prepare_response(message="You are not allowed to access this PMC", status=status.HTTP_403_FORBIDDEN)
+                pmc_ids = [int(pmc_id)]
+            # Same scoping as owner_crud's detail branch.
+            owner = Owner.objects.select_related("user").filter(
+                Q(pmc__id__in=pmc_ids) |
+                Q(unit_owner_links__unit__property_block_tower__property__pmc_id__in=pmc_ids) |
+                Q(unit_owner_links__unit__parent_property__pmc_id__in=pmc_ids),
+                id=owner_id, user__is_active=True, is_active=True,
+            ).distinct().first()
         else:
             owner = Owner.objects.for_user(user_profile).select_related("user").filter(id=owner_id, user__is_active=True).first()
         if not owner:
             logger.warning("OWNER_EXPORT_FAILED | user_id=%s | owner_id=%s | reason=OWNER_NOT_FOUND", request.user.id, owner_id)
             return prepare_response(message="Owner not found", status=status.HTTP_404_NOT_FOUND)
         tenancy_status = request.GET.get("tenancy_status", "").strip()
-        units_qs = Unit.objects.filter(unit_owners__owner=owner).prefetch_related("leases", "leases__tenant__user", "property_block_tower__property")
+        units_qs = Unit.objects.filter(unit_owners__owner=owner)
+        if pm_profile:
+            units_qs = units_qs.filter(
+                Q(property_block_tower__property__pmc_id__in=pmc_ids) |
+                Q(parent_property__pmc_id__in=pmc_ids)
+            )
+        elif pmc_id.isdigit():
+            units_qs = units_qs.filter(
+                Q(property_block_tower__property__pmc_id=pmc_id) |
+                Q(parent_property__pmc_id=pmc_id)
+            )
+        units_qs = units_qs.distinct().prefetch_related("leases", "leases__tenant__user", "property_block_tower__property")
         rows = []
         for unit in units_qs:
             is_occupied = unit.is_leased

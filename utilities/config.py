@@ -31,6 +31,14 @@ EMAIL_CHANNEL_PREFERENCE = os.getenv("EMAIL_CHANNEL_PREFERENCE", EMAIL_CHANNEL_S
 EMAIL_SENDER = os.getenv("EMAIL_SENDER")
 EMAIL_CHARSET = os.getenv("EMAIL_CHARSET", "UTF-8")
 
+# SMTP channel (utilities/smtp_utils.py) -- only read when EMAIL_CHANNEL_PREFERENCE=SMTP.
+# From address is always SMTP_EMAIL_HOST_USER itself, not EMAIL_SENDER above: Office365
+# requires the From address to match (or be delegated to) the authenticated mailbox.
+SMTP_EMAIL_HOST = os.getenv("SMTP_EMAIL_HOST", "smtp.office365.com")
+SMTP_EMAIL_PORT = int(os.getenv("SMTP_EMAIL_PORT", "587"))
+SMTP_EMAIL_HOST_USER = os.getenv("SMTP_EMAIL_HOST_USER")
+SMTP_EMAIL_HOST_PASSWORD = os.getenv("SMTP_EMAIL_HOST_PASSWORD")
+
 AWS_ACCESS_KEY = os.getenv("AWS_ACCESS_KEY")
 AWS_SECRET_KEY = os.getenv("AWS_SECRET_KEY")
 AWS_REGION = os.getenv("AWS_REGION")
@@ -69,9 +77,21 @@ UAE_PASS_SIGN_RESOURCE_URL = f"https://{UAE_PASS_HOST}/trustedx-resources/esigns
 UAE_PASS_SIGN_CLIENT_ID = os.getenv("UAE_PASS_SIGN_CLIENT_ID")
 UAE_PASS_SIGN_CLIENT_SECRET = os.getenv("UAE_PASS_SIGN_CLIENT_SECRET")
 UAE_PASS_SIGN_SCOPE = os.getenv("UAE_PASS_SIGN_SCOPE", "urn:safelayer:eidas:sign:process:document")
-# Issued by the UAE PASS team alongside the client credentials -- identifies
-# which signature policy (PAdES profile, certificate authority, etc.) to sign under.
-UAE_PASS_SIGN_POLICY_ID = os.getenv("UAE_PASS_SIGN_POLICY_ID", "")
+# Signature policy -- the PDF Document Signing Guide v2.0 uses this fixed
+# URN for PDF signing; override only if the UAE PASS team issues another.
+UAE_PASS_SIGN_POLICY_ID = os.getenv("UAE_PASS_SIGN_POLICY_ID") or "urn:safelayer:eidas:policies:sign:document:pdf"
+# "true" skips UAE PASS's document preview; "false" lets the signer view /
+# download the PDF before signing (per the guide's attribute table).
+UAE_PASS_SIGN_SKIP_SERVER_ID = os.getenv("UAE_PASS_SIGN_SKIP_SERVER_ID", "true")
+# signer.parameters.type -- "pades-baseline" per the current UAE PASS
+# signing guide ("pdf" appears only in their older sample Postman collection).
+UAE_PASS_SIGN_TYPE = os.getenv("UAE_PASS_SIGN_TYPE", "pades-baseline")
+# Request a trusted timestamp (TSA) on the signature. Can be turned off to
+# rule out the staging timestamp service when a signer's result is "failed".
+UAE_PASS_SIGN_TIMESTAMP = os.getenv("UAE_PASS_SIGN_TIMESTAMP", "true").lower() == "true"
+# Signature level requested via labels: "qualified" (SOP3 only) or
+# "advanced" (SOP2 and SOP3).
+UAE_PASS_SIGN_LEVEL = os.getenv("UAE_PASS_SIGN_LEVEL", "qualified")
 UAE_PASS_SIGN_CALLBACK_URL = os.getenv("UAE_PASS_SIGN_CALLBACK_URL", f"{HOST}/api/lease/esign/callback")
 
 print("AWS REGION:", os.getenv("AWS_REGION"))

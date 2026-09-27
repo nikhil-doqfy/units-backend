@@ -10,10 +10,9 @@ the PDF to create a signer process -> redirect the signer's browser to the
 returned URL to authenticate and approve -> poll for the result -> fetch
 the signed PDF.
 
-Exact field names in the "process" JSON body and the finish-callback's
-query params are based on the docs' prose description (no verbatim JSON
-example was available) -- verify against UAE PASS's Postman collection
-before relying on this in production.
+The "process" JSON body matches UAE PASS's "PDF Document Signing Guide"
+v2.0 and its sample Postman collection. Not yet exercised against a live
+UAE PASS environment -- needs issued client credentials.
 """
 import json
 import logging
@@ -47,27 +46,48 @@ class UaePassSignatureProvider(SignatureProvider):
         response.raise_for_status()
         payload = response.json()
         token = payload["access_token"]
-        # Valid ~10 minutes per the docs; cache a little under that so
+        # Valid ~5 minutes (expires_in: 300 per the guide); cache a little under that so
         # concurrent signature requests reuse it instead of re-fetching.
-        cache.set(_TOKEN_CACHE_KEY, token, timeout=max(payload.get("expires_in", 600) - 30, 30))
+        cache.set(_TOKEN_CACHE_KEY, token, timeout=max(payload.get("expires_in", 300) - 30, 30))
         return token
 
     def create_sign_process(self, *, pdf_bytes, filename, callback_url, ui_locale="en") -> SignProcess:
         token = self._get_access_token()
+        # Shape follows the UAE PASS "PDF Document Signing Guide" v2.0 and
+        # its Postman collection: signature_field lives under
+        # signer.parameters, with page/rectangle wrapped in "location".
         process = {
             "process_type": "urn:safelayer:eidas:processes:document:sign:esigp",
+            "labels": [["digitalid", "server", config.UAE_PASS_SIGN_LEVEL]],
             "signer": {
                 "signature_policy_id": config.UAE_PASS_SIGN_POLICY_ID,
-                "parameters": {"type": "pades-baseline"},
+                "parameters": {
+                    "type": config.UAE_PASS_SIGN_TYPE,
+                    "signature_field": {
+                        "name": "Sign1",
+                        "location": {
+                            "page": {"number": "last"},
+                            "rectangle": {"x": 100, "y": 110, "height": 150, "width": 400},
+                        },
+                        "appearance": {
+                            "signature_details": {
+                                "details": [
+                                    {"type": "subject", "title": "Signer Name: "},
+                                    {"type": "date", "title": "Signature Date: "},
+                                ]
+                            }
+                        },
+                    },
+                },
             },
-            "signature_field": {
-                "name": "Signature1",
-                "page": {"number": 1},
-                "rectangle": {"x": 36, "y": 36, "height": 100, "width": 200},
-            },
-            "ui_locales": "en_US" if ui_locale == "en" else "ar_AE",
+            "ui_locales": ["en_US" if ui_locale == "en" else "ar_AE"],
             "finish_callback_url": callback_url,
+            "views": {
+                "document_agreement": {"skip_server_id": config.UAE_PASS_SIGN_SKIP_SERVER_ID},
+            },
         }
+        if config.UAE_PASS_SIGN_TIMESTAMP:
+            process["timestamp"] = {"provider_id": "urn:uae:tws:generation:policy:digitalid"}
         files = {
             "process": (None, json.dumps(process), "application/json"),
             "document": (filename, pdf_bytes, "application/pdf"),
@@ -92,6 +112,10 @@ class UaePassSignatureProvider(SignatureProvider):
             headers={"Authorization": f"Bearer {token}"},
             timeout=15,
         )
+        # UAE PASS answers 404 SignerProcessResultNotAvailableException
+        # until the signer has finished (or canceled) in its UI.
+        if response.status_code == 404 and "ResultNotAvailable" in response.text:
+            return "pending"
         response.raise_for_status()
         return response.json().get("status", "pending")
 

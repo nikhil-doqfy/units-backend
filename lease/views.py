@@ -57,6 +57,7 @@ from .swagger import (
     cheque_monthly_get,
     rent_analytics_get,
     activate_lease_post,
+    send_for_signature_post,
 )
 from django.db.models import Q, Sum
 from plugins.logger_plugin import get_logger
@@ -304,10 +305,12 @@ class LeaseViewSet(viewsets.ViewSet):
         _vat_amount = round(float(_vat_base) * constants.UAE_VAT_RATE, 2) if _vat_base else None
 
         _commission = body.get("commission")
-        if _commission is None and unit_obj.commission_percent and body.get("rent"):
-            _commission = round(float(body.get("rent")) * float(unit_obj.commission_percent) / 100, 2)
-        else:
-            _commission = _commission or None
+        if _commission is None:
+            if unit_obj.commission_amount:
+                _commission = float(unit_obj.commission_amount)
+            elif unit_obj.commission_percent and body.get("rent"):
+                _commission = round(float(body.get("rent")) * float(unit_obj.commission_percent) / 100, 2)
+        _commission = _commission or None
 
         lease = Lease.objects.create(
             created_by=user.user,
@@ -958,6 +961,15 @@ def lease_cheque_view(request):
                 request.user.id, cheque_id)
             return prepare_response(message="Cheque not found", status=status.HTTP_404_NOT_FOUND)
 
+        if cheque.status == constants.CHEQUE_STATUS_BOUNCED:
+            logger.warning(
+                "LEASE_CHEQUE_UPDATE_FAILED | user_id=%d | cheque_id=%s | reason=CHEQUE_BOUNCED",
+                request.user.id, cheque_id)
+            return prepare_response(
+                message="A bounced cheque cannot be edited",
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         from payment.models import Bank
         updatable = ["cheque_type", "payment_type", "origin_account_number",
                      "settlement_account_number", "amount", "status", "cheque_number",
@@ -1007,7 +1019,7 @@ def lease_cheque_view(request):
                 "LEASE_CHEQUE_BOUNCED_NOTIFICATION | cheque_id=%d", cheque.id)
             notify_cheque_bounced(tenant_user_profile, cheque)
 
-        elif cheque.status == "REALIZED":
+        elif cheque.status == "CREDITED":
             logger.info(
                     "LEASE_CHEQUE_REALIZED_NOTIFICATION | cheque_id=%d", cheque.id )
             notify_cheque_realized(tenant_user_profile, cheque)
@@ -1511,7 +1523,10 @@ def cheque_summary_view(request):
     property_id = request.GET.get("property_id", "").strip()
     block_id    = request.GET.get("block_id", "").strip()
     unit_id     = request.GET.get("unit_id", "").strip()
+    tenant_id   = request.GET.get("tenant_id", "").strip()
     year        = request.GET.get("year", "").strip()
+    due_date_from = request.GET.get("due_date_from", "").strip()
+    due_date_to   = request.GET.get("due_date_to", "").strip()
 
     if property_id:
         qs = qs.filter(
@@ -1522,8 +1537,14 @@ def cheque_summary_view(request):
         qs = qs.filter(lease__unit__property_block_tower_id=block_id)
     if unit_id:
         qs = qs.filter(lease__unit_id=unit_id)
+    if tenant_id:
+        qs = qs.filter(lease__tenant_id=tenant_id)
     if year:
         qs = qs.filter(cheque_date__year=year)
+    if due_date_from:
+        qs = qs.filter(cheque_date__gte=due_date_from)
+    if due_date_to:
+        qs = qs.filter(cheque_date__lte=due_date_to)
 
     total_count  = qs.count()
     total_amount = qs.aggregate(total=Sum("amount"))["total"] or 0
@@ -1535,7 +1556,6 @@ def cheque_summary_view(request):
     summary = {
         "total":    {"count": total_count,  "amount": total_amount},
         "credited": _stats(constants.CHEQUE_STATUS_CREDITED),
-        "realized": _stats(constants.CHEQUE_STATUS_REALIZED),
         "bounce":   _stats(constants.CHEQUE_STATUS_BOUNCED),
         "balance":  _stats(constants.CHEQUE_STATUS_BALANCE),
     }
@@ -1591,14 +1611,17 @@ def all_cheques_view(request):
     property_id = request.GET.get("property_id", "").strip()
     block_id    = request.GET.get("block_id", "").strip()
     unit_id     = request.GET.get("unit_id", "").strip()
+    tenant_id   = request.GET.get("tenant_id", "").strip()
     year        = request.GET.get("year", "").strip()
+    due_date_from = request.GET.get("due_date_from", "").strip()
+    due_date_to   = request.GET.get("due_date_to", "").strip()
     from django.db.models import Q
     qs = LeaseTransaction.objects.select_related(
         "lease__unit__parent_property",
         "lease__unit__property_block_tower__property",
         "lease__tenant__user",
         "selltlement_bank",
-    ).filter(    
+    ).filter(
         Q(lease__unit__parent_property__pmc_id__in=pmc_ids) |
         Q(lease__unit__property_block_tower__property__pmc_id__in=pmc_ids)
     ).order_by("-id")
@@ -1614,8 +1637,16 @@ def all_cheques_view(request):
         qs = qs.filter(lease__unit__property_block_tower_id=block_id)
     if unit_id:
         qs = qs.filter(lease__unit_id=unit_id)
+    if tenant_id:
+        qs = qs.filter(lease__tenant_id=tenant_id)
     if year:
         qs = qs.filter(cheque_date__year=year)
+    # "Due Date" (the table column) is cheque_date, aliased at serialization
+    # time (serialize_cheque_list_row) -- see lease/serializers.py:256.
+    if due_date_from:
+        qs = qs.filter(cheque_date__gte=due_date_from)
+    if due_date_to:
+        qs = qs.filter(cheque_date__lte=due_date_to)
 
     if search:
         from django.db.models import Q
@@ -1649,6 +1680,54 @@ def all_cheques_view(request):
         },
         status=status.HTTP_200_OK,
     )
+
+
+@api_view(['GET'])
+@is_request_authenticated
+@csrf_exempt
+def cheque_tenant_options_view(request):
+    """GET distinct tenants who have at least one cheque (LeaseTransaction)
+    under the logged-in user's PMCs -- backs the Tenant filter dropdown on
+    the Cheques page (/dashboard/cheques). Scoped to cheque-bearing tenants
+    only, not every tenant in the PMC, since that's the only set relevant to
+    filtering this specific table.
+    """
+    if request.method != "GET":
+        return prepare_response(message=constants.INVALID_REQUEST_METHOD, status=status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    user_profile = request.user
+    pmc_ids = _get_pmc_ids_for_user(user_profile)
+    if not pmc_ids:
+        return prepare_response(message=constants.COMPANY_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+
+    pmc_id = request.GET.get("pmc_id", "").strip()
+    if pmc_id:
+        if int(pmc_id) not in pmc_ids:
+            return prepare_response(message="You are not allowed to access this PMC", status=status.HTTP_403_FORBIDDEN)
+        pmc_ids = [int(pmc_id)]
+
+    tenants = (
+        LeaseTransaction.objects
+        .filter(
+            Q(lease__unit__parent_property__pmc_id__in=pmc_ids) |
+            Q(lease__unit__property_block_tower__property__pmc_id__in=pmc_ids)
+        )
+        .exclude(lease__tenant__isnull=True)
+        .values("lease__tenant_id", "lease__tenant__user__first_name", "lease__tenant__user__last_name")
+        .distinct()
+        .order_by("lease__tenant__user__first_name")
+    )
+
+    options = [
+        {
+            "id": t["lease__tenant_id"],
+            "name": f"{t['lease__tenant__user__first_name'] or ''} {t['lease__tenant__user__last_name'] or ''}".strip() or "—",
+        }
+        for t in tenants
+    ]
+
+    return prepare_response(content=options, status=status.HTTP_200_OK)
+
 
 @cheque_monthly_get
 @api_view(['GET'])
@@ -1800,7 +1879,7 @@ def rent_analytics_view(request):
     # Summary totals
     total_amount    = float(qs.aggregate(t=Sum("amount"))["t"] or 0)
     received_amount = float(
-        qs.filter(status__in=[constants.CHEQUE_STATUS_CREDITED, constants.CHEQUE_STATUS_REALIZED])
+        qs.filter(status=constants.CHEQUE_STATUS_CREDITED)
           .aggregate(t=Sum("amount"))["t"] or 0
     )
     pending_amount  = total_amount - received_amount
@@ -1821,7 +1900,7 @@ def rent_analytics_view(request):
             result[row["m"]] = float(row["total"] or 0)
         return result
 
-    received_m = monthly_agg([constants.CHEQUE_STATUS_CREDITED, constants.CHEQUE_STATUS_REALIZED])
+    received_m = monthly_agg([constants.CHEQUE_STATUS_CREDITED])
     bounce_m   = monthly_agg([constants.CHEQUE_STATUS_BOUNCED])
     total_m    = monthly_agg()
 
@@ -2530,16 +2609,19 @@ def approve_ejari_submission(request):
 
 # ── Step 14: Send Ejari for signature ─────────────────────────────────────────
 
+@send_for_signature_post
+@api_view(["POST"])
 @is_request_authenticated
 def send_ejari_for_signature(request):
     """POST: PM triggers Ejari signature request → EJARI_SIGNING. Emails
-    both the tenant and the owner their own signing link -- activation
-    requires both to sign (see esign_callback_view)."""
-    if request.method != "POST":
-        return prepare_response(message="Method not allowed", status=status.HTTP_405_METHOD_NOT_ALLOWED)
+    both the tenant and the owner their own UAE PASS signing link --
+    activation requires both to sign (see esign_callback_view).
+
+    Calling it again while EJARI_SIGNING re-sends the email to whoever
+    hasn't signed yet. Each email's delivery result is returned in
+    content.sent_to / content.failed."""
     try:
-        body     = json.loads(request.body)
-        lease_id = body.get("lease_id")
+        lease_id = request.data.get("lease_id")
         if not lease_id:
             logger.warning(
                 "EJARI_SIGNATURE_REQUEST_FAILED | user_id=%s | reason=LEASE_ID_MISSING",
@@ -2555,13 +2637,12 @@ def send_ejari_for_signature(request):
                 lease_id )
             return prepare_response(message="Lease not found", status=status.HTTP_404_NOT_FOUND)
 
-        if lease.lease_stage not in (constants.EJARI_DOCUMENT_UPLOAD, constants.EJARI_APPROVED, constants.EJARI):
+        is_resend = lease.lease_stage == constants.EJARI_SIGNING
+        if not is_resend and lease.lease_stage not in (constants.EJARI_DOCUMENT_UPLOAD, constants.EJARI_APPROVED, constants.EJARI):
             logger.warning(
                 "EJARI_SIGNATURE_REQUEST_FAILED | lease_id=%s | current_stage=%s | reason=INVALID_STAGE",
                 lease_id, lease.lease_stage )
-            if lease.lease_stage == constants.EJARI_SIGNING:
-                message = "Ejari has already been sent for signature. Waiting for signatures."
-            elif lease.lease_stage == constants.EJARI_SIGNED:
+            if lease.lease_stage == constants.EJARI_SIGNED:
                 message = "Ejari has already been signed."
             else:
                 message = "Cannot send Ejari for signature at this stage. Please refresh and try again."
@@ -2583,17 +2664,24 @@ def send_ejari_for_signature(request):
                         lease_id )
             return prepare_response(message="Owner email not found for this unit.", status=status.HTTP_400_BAD_REQUEST)
 
-        if lease.unit:
-            lease.unit.status = constants.UNIT_ESIGN_PENDING
-            lease.unit.save(update_fields=["status"])
-
         from utilities.config import FRONTEND_URL
         prop = lease.unit.property_block_tower.property if lease.unit and lease.unit.property_block_tower else None
 
-        for role, recipient_email, recipient_name in (
+        signers = [
             (LeaseSignature.ROLE_TENANT, tenant_email, f"{lease.tenant.user.first_name} {lease.tenant.user.last_name}".strip()),
             (LeaseSignature.ROLE_OWNER, owner_email, f"{owner.user.first_name} {owner.user.last_name}".strip() if owner.user else owner_email),
-        ):
+        ]
+        if is_resend:
+            # Only chase whoever hasn't signed yet.
+            signed_roles = set(LeaseSignature.objects.filter(
+                lease=lease, signed_at__isnull=False,
+            ).values_list("role", flat=True))
+            signers = [sg for sg in signers if sg[0] not in signed_roles]
+            if not signers:
+                return prepare_response(message="Both the tenant and the owner have already signed.", status=status.HTTP_400_BAD_REQUEST)
+
+        sent_to, failed = [], []
+        for role, recipient_email, recipient_name in signers:
             LeaseSignature.objects.update_or_create(
                 lease=lease, role=role,
                 defaults={"signer_email": recipient_email, "created_by": request.user.user},
@@ -2609,16 +2697,37 @@ def send_ejari_for_signature(request):
             subject   = f"Ejari Signature Required – {lease.code}"
             body_text = f"Please sign the Ejari document for lease {lease.code}: {sign_url}"
             body_html = render_to_string("email_templates/ejari_signature_required.html", ctx)
-            send_ses_email(recipient_email, subject, body_text, body_html)
+            if send_ses_email(recipient_email, subject, body_text, body_html):
+                sent_to.append({"role": role, "email": recipient_email})
+            else:
+                failed.append({"role": role, "email": recipient_email})
 
-        lease.lease_stage = constants.EJARI_SIGNING
-        lease.save(update_fields=["lease_stage"])
+        content = {"sent_to": sent_to, "failed": failed}
+        if not sent_to:
+            # Nothing went out -- leave the stage as-is so Send can be retried.
+            logger.error(
+                "EJARI_SIGNATURE_EMAIL_FAILED | lease_id=%s | failed=%s", lease_id, failed)
+            return prepare_response(
+                content=content,
+                message="Could not send the signature email to " + ", ".join(f["email"] for f in failed) + ". Please try again.",
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        if not is_resend:
+            if lease.unit:
+                lease.unit.status = constants.UNIT_ESIGN_PENDING
+                lease.unit.save(update_fields=["status"])
+            lease.lease_stage = constants.EJARI_SIGNING
+            lease.save(update_fields=["lease_stage"])
         logger.info(
-                "EJARI_SENT_FOR_SIGNATURE | user_id=%s | lease_id=%s ",
-                request.user.id, lease_id )
-        audit_logs(request, f"Ejari sent for signature (tenant + owner) for lease '{lease.code}'", constants.UPDATED)
+                "EJARI_SENT_FOR_SIGNATURE | user_id=%s | lease_id=%s | resend=%s | sent_to=%s | failed=%s",
+                request.user.id, lease_id, is_resend, sent_to, failed )
+        audit_logs(request, f"Ejari {'re-sent' if is_resend else 'sent'} for signature to {', '.join(x['email'] for x in sent_to)} for lease '{lease.code}'", constants.UPDATED)
 
-        return prepare_response(message="Ejari sent for signature successfully.", status=status.HTTP_200_OK)
+        message = ("Signature email re-sent to " if is_resend else "Ejari sent for signature to ") + ", ".join(x["email"] for x in sent_to) + "."
+        if failed:
+            message += " Could not send to " + ", ".join(f["email"] for f in failed) + "."
+        return prepare_response(content=content, message=message, status=status.HTTP_200_OK)
     except Exception as e:
         logger.exception(
             "EJARI_SIGNATURE_REQUEST_ERROR | user_id=%s | error=%s",
@@ -2882,6 +2991,62 @@ def _expected_signer_email(lease, role):
     return None
 
 
+@api_view(["GET"])
+@is_request_authenticated
+def ejari_signing_document(request):
+    """GET ?lease_id=X: the latest version of the Ejari PDF for the
+    dashboard's Signature step -- the most recently signed copy returned by
+    the signature provider if anyone has signed, otherwise the unsigned PDF
+    exactly as it is sent for signing (same _build_ejari_pdf_bytes as
+    esign_start_view). X-Ejari-Signed-By lists the roles that have signed."""
+    lease_id = request.GET.get("lease_id")
+    if not lease_id:
+        return prepare_response(message=constants.LEASE_ID_REQUIRED, status=status.HTTP_400_BAD_REQUEST)
+
+    lease = Lease.objects.for_user(request.user).select_related(
+        "tenant__user", "unit__property_block_tower__property", "unit__parent_property",
+    ).filter(id=lease_id, is_active=True).first()
+    if not lease:
+        logger.warning(
+            "EJARI_SIGNING_DOCUMENT_FAILED | user_id=%s | lease_id=%s | reason=LEASE_NOT_FOUND",
+            request.user.id, lease_id)
+        return prepare_response(message=constants.LEASE_NOT_FOUND, status=status.HTTP_404_NOT_FOUND)
+
+    signed = list(
+        LeaseSignature.objects.filter(lease=lease, signed_at__isnull=False)
+        .exclude(esign_signed_document_path__isnull=True)
+        .exclude(esign_signed_document_path="")
+        .order_by("-signed_at")
+    )
+    pdf_bytes = None
+    if signed:
+        import requests
+        latest = signed[0]
+        try:
+            url = fetch_s3_presigned_url(latest.esign_signed_document_path, file_name=f"ejari_{lease.code}_signed.pdf")
+            r = requests.get(url, timeout=30)
+            r.raise_for_status()
+            pdf_bytes = r.content
+        except Exception as e:
+            # Fall back to the unsigned document rather than showing nothing.
+            logger.exception("EJARI_SIGNED_DOCUMENT_FETCH_FAILED | lease_id=%s | role=%s | error=%s", lease_id, latest.role, str(e))
+
+    if pdf_bytes is None:
+        try:
+            pdf_bytes = _build_ejari_pdf_bytes(lease)
+        except Exception as e:
+            logger.exception("EJARI_SIGNING_DOCUMENT_FAILED | lease_id=%s | error=%s", lease_id, str(e))
+            return prepare_response(message="Could not generate the Ejari document.", status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        signed = []
+
+    response = HttpResponse(pdf_bytes, content_type="application/pdf")
+    suffix = "_signed" if signed else ""
+    response["Content-Disposition"] = f'inline; filename="ejari_{lease.code}{suffix}.pdf"'
+    response["X-Ejari-Signed-By"] = ",".join(sg.role for sg in signed)
+    response["Access-Control-Expose-Headers"] = "X-Ejari-Signed-By, Content-Disposition"
+    return response
+
+
 @csrf_exempt
 def esign_start_view(request):
     """GET: starts a signature process with the configured provider and
@@ -2971,6 +3136,14 @@ def esign_callback_view(request):
     from utilities import config as esign_config
 
     redirect_base = f"{esign_config.FRONTEND_URL}/ejari-sign"
+
+    # Record exactly what the provider sent back (minus our signed state) --
+    # its result API only says "failed", so any extra params help diagnose.
+    import logging as _logging
+    _logging.getLogger("lease.esign").warning(
+        "ESIGN_CALLBACK_RECEIVED | params=%s",
+        {k: v for k, v in request.GET.items() if k != "state"},
+    )
 
     state = request.GET.get("state")
     lease_id, provider_name, role = verify_state(state) if state else (None, None, None)

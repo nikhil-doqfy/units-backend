@@ -1009,12 +1009,15 @@ def unit(request):
             makani_no=data.get("makani_no"),
             dewa_no=data.get("dewa_no"),
             rent=data.get("rent"),
+            budgeted_rent=data.get("budgeted_rent"),
             security_deposit=data.get("security_deposit"),
             booking_amount=data.get("booking_amount"),
             maintenance_charges=data.get("maintenance_charges"),
+            renewal_commission=data.get("renewal_commission"),
             cycle=data.get("cycle"),
             notice_period=data.get("notice_period"),
             commission_percent=data.get("commission_percent"),
+            commission_amount=data.get("commission_amount"),
         )
         logger.info(
             "UNIT_CREATED | user_id=%d | unit_id=%d | unit_name=%s | status=SUCCESS",
@@ -1060,9 +1063,9 @@ def unit(request):
         for field in ["unit_name", "unit_size", "area", "dm_no",
                       "no_of_bedrooms", "floor_no", "parking_no", "no_of_balcony",
                       "land_no", "unit_usage", "unit_type", "sub_type",
-                      "makani_no", "dewa_no", "rent", "security_deposit",
-                      "booking_amount", "maintenance_charges", "cycle",
-                      "notice_period", "commission_percent"]:
+                      "makani_no", "dewa_no", "rent", "budgeted_rent", "security_deposit",
+                      "booking_amount", "maintenance_charges", "renewal_commission", "cycle",
+                      "notice_period", "commission_percent", "commission_amount"]:
             if field in data and data[field] is not None:
                 setattr(u, field, data[field])
 
@@ -2104,12 +2107,15 @@ def bulk_upload_property_excel(request):
                     makani_no=str(_val(row, "makani_no")) if _val(row, "makani_no") else None,
                     dewa_no=_val(row, "dewa_no"),
                     rent=_val(row, "rent"),
+                    budgeted_rent=_val(row, "budgeted_rent"),
                     security_deposit=_val(row, "security_deposit"),
                     booking_amount=_val(row, "booking_amount"),
                     maintenance_charges=_val(row, "maintenance_charges"),
+                    renewal_commission=_val(row, "renewal_commission"),
                     cycle=_val(row, "cycle"),
                     notice_period=str(_val(row, "notice_period")) if _val(row, "notice_period") else None,
                     commission_percent=_val(row, "commission_percent"),
+                    commission_amount=_val(row, "commission_amount"),
                     **link_kwargs,
                 )
                 summary["units_created"] += 1

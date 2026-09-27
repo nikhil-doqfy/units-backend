@@ -3,9 +3,12 @@
 <head>
 <meta charset="utf-8">
 <style>
-  @page { size: A4; margin: 20mm 15mm; }
+  /* margin 0 + body padding (instead of @page margins) so the absolutely
+     positioned signature boxes below sit at exact page coordinates --
+     lease/views.py EJARI_SIGNATURE_FIELDS must match them. */
+  @page { size: A4; margin: 0; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #1f2937; background: #fff; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #1f2937; background: #fff; padding: 20mm 15mm; }
 
   .header-table { width: 100%; border-collapse: collapse; margin-bottom: 28px; border-bottom: 3px solid #0c6ce9; padding-bottom: 16px; }
   .doc-title { font-size: 26px; font-weight: 900; color: #0c6ce9; letter-spacing: 3px; }
@@ -23,10 +26,15 @@
   .detail-table td.label { color: #6b7280; width: 40%; }
   .detail-table td.value { font-weight: 600; color: #111; }
 
-  .sign-area { margin-top: 60px; }
-  .sign-box { border-top: 1px solid #333; width: 240px; padding-top: 6px; font-size: 11px; color: #555; }
+  /* A4 = 595.28 x 841.89pt. Stamp areas: 245 x 90pt, bottom edge 150pt
+     above the page bottom; tenant at x=42pt, owner at x=308pt. */
+  .sign-label { position: absolute; top: 580pt; width: 245pt; font-size: 10px; font-weight: 700; color: #0c6ce9; text-transform: uppercase; letter-spacing: 1px; }
+  .sign-slot  { position: absolute; top: 601.89pt; width: 245pt; height: 90pt; border: 1px dashed #cbd5e1; border-radius: 6px; }
+  .sign-name  { position: absolute; top: 696pt; width: 245pt; font-size: 11px; color: #555; }
+  .sign-tenant { left: 42pt; }
+  .sign-owner  { left: 308pt; }
 
-  .footer { margin-top: 36px; padding-top: 12px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 10px; color: #9ca3af; }
+  .footer { position: absolute; left: 42pt; width: 511pt; top: 760pt; padding-top: 12px; border-top: 1px solid #e5e7eb; text-align: center; font-size: 10px; color: #9ca3af; }
 </style>
 </head>
 <body>
@@ -69,9 +77,13 @@
     <tr><td class="label">Annual Rent</td><td class="value">AED {{ property_info.rent }}</td></tr>
   </table>
 
-  <div class="sign-area">
-    <div class="sign-box">Tenant Signature</div>
-  </div>
+  <div class="sign-label sign-tenant">Tenant Signature</div>
+  <div class="sign-slot sign-tenant"></div>
+  <div class="sign-name sign-tenant">{{ tenant.name }}</div>
+
+  <div class="sign-label sign-owner">Owner Signature</div>
+  <div class="sign-slot sign-owner"></div>
+  <div class="sign-name sign-owner">{{ owner_name }}</div>
 
   <div class="footer">This document is generated for Ejari e-signature purposes.</div>
 

@@ -232,7 +232,7 @@ class LeaseTransaction(Documents):
     vat   = models.FloatField(default=0)
     total = models.FloatField(default=0)
     # Auto-generated the moment this cheque's status first becomes
-    # REALIZED -- see lease_cheque_view's PUT handler. S3 path, not a
+    # CREDITED -- see lease_cheque_view's PUT handler. S3 path, not a
     # presigned URL (those expire; serialize_lease_cheque signs on read).
     invoice_pdf_path = models.CharField(max_length=2000, null=True, blank=True)
 

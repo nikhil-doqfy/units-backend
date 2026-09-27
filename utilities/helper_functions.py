@@ -25,7 +25,8 @@ def _s3_client():
         kwargs["aws_access_key_id"] = AWS_ACCESS_KEY
         kwargs["aws_secret_access_key"] = AWS_SECRET_KEY
     return boto3.client("s3", **kwargs)
-from utilities.ses_utils import send
+from utilities.ses_utils import send as ses_send
+from utilities import smtp_utils
 import logging
 from django.core.files.base import ContentFile
 from decimal import Decimal, InvalidOperation
@@ -204,8 +205,13 @@ def resize_image(photo_base64, target_size_kb):
 
 
 def send_ses_email(to_email, subject, body_text, body_html, cc=None):
+    """Name kept stable (13 call sites across the app use it) despite now
+    dispatching by config.EMAIL_CHANNEL_PREFERENCE -- SES (default) or SMTP.
+    """
+    channel = config.EMAIL_CHANNEL_PREFERENCE
+    sender = smtp_utils.send if channel == config.EMAIL_CHANNEL_SMTP else ses_send
     try:
-        send(
+        sender(
             recipient=to_email,
             subject=subject,
             body_html=body_html,
@@ -215,7 +221,7 @@ def send_ses_email(to_email, subject, body_text, body_html, cc=None):
         return True
     except Exception as e:
         logging.getLogger(__name__).error(
-            f"SES send failed | to='{to_email}' subject='{subject}' error={e}"
+            f"Email send failed | channel={channel} | to='{to_email}' subject='{subject}' error={e}"
         )
         return False
     

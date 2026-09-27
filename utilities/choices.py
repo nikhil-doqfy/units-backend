@@ -122,13 +122,11 @@ CHEQUE_TYPE_CHOICES = (
 # ── Cheque Status ──────────────────────────────────────────────────────────────
 CHEQUE_STATUS_BALANCE  = "BALANCE"
 CHEQUE_STATUS_CREDITED = "CREDITED"
-CHEQUE_STATUS_REALIZED = "REALIZED"
 CHEQUE_STATUS_BOUNCED  = "BOUNCED"
 
 CHEQUE_STATUS_CHOICES = (
     (CHEQUE_STATUS_BALANCE,  "Balance"),
     (CHEQUE_STATUS_CREDITED, "Credited"),
-    (CHEQUE_STATUS_REALIZED, "Realized"),
     (CHEQUE_STATUS_BOUNCED,  "Bounced"),
 )
 

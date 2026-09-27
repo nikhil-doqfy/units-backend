@@ -92,7 +92,7 @@ dashboard_cheque_visibility_get = swagger_auto_schema(
         openapi.Parameter("city_id", openapi.IN_QUERY, type=openapi.TYPE_INTEGER, required=False, example=1),
         openapi.Parameter("property_unit_id", openapi.IN_QUERY, type=openapi.TYPE_INTEGER, required=False, example=1),
         openapi.Parameter("property_id", openapi.IN_QUERY, type=openapi.TYPE_INTEGER, required=False, example=1),
-        openapi.Parameter("cheque_status", openapi.IN_QUERY, type=openapi.TYPE_STRING, required=False, example="REALIZED"),
+        openapi.Parameter("cheque_status", openapi.IN_QUERY, type=openapi.TYPE_STRING, required=False, example="CREDITED"),
         openapi.Parameter("from_date", openapi.IN_QUERY, description="From date in epoch milliseconds", type=openapi.TYPE_INTEGER, required=False, example=1735689600000),
         openapi.Parameter("to_date", openapi.IN_QUERY, description="To date in epoch milliseconds", type=openapi.TYPE_INTEGER, required=False, example=1767225599000),
     ],

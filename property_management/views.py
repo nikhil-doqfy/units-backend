@@ -936,7 +936,7 @@ def dashboard_top_revenue_properties(request):
         revenue_rows = (
             LeaseTransaction.objects.filter(
                 lease__unit__in=units_qs,
-                status=constants.CHEQUE_STATUS_REALIZED,
+                status=constants.CHEQUE_STATUS_CREDITED,
                 is_active=True,
             )
             .values(
@@ -1109,7 +1109,7 @@ def dashboard_monthly_revenue(request):
             end_date = date(year, 12, 31)
 
         transactions = LeaseTransaction.objects.filter(
-            status=constants.CHEQUE_STATUS_REALIZED,
+            status=constants.CHEQUE_STATUS_CREDITED,
             is_active=True,
             cheque_date__date__range=[start_date, end_date]
         )
@@ -1199,7 +1199,7 @@ def dashboard_monthly_revenue(request):
         # MRR — total of all realized lease transactions for the company (no date filter)
         # =========================
         mrr_qs = LeaseTransaction.objects.filter(
-            status=constants.CHEQUE_STATUS_REALIZED,
+            status=constants.CHEQUE_STATUS_CREDITED,
             is_active=True
         )
         if pm_instance:
@@ -1452,7 +1452,7 @@ def dashboard_cheque_aging(request):
         total_cheques = transactions.count()
 
         realized_count = transactions.filter(
-            status=constants.CHEQUE_STATUS_REALIZED
+            status=constants.CHEQUE_STATUS_CREDITED
         ).count()
 
         bounced_payments = transactions.filter(
@@ -1544,7 +1544,7 @@ def dashboard_other_type_payments(request):
         year_start = date(year, 1, 1)
         year_end = date(year, 12, 31)
         transactions = LeaseTransaction.objects.filter(
-            status=constants.CHEQUE_STATUS_REALIZED,
+            status=constants.CHEQUE_STATUS_CREDITED,
             is_active=True,
             cheque_date__date__range=[year_start, year_end]
         )
@@ -1746,7 +1746,7 @@ def dashboard_yearly_dues(request):
             return {row["month"].month: float(row["total"] or 0) for row in rows if row["month"]}
 
         total_map    = _monthly_map(base_qs)
-        received_map = _monthly_map(base_qs.filter(status=constants.CHEQUE_STATUS_REALIZED))
+        received_map = _monthly_map(base_qs.filter(status=constants.CHEQUE_STATUS_CREDITED))
 
         # ------------------------------------------------
         # 4 MONTHLY CALCULATION
@@ -2349,49 +2349,89 @@ def global_search(request):
 
     user = request.user
     results = []
+    pmc_id = request.GET.get("pmc_id", "").strip()
 
-    pm_profile = PropertyManager.objects.filter(pk=user.pk).select_related("company").first()
-    company = pm_profile.company if pm_profile else None
-    if not company:
-        company = PropertyManagmentCompany.objects.filter(created_by=user.user, is_active=True).first()
+    # ── Resolve the PMCs this user may search (same rules as the list pages) ──
+    pm_profile = PropertyManager.objects.filter(pk=user.pk).first()
+    owner_profile = None if pm_profile else Owner.objects.filter(pk=user.pk).first()
+    if pm_profile:
+        pmc_ids = list(PMCPMMapping.objects.filter(pm=pm_profile, is_active=True).values_list("pmc_id", flat=True))
+    elif owner_profile:
+        owned_units = Unit.objects.filter(unit_owners__owner=owner_profile, is_active=True)
+        pmc_ids = {
+            i for i in owned_units.values_list("property_block_tower__property__pmc_id", flat=True)
+        } | {
+            i for i in owned_units.values_list("parent_property__pmc_id", flat=True)
+        }
+        pmc_ids = [i for i in pmc_ids if i is not None]
+    else:
+        pmc_ids = list(PropertyManagmentCompany.objects.filter(created_by=user.user, is_active=True).values_list("id", flat=True))
 
-    if company:
-        props = Property.objects.filter(
-            pmc=company, is_active=True
-        ).filter(
-            Q(property_name__icontains=search) | Q(code__icontains=search)
-        )[:5]
-        for p in props:
-            results.append({
-                "type": "property",
-                "id": p.id,
-                "label": p.property_name,
-                "sub_label": p.code or "",
-            })
+    # Narrow to the PMC selected in the navbar, if any.
+    if pmc_id:
+        if not pmc_id.isdigit() or int(pmc_id) not in pmc_ids:
+            return prepare_response(message="You are not allowed to access this PMC", status=status.HTTP_403_FORBIDDEN)
+        pmc_ids = [int(pmc_id)]
 
-        units = Unit.objects.filter(
-            property_block_tower__property__pmc=company,
-            is_active=True,
-        ).filter(
-            Q(unit_name__icontains=search) | Q(code__icontains=search)
-        ).select_related("property_block_tower__property")[:5]
-        for u in units:
-            prop_name = u.property_block_tower.property.property_name
-            results.append({
-                "type": "unit",
-                "id": u.id,
-                "label": u.unit_name,
-                "sub_label": f"{u.property_block_tower.block_name} — {prop_name}",
-            })
+    if not pmc_ids:
+        return prepare_response(content={"results": []}, message="OK", status=status.HTTP_200_OK)
+
+    unit_in_pmc = (
+        Q(property_block_tower__property__pmc_id__in=pmc_ids) |
+        Q(parent_property__pmc_id__in=pmc_ids)
+    )
+    units_scope = Unit.objects.filter(unit_in_pmc, is_active=True)
+    # Owners only see their own units (and people linked to them).
+    if owner_profile:
+        units_scope = units_scope.filter(unit_owners__owner=owner_profile)
+
+    props = Property.objects.filter(pmc_id__in=pmc_ids, is_active=True).filter(
+        Q(property_name__icontains=search) | Q(code__icontains=search)
+    )
+    if owner_profile:
+        props = props.filter(
+            Q(property_blocks__block_towers__in=units_scope) | Q(units__in=units_scope)
+        ).distinct()
+    for p in props[:5]:
+        results.append({
+            "type": "property",
+            "id": p.id,
+            "label": p.property_name,
+            "sub_label": p.code or "",
+        })
+
+    units = units_scope.filter(
+        Q(unit_name__icontains=search) | Q(code__icontains=search)
+    ).select_related("property_block_tower__property", "parent_property").distinct()[:5]
+    for u in units:
+        block = u.property_block_tower
+        prop = block.property if block else u.parent_property
+        prop_name = prop.property_name if prop else ""
+        results.append({
+            "type": "unit",
+            "id": u.id,
+            "label": u.unit_name,
+            "sub_label": f"{block.block_name} — {prop_name}" if block else prop_name,
+        })
 
     owners = Owner.objects.filter(
         Q(user__first_name__icontains=search) |
         Q(user__last_name__icontains=search) |
         Q(user__email__icontains=search) |
         Q(contact_number__icontains=search) |
-        Q(owner_number__icontains=search)
-    ).select_related("user")[:5]
-    for o in owners:
+        Q(owner_number__icontains=search),
+        user__is_active=True,
+        is_active=True,
+    )
+    if owner_profile:
+        owners = owners.filter(unit_owner_links__unit__in=units_scope)
+    else:
+        owners = owners.filter(
+            Q(pmc__id__in=pmc_ids) |
+            Q(unit_owner_links__unit__property_block_tower__property__pmc_id__in=pmc_ids) |
+            Q(unit_owner_links__unit__parent_property__pmc_id__in=pmc_ids)
+        )
+    for o in owners.select_related("user").distinct()[:5]:
         results.append({
             "type": "owner",
             "id": o.id,
@@ -2403,9 +2443,10 @@ def global_search(request):
         Q(user__first_name__icontains=search) |
         Q(user__last_name__icontains=search) |
         Q(user__email__icontains=search) |
-        Q(contact_number__icontains=search)
-    ).select_related("user")[:5]
-    for t in tenants:
+        Q(contact_number__icontains=search),
+        lease__unit__in=units_scope,
+    )
+    for t in tenants.select_related("user").distinct()[:5]:
         results.append({
             "type": "tenant",
             "id": t.id,

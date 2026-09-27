@@ -91,6 +91,7 @@ def serialize_lease(lease):
             "cycle":              unit.cycle if unit else None,
             "notice_period":      unit.notice_period if unit else None,
             "commission_percent": str(unit.commission_percent) if unit and unit.commission_percent is not None else None,
+            "commission_amount": str(unit.commission_amount) if unit and unit.commission_amount is not None else None,
         },
 
         # ── Tenant ────────────────────────────────────────────────

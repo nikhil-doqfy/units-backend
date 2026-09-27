@@ -286,12 +286,15 @@ class Unit(Base):
     makani_no = models.CharField(max_length=100, null=True, blank=True)
     dewa_no = models.CharField(max_length=100, null=True, blank=True)
     rent = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    budgeted_rent = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     security_deposit = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     booking_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     maintenance_charges = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    renewal_commission = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     cycle = models.CharField(max_length=50, null=True, blank=True)
     notice_period = models.CharField(max_length=50, null=True, blank=True)
     commission_percent = models.DecimalField(max_digits=5, decimal_places=3, null=True, blank=True)
+    commission_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
     status = models.CharField(
         max_length=25,
         choices=constants.UNIT_STATUS_CHOICES,
@@ -355,12 +358,15 @@ class Unit(Base):
             "makani_no": self.makani_no,
             "dewa_no": self.dewa_no,
             "rent": str(self.rent) if self.rent is not None else None,
+            "budgeted_rent": str(self.budgeted_rent) if self.budgeted_rent is not None else None,
             "security_deposit": str(self.security_deposit) if self.security_deposit is not None else None,
             "booking_amount": str(self.booking_amount) if self.booking_amount is not None else None,
             "maintenance_charges": str(self.maintenance_charges) if self.maintenance_charges is not None else None,
+            "renewal_commission": str(self.renewal_commission) if self.renewal_commission is not None else None,
             "cycle": self.cycle,
             "notice_period": self.notice_period,
             "commission_percent": str(self.commission_percent) if self.commission_percent is not None else None,
+            "commission_amount": str(self.commission_amount) if self.commission_amount is not None else None,
             "pmc": prop.pmc.name if prop and prop.pmc else None,
             "unit_owners": [
                 {
