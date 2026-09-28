@@ -110,6 +110,10 @@ def broadcast_view(request):
             priority = body.get("priority", "NORMAL")
             channels = body.get("channels", [])
             banner_image = body.get("banner_image")
+            action = body.get("action", "SEND").upper()
+            if action not in {"DRAFT", "SEND"}:
+                return prepare_response(message="Invalid action. Use DRAFT or SEND", status=status.HTTP_400_BAD_REQUEST)
+            save_as_draft = action == "DRAFT"
 
             if banner_image:
                 object_name = f"broadcast/{timezone.now().strftime('%Y%m%d%H%M%S%f')}.jpg"
@@ -179,8 +183,8 @@ def broadcast_view(request):
                 priority=priority,
                 channels=channels,
                 banner_image=banner_image,
-                status="SENT",
-                sent_date=timezone.now(),
+                status="DRAFT" if save_as_draft else "SENT",
+                sent_date=None if save_as_draft else timezone.now(),
                 created_by=request.user.user
             )
 
@@ -188,7 +192,7 @@ def broadcast_view(request):
             delivered_count = 0
             failed_count = 0
 
-            if "MAIL" in channels:
+            if not save_as_draft and "MAIL" in channels:
                 active_leases = Lease.objects.filter(
                     lease_status="ACTIVE",
                     tenant__isnull=False,
@@ -287,12 +291,16 @@ def broadcast_view(request):
             )
 
             return prepare_response(
-                message="Broadcast created successfully",
+                message="Broadcast saved as draft successfully" if save_as_draft else "Broadcast sent successfully",
                 content={
                     "id": broadcast.id,
                     "log_id": f"BR{broadcast.id:05d}",
                     "title": broadcast.title,
+                    "status": broadcast.status,
                     "mail_sent_count": delivered_count,
+                    "recipients": len(recipients),
+                    "delivered": delivered_count,
+                    "failed": failed_count,
                     "send_by": _get_send_by(broadcast.created_by)
                 },
                 status=status.HTTP_201_CREATED
@@ -628,6 +636,174 @@ def broadcast_report_view(request, broadcast_id):
             "sent_date": datetime_to_epoch_millis(broadcast.sent_date) if broadcast.sent_date else None,
             "send_by": _get_send_by(broadcast.created_by),
             "recipient_details": recipient_details
+        },
+        status=status.HTTP_200_OK
+    )
+
+@api_view(["POST"])
+@is_request_authenticated
+def broadcast_send_view(request, broadcast_id):
+    broadcast = _broadcast_queryset_for_user(request).filter(
+        pk=broadcast_id,
+        status="DRAFT"
+    ).first()
+
+    if not broadcast:
+        return prepare_response(
+            message="Draft broadcast not found",
+            status=status.HTTP_404_NOT_FOUND
+        )
+
+    recipients = []
+    delivered_count = 0
+    failed_count = 0
+
+    if "MAIL" in broadcast.channels:
+        active_leases = Lease.objects.filter(
+            lease_status="ACTIVE",
+            tenant__isnull=False,
+            is_active=True
+        ).select_related("tenant", "unit")
+
+        if broadcast.unit:
+            active_leases = active_leases.filter(
+                unit=broadcast.unit
+            )
+        elif broadcast.block_tower:
+            active_leases = active_leases.filter(
+                unit__property_block_tower=broadcast.block_tower
+            )
+        elif broadcast.property:
+            active_leases = active_leases.filter(
+                Q(unit__parent_property=broadcast.property) |
+                Q(unit__property_block_tower__property=broadcast.property)
+            )
+
+        for lease in active_leases:
+            tenant = lease.tenant
+            email = None
+
+            if getattr(tenant, "user", None):
+                email = tenant.user.email
+
+            if email:
+                email = email.strip().lower()
+
+                if email and email not in recipients:
+                    recipients.append(email)
+
+        body_text = (
+            f"Hello,\n\n"
+            f"{broadcast.description}\n\n"
+            f"Thank you,\nThe Units Team"
+        )
+
+        body_html = f"""
+        <html>
+            <body>
+                <h2>{broadcast.title}</h2>
+                <p>{broadcast.description}</p>
+                <br>
+                <p>Thank you,<br>The Units Team</p>
+            </body>
+        </html>
+        """
+
+        for email in recipients:
+            recipient = BroadcastRecipient.objects.create(
+                broadcast=broadcast,
+                email=email,
+                channel="MAIL",
+                status="PENDING",
+                created_by=request.user.user
+            )
+
+            try:
+                ok = send_ses_email(
+                    email,
+                    broadcast.title,
+                    body_text,
+                    body_html
+                )
+
+                if ok:
+                    recipient.status = "DELIVERED"
+                    recipient.sent_at = timezone.now()
+                    recipient.error_message = None
+                    recipient.save(
+                        update_fields=[
+                            "status",
+                            "sent_at",
+                            "error_message",
+                            "modified"
+                        ]
+                    )
+                    delivered_count += 1
+                else:
+                    recipient.status = "FAILED"
+                    recipient.error_message = "Email sending failed"
+                    recipient.save(
+                        update_fields=[
+                            "status",
+                            "error_message",
+                            "modified"
+                        ]
+                    )
+                    failed_count += 1
+
+                    logger.warning(
+                        "BROADCAST_MAIL_FAILED | broadcast_id=%d | email=%s",
+                        broadcast.id,
+                        email
+                    )
+
+            except Exception as e:
+                recipient.status = "FAILED"
+                recipient.error_message = str(e)
+                recipient.save(
+                    update_fields=[
+                        "status",
+                        "error_message",
+                        "modified"
+                    ]
+                )
+                failed_count += 1
+
+                logger.exception(
+                    "BROADCAST_MAIL_ERROR | broadcast_id=%d | email=%s | error=%s",
+                    broadcast.id,
+                    email,
+                    str(e)
+                )
+
+    broadcast.status = "SENT"
+    broadcast.sent_date = timezone.now()
+    broadcast.recipient_count = len(recipients)
+    broadcast.delivered_count = delivered_count
+    broadcast.failed_count = failed_count
+
+    broadcast.save(
+        update_fields=[
+            "status",
+            "sent_date",
+            "recipient_count",
+            "delivered_count",
+            "failed_count",
+            "modified"
+        ]
+    )
+
+    return prepare_response(
+        message="Broadcast sent successfully",
+        content={
+            "id": broadcast.id,
+            "log_id": f"BR{broadcast.id:05d}",
+            "title": broadcast.title,
+            "status": broadcast.status,
+            "recipients": len(recipients),
+            "delivered": delivered_count,
+            "failed": failed_count,
+            "send_by": _get_send_by(broadcast.created_by)
         },
         status=status.HTTP_200_OK
     )
